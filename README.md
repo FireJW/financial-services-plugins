@@ -124,84 +124,6 @@ These plugins are starting points. They become much more useful when you customi
 
 As your team builds and shares plugins, Claude becomes a cross-functional expert. The context you define gets baked into every relevant interaction, so leaders can spend less time enforcing processes and more time improving them.
 
-## Plugin Details
-
-### financial analysis
-
-Core financial modeling and analysis tools. Install this first — it provides the shared foundation and all data connectors used by the add-on plugins.
-
-| Skill | Command | Description |
-|-------|---------|-------------|
-| comps-analysis | `/comps` | Comparable company analysis with trading multiples |
-| dcf-model | `/dcf` | DCF valuation with WACC and sensitivity analysis |
-| lbo-model | `/lbo` | Leveraged buyout model |
-| 3-statements | `/3-statements` | Populate 3-statement financial model templates |
-| competitive-analysis | `/competitive-analysis` | Competitive landscape and market positioning |
-| check-deck | `/check-deck` | QC presentations for errors and consistency |
-| ppt-template-creator | `/ppt-template` | Create reusable PPT template skills |
-| skill-creator | — | Guide for creating new skills |
-
-### investment banking
-
-Deal execution and materials for sell-side and buy-side advisory.
-
-| Skill | Command | Description |
-|-------|---------|-------------|
-| strip-profile | `/one-pager` | One-page company profiles for pitch books |
-| pitch-deck | — | Populate pitch deck templates with data |
-| datapack-builder | — | Build data packs from CIMs and filings |
-| cim-builder | `/cim` | Draft Confidential Information Memorandums |
-| teaser | `/teaser` | Anonymous one-page company teasers |
-| buyer-list | `/buyer-list` | Strategic and financial buyer universe |
-| merger-model | `/merger-model` | Accretion/dilution M&A analysis |
-| process-letter | `/process-letter` | Bid instructions and process correspondence |
-| deal-tracker | `/deal-tracker` | Track live deals, milestones, and action items |
-
-### equity research
-
-Equity research workflows for sell-side and buy-side analysts.
-
-| Skill | Command | Description |
-|-------|---------|-------------|
-| earnings-analysis | `/earnings` | Post-earnings quarterly update reports |
-| earnings-preview | `/earnings-preview` | Pre-earnings scenario analysis and key metrics |
-| initiating-coverage | `/initiate` | Institutional-quality initiation reports |
-| model-update | `/model-update` | Update financial models with new data |
-| morning-note | `/morning-note` | Morning meeting notes and trade ideas |
-| sector-overview | `/sector` | Industry landscape and thematic reports |
-| thesis-tracker | `/thesis` | Maintain and update investment theses |
-| catalyst-calendar | `/catalysts` | Track upcoming catalysts across coverage |
-| idea-generation | `/screen` | Stock screening and idea sourcing |
-
-### private equity
-
-Full PE deal lifecycle from sourcing through portfolio operations.
-
-| Skill | Command | Description |
-|-------|---------|-------------|
-| deal-sourcing | `/source` | Discover companies, check CRM, draft founder outreach |
-| deal-screening | `/screen-deal` | Quick pass/fail on inbound CIMs and teasers |
-| dd-checklist | `/dd-checklist` | Comprehensive due diligence checklists by workstream |
-| dd-meeting-prep | `/dd-prep` | Prep for management presentations and expert calls |
-| unit-economics | `/unit-economics` | ARR cohorts, LTV/CAC, net retention, revenue quality |
-| returns-analysis | `/returns` | IRR/MOIC sensitivity tables |
-| ic-memo | `/ic-memo` | Investment committee memo drafting |
-| portfolio-monitoring | `/portfolio` | Track portfolio company KPIs and variances |
-| value-creation-plan | `/value-creation` | Post-close 100-day plans and EBITDA bridges |
-
-### wealth management
-
-Client service, financial planning, and portfolio management for advisors and RIAs.
-
-| Skill | Command | Description |
-|-------|---------|-------------|
-| client-review | `/client-review` | Prep for client meetings with performance and talking points |
-| financial-plan | `/financial-plan` | Retirement, education, estate, and cash flow projections |
-| portfolio-rebalance | `/rebalance` | Allocation drift analysis and tax-aware rebalancing |
-| client-report | `/client-report` | Client-facing performance reports |
-| investment-proposal | `/proposal` | Proposals for prospective clients |
-| tax-loss-harvesting | `/tlh` | Identify TLH opportunities and manage wash sales |
-
 ## Contributing
 
 Plugins are just markdown files. Fork the repo, make your changes, and submit a PR. For new skills or plugins, include:
@@ -213,3 +135,7 @@ Plugins are just markdown files. Fork the repo, make your changes, and submit a 
 ## License
 
 [Apache License 2.0](./LICENSE)
+
+## Disclaimer
+
+These plugins assist with financial workflows but do not provide financial or investing advice. Always verify conclusions with qualified financial professionals. AI-generated analysis should be reviewed by financial professionals before being relied upon for financial or investment decisions.
