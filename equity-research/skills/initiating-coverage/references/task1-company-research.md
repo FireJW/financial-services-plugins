@@ -1,6 +1,6 @@
 # Task 1: Company Research - Detailed Workflow
 
-This document provides step-by-step instructions for executing Task 1 (Company Research) of the anthropic-initiation-coverage skill.
+This document provides step-by-step instructions for executing Task 1 (Company Research) of the initiating-coverage skill.
 
 ## Task Overview
 
