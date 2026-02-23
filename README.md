@@ -50,16 +50,16 @@ Install plugins from [claude.com/plugins](https://claude.com/plugins/).
 
 ```bash
 # Add the marketplace
-claude plugin marketplace add anthropic-experimental/fsi-plugins-dev
+claude plugin marketplace add anthropics/financial-services-plugins
 
 # Install the core plugin first (required)
-claude plugin install financial-analysis@fsi-plugins-dev
+claude plugin install financial-analysis@financial-services-plugins
 
 # Then add function-specific plugins as needed
-claude plugin install investment-banking@fsi-plugins-dev
-claude plugin install equity-research@fsi-plugins-dev
-claude plugin install private-equity@fsi-plugins-dev
-claude plugin install wealth-management@fsi-plugins-dev
+claude plugin install investment-banking@financial-services-plugins
+claude plugin install equity-research@financial-services-plugins
+claude plugin install private-equity@financial-services-plugins
+claude plugin install wealth-management@financial-services-plugins
 ```
 
 Once installed, plugins activate automatically. Skills fire when relevant, and slash commands are available in your session:
