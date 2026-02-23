@@ -1,6 +1,6 @@
 # Task 4: Chart Generation - Detailed Workflow
 
-This document provides step-by-step instructions for executing Task 4 (Chart Generation) of the anthropic-initiation-coverage skill.
+This document provides step-by-step instructions for executing Task 4 (Chart Generation) of the initiating-coverage skill.
 
 ## Task Overview
 

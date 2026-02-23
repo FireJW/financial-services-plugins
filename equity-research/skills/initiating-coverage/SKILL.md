@@ -115,7 +115,7 @@ Select which task to execute:
 
 **Pattern 1: User specifies a specific task**
 ```
-User: "Use anthropic-initiation-coverage, Task 1 for Tesla"
+User: "Use initiating-coverage, Task 1 for Tesla"
 Response: ✅ Execute Task 1 immediately
 ```
 
@@ -138,9 +138,9 @@ Response: ❌ DO NOT chain tasks together
 
 **Executing a single task:**
 ```
-"Use anthropic-initiation-coverage skill, Task 1 for Tesla"
-"Do Task 2 of anthropic-initiation-coverage for Tesla"
-"Run Task 3 for Tesla using the anthropic-initiation-coverage skill"
+"Use initiating-coverage skill, Task 1 for Tesla"
+"Do Task 2 of initiating-coverage for Tesla"
+"Run Task 3 for Tesla using the initiating-coverage skill"
 ```
 
 **Completing full report (requires 5 separate requests):**
@@ -662,7 +662,7 @@ IF prerequisites are missing:
 ### Example Verification Dialogue
 
 ```
-User: "Use anthropic-initiation-coverage, Task 5 for Tesla"
+User: "Use initiating-coverage, Task 5 for Tesla"
 
 Claude: "Starting Task 5: Report Assembly for Tesla
 

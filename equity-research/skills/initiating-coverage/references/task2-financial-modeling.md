@@ -1,6 +1,6 @@
 # Task 2: Financial Modeling - Detailed Workflow
 
-This document provides step-by-step instructions for executing Task 2 (Financial Modeling) of the anthropic-initiation-coverage skill.
+This document provides step-by-step instructions for executing Task 2 (Financial Modeling) of the initiating-coverage skill.
 
 ## Task Overview
 

@@ -78,12 +78,12 @@ Use ■ character for bullets. Each bullet follows this format:
 
 **EXAMPLE BULLET FORMAT:**
 ```
-■ **Constitutional safety and enterprise focus should enable $635bn+ TAM by 2030.**
-Safety-first model development ethos, strong coding capabilities and distribution partnerships
-have aided Anthropic's enterprise market adoption. With the AI market expected to reach $635bn+
-by 2030, Anthropic is well-positioned to capture share given its focus on safety and enterprise
-use cases. Management has indicated that 60% of current revenue comes from enterprise customers,
-suggesting strong product-market fit in high-value segments.
+■ **Vertical SaaS leadership and regulatory moat should enable $50bn+ TAM by 2030.**
+Deep domain expertise in healthcare IT, strong customer retention (95%+ net revenue retention),
+and cross-sell capabilities have driven Acme Health's market expansion. With the healthcare IT
+market expected to reach $50bn+ by 2030, Acme Health is well-positioned to capture share given
+its regulatory moat and high switching costs. Management has indicated that 70% of current
+revenue comes from enterprise hospital systems, suggesting strong product-market fit.
 ```
 
 **BOTTOM SECTION - FINANCIAL AND VALUATION METRICS TABLE:**

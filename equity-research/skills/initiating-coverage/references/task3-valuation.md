@@ -1,6 +1,6 @@
 # Task 3: Valuation Analysis - Detailed Workflow
 
-This document provides step-by-step instructions for executing Task 3 (Valuation Analysis) of the anthropic-initiation-coverage skill.
+This document provides step-by-step instructions for executing Task 3 (Valuation Analysis) of the initiating-coverage skill.
 
 ## Task Overview
 
