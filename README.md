@@ -40,6 +40,15 @@ Start with **financial analysis** — the core plugin that provides shared model
 
 Install these directly from Cowork, browse the full collection here on GitHub, or build your own.
 
+### Partner-Built Plugins
+
+These plugins are built and maintained by our data partners, bringing their financial data and analytics directly into Claude workflows.
+
+| Plugin | Partner | How it helps |
+|--------|---------|-------------|
+| **[LSEG](./partner-built/lseg)** | [LSEG](https://www.lseg.com/) | Price bonds, analyze yield curves, evaluate FX carry trades, value options, and build macro dashboards using LSEG financial data and analytics. 8 commands covering fixed income, FX, equities, and macro. |
+| **[S&P Global](./partner-built/spglobal)** | [S&P Global](https://www.spglobal.com/) | Generate company tearsheets, earnings previews, and funding digests powered by S&P Capital IQ data. Supports multiple audience types (equity research, IB/M&A, corp dev, sales). |
+
 ## Getting Started
 
 ### Cowork
