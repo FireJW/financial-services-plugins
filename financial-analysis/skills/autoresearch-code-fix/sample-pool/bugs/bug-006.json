@@ -1,0 +1,71 @@
+{
+  "bug_id": "bug-006",
+  "title": "Notification retry marks delivery successful after provider timeout",
+  "priority": "high",
+  "module_boundary": {
+    "allowed_paths": [
+      "src/notifications",
+      "src/jobs",
+      "tests/notifications"
+    ],
+    "forbidden_paths": [
+      "src/ui",
+      "src/reporting",
+      "db/migrations"
+    ]
+  },
+  "bug_description": "When a provider call times out during a retry attempt, the system records the notification as delivered instead of leaving it retryable or failed.",
+  "expected_behavior": "A timeout should be recorded as a non-success outcome, with delivery state left retryable or marked failed according to the retry policy.",
+  "actual_behavior": "The retry path reports success and downstream status shows delivered even though the provider never confirmed receipt.",
+  "reproduction": {
+    "preconditions": [
+      "A local notification worker or mocked retry path is available",
+      "A timeout fixture or provider mock can force a timeout on retry"
+    ],
+    "steps": [
+      "Trigger a notification retry using the timeout fixture or mocked provider timeout",
+      "Inspect the final delivery status and retry metadata"
+    ],
+    "expected_behavior": "The record remains pending retry or failed, and delivery success is not recorded.",
+    "actual_behavior": "The record is marked delivered despite a provider timeout."
+  },
+  "evidence": {
+    "logs": [
+      "Retry logs show timeout raised, but final notification state transitions to delivered"
+    ],
+    "related_files": [
+      "src/notifications/send-notification.ts",
+      "src/jobs/retry-notification.ts",
+      "tests/notifications/retry-timeout-status.test.ts"
+    ]
+  },
+  "validation": {
+    "primary_command": "npm test -- retry-timeout-status",
+    "secondary_checks": [
+      "npm run lint -- src/notifications src/jobs/retry-notification.ts"
+    ],
+    "manual_checks": [
+      "Run the timeout retry fixture again and confirm status no longer becomes delivered",
+      "Confirm a real provider success path still records delivery correctly"
+    ]
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback on any hard-check failure or if successful deliveries stop being recorded correctly",
+    "notes": "Keep the last stable retry-state behavior and a successful delivery fixture for comparison."
+  },
+  "scope_notes": "Keep the fix inside notification send/retry status handling. Do not redesign the whole retry scheduler or provider abstraction unless the root cause clearly requires it.",
+  "notes": {
+    "root_cause_hint": "Likely a timeout exception path falling through to a success-state update or a shared finally block setting the wrong status",
+    "risk_hint": "A broad fix could break successful delivery accounting or create duplicate retries",
+    "similar_bugs": [
+      "provider 500 recorded as sent",
+      "retry metadata incremented but status stayed successful"
+    ]
+  },
+  "tags": [
+    "notifications",
+    "retry",
+    "status-handling"
+  ]
+}

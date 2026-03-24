@@ -1,0 +1,212 @@
+---
+description: 可比公司分析 / Comparable Company Analysis for A-Share Companies
+---
+
+# 可比公司分析 / Comparable Company Analysis (Comps)
+
+## 概述 / Overview
+
+构建机构级可比公司分析，对 A 股上市公司进行估值对标，输出包含经营指标、估值倍数和统计基准的 Excel 工作簿。
+Build institutional-grade comparable company analyses for A-share listed companies with operating metrics, valuation multiples, and statistical benchmarking in Excel format.
+
+---
+
+## 使用方法 / How to Use
+
+**触发命令 / Trigger**：用户提到以下关键词时触发：
+- `可比公司`、`Comps`、`对标分析`、`估值对比`、`同行比较`、`行业对比`
+- 示例 / Examples:
+  - `"帮我做贵州茅台的可比公司分析"` → Comps for Kweichow Moutai
+  - `"宁德时代和比亚迪的估值对比"` → Comps between CATL and BYD
+  - `"/comps 隆基绿能"` → Comps for LONGi Green Energy
+
+**适用场景 / Best For**：
+- ✅ 上市公司估值（M&A、投资分析）/ Public company valuation
+- ✅ 行业同行业绩对标 / Benchmarking vs. peers
+- ✅ 识别估值异常（高估/低估）/ Identifying valuation outliers
+- ✅ 投资决策支撑 / Supporting investment decisions
+
+**不适用 / Not Ideal For**：
+- ❌ 没有可比上市公司的非上市企业 / Private companies without listed peers
+- ❌ 高度多元化集团公司 / Highly diversified conglomerates
+- ❌ ST/*ST 退市风险公司 / Distressed companies
+
+---
+
+## 数据源 / Data Sources
+
+### A 股专用数据接口 / A-Share Data APIs
+
+| 优先级 | 数据源 | API 端点 | 获取内容 |
+|--------|--------|---------|---------|
+| 1 | **东方财富** | `https://datacenter.eastmoney.com/securities/api/data/v1/get` | 财务指标、估值数据、行业分类 |
+| 2 | **东财行情** | `https://push2.eastmoney.com/api/qt/stock/get` | 实时行情、市值、换手率 |
+| 3 | **东财板块成分** | `https://push2.eastmoney.com/api/qt/clist/get` | 行业板块成分股列表 |
+| 4 | **同花顺** | `https://basic.10jqka.com.cn/api/` | 行业排名、概念分类 |
+| 5 | **巨潮资讯** | `http://www.cninfo.com.cn/new/` | 年报/季报原文 |
+
+### 关键数据获取 / Key Data Retrieval
+
+**批量获取行业成分股 / Batch Industry Stocks**：
+```
+东财行业板块 API:
+GET https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=50&fid=f3&fs=b:{板块代码}&fields=f12,f14,f2,f3,f4,f5,f6,f7,f15,f16,f17,f18,f20,f21
+
+参数 / Parameters:
+- fs=b:{板块代码} → 行业板块 / Industry sector code
+- f12=代码, f14=名称, f2=最新价, f20=总市值, f21=流通市值
+```
+
+**财务指标批量 / Financial Metrics Batch**：
+```
+东财核心指标 API:
+GET https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_FINANCE_MAINFINADATA&columns=ALL&filter=(SECURITY_CODE="{代码}")
+
+关键字段 / Key fields:
+- TOTAL_OPERATE_INCOME → 营业收入 / Revenue
+- OPERATE_INCOME_YOY → 营收同比增速 / Revenue YoY Growth
+- GROSS_PROFIT_MARGIN → 毛利率 / Gross Margin
+- OPERATE_PROFIT_MARGIN → 营业利润率 / Operating Margin
+- BASIC_EPS → 基本每股收益 / Basic EPS
+- ROE_DILUTED → 加权ROE / Weighted ROE
+```
+
+**估值数据 / Valuation Data**：
+```
+东财估值 API:
+GET https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUEANALYSIS&columns=ALL&filter=(SECURITY_CODE="{代码}")
+
+关键字段 / Key fields:
+- PE_TTM → 市盈率(TTM) / P/E (TTM)
+- PB_MRQ → 市净率 / P/B
+- PS_TTM → 市销率 / P/S
+- PCF_OPERATE_CASH_TTM → 市现率 / P/CF
+- EV → 企业价值 / Enterprise Value
+- EV_EBITDA → EV/EBITDA
+```
+
+---
+
+## 分析流程 / Analysis Workflow
+
+### 第一步：确定可比公司组 / Step 1: Define Peer Group
+
+**筛选标准 / Selection Criteria**：
+1. **申万行业分类 / SW Industry** — 同一申万二级或三级行业 / Same SW sub-industry
+2. **业务模式 / Business model** — 主营业务相似 / Similar core business
+3. **规模 / Scale** — 市值在 0.3x-3x 范围内 / Market cap within 0.3x-3x range
+4. **区域 / Geography** — 优先 A 股，可补充港股 / A-share preferred, HK supplement OK
+
+**推荐数量 / Recommended Count**: 4-8 家可比公司 / 4-8 comparable companies
+
+> **宁可 3 家完美可比，也不要 8 家勉强可比。**
+> Better 3 perfect comps than 8 questionable ones.
+
+### 第二步：收集经营指标 / Step 2: Operating Metrics
+
+**核心列（必须）/ Core Columns (Required)**：
+
+| 列名 | 英文 | 说明 |
+|------|------|------|
+| 公司 | Company | 简称 + 代码 |
+| 营业收入(TTM) | Revenue (TTM) | 最近12个月 / Trailing 12 months |
+| 营收增速(YoY) | Revenue Growth | 同比增长率 / Year-over-year |
+| 毛利率 | Gross Margin | 毛利润 / 营收 / GP / Revenue |
+| EBITDA | EBITDA | 营业利润 + 折旧摊销 |
+| EBITDA利润率 | EBITDA Margin | EBITDA / 营收 |
+| 净利润 | Net Income | 归母净利润 / Attributable net profit |
+| 净利率 | Net Margin | 净利润 / 营收 |
+
+**可选列（按行业选择）/ Optional Columns (Industry-specific)**：
+
+| 行业 | 推荐追加 | 英文 |
+|------|---------|------|
+| 消费 / Consumer | 销售费用率、存货周转 | Selling expense ratio, inventory turnover |
+| 科技 / Tech | 研发费用率、研发资本化比例 | R&D ratio, capitalization rate |
+| 制造 / Manufacturing | 产能利用率、固定资产周转 | Capacity utilization, asset turnover |
+| 金融 / Finance | ROE、ROA、不良率 | ROE, ROA, NPL ratio |
+| 医药 / Pharma | 研发管线、在研品种数 | Pipeline, drugs in development |
+| 新能源 | 出货量增速、单瓦/单Wh利润 | Shipment growth, profit per W/Wh |
+
+### 第三步：收集估值倍数 / Step 3: Valuation Multiples
+
+**核心估值列（必须）/ Core Valuation Columns (Required)**：
+
+| 指标 | 英文 | 公式 |
+|------|------|------|
+| 总市值 | Market Cap | 股价 × 总股本 |
+| 企业价值(EV) | Enterprise Value | 市值 + 有息负债 - 现金 |
+| EV/营收 | EV/Revenue | 企业价值 / TTM营收 |
+| EV/EBITDA | EV/EBITDA | 企业价值 / TTM EBITDA |
+| PE(TTM) | P/E (TTM) | 总市值 / TTM归母净利 |
+| PB | P/B | 总市值 / 净资产 |
+
+**可选估值 / Optional**：
+- PEG = PE / 未来两年盈利增速 / PE / forward earnings growth
+- PS = 市销率 / Price/Sales
+- 股息率 = 每股股利 / 股价 / Dividend Yield
+
+### 第四步：统计分析 / Step 4: Statistical Analysis
+
+在公司数据下方添加统计区块 / Add statistics block:
+
+```
+[空一行 / Blank row]
+最大值 / Maximum:     =MAX(range)
+75分位 / 75th %tile:  =QUARTILE(range, 3)
+中位数 / Median:      =MEDIAN(range)
+25分位 / 25th %tile:  =QUARTILE(range, 1)
+最小值 / Minimum:     =MIN(range)
+```
+
+**需要统计的列 / Columns that NEED statistics**: 增速、利润率、估值倍数（可比指标）
+**不需要统计的列 / Columns that DON'T**: 绝对金额（营收、净利、市值 — 规模差异太大）
+
+### 第五步：行业特色指标 / Step 5: Industry-Specific Section
+
+**A 股特色指标（选用）/ A-Share Specific Metrics (Optional)**：
+
+| 指标 | 英文 | 说明 |
+|------|------|------|
+| 北向持股比例 | Northbound holding % | 外资持仓占比 |
+| 融资余额占比 | Margin balance % | 杠杆资金比例 |
+| 股东户数变化 | Shareholder count Δ | 筹码集中度 |
+| 大宗交易折价率 | Block trade discount | 机构出货迹象 |
+| 限售解禁日 | Lock-up expiry | 对股价的潜在压力 |
+
+---
+
+## Excel 格式标准 / Excel Formatting
+
+**颜色方案 / Color Scheme**：
+- **区块标题行 / Section headers**: 深蓝底(#17365D) + 白色粗体 / Dark blue bg + white bold
+- **列标题行 / Column headers**: 浅蓝底(#D9E2F3) + 黑色粗体 / Light blue bg + black bold
+- **数据行 / Data rows**: 白色背景 + 黑色字体 / White bg + black text
+- **统计行 / Statistics rows**: 浅灰底(#F2F2F2) / Light gray bg
+- **手动输入 / Inputs**: 蓝色字体 / Blue text
+- **公式 / Formulas**: 黑色字体 / Black text
+
+**数值格式 / Number Formats**：
+- 百分比 / Percentages: 一位小数 (12.3%) / 1 decimal
+- 倍数 / Multiples: 一位小数 (13.5x) / 1 decimal
+- 金额 / Amounts: 无小数+千分符 (69,632) / No decimals, thousands separator
+- 对齐 / Alignment: 所有指标居中 / All metrics center-aligned
+
+**文件命名 / File Naming**：
+`[行业/公司]_Comps_[日期].xlsx`
+例 / Example: `白酒行业_Comps_2026-03-09.xlsx` or `600519_Comps_2026-03-09.xlsx`
+
+---
+
+## 质量检查清单 / Quality Checklist
+
+- [ ] 所有公司真正可比（业务模式、规模相近）/ Companies truly comparable
+- [ ] 数据来自一致时间段 / Consistent time periods
+- [ ] 单位标注清晰（亿元/百万）/ Units clearly labeled
+- [ ] 公式引用单元格，无硬编码 / Formulas reference cells, no hardcoding
+- [ ] 所有手动输入有单元格注释 / Cell comments on all inputs
+- [ ] 统计区包含至少 5 行（最大、75%、中位、25%、最小）/ 5 statistics rows
+- [ ] 注释区记录数据来源和方法 / Notes section documents sources
+- [ ] 蓝色=输入, 黑色=公式 / Blue=input, Black=formula
+- [ ] 逻辑检查：毛利率 > 营业利润率 > 净利率 / Gross > Operating > Net margin
+- [ ] 无 #DIV/0!、#REF!、#N/A 错误 / No formula errors

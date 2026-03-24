@@ -1,0 +1,69 @@
+{
+  "input_dir": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\sample-pool\\bugs",
+  "total_files": 10,
+  "valid_files": 10,
+  "invalid_files": 0,
+  "all_valid": true,
+  "results": [
+    {
+      "file": "bug-001.json",
+      "bug_id": "bug-001",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "bug-002.json",
+      "bug_id": "bug-002",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "bug-003.json",
+      "bug_id": "bug-003",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "bug-004.json",
+      "bug_id": "bug-004",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "bug-005.json",
+      "bug_id": "bug-005",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "bug-006.json",
+      "bug_id": "bug-006",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "bug-007.json",
+      "bug_id": "bug-007",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "bug-008.json",
+      "bug_id": "bug-008",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "bug-009.json",
+      "bug_id": "bug-009",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "bug-010.json",
+      "bug_id": "bug-010",
+      "valid": true,
+      "errors": []
+    }
+  ]
+}

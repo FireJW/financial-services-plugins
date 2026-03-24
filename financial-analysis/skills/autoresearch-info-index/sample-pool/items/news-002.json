@@ -1,0 +1,71 @@
+{
+  "item_id": "news-002",
+  "title": "Fed emergency cut rumor before scheduled meeting",
+  "topic": "policy",
+  "analysis_date": "2026-02-05",
+  "claim_to_evaluate": "A trading-desk rumor said the Fed was preparing an emergency rate cut before its scheduled meeting. How credible is that message?",
+  "baseline_goal": "Separate rumor flow from official policy process and show what would count as actual confirmation.",
+  "required_output_sections": [
+    "what_is_confirmed",
+    "what_is_not_confirmed",
+    "credibility_judgment",
+    "market_relevance"
+  ],
+  "source_pack": {
+    "event_label": "Fed emergency cut rumor",
+    "sources": [
+      {
+        "name": "Trading Desk Scoop",
+        "type": "market_rumor",
+        "url": "https://example.com/desk-rumor-fed-cut",
+        "published_at": "2026-02-05",
+        "support": "The note claimed the Fed had lined up an intermeeting rate cut within days."
+      },
+      {
+        "name": "Federal Reserve Calendar",
+        "type": "official_calendar",
+        "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+        "published_at": "2026-02-05",
+        "support": "The next scheduled meeting remained unchanged and no emergency meeting was announced."
+      },
+      {
+        "name": "Fed Spokesperson Statement",
+        "type": "official_statement",
+        "url": "https://example.com/fed-spokesperson-denial",
+        "published_at": "2026-02-05",
+        "support": "A spokesperson said no off-cycle action had been announced."
+      }
+    ],
+    "key_claims": [
+      {
+        "claim": "A market rumor about an emergency cut was circulating.",
+        "status": "confirmed_by_reporting"
+      },
+      {
+        "claim": "The Fed had officially announced an intermeeting rate cut.",
+        "status": "contradicted"
+      },
+      {
+        "claim": "The right framing is rumor with weak confirmation, not policy fact.",
+        "status": "analytical_judgment"
+      }
+    ]
+  },
+  "credibility_reference": {
+    "source_strength": "mixed",
+    "source_agreement": "conflicted",
+    "confidence_interval_pct": [
+      15,
+      35
+    ],
+    "expected_judgment": "Low confidence. Treat this as desk chatter unless official Fed process changes."
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback if the output upgrades market rumor into a confirmed policy move."
+  },
+  "notes": {
+    "winner_pattern_hint": "Anchor the judgment in official process and absence of formal action.",
+    "loser_pattern_hint": "Mistaking rumor velocity for central-bank confirmation."
+  }
+}

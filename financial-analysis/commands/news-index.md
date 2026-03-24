@@ -1,0 +1,48 @@
+---
+description: Build a one-shot recency-first current-state report for a fast-moving topic
+argument-hint: "[request-json]"
+---
+
+# News Index Command
+
+Use this command when the user wants a single current-state note built from a
+recency-first retrieval pass.
+
+The output should separate:
+
+- `core_verdict`
+- `live_tape`
+- `confirmed / not confirmed / inference only`
+- `latest signals first`
+- `conflict matrix`
+- `10m / 1h / 6h / 24h` freshness windows
+
+Default behavior:
+
+1. build a `retrieval_request`
+2. discover and normalize source candidates
+3. rank by source tier, recency, corroboration, contradiction, and staleness
+4. merge duplicates and build a `claim_ledger`
+5. emit a `verdict_output` plus `retrieval_run_report`
+
+If the topic is geopolitical, military, sanctions, negotiations, or energy
+shock related, prefer `mode=crisis`.
+
+The structured result currently carries:
+
+- `request`
+- `observations`
+- `claim_ledger`
+- `verdict_output`
+- `retrieval_run_report`
+- `retrieval_quality`
+- `report_markdown`
+
+Local helper:
+
+- `financial-analysis\skills\autoresearch-info-index\scripts\run_news_index.cmd "<request.json>" [--output <result.json>] [--markdown-output <report.md>]`
+- `financial-analysis\skills\autoresearch-info-index\scripts\run_news_index_demo.cmd`
+
+For the local helper path, pass a `retrieval_request` JSON file. The helper
+prints JSON to stdout by default and writes the human-readable Markdown report
+only when `--markdown-output` is provided.

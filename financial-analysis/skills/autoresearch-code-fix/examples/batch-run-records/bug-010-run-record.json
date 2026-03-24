@@ -1,0 +1,94 @@
+{
+  "task_id": "bug-010",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of access-control check allows archived record read to wrong role: A read endpoint allows a role that should be denied to view archived records because the archived-state authorization branch is incomplete.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": false,
+    "fix_verified_after": false,
+    "no_new_critical_failures": false,
+    "scope_controlled": false,
+    "root_cause_aligned": false
+  },
+  "baseline_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "candidate_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "The archived-state path may bypass the stricter role check and reuse a generic read permission helper.",
+  "loser_pattern": "A broad authorization change could accidentally break normal record reads for allowed roles.",
+  "source_bug": {
+    "bug_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\sample-pool\\bugs\\bug-010.json",
+    "title": "Access-control check allows archived record read to wrong role",
+    "priority": "high",
+    "module_boundary": {
+      "allowed_paths": [
+        "src/authz",
+        "src/api/records",
+        "tests/authz"
+      ],
+      "forbidden_paths": [
+        "src/frontend",
+        "src/import",
+        "db/migrations"
+      ]
+    },
+    "reproduction": {
+      "preconditions": [
+        "Local API server is running with an archived record fixture",
+        "Test credentials exist for both an allowed role and a denied role"
+      ],
+      "steps": [
+        "Call the read endpoint for an archived record using the denied role credentials",
+        "Observe the response status and returned payload"
+      ],
+      "expected_behavior": "The denied role should receive an authorization failure and no record payload.",
+      "actual_behavior": "The denied role receives the archived record data successfully."
+    },
+    "validation": {
+      "primary_command": "npm test -- archived-record-access",
+      "secondary_checks": [
+        "npm run lint -- src/authz src/api/records"
+      ],
+      "manual_checks": [
+        "Verify denied-role access to archived records is blocked",
+        "Verify allowed-role access still succeeds for the same archived record"
+      ]
+    },
+    "rollback": {
+      "stable_version": "baseline-v1",
+      "rollback_rule": "Rollback on any hard-check failure or if the fix blocks a role that should retain archived-record access.",
+      "notes": "Keep the last passing authorization branch available for immediate restore."
+    },
+    "scope_notes": "Keep the fix inside archived-record authorization checks and the directly affected endpoint tests. Do not broaden into a full permission-system redesign.",
+    "tags": [
+      "authorization",
+      "api",
+      "security",
+      "server"
+    ]
+  }
+}

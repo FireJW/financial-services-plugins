@@ -1,0 +1,164 @@
+{
+  "profile": "info-index",
+  "task_id": "news-001",
+  "evaluated_at": "2026-03-23T14:53:03.155373+00:00",
+  "sample_set_version": "info-index-sample-v1",
+  "task_goal": "Improve repeatable indexing of Trump said the war was moving toward a ceasefire after productive conversations. How reliable is that claim right now?: Judge whether the signal is closer to a temporary de-escalation headline or a confirmed bilateral ceasefire arrangement.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "hard_checks": {
+    "passed": false,
+    "failures": [
+      "Relative timing was not anchored to absolute dates",
+      "Key claims are not traceable to specific sources",
+      "Facts and inference are mixed together",
+      "Conflicting or missing confirmations were not disclosed",
+      "Source recency was not checked before writing the conclusion"
+    ]
+  },
+  "soft_scores": {
+    "baseline_total": 0,
+    "candidate_total": 0,
+    "total": 0,
+    "delta": 0,
+    "dimensions": [
+      {
+        "name": "source_coverage",
+        "score": 0,
+        "weight": 25,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "claim_traceability",
+        "score": 0,
+        "weight": 20,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "recency_discipline",
+        "score": 0,
+        "weight": 20,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "contradiction_handling",
+        "score": 0,
+        "weight": 15,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "signal_extraction",
+        "score": 0,
+        "weight": 10,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "retrieval_efficiency",
+        "score": 0,
+        "weight": 10,
+        "baseline": 0,
+        "delta": 0
+      }
+    ]
+  },
+  "decision": {
+    "keep": false,
+    "rollback_to": "baseline-v1",
+    "reason": "Rollback because one or more hard checks failed",
+    "concerns": [
+      "Evidence confidence does not fully match the benchmark reference bands"
+    ]
+  },
+  "credibility_metrics": {
+    "source_strength_score": 78,
+    "claim_confirmation_score": 53,
+    "timeliness_score": 100,
+    "agreement_score": 87,
+    "confidence_score": 78,
+    "confidence_interval": {
+      "low": 58,
+      "high": 98,
+      "width": 40
+    },
+    "confidence_label": "medium",
+    "display_confidence_label": "blocked",
+    "confidence_scope": "evidence_only",
+    "confidence_gate": {
+      "hard_checks_passed": false,
+      "usable": false,
+      "status": "blocked_by_hard_checks"
+    },
+    "source_count": 2,
+    "claim_count": 3,
+    "status_counts": {
+      "confirmed_by_reporting": 1,
+      "not_confirmed": 1,
+      "analytical_judgment": 1
+    },
+    "source_type_counts": {
+      "wire": 1,
+      "news": 1
+    }
+  },
+  "benchmark_alignment": {
+    "available": true,
+    "expected": {
+      "source_strength": "medium-high",
+      "source_agreement": "mixed",
+      "confidence_interval_pct": [
+        35,
+        55
+      ],
+      "expected_judgment": "Moderate confidence in de-escalation signaling, low confidence in a finalized ceasefire."
+    },
+    "actual": {
+      "source_strength_score": 78,
+      "agreement_score": 87,
+      "confidence_score": 78,
+      "confidence_interval": {
+        "low": 58,
+        "high": 98,
+        "width": 40
+      },
+      "confidence_label": "medium",
+      "display_confidence_label": "blocked"
+    },
+    "checks_available": 3,
+    "checks_passed": 1,
+    "all_available_checks_passed": false,
+    "confidence_alignment": {
+      "expected_low": 35,
+      "expected_high": 55,
+      "actual": 78,
+      "within_expected_band": false,
+      "distance_from_band": 23
+    },
+    "source_strength_alignment": {
+      "expected_low": 70,
+      "expected_high": 84,
+      "actual": 78,
+      "within_expected_band": true,
+      "distance_from_band": 0
+    },
+    "agreement_alignment": {
+      "expected_low": 45,
+      "expected_high": 74,
+      "actual": 87,
+      "within_expected_band": false,
+      "distance_from_band": 13
+    }
+  },
+  "stop_signal": {
+    "reached": false,
+    "reason": "No stop condition reached"
+  },
+  "notes": {
+    "winner_pattern": "Lead with what was actually delayed or confirmed, then separate the denial, then judge credibility.",
+    "loser_pattern": "Treating Trump's wording as proof that a ceasefire framework already exists."
+  }
+}

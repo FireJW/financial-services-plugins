@@ -1,0 +1,71 @@
+{
+  "item_id": "news-003",
+  "title": "Chipmaker preannouncement rumor before earnings",
+  "topic": "earnings",
+  "analysis_date": "2026-01-14",
+  "claim_to_evaluate": "Several posts claimed a large chipmaker was about to preannounce a sharp revenue miss before earnings. How reliable is that call?",
+  "baseline_goal": "Train the workflow to separate earnings rumor flow, selective company signals, and exchange-filed confirmation.",
+  "required_output_sections": [
+    "what_is_confirmed",
+    "what_is_not_confirmed",
+    "credibility_judgment",
+    "market_relevance"
+  ],
+  "source_pack": {
+    "event_label": "Chipmaker preannouncement rumor",
+    "sources": [
+      {
+        "name": "Sector Blog",
+        "type": "industry_blog",
+        "url": "https://example.com/chip-rumor-revenue-miss",
+        "published_at": "2026-01-14",
+        "support": "The blog cited channel checks and said a miss warning was imminent."
+      },
+      {
+        "name": "Company IR Calendar",
+        "type": "company_source",
+        "url": "https://example.com/chipmaker-ir-calendar",
+        "published_at": "2026-01-14",
+        "support": "The company kept its scheduled earnings date and made no filing about changed guidance."
+      },
+      {
+        "name": "CFO Conference Appearance",
+        "type": "company_source",
+        "url": "https://example.com/cfo-conference-remarks",
+        "published_at": "2026-01-13",
+        "support": "The CFO said end-market demand remained uneven but did not preannounce revised revenue."
+      }
+    ],
+    "key_claims": [
+      {
+        "claim": "Market participants were discussing a possible preannouncement.",
+        "status": "confirmed_by_reporting"
+      },
+      {
+        "claim": "The company had already filed a revenue warning.",
+        "status": "not_confirmed"
+      },
+      {
+        "claim": "The right framing is elevated rumor risk but not confirmed guidance change.",
+        "status": "analytical_judgment"
+      }
+    ]
+  },
+  "credibility_reference": {
+    "source_strength": "medium",
+    "source_agreement": "mixed",
+    "confidence_interval_pct": [
+      30,
+      50
+    ],
+    "expected_judgment": "Moderate-to-low confidence. Enough smoke to monitor, not enough to state a warning is coming."
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback if the output claims a guidance reset without exchange or company confirmation."
+  },
+  "notes": {
+    "winner_pattern_hint": "Differentiate chatter, company commentary, and formal filing status.",
+    "loser_pattern_hint": "Turning channel-check rumor into a definitive earnings event."
+  }
+}

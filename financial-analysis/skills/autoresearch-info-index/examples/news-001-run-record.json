@@ -1,0 +1,95 @@
+{
+  "task_id": "news-001",
+  "analysis_date": "2026-03-23",
+  "sample_set_version": "info-index-sample-v1",
+  "task_goal": "Improve repeatable indexing of \u7279\u6717\u666e\u521a\u521a\u8bf4\u7684\u505c\u6218\u662f\u5426\u9760\u8c31: \u5224\u65ad\u8fd9\u6761\u6d88\u606f\u66f4\u63a5\u8fd1\u5df2\u786e\u8ba4\u505c\u6218\u3001\u77ed\u671f\u964d\u6e29\u4fe1\u53f7\uff0c\u8fd8\u662f\u5355\u65b9\u8868\u6001\u4e3b\u5bfc\u7684\u672a\u8bc1\u5b9e\u8bf4\u6cd5\u3002",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "anchored_to_absolute_dates": false,
+    "key_claims_traceable": false,
+    "fact_and_inference_separated": false,
+    "conflicting_signals_disclosed": false,
+    "source_recency_checked": false
+  },
+  "baseline_scores": {
+    "source_coverage": 0,
+    "claim_traceability": 0,
+    "recency_discipline": 0,
+    "contradiction_handling": 0,
+    "signal_extraction": 0,
+    "retrieval_efficiency": 0
+  },
+  "candidate_scores": {
+    "source_coverage": 0,
+    "claim_traceability": 0,
+    "recency_discipline": 0,
+    "contradiction_handling": 0,
+    "signal_extraction": 0,
+    "retrieval_efficiency": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_stale_source_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "Lead with what was actually delayed or confirmed, then separate the denial, then judge credibility.",
+  "loser_pattern": "Treating Trump's wording as proof that a ceasefire framework already exists.",
+  "source_pack": {
+    "analysis_date": "2026-03-23",
+    "event_label": "Trump ceasefire credibility check",
+    "sources": [
+      {
+        "name": "AP",
+        "type": "wire",
+        "url": "https://apnews.com/article/iran-us-israel-trump-lebanon-march-23-2026-93c6b3234a5e8917aaf599bf85a03044",
+        "published_at": "2026-03-23",
+        "support": "Trump delayed planned strikes by 5 days and said talks were productive."
+      },
+      {
+        "name": "Axios",
+        "type": "news",
+        "url": "https://www.axios.com/2026/03/23/trump-suspends-iran-strikes-hormuz-negotiations",
+        "published_at": "2026-03-23",
+        "support": "Iranian state media said no direct or indirect contact occurred in the prior two days."
+      }
+    ],
+    "key_claims": [
+      {
+        "claim": "Trump signaled de-escalation rather than announcing a signed ceasefire agreement.",
+        "status": "confirmed_by_reporting"
+      },
+      {
+        "claim": "Iran publicly confirmed the same talks and terms.",
+        "status": "not_confirmed"
+      },
+      {
+        "claim": "The right framing is short-term cooling signal, not reliable final settlement.",
+        "status": "analytical_judgment"
+      }
+    ]
+  },
+  "source_item": {
+    "item_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-info-index\\sample-pool\\items\\news-001.json",
+    "title": "Trump ceasefire credibility check",
+    "topic": "geopolitics",
+    "claim_to_evaluate": "\u7279\u6717\u666e\u521a\u521a\u8bf4\u7684\u505c\u6218\u662f\u5426\u9760\u8c31",
+    "baseline_goal": "\u5224\u65ad\u8fd9\u6761\u6d88\u606f\u66f4\u63a5\u8fd1\u5df2\u786e\u8ba4\u505c\u6218\u3001\u77ed\u671f\u964d\u6e29\u4fe1\u53f7\uff0c\u8fd8\u662f\u5355\u65b9\u8868\u6001\u4e3b\u5bfc\u7684\u672a\u8bc1\u5b9e\u8bf4\u6cd5\u3002",
+    "required_output_sections": [
+      "what_is_confirmed",
+      "what_is_not_confirmed",
+      "credibility_judgment",
+      "market_relevance"
+    ],
+    "rollback": {
+      "stable_version": "baseline-v1",
+      "rollback_rule": "Rollback if the output turns a unilateral statement into a bilateral agreement or hides the denial signal."
+    }
+  }
+}

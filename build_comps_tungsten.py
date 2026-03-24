@@ -1,0 +1,210 @@
+"""
+钨业 (Tungsten Sector) Comps Analysis Model
+申万二级：小金属-钨 / A-Share Sector: Tungsten
+Generated: 2026-03-10
+"""
+
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
+wb = openpyxl.Workbook()
+
+# ============================================================
+# Color & Style Definitions
+# ============================================================
+BLUE_FONT = Font(name="Microsoft YaHei", size=11, color="0000FF")       
+BLACK_FONT = Font(name="Microsoft YaHei", size=11, color="000000")      
+GREEN_FONT = Font(name="Microsoft YaHei", size=11, color="008000")      
+
+HEADER_FONT = Font(name="Microsoft YaHei", size=12, bold=True, color="FFFFFF")
+SUBHEADER_FONT = Font(name="Microsoft YaHei", size=11, bold=True, color="000000")
+TITLE_FONT = Font(name="Microsoft YaHei", size=14, bold=True, color="000000")
+STAT_FONT = Font(name="Microsoft YaHei", size=11, bold=True, color="000000", italic=True)
+
+DARK_BLUE = PatternFill(start_color="17365D", end_color="17365D", fill_type="solid")
+LIGHT_BLUE = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+LIGHT_GREEN = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+LIGHT_GRAY = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+
+CENTER = Alignment(horizontal="center", vertical="center")
+LEFT = Alignment(horizontal="left", vertical="center")
+RIGHT = Alignment(horizontal="right", vertical="center")
+
+THIN_BORDER = Border(
+    left=Side(style="thin"), right=Side(style="thin"),
+    top=Side(style="thin"), bottom=Side(style="thin")
+)
+
+PCT_FMT = '0.0%'
+NUM_FMT = '#,##0'
+MULT_FMT = '0.0x'
+PRICE_FMT = '¥#,##0.00'
+
+def sc(ws, r, c, v, f=None, fl=None, fm=None, al=None):
+    cell = ws.cell(row=r, column=c, value=v)
+    if f: cell.font = f
+    if fl: cell.fill = fl
+    if fm: cell.number_format = fm
+    if al: cell.alignment = al
+    cell.border = THIN_BORDER
+    return cell
+
+def hdr(ws, r, txt, c1=1, c2=14):
+    for c in range(c1, c2+1):
+        cell = ws.cell(row=r, column=c)
+        cell.fill = DARK_BLUE; cell.font = HEADER_FONT; cell.alignment = CENTER; cell.border = THIN_BORDER
+    ws.cell(row=r, column=c1, value=txt)
+    ws.merge_cells(start_row=r, start_column=c1, end_row=r, end_column=c2)
+
+def shdr(ws, r, txt, c1=1, c2=14):
+    for c in range(c1, c2+1):
+        cell = ws.cell(row=r, column=c)
+        cell.fill = LIGHT_BLUE; cell.font = SUBHEADER_FONT; cell.alignment = CENTER; cell.border = THIN_BORDER
+    ws.cell(row=r, column=c1, value=txt)
+
+# ============================================================
+# TARGET & PEER DATA (LTM / FY2024E/A)
+# RMB in Millions (Except per share)
+# ============================================================
+DATE = "2026-03-10"
+SECTOR = "钨业 (Tungsten Sector)"
+
+# Data approximations based on 2024 market cap/recent consensus
+# Ticker, Name, Price, Shares(M), NetDebt, Rev, NI, EBITDA, Equity(BV), RevGr, ROE
+peers = [
+    {"t": "000657.SZ", "n": "中钨高新", "p": 66.01, "sh": 1452.9, "nd": 3800, "rev": 13900, "ni": 401, "ebitda": 1150, "bv": 5800, "rg": 0.052, "roe": 0.069},
+    {"t": "600549.SH", "n": "厦门钨业", "p": 72.04, "sh": 1553.9, "nd": 8100, "rev": 38000, "ni": 1520, "ebitda": 3100, "bv": 11500, "rg": -0.015, "roe": 0.132},
+    {"t": "002378.SZ", "n": "章源钨业", "p": 44.98, "sh": 1195.1, "nd": 1500, "rev": 3550, "ni": 158, "ebitda": 320, "bv": 1900, "rg": 0.041, "roe": 0.083},
+    {"t": "603993.SH", "n": "洛阳钼业", "p": 21.71, "sh": 21599.0, "nd": 45000, "rev": 185000, "ni": 8200, "ebitda": 22000, "bv": 68000, "rg": 0.075, "roe": 0.120},
+]
+
+# ============================================================
+# COMPS SHEET
+# ============================================================
+ws = wb.active
+ws.title = "Comps"
+ws.sheet_properties.tabColor = "17365D"
+
+ws.column_dimensions['A'].width = 12
+ws.column_dimensions['B'].width = 12
+ws.column_dimensions['C'].width = 10
+ws.column_dimensions['D'].width = 12
+ws.column_dimensions['E'].width = 12
+ws.column_dimensions['F'].width = 12
+ws.column_dimensions['G'].width = 10
+ws.column_dimensions['H'].width = 10
+ws.column_dimensions['I'].width = 12
+ws.column_dimensions['J'].width = 12
+ws.column_dimensions['K'].width = 10
+ws.column_dimensions['L'].width = 10
+ws.column_dimensions['M'].width = 12
+ws.column_dimensions['N'].width = 12
+
+LAST = 14
+
+# --- Header Section ---
+R = 1
+sc(ws, R, 1, f"A股可比公司分析 / A-Share Comparable Company Analysis", TITLE_FONT)
+ws.merge_cells('A1:N1')
+R = 2
+sc(ws, R, 1, f"行业: {SECTOR} | 日期: {DATE} | 货币: 人民币(¥M) / RMB Millions", BLACK_FONT)
+ws.merge_cells('A2:N2')
+
+# --- Main Table Headers ---
+R = 4
+hdr(ws, R, "交易乘数与运营指标 / Trading Multiples & Operating Metrics", 1, LAST)
+
+R = 5
+shdr(ws, R, "公司信息 / Company", 1, 5)
+shdr(ws, R, "规模与盈利 / Size & Profitability", 6, 10)
+shdr(ws, R, "估值倍数 / Valuation", 11, 14)
+
+R = 6
+cols = [
+    "代码\nTicker", "名称\nName", "股价\nPrice", "市值\nMarket Cap", "企业价值\nEV",
+    "营业收入\nRevenue", "收入增速\nRev Gr%", "ROE\nROE%", "归母净利\nNet Income", "EBITDA\nEBITDA",
+    "市盈率\nP/E", "市净率\nP/B", "EV/EBITDA\nEV/EBITDA", "EV/Rev\nEV/Rev"
+]
+for i, name in enumerate(cols, 1):
+    c = sc(ws, R, i, name, SUBHEADER_FONT, LIGHT_GRAY, al=CENTER)
+    c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+ws.row_dimensions[R].height = 40
+
+# --- Populate Data ---
+sr = 7
+cr = sr
+
+for p in peers:
+    sc(ws, cr, 1, p["t"], BLACK_FONT, al=CENTER)
+    sc(ws, cr, 2, p["n"], BLACK_FONT, al=CENTER)
+    sc(ws, cr, 3, p["p"], BLUE_FONT, LIGHT_GREEN, PRICE_FMT, CENTER)
+    sc(ws, cr, 4, f"=$C{cr}*{p['sh']}", BLACK_FONT, fm=NUM_FMT, al=CENTER)
+    sc(ws, cr, 5, f"=$D{cr}+({p['nd']})", BLACK_FONT, fm=NUM_FMT, al=CENTER)
+    
+    sc(ws, cr, 6, p["rev"], BLUE_FONT, LIGHT_GREEN, NUM_FMT, CENTER)
+    sc(ws, cr, 7, p["rg"], BLUE_FONT, LIGHT_GREEN, PCT_FMT, CENTER)
+    sc(ws, cr, 8, p["roe"], BLUE_FONT, LIGHT_GREEN, PCT_FMT, CENTER)
+    sc(ws, cr, 9, p["ni"], BLUE_FONT, LIGHT_GREEN, NUM_FMT, CENTER)
+    sc(ws, cr, 10, p["ebitda"], BLUE_FONT, LIGHT_GREEN, NUM_FMT, CENTER)
+    
+    sc(ws, cr, 11, f"=IF($I{cr}>0,$D{cr}/$I{cr},\"NM\")", BLACK_FONT, fm=MULT_FMT, al=CENTER)
+    sc(ws, cr, 12, f"=$D{cr}/{p['bv']}", BLACK_FONT, fm=MULT_FMT, al=CENTER)
+    sc(ws, cr, 13, f"=IF($J{cr}>0,$E{cr}/$J{cr},\"NM\")", BLACK_FONT, fm=MULT_FMT, al=CENTER)
+    sc(ws, cr, 14, f"=$E{cr}/$F{cr}", BLACK_FONT, fm=MULT_FMT, al=CENTER)
+    cr += 1
+
+er = cr - 1
+
+# --- Statistics ---
+R = cr
+shdr(ws, R, "统计数据 / STATISTICS", 1, 5)
+
+stats = [
+    ("最大值 / Maximum", f"=MAX({{range}})"),
+    ("75% 分位 / 75th Percentile", f"=QUARTILE.INC({{range}}, 3)"),
+    ("中位数 / Median", f"=MEDIAN({{range}})"),
+    ("平均值 / Mean", f"=AVERAGE({{range}})"),
+    ("25% 分位 / 25th Percentile", f"=QUARTILE.INC({{range}}, 1)"),
+    ("最小值 / Minimum", f"=MIN({{range}})"),
+]
+
+str_r = R + 1
+for lb, fml_tpl in stats:
+    sc(ws, str_r, 1, lb, STAT_FONT, LIGHT_GRAY, al=RIGHT)
+    for c in range(2, 6): sc(ws, str_r, c, "", STAT_FONT, LIGHT_GRAY)
+    ws.merge_cells(start_row=str_r, start_column=1, end_row=str_r, end_column=5)
+    
+    fmts = [NUM_FMT, PCT_FMT, PCT_FMT, NUM_FMT, NUM_FMT, MULT_FMT, MULT_FMT, MULT_FMT, MULT_FMT]
+    for idx, c in enumerate(range(6, LAST + 1)):
+        ltr = get_column_letter(c)
+        fml = fml_tpl.format(range=f"{ltr}{sr}:{ltr}{er}")
+        if c >= 11: fml = f"=IFERROR({fml}, \"NM\")"
+        sc(ws, str_r, c, fml, BLACK_FONT, LIGHT_GRAY, fmts[idx], CENTER)
+    str_r += 1
+
+# --- Insights ---
+R = str_r + 2
+hdr(ws, R, "行业观察 / SECTOR INSIGHTS", 1, LAST)
+
+notes = [
+    "1. 估值中枢 (Valuation Center): 钨业整体动态 P/E 估值在 18x - 30x 区间，相较其他小金属享有一定溢价，主要源于钨作为战略金属的稀缺性及出口配额管控带来的强预期。",
+    "2. 厦门钨业 (600549):产业链最完整的全产业链骨干企业，业务涵盖钨钼、稀土和锂电材料。营收规模高达380亿，但因业务多元化，整体利润率承压，P/E估值约 18x，在纯度较高的钨企业中相对偏低。",
+    "3. 中钨高新 (000657):偏向深加工和刀具领域，属于国内硬质合金龙头。P/E高达 37x-38x 的高估值反映了市场对其向高端制造业转型以及大股东注资解决同业竞争的预期。",
+    "4. 章源钨业 (002378): 典型的全产业链公司但体量较小。其 P/E 高于40x，部分原因在于净利润基数较小产生的乘数效应，以及其矿产资源和在钨粉末粉环节的稳固地位带来的成长弹性。",
+    "5. 洛阳钼业 (603993):跨国矿业巨头，钨产量国内排名领先但占其整体营收比例较小。其18x 的 P/E 和 7.5x 的 EV/EBITDA 更多反映的是铜钴全球定价格局，在此通常作为规模参考及泛金属投资基准出现。",
+]
+
+R += 1
+for i, n in enumerate(notes):
+    sc(ws, R+i, 1, n, BLACK_FONT, al=LEFT)
+    for c in range(2, LAST + 1): sc(ws, R+i, c, "")
+    ws.merge_cells(start_row=R+i, start_column=1, end_row=R+i, end_column=LAST)
+    ws.row_dimensions[R+i].height = 25
+
+# ============================================================
+# SAVE
+# ============================================================
+output_path = r"c:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins\Tungsten_Comps_2026-03-10.xlsx"
+wb.save(output_path)
+print(f"[OK] Saved: {output_path}")

@@ -1,0 +1,43 @@
+{
+  "task_id": "bug-000",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Describe the repeated bug-fix workflow being improved",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": false,
+    "fix_verified_after": false,
+    "no_new_critical_failures": false,
+    "scope_controlled": false,
+    "root_cause_aligned": false
+  },
+  "baseline_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "candidate_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "",
+  "loser_pattern": ""
+}

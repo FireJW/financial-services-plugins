@@ -1,0 +1,122 @@
+{
+  "profile": "info-index",
+  "task_id": "news-003",
+  "evaluated_at": "2026-03-24T02:24:48.209385+00:00",
+  "sample_set_version": "info-index-news-index-v1",
+  "task_goal": "Improve repeatable indexing of earnings",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-news-index-v1",
+  "hard_checks": {
+    "passed": true,
+    "failures": []
+  },
+  "soft_scores": {
+    "baseline_total": 46,
+    "candidate_total": 78,
+    "total": 78,
+    "delta": 32,
+    "dimensions": [
+      {
+        "name": "source_coverage",
+        "score": 15,
+        "weight": 25,
+        "baseline": 9,
+        "delta": 6
+      },
+      {
+        "name": "claim_traceability",
+        "score": 20,
+        "weight": 20,
+        "baseline": 12,
+        "delta": 8
+      },
+      {
+        "name": "recency_discipline",
+        "score": 14,
+        "weight": 20,
+        "baseline": 8,
+        "delta": 6
+      },
+      {
+        "name": "contradiction_handling",
+        "score": 9,
+        "weight": 15,
+        "baseline": 5,
+        "delta": 4
+      },
+      {
+        "name": "signal_extraction",
+        "score": 10,
+        "weight": 10,
+        "baseline": 6,
+        "delta": 4
+      },
+      {
+        "name": "retrieval_efficiency",
+        "score": 10,
+        "weight": 10,
+        "baseline": 6,
+        "delta": 4
+      }
+    ]
+  },
+  "decision": {
+    "keep": true,
+    "rollback_to": "",
+    "reason": "Keep because hard checks passed and score improved by 32",
+    "concerns": []
+  },
+  "credibility_metrics": {
+    "source_strength_score": 60,
+    "claim_confirmation_score": 90,
+    "timeliness_score": 90,
+    "agreement_score": 100,
+    "confidence_score": 83,
+    "confidence_interval": {
+      "low": 72,
+      "high": 94,
+      "width": 22
+    },
+    "confidence_label": "medium",
+    "display_confidence_label": "medium",
+    "confidence_scope": "evidence_only",
+    "confidence_gate": {
+      "hard_checks_passed": true,
+      "usable": true,
+      "status": "usable"
+    },
+    "source_count": 3,
+    "claim_count": 3,
+    "status_counts": {
+      "confirmed": 3
+    },
+    "source_type_counts": {
+      "industry_blog": 1,
+      "company_source": 2
+    }
+  },
+  "retrieval_quality_metrics": {
+    "freshness_capture_score": 70,
+    "shadow_signal_discipline_score": 100,
+    "source_promotion_discipline_score": 100,
+    "blocked_source_handling_score": 100
+  },
+  "retrieval_observability": {
+    "blocked_sources": [],
+    "blocked_source_count": 0,
+    "blocked_sources_used_in_core": 0,
+    "missing_expected_source_families": [],
+    "missing_expected_source_family_count": 0
+  },
+  "benchmark_alignment": {
+    "available": false
+  },
+  "stop_signal": {
+    "reached": false,
+    "reason": "No stop condition reached"
+  },
+  "notes": {
+    "winner_pattern": "Recency-first ranking with a separate live tape and explicit conflict disclosure.",
+    "loser_pattern": "Letting shadow signals raise core confidence without stronger confirmation."
+  }
+}

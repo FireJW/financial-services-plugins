@@ -1,0 +1,61 @@
+{
+  "bug_id": "bug-001",
+  "title": "Short repeatable bug title",
+  "priority": "medium",
+  "module_boundary": {
+    "allowed_paths": [
+      "src/example/module_a",
+      "tests/example/module_a"
+    ],
+    "forbidden_paths": [
+      "src/unrelated",
+      "db"
+    ]
+  },
+  "bug_description": "Describe what is broken in plain language.",
+  "expected_behavior": "What should happen",
+  "actual_behavior": "What actually happens",
+  "reproduction": {
+    "preconditions": [
+      "List required setup here"
+    ],
+    "steps": [
+      "Step 1",
+      "Step 2"
+    ],
+    "expected_behavior": "What should happen",
+    "actual_behavior": "What actually happens"
+  },
+  "evidence": {
+    "logs": [
+      "Paste or reference the key failing log lines"
+    ],
+    "related_files": [
+      "src/example/module_a/file.ts"
+    ]
+  },
+  "validation": {
+    "primary_command": "npm test -- module-a",
+    "secondary_checks": [
+      "npm run lint -- module-a"
+    ],
+    "manual_checks": [
+      "If no automation exists, list repeatable manual verification steps"
+    ]
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback on any hard-check failure or new critical regression",
+    "notes": "How to return to the last known stable state"
+  },
+  "scope_notes": "State the allowed change boundary for this bug.",
+  "notes": {
+    "root_cause_hint": "",
+    "risk_hint": "",
+    "similar_bugs": []
+  },
+  "tags": [
+    "api",
+    "validation"
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "task_id": "bug-005",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of submit button stays disabled after fixing a form validation error: A user corrects an invalid form field, but the submit button remains disabled until the page is refreshed or another unrelated field is changed.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": false,
+    "fix_verified_after": false,
+    "no_new_critical_failures": false,
+    "scope_controlled": false,
+    "root_cause_aligned": false
+  },
+  "baseline_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "candidate_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "Likely stale derived validity state, missing dependency update, or one path not clearing disabled state after validation recovers",
+  "loser_pattern": "A careless fix could allow submission before async validation or required-field checks finish",
+  "source_bug": {
+    "bug_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\sample-pool\\bugs\\bug-005.json",
+    "title": "Submit button stays disabled after fixing a form validation error",
+    "priority": "medium",
+    "module_boundary": {
+      "allowed_paths": [
+        "src/ui/forms",
+        "src/ui/hooks",
+        "tests/ui/forms"
+      ],
+      "forbidden_paths": [
+        "src/api/payments",
+        "src/imports",
+        "db"
+      ]
+    },
+    "reproduction": {
+      "preconditions": [
+        "Local UI environment is running",
+        "A form exists with client-side validation and a submit button disabled on invalid state"
+      ],
+      "steps": [
+        "Open the target form and enter an invalid value that triggers a validation error",
+        "Correct the invalid value so the form should now be valid",
+        "Observe the submit button state"
+      ],
+      "expected_behavior": "The submit button becomes enabled as soon as the form returns to a valid state.",
+      "actual_behavior": "The submit button stays disabled until a second state change or refresh occurs."
+    },
+    "validation": {
+      "primary_command": "npm test -- account-form-submit-state",
+      "secondary_checks": [
+        "npm run lint -- src/ui/forms src/ui/hooks/use-form-state.ts"
+      ],
+      "manual_checks": [
+        "Repeat the invalid-then-correct flow and confirm the button re-enables immediately",
+        "Confirm the button still stays disabled when the form is truly invalid"
+      ]
+    },
+    "rollback": {
+      "stable_version": "baseline-v1",
+      "rollback_rule": "Rollback on any hard-check failure or if the button becomes enabled while invalid input still exists",
+      "notes": "Keep the last stable form behavior and a passing validation-state test ready for restore."
+    },
+    "scope_notes": "Keep the change inside client-side form state, validation wiring, and the directly affected form component. Do not refactor unrelated form primitives or shared button styling.",
+    "tags": [
+      "ui",
+      "forms",
+      "validation-state"
+    ]
+  }
+}

@@ -1,0 +1,591 @@
+{
+  "task_id": "news-003",
+  "analysis_date": "2026-01-14",
+  "sample_set_version": "info-index-news-index-v1",
+  "task_goal": "Improve repeatable indexing of earnings",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-news-index-v1",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "anchored_to_absolute_dates": true,
+    "key_claims_traceable": true,
+    "fact_and_inference_separated": true,
+    "conflicting_signals_disclosed": true,
+    "source_recency_checked": true
+  },
+  "baseline_scores": {
+    "source_coverage": 9,
+    "claim_traceability": 12,
+    "recency_discipline": 8,
+    "contradiction_handling": 5,
+    "signal_extraction": 6,
+    "retrieval_efficiency": 6
+  },
+  "candidate_scores": {
+    "source_coverage": 15,
+    "claim_traceability": 20,
+    "recency_discipline": 14,
+    "contradiction_handling": 9,
+    "signal_extraction": 10,
+    "retrieval_efficiency": 10
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_stale_source_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "Recency-first ranking with a separate live tape and explicit conflict disclosure.",
+  "loser_pattern": "Letting shadow signals raise core confidence without stronger confirmation.",
+  "source_pack": {
+    "analysis_date": "2026-01-14",
+    "event_label": "earnings",
+    "sources": [
+      {
+        "source_id": "legacy-source-01",
+        "name": "Sector Blog",
+        "type": "industry_blog",
+        "url": "https://example.com/chip-rumor-revenue-miss",
+        "published_at": "2026-01-14T00:00:00+00:00",
+        "observed_at": "2026-01-14T00:00:00+00:00",
+        "published_date": "2026-01-14",
+        "support": "The blog cited channel checks and said a miss warning was imminent.",
+        "channel": "core",
+        "source_tier": 2,
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-02",
+        "name": "Company IR Calendar",
+        "type": "company_source",
+        "url": "https://example.com/chipmaker-ir-calendar",
+        "published_at": "2026-01-14T00:00:00+00:00",
+        "observed_at": "2026-01-14T00:00:00+00:00",
+        "published_date": "2026-01-14",
+        "support": "The company kept its scheduled earnings date and made no filing about changed guidance.",
+        "channel": "core",
+        "source_tier": 2,
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-03",
+        "name": "CFO Conference Appearance",
+        "type": "company_source",
+        "url": "https://example.com/cfo-conference-remarks",
+        "published_at": "2026-01-13T00:00:00+00:00",
+        "observed_at": "2026-01-13T00:00:00+00:00",
+        "published_date": "2026-01-13",
+        "support": "The CFO said end-market demand remained uneven but did not preannounce revised revenue.",
+        "channel": "core",
+        "source_tier": 2,
+        "access_mode": "public"
+      }
+    ],
+    "key_claims": [
+      {
+        "claim": "Market participants were discussing a possible preannouncement.",
+        "status": "confirmed",
+        "promotion_state": "core"
+      },
+      {
+        "claim": "The company had already filed a revenue warning.",
+        "status": "confirmed",
+        "promotion_state": "core"
+      },
+      {
+        "claim": "The right framing is elevated rumor risk but not confirmed guidance change.",
+        "status": "confirmed",
+        "promotion_state": "core"
+      }
+    ]
+  },
+  "retrieval_result": {
+    "request": {
+      "topic": "earnings",
+      "analysis_time": "2026-01-14T00:00:00+00:00",
+      "questions": [
+        "Several posts claimed a large chipmaker was about to preannounce a sharp revenue miss before earnings. How reliable is that call?"
+      ],
+      "use_case": "legacy-run-record-upgrade",
+      "source_preferences": [],
+      "mode": "generic",
+      "windows": [
+        "10m",
+        "1h",
+        "6h",
+        "24h"
+      ],
+      "claims": [
+        {
+          "claim_id": "claim-01",
+          "claim_text": "Market participants were discussing a possible preannouncement.",
+          "expected_status": "confirmed_by_reporting"
+        },
+        {
+          "claim_id": "claim-02",
+          "claim_text": "The company had already filed a revenue warning.",
+          "expected_status": "not_confirmed"
+        },
+        {
+          "claim_id": "claim-03",
+          "claim_text": "The right framing is elevated rumor risk but not confirmed guidance change.",
+          "expected_status": "analytical_judgment"
+        }
+      ],
+      "candidates": [
+        {
+          "source_id": "legacy-source-01",
+          "source_name": "Sector Blog",
+          "source_type": "industry_blog",
+          "published_at": "2026-01-14",
+          "observed_at": "2026-01-14",
+          "url": "https://example.com/chip-rumor-revenue-miss",
+          "text_excerpt": "The blog cited channel checks and said a miss warning was imminent.",
+          "claim_ids": [
+            "claim-01",
+            "claim-02",
+            "claim-03"
+          ],
+          "channel": "shadow",
+          "access_mode": "public"
+        },
+        {
+          "source_id": "legacy-source-02",
+          "source_name": "Company IR Calendar",
+          "source_type": "company_source",
+          "published_at": "2026-01-14",
+          "observed_at": "2026-01-14",
+          "url": "https://example.com/chipmaker-ir-calendar",
+          "text_excerpt": "The company kept its scheduled earnings date and made no filing about changed guidance.",
+          "claim_ids": [
+            "claim-01",
+            "claim-02",
+            "claim-03"
+          ],
+          "channel": "shadow",
+          "access_mode": "public"
+        },
+        {
+          "source_id": "legacy-source-03",
+          "source_name": "CFO Conference Appearance",
+          "source_type": "company_source",
+          "published_at": "2026-01-13",
+          "observed_at": "2026-01-13",
+          "url": "https://example.com/cfo-conference-remarks",
+          "text_excerpt": "The CFO said end-market demand remained uneven but did not preannounce revised revenue.",
+          "claim_ids": [
+            "claim-01",
+            "claim-02",
+            "claim-03"
+          ],
+          "channel": "shadow",
+          "access_mode": "public"
+        }
+      ],
+      "market_relevance": [],
+      "expected_source_families": [],
+      "crisis_defaults": {}
+    },
+    "observations": [
+      {
+        "source_id": "legacy-source-01",
+        "source_name": "Sector Blog",
+        "source_type": "industry_blog",
+        "source_tier": 2,
+        "channel": "core",
+        "published_at": "2026-01-14T00:00:00+00:00",
+        "observed_at": "2026-01-14T00:00:00+00:00",
+        "url": "https://example.com/chip-rumor-revenue-miss",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "entity_ids": [],
+        "vessel_ids": [],
+        "text_excerpt": "The blog cited channel checks and said a miss warning was imminent.",
+        "position_hint": null,
+        "geo_hint": null,
+        "access_mode": "public",
+        "rank_score": 115,
+        "recency_bucket": "0-10m",
+        "age_minutes": 0.0,
+        "age_label": "0m",
+        "claim_states": {
+          "claim-01": "support",
+          "claim-02": "support",
+          "claim-03": "support"
+        },
+        "claim_texts": {
+          "claim-01": "Market participants were discussing a possible preannouncement.",
+          "claim-02": "The company had already filed a revenue warning.",
+          "claim-03": "The right framing is elevated rumor risk but not confirmed guidance change."
+        }
+      },
+      {
+        "source_id": "legacy-source-02",
+        "source_name": "Company IR Calendar",
+        "source_type": "company_source",
+        "source_tier": 2,
+        "channel": "core",
+        "published_at": "2026-01-14T00:00:00+00:00",
+        "observed_at": "2026-01-14T00:00:00+00:00",
+        "url": "https://example.com/chipmaker-ir-calendar",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "entity_ids": [],
+        "vessel_ids": [],
+        "text_excerpt": "The company kept its scheduled earnings date and made no filing about changed guidance.",
+        "position_hint": null,
+        "geo_hint": null,
+        "access_mode": "public",
+        "rank_score": 115,
+        "recency_bucket": "0-10m",
+        "age_minutes": 0.0,
+        "age_label": "0m",
+        "claim_states": {
+          "claim-01": "support",
+          "claim-02": "support",
+          "claim-03": "support"
+        },
+        "claim_texts": {
+          "claim-01": "Market participants were discussing a possible preannouncement.",
+          "claim-02": "The company had already filed a revenue warning.",
+          "claim-03": "The right framing is elevated rumor risk but not confirmed guidance change."
+        }
+      },
+      {
+        "source_id": "legacy-source-03",
+        "source_name": "CFO Conference Appearance",
+        "source_type": "company_source",
+        "source_tier": 2,
+        "channel": "core",
+        "published_at": "2026-01-13T00:00:00+00:00",
+        "observed_at": "2026-01-13T00:00:00+00:00",
+        "url": "https://example.com/cfo-conference-remarks",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "entity_ids": [],
+        "vessel_ids": [],
+        "text_excerpt": "The CFO said end-market demand remained uneven but did not preannounce revised revenue.",
+        "position_hint": null,
+        "geo_hint": null,
+        "access_mode": "public",
+        "rank_score": 85,
+        "recency_bucket": "6-24h",
+        "age_minutes": 1440.0,
+        "age_label": "1d",
+        "claim_states": {
+          "claim-01": "support",
+          "claim-02": "support",
+          "claim-03": "support"
+        },
+        "claim_texts": {
+          "claim-01": "Market participants were discussing a possible preannouncement.",
+          "claim-02": "The company had already filed a revenue warning.",
+          "claim-03": "The right framing is elevated rumor risk but not confirmed guidance change."
+        }
+      }
+    ],
+    "claim_ledger": [
+      {
+        "claim_id": "claim-01",
+        "claim_text": "Market participants were discussing a possible preannouncement.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-01",
+          "legacy-source-02",
+          "legacy-source-03"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-01-14T00:00:00+00:00",
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-02",
+        "claim_text": "The company had already filed a revenue warning.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-01",
+          "legacy-source-02",
+          "legacy-source-03"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-01-14T00:00:00+00:00",
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-03",
+        "claim_text": "The right framing is elevated rumor risk but not confirmed guidance change.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-01",
+          "legacy-source-02",
+          "legacy-source-03"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-01-14T00:00:00+00:00",
+        "promotion_state": "core"
+      }
+    ],
+    "verdict_output": {
+      "core_verdict": "3 core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel.",
+      "live_tape": [],
+      "confidence_interval": [
+        90,
+        100
+      ],
+      "confidence_gate": "usable",
+      "latest_signals": [
+        {
+          "source_name": "Sector Blog",
+          "source_type": "industry_blog",
+          "source_tier": 2,
+          "channel": "core",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 115,
+          "access_mode": "public",
+          "url": "https://example.com/chip-rumor-revenue-miss",
+          "text_excerpt": "The blog cited channel checks and said a miss warning was imminent."
+        },
+        {
+          "source_name": "Company IR Calendar",
+          "source_type": "company_source",
+          "source_tier": 2,
+          "channel": "core",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 115,
+          "access_mode": "public",
+          "url": "https://example.com/chipmaker-ir-calendar",
+          "text_excerpt": "The company kept its scheduled earnings date and made no filing about changed guidance."
+        },
+        {
+          "source_name": "CFO Conference Appearance",
+          "source_type": "company_source",
+          "source_tier": 2,
+          "channel": "core",
+          "age": "1d",
+          "recency_bucket": "6-24h",
+          "rank_score": 85,
+          "access_mode": "public",
+          "url": "https://example.com/cfo-conference-remarks",
+          "text_excerpt": "The CFO said end-market demand remained uneven but did not preannounce revised revenue."
+        }
+      ],
+      "confirmed": [
+        {
+          "claim_id": "claim-01",
+          "claim_text": "Market participants were discussing a possible preannouncement.",
+          "status": "confirmed",
+          "supporting_sources": [
+            "legacy-source-01",
+            "legacy-source-02",
+            "legacy-source-03"
+          ],
+          "contradicting_sources": [],
+          "last_updated_at": "2026-01-14T00:00:00+00:00",
+          "promotion_state": "core"
+        },
+        {
+          "claim_id": "claim-02",
+          "claim_text": "The company had already filed a revenue warning.",
+          "status": "confirmed",
+          "supporting_sources": [
+            "legacy-source-01",
+            "legacy-source-02",
+            "legacy-source-03"
+          ],
+          "contradicting_sources": [],
+          "last_updated_at": "2026-01-14T00:00:00+00:00",
+          "promotion_state": "core"
+        },
+        {
+          "claim_id": "claim-03",
+          "claim_text": "The right framing is elevated rumor risk but not confirmed guidance change.",
+          "status": "confirmed",
+          "supporting_sources": [
+            "legacy-source-01",
+            "legacy-source-02",
+            "legacy-source-03"
+          ],
+          "contradicting_sources": [],
+          "last_updated_at": "2026-01-14T00:00:00+00:00",
+          "promotion_state": "core"
+        }
+      ],
+      "not_confirmed": [],
+      "inference_only": [],
+      "conflict_matrix": [
+        {
+          "claim_id": "claim-01",
+          "status": "confirmed",
+          "support_count": 3,
+          "contradiction_count": 0,
+          "promotion_state": "core"
+        },
+        {
+          "claim_id": "claim-02",
+          "status": "confirmed",
+          "support_count": 3,
+          "contradiction_count": 0,
+          "promotion_state": "core"
+        },
+        {
+          "claim_id": "claim-03",
+          "status": "confirmed",
+          "support_count": 3,
+          "contradiction_count": 0,
+          "promotion_state": "core"
+        }
+      ],
+      "missing_confirmations": [],
+      "market_relevance": [],
+      "next_watch_items": [
+        "Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.",
+        "Treat ship-tracking as last public indication, not live military truth.",
+        "Watch for blocked or missing source families before calling the picture complete."
+      ],
+      "freshness_panel": [
+        {
+          "window": "10m",
+          "count": 2,
+          "core_count": 2,
+          "shadow_count": 0,
+          "blocked_count": 0
+        },
+        {
+          "window": "1h",
+          "count": 2,
+          "core_count": 2,
+          "shadow_count": 0,
+          "blocked_count": 0
+        },
+        {
+          "window": "6h",
+          "count": 2,
+          "core_count": 2,
+          "shadow_count": 0,
+          "blocked_count": 0
+        },
+        {
+          "window": "24h",
+          "count": 3,
+          "core_count": 3,
+          "shadow_count": 0,
+          "blocked_count": 0
+        }
+      ],
+      "source_layer_summary": {
+        "by_channel": {
+          "core": 3
+        },
+        "by_tier": {
+          "2": 3
+        },
+        "by_access_mode": {
+          "public": 3
+        }
+      },
+      "background_only": []
+    },
+    "retrieval_run_report": {
+      "fetch_order": [
+        "legacy-source-01",
+        "legacy-source-02",
+        "legacy-source-03"
+      ],
+      "sources_attempted": [
+        {
+          "source_id": "legacy-source-01",
+          "source_name": "Sector Blog",
+          "source_type": "industry_blog",
+          "access_mode": "public"
+        },
+        {
+          "source_id": "legacy-source-02",
+          "source_name": "Company IR Calendar",
+          "source_type": "company_source",
+          "access_mode": "public"
+        },
+        {
+          "source_id": "legacy-source-03",
+          "source_name": "CFO Conference Appearance",
+          "source_type": "company_source",
+          "access_mode": "public"
+        }
+      ],
+      "sources_blocked": [],
+      "top_recent_hits": [
+        {
+          "source_name": "Sector Blog",
+          "source_type": "industry_blog",
+          "source_tier": 2,
+          "channel": "core",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 115,
+          "access_mode": "public",
+          "url": "https://example.com/chip-rumor-revenue-miss",
+          "text_excerpt": "The blog cited channel checks and said a miss warning was imminent."
+        },
+        {
+          "source_name": "Company IR Calendar",
+          "source_type": "company_source",
+          "source_tier": 2,
+          "channel": "core",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 115,
+          "access_mode": "public",
+          "url": "https://example.com/chipmaker-ir-calendar",
+          "text_excerpt": "The company kept its scheduled earnings date and made no filing about changed guidance."
+        },
+        {
+          "source_name": "CFO Conference Appearance",
+          "source_type": "company_source",
+          "source_tier": 2,
+          "channel": "core",
+          "age": "1d",
+          "recency_bucket": "6-24h",
+          "rank_score": 85,
+          "access_mode": "public",
+          "url": "https://example.com/cfo-conference-remarks",
+          "text_excerpt": "The CFO said end-market demand remained uneven but did not preannounce revised revenue."
+        }
+      ],
+      "shadow_to_core_promotions": [
+        "claim-01",
+        "claim-02",
+        "claim-03"
+      ],
+      "missed_expected_source_families": []
+    },
+    "retrieval_quality": {
+      "freshness_capture_score": 70,
+      "shadow_signal_discipline_score": 100,
+      "source_promotion_discipline_score": 100,
+      "blocked_source_handling_score": 100
+    },
+    "report_markdown": "# News Index Report: earnings\n\nOne-line judgment (2026-01-14T00:00:00+00:00, confidence 90-100, gate usable): 3 core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel.\n\n## Confirmed\n- Market participants were discussing a possible preannouncement.\n- The company had already filed a revenue warning.\n- The right framing is elevated rumor risk but not confirmed guidance change.\n\n## Not Confirmed\n- None\n\n## Inference Only\n- None\n\n## Latest Signals First\n\n| Source | Tier | Channel | Age | Rank | Note |\n|---|---:|---|---|---:|---|\n| Sector Blog | 2 | core | 0m | 115 | The blog cited channel checks and said a miss warning was imminent. |\n| Company IR Calendar | 2 | core | 0m | 115 | The company kept its scheduled earnings date and made no filing about changed guidance. |\n| CFO Conference Appearance | 2 | core | 1d | 85 | The CFO said end-market demand remained uneven but did not preannounce revised revenue. |\n\n## Conflict Matrix\n\n| Claim | Status | Supports | Contradictions | Promotion |\n|---|---|---:|---:|---|\n| claim-01 | confirmed | 3 | 0 | core |\n| claim-02 | confirmed | 3 | 0 | core |\n| claim-03 | confirmed | 3 | 0 | core |\n\n## Freshness Panel\n- 10m: total 2, core 2, shadow 0, blocked 0\n- 1h: total 2, core 2, shadow 0, blocked 0\n- 6h: total 2, core 2, shadow 0, blocked 0\n- 24h: total 3, core 3, shadow 0, blocked 0\n\n## Source Layer Summary\n- By channel: {\"core\": 3}\n- By tier: {\"2\": 3}\n- By access mode: {\"public\": 3}\n\n## Live Tape\n- None\n\n## What Would Change My View\n- Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.\n- Treat ship-tracking as last public indication, not live military truth.\n- Watch for blocked or missing source families before calling the picture complete.\n"
+  },
+  "source_item": {
+    "topic": "earnings",
+    "questions": [
+      "Several posts claimed a large chipmaker was about to preannounce a sharp revenue miss before earnings. How reliable is that call?"
+    ],
+    "mode": "generic",
+    "market_relevance": []
+  }
+}

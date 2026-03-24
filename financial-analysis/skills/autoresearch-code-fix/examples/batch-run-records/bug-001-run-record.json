@@ -1,0 +1,93 @@
+{
+  "task_id": "bug-001",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of api input validation accepts malformed payload: A create endpoint accepts a malformed payload and returns success instead of rejecting the request with a validation error.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": false,
+    "fix_verified_after": false,
+    "no_new_critical_failures": false,
+    "scope_controlled": false,
+    "root_cause_aligned": false
+  },
+  "baseline_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "candidate_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "Likely a missing schema check or a route path that bypasses the normal validator",
+  "loser_pattern": "A broad fix could accidentally reject valid payload variants already used by clients",
+  "source_bug": {
+    "bug_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\sample-pool\\bugs\\bug-001.json",
+    "title": "API input validation accepts malformed payload",
+    "priority": "high",
+    "module_boundary": {
+      "allowed_paths": [
+        "src/api/validation",
+        "src/api/routes",
+        "tests/api/validation"
+      ],
+      "forbidden_paths": [
+        "src/frontend",
+        "src/reporting",
+        "db/migrations"
+      ]
+    },
+    "reproduction": {
+      "preconditions": [
+        "Local API server is running with test data loaded",
+        "A test user or auth fixture is available"
+      ],
+      "steps": [
+        "Send a request to the create endpoint with one required field missing and one field in the wrong type",
+        "Observe the response status and any downstream record creation side effects"
+      ],
+      "expected_behavior": "The request should fail fast with a validation error and no side effects.",
+      "actual_behavior": "The request succeeds or fails too late after partial processing."
+    },
+    "validation": {
+      "primary_command": "npm test -- create-entity validation",
+      "secondary_checks": [
+        "npm run lint -- src/api/validation src/api/routes/create-entity.ts"
+      ],
+      "manual_checks": [
+        "Re-send the malformed request and confirm the endpoint now returns the expected validation error",
+        "Confirm no downstream record was created"
+      ]
+    },
+    "rollback": {
+      "stable_version": "baseline-v1",
+      "rollback_rule": "Rollback on any hard-check failure or if valid requests start failing after the change",
+      "notes": "Keep the last known passing validation branch or patch set ready for restore."
+    },
+    "scope_notes": "The fix should stay within request validation and the directly affected route. Do not refactor shared auth, persistence, or unrelated response formatting.",
+    "tags": [
+      "api",
+      "validation",
+      "server"
+    ]
+  }
+}

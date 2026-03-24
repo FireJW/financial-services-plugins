@@ -1,0 +1,73 @@
+{
+  "bug_id": "bug-009",
+  "title": "Scheduled job skips records created near midnight boundary",
+  "priority": "high",
+  "module_boundary": {
+    "allowed_paths": [
+      "src/jobs/scheduler",
+      "src/jobs/windowing",
+      "tests/jobs/scheduler"
+    ],
+    "forbidden_paths": [
+      "src/frontend",
+      "src/auth",
+      "src/reporting"
+    ]
+  },
+  "bug_description": "A scheduled processing job misses records created near the midnight boundary because the time window is calculated incorrectly.",
+  "expected_behavior": "All records created inside the intended processing window should be included, including those near date-boundary edges.",
+  "actual_behavior": "Records created just before or after midnight fall outside the computed window and are never processed.",
+  "reproduction": {
+    "preconditions": [
+      "Scheduler tests can inject a fixed clock or timezone-aware fixtures",
+      "There are fixture records created around 23:59 and 00:01"
+    ],
+    "steps": [
+      "Run the scheduled job with the clock fixed at a day-boundary time",
+      "Inspect which fixture records are selected for processing",
+      "Compare the selected record IDs with the expected window"
+    ],
+    "expected_behavior": "Boundary records inside the intended window are processed exactly once.",
+    "actual_behavior": "At least one valid boundary record is skipped."
+  },
+  "evidence": {
+    "logs": [
+      "Scheduler log shows a computed window start or end that excludes boundary records"
+    ],
+    "related_files": [
+      "src/jobs/scheduler/run-nightly-job.ts",
+      "src/jobs/windowing/build-processing-window.ts",
+      "tests/jobs/scheduler/midnight-boundary.test.ts"
+    ]
+  },
+  "validation": {
+    "primary_command": "npm test -- midnight-boundary",
+    "secondary_checks": [
+      "npm run lint -- src/jobs/scheduler src/jobs/windowing"
+    ],
+    "manual_checks": [
+      "Run the job with a fixed clock and confirm all expected boundary records are processed",
+      "Confirm records outside the window are still excluded"
+    ]
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback on any hard-check failure or if the new logic begins reprocessing records outside the intended window.",
+    "notes": "Keep the last passing scheduler boundary patch ready for restore."
+  },
+  "scope_notes": "Limit the fix to window calculation, scheduler selection, and tests around date boundaries. Do not redesign the whole job orchestration layer.",
+  "notes": {
+    "root_cause_hint": "The boundary bug may come from timezone conversion, inclusive/exclusive comparisons, or truncation to local midnight.",
+    "risk_hint": "A naive fix could stop skipping records but create duplicate processing on later runs.",
+    "similar_bugs": [
+      "timezone conversion shifts cron window",
+      "inclusive end-date check drops midnight record"
+    ]
+  },
+  "tags": [
+    "scheduler",
+    "time",
+    "boundary",
+    "server"
+  ]
+}

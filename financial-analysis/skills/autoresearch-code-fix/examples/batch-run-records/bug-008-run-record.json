@@ -1,0 +1,95 @@
+{
+  "task_id": "bug-008",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of notification badge does not clear after inbox is read: The unread notification badge stays visible after the inbox items are marked read, making the UI state stale.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": false,
+    "fix_verified_after": false,
+    "no_new_critical_failures": false,
+    "scope_controlled": false,
+    "root_cause_aligned": false
+  },
+  "baseline_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "candidate_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "The unread-count selector may depend on stale cached state or miss a read-mutation invalidation step.",
+  "loser_pattern": "A broad cache reset could hide the bug but cause flicker or break other notification counts.",
+  "source_bug": {
+    "bug_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\sample-pool\\bugs\\bug-008.json",
+    "title": "Notification badge does not clear after inbox is read",
+    "priority": "medium",
+    "module_boundary": {
+      "allowed_paths": [
+        "src/frontend/inbox",
+        "src/frontend/notifications",
+        "tests/frontend/inbox"
+      ],
+      "forbidden_paths": [
+        "src/backend",
+        "src/import",
+        "db"
+      ]
+    },
+    "reproduction": {
+      "preconditions": [
+        "Frontend dev server is running with a seeded account that has unread notifications",
+        "The inbox page is reachable in the local environment"
+      ],
+      "steps": [
+        "Open the inbox page with unread items",
+        "Mark all items as read or open the newest unread item",
+        "Observe the notification badge in the header without refreshing the page"
+      ],
+      "expected_behavior": "The badge should update to zero or the new unread count immediately.",
+      "actual_behavior": "The badge stays stale until the page or route is refreshed."
+    },
+    "validation": {
+      "primary_command": "npm test -- read-state",
+      "secondary_checks": [
+        "npm run lint -- src/frontend/inbox src/frontend/notifications"
+      ],
+      "manual_checks": [
+        "Read the final unread item and confirm the badge clears without a full page reload",
+        "Switch away and back to the inbox route to confirm no stale state reappears"
+      ]
+    },
+    "rollback": {
+      "stable_version": "baseline-v1",
+      "rollback_rule": "Rollback on any hard-check failure or if the badge stops updating for new unread messages.",
+      "notes": "Preserve the last known-good client state sync implementation for quick restore."
+    },
+    "scope_notes": "Keep the change inside inbox read-state handling, badge derivation, and related tests. Do not refactor unrelated header or websocket code.",
+    "tags": [
+      "frontend",
+      "state",
+      "notifications",
+      "ui"
+    ]
+  }
+}

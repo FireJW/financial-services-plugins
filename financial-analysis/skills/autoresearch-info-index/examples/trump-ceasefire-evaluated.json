@@ -1,0 +1,158 @@
+{
+  "profile": "info-index",
+  "task_id": "news-001",
+  "evaluated_at": "2026-03-23T14:53:23.204613+00:00",
+  "sample_set_version": "info-index-sample-v1",
+  "task_goal": "Improve repeatable indexing of fast-moving geopolitical headlines so the output clearly separates confirmed facts, denials, and judgment about credibility.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "hard_checks": {
+    "passed": true,
+    "failures": []
+  },
+  "soft_scores": {
+    "baseline_total": 46,
+    "candidate_total": 89,
+    "total": 89,
+    "delta": 43,
+    "dimensions": [
+      {
+        "name": "source_coverage",
+        "score": 22,
+        "weight": 25,
+        "baseline": 12,
+        "delta": 10
+      },
+      {
+        "name": "claim_traceability",
+        "score": 18,
+        "weight": 20,
+        "baseline": 10,
+        "delta": 8
+      },
+      {
+        "name": "recency_discipline",
+        "score": 19,
+        "weight": 20,
+        "baseline": 8,
+        "delta": 11
+      },
+      {
+        "name": "contradiction_handling",
+        "score": 13,
+        "weight": 15,
+        "baseline": 5,
+        "delta": 8
+      },
+      {
+        "name": "signal_extraction",
+        "score": 9,
+        "weight": 10,
+        "baseline": 6,
+        "delta": 3
+      },
+      {
+        "name": "retrieval_efficiency",
+        "score": 8,
+        "weight": 10,
+        "baseline": 5,
+        "delta": 3
+      }
+    ]
+  },
+  "decision": {
+    "keep": true,
+    "rollback_to": "",
+    "reason": "Keep because hard checks passed and score improved by 43",
+    "concerns": [
+      "Evidence confidence does not fully match the benchmark reference bands"
+    ]
+  },
+  "credibility_metrics": {
+    "source_strength_score": 78,
+    "claim_confirmation_score": 53,
+    "timeliness_score": 100,
+    "agreement_score": 87,
+    "confidence_score": 78,
+    "confidence_interval": {
+      "low": 58,
+      "high": 98,
+      "width": 40
+    },
+    "confidence_label": "medium",
+    "display_confidence_label": "medium",
+    "confidence_scope": "evidence_only",
+    "confidence_gate": {
+      "hard_checks_passed": true,
+      "usable": true,
+      "status": "usable"
+    },
+    "source_count": 2,
+    "claim_count": 3,
+    "status_counts": {
+      "confirmed_by_reporting": 1,
+      "not_confirmed": 1,
+      "analytical_judgment": 1
+    },
+    "source_type_counts": {
+      "wire": 1,
+      "news": 1
+    }
+  },
+  "benchmark_alignment": {
+    "available": true,
+    "expected": {
+      "source_strength": "medium-high",
+      "source_agreement": "mixed",
+      "confidence_interval_pct": [
+        35,
+        55
+      ],
+      "expected_judgment": "Moderate confidence in de-escalation signaling, low confidence in a finalized ceasefire."
+    },
+    "actual": {
+      "source_strength_score": 78,
+      "agreement_score": 87,
+      "confidence_score": 78,
+      "confidence_interval": {
+        "low": 58,
+        "high": 98,
+        "width": 40
+      },
+      "confidence_label": "medium",
+      "display_confidence_label": "medium"
+    },
+    "checks_available": 3,
+    "checks_passed": 1,
+    "all_available_checks_passed": false,
+    "confidence_alignment": {
+      "expected_low": 35,
+      "expected_high": 55,
+      "actual": 78,
+      "within_expected_band": false,
+      "distance_from_band": 23
+    },
+    "source_strength_alignment": {
+      "expected_low": 70,
+      "expected_high": 84,
+      "actual": 78,
+      "within_expected_band": true,
+      "distance_from_band": 0
+    },
+    "agreement_alignment": {
+      "expected_low": 45,
+      "expected_high": 74,
+      "actual": 87,
+      "within_expected_band": false,
+      "distance_from_band": 13
+    }
+  },
+  "stop_signal": {
+    "reached": false,
+    "reason": "No stop condition reached"
+  },
+  "notes": {
+    "winner_pattern": "Lead with confirmed facts, then separate unconfirmed negotiation claims and credibility judgment.",
+    "loser_pattern": "Treating one politician's statement as equivalent to a verified ceasefire agreement."
+  }
+}

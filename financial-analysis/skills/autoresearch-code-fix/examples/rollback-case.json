@@ -1,0 +1,42 @@
+{
+  "task_id": "bug-102",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Reduce regressions for a repeatable formatting bug",
+  "baseline_version": "baseline-v3",
+  "candidate_version": "candidate-v4",
+  "last_stable_version": "baseline-v3",
+  "hard_checks": {
+    "issue_reproduced_before": true,
+    "fix_verified_after": false,
+    "no_new_critical_failures": true,
+    "scope_controlled": true,
+    "root_cause_aligned": true
+  },
+  "baseline_scores": {
+    "root_cause_quality": 18,
+    "fix_minimality": 17,
+    "verification_completeness": 16,
+    "regression_risk_control": 12,
+    "debugging_efficiency": 8,
+    "reuse_value": 7
+  },
+  "candidate_scores": {
+    "root_cause_quality": 19,
+    "fix_minimality": 18,
+    "verification_completeness": 18,
+    "regression_risk_control": 13,
+    "debugging_efficiency": 8,
+    "reuse_value": 7
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 1,
+    "consecutive_non_verifying_rounds": 2,
+    "recent_success_rate": 0.5,
+    "target_success_rate": 0.8
+  },
+  "loser_pattern": "Verification remained incomplete even though the candidate looked cleaner"
+}

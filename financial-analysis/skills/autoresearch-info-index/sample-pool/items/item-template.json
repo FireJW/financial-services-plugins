@@ -1,0 +1,49 @@
+{
+  "item_id": "news-000",
+  "title": "Short benchmark title",
+  "topic": "geopolitics",
+  "analysis_date": "2026-03-23",
+  "claim_to_evaluate": "Plain-language message or headline to evaluate",
+  "baseline_goal": "Explain whether the claim is confirmed, denied, or still uncertain without mixing fact and judgment.",
+  "required_output_sections": [
+    "what_is_confirmed",
+    "what_is_not_confirmed",
+    "credibility_judgment",
+    "market_relevance"
+  ],
+  "source_pack": {
+    "event_label": "Short event label",
+    "sources": [
+      {
+        "name": "AP",
+        "type": "wire",
+        "url": "https://example.com/story",
+        "published_at": "2026-03-23",
+        "support": "Short note on what this source adds"
+      }
+    ],
+    "key_claims": [
+      {
+        "claim": "One key claim to verify",
+        "status": "confirmed_by_reporting"
+      }
+    ]
+  },
+  "credibility_reference": {
+    "source_strength": "medium",
+    "source_agreement": "mixed",
+    "confidence_interval_pct": [
+      35,
+      55
+    ],
+    "expected_judgment": "Moderate confidence only. Treat the item as a live signal, not a settled outcome."
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback if the output overstates certainty, omits key conflicts, or loses source traceability."
+  },
+  "notes": {
+    "winner_pattern_hint": "State confirmed facts first, then unresolved points, then the credibility judgment.",
+    "loser_pattern_hint": "Treating one loud claim as if it were a verified final outcome."
+  }
+}

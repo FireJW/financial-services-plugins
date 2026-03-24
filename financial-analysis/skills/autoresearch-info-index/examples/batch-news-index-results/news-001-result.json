@@ -1,0 +1,402 @@
+{
+  "request": {
+    "topic": "geopolitics",
+    "analysis_time": "2026-03-23T00:00:00+00:00",
+    "questions": [
+      "Trump said the war was moving toward a ceasefire after productive conversations. How reliable is that claim right now?"
+    ],
+    "use_case": "legacy-run-record-upgrade",
+    "source_preferences": [],
+    "mode": "generic",
+    "windows": [
+      "10m",
+      "1h",
+      "6h",
+      "24h"
+    ],
+    "claims": [
+      {
+        "claim_id": "claim-01",
+        "claim_text": "Trump signaled short-term de-escalation rather than a signed ceasefire agreement.",
+        "expected_status": "confirmed_by_reporting"
+      },
+      {
+        "claim_id": "claim-02",
+        "claim_text": "Iran publicly confirmed the same talks and terms.",
+        "expected_status": "not_confirmed"
+      },
+      {
+        "claim_id": "claim-03",
+        "claim_text": "The right framing is cooling signal, not verified settlement.",
+        "expected_status": "analytical_judgment"
+      }
+    ],
+    "candidates": [
+      {
+        "source_id": "legacy-source-01",
+        "source_name": "AP",
+        "source_type": "wire",
+        "published_at": "2026-03-23",
+        "observed_at": "2026-03-23",
+        "url": "https://apnews.com/article/iran-us-israel-trump-lebanon-march-23-2026-93c6b3234a5e8917aaf599bf85a03044",
+        "text_excerpt": "Trump delayed planned strikes by five days and said conversations were productive.",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "channel": "shadow",
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-02",
+        "source_name": "Axios",
+        "source_type": "news",
+        "published_at": "2026-03-23",
+        "observed_at": "2026-03-23",
+        "url": "https://www.axios.com/2026/03/23/trump-suspends-iran-strikes-hormuz-negotiations",
+        "text_excerpt": "Iranian state media said no direct or indirect contact occurred in the prior two days.",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "channel": "shadow",
+        "access_mode": "public"
+      }
+    ],
+    "market_relevance": [],
+    "expected_source_families": [],
+    "crisis_defaults": {}
+  },
+  "observations": [
+    {
+      "source_id": "legacy-source-01",
+      "source_name": "AP",
+      "source_type": "wire",
+      "source_tier": 1,
+      "channel": "shadow",
+      "published_at": "2026-03-23T00:00:00+00:00",
+      "observed_at": "2026-03-23T00:00:00+00:00",
+      "url": "https://apnews.com/article/iran-us-israel-trump-lebanon-march-23-2026-93c6b3234a5e8917aaf599bf85a03044",
+      "claim_ids": [
+        "claim-01",
+        "claim-02",
+        "claim-03"
+      ],
+      "entity_ids": [],
+      "vessel_ids": [],
+      "text_excerpt": "Trump delayed planned strikes by five days and said conversations were productive.",
+      "position_hint": null,
+      "geo_hint": null,
+      "access_mode": "public",
+      "rank_score": 135,
+      "recency_bucket": "0-10m",
+      "age_minutes": 0.0,
+      "age_label": "0m",
+      "claim_states": {
+        "claim-01": "support",
+        "claim-02": "support",
+        "claim-03": "support"
+      },
+      "claim_texts": {
+        "claim-01": "Trump signaled short-term de-escalation rather than a signed ceasefire agreement.",
+        "claim-02": "Iran publicly confirmed the same talks and terms.",
+        "claim-03": "The right framing is cooling signal, not verified settlement."
+      }
+    },
+    {
+      "source_id": "legacy-source-02",
+      "source_name": "Axios",
+      "source_type": "news",
+      "source_tier": 1,
+      "channel": "shadow",
+      "published_at": "2026-03-23T00:00:00+00:00",
+      "observed_at": "2026-03-23T00:00:00+00:00",
+      "url": "https://www.axios.com/2026/03/23/trump-suspends-iran-strikes-hormuz-negotiations",
+      "claim_ids": [
+        "claim-01",
+        "claim-02",
+        "claim-03"
+      ],
+      "entity_ids": [],
+      "vessel_ids": [],
+      "text_excerpt": "Iranian state media said no direct or indirect contact occurred in the prior two days.",
+      "position_hint": null,
+      "geo_hint": null,
+      "access_mode": "public",
+      "rank_score": 135,
+      "recency_bucket": "0-10m",
+      "age_minutes": 0.0,
+      "age_label": "0m",
+      "claim_states": {
+        "claim-01": "support",
+        "claim-02": "support",
+        "claim-03": "support"
+      },
+      "claim_texts": {
+        "claim-01": "Trump signaled short-term de-escalation rather than a signed ceasefire agreement.",
+        "claim-02": "Iran publicly confirmed the same talks and terms.",
+        "claim-03": "The right framing is cooling signal, not verified settlement."
+      }
+    }
+  ],
+  "claim_ledger": [
+    {
+      "claim_id": "claim-01",
+      "claim_text": "Trump signaled short-term de-escalation rather than a signed ceasefire agreement.",
+      "status": "confirmed",
+      "supporting_sources": [
+        "legacy-source-01",
+        "legacy-source-02"
+      ],
+      "contradicting_sources": [],
+      "last_updated_at": "2026-03-23T00:00:00+00:00",
+      "promotion_state": "core"
+    },
+    {
+      "claim_id": "claim-02",
+      "claim_text": "Iran publicly confirmed the same talks and terms.",
+      "status": "confirmed",
+      "supporting_sources": [
+        "legacy-source-01",
+        "legacy-source-02"
+      ],
+      "contradicting_sources": [],
+      "last_updated_at": "2026-03-23T00:00:00+00:00",
+      "promotion_state": "core"
+    },
+    {
+      "claim_id": "claim-03",
+      "claim_text": "The right framing is cooling signal, not verified settlement.",
+      "status": "confirmed",
+      "supporting_sources": [
+        "legacy-source-01",
+        "legacy-source-02"
+      ],
+      "contradicting_sources": [],
+      "last_updated_at": "2026-03-23T00:00:00+00:00",
+      "promotion_state": "core"
+    }
+  ],
+  "verdict_output": {
+    "core_verdict": "3 core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel.",
+    "live_tape": [
+      {
+        "source_name": "AP",
+        "age": "0m",
+        "source_tier": 1,
+        "text_excerpt": "Trump delayed planned strikes by five days and said conversations were productive."
+      },
+      {
+        "source_name": "Axios",
+        "age": "0m",
+        "source_tier": 1,
+        "text_excerpt": "Iranian state media said no direct or indirect contact occurred in the prior two days."
+      }
+    ],
+    "confidence_interval": [
+      56,
+      100
+    ],
+    "confidence_gate": "shadow-heavy",
+    "latest_signals": [
+      {
+        "source_name": "AP",
+        "source_type": "wire",
+        "source_tier": 1,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 135,
+        "access_mode": "public",
+        "url": "https://apnews.com/article/iran-us-israel-trump-lebanon-march-23-2026-93c6b3234a5e8917aaf599bf85a03044",
+        "text_excerpt": "Trump delayed planned strikes by five days and said conversations were productive."
+      },
+      {
+        "source_name": "Axios",
+        "source_type": "news",
+        "source_tier": 1,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 135,
+        "access_mode": "public",
+        "url": "https://www.axios.com/2026/03/23/trump-suspends-iran-strikes-hormuz-negotiations",
+        "text_excerpt": "Iranian state media said no direct or indirect contact occurred in the prior two days."
+      }
+    ],
+    "confirmed": [
+      {
+        "claim_id": "claim-01",
+        "claim_text": "Trump signaled short-term de-escalation rather than a signed ceasefire agreement.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-01",
+          "legacy-source-02"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-03-23T00:00:00+00:00",
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-02",
+        "claim_text": "Iran publicly confirmed the same talks and terms.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-01",
+          "legacy-source-02"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-03-23T00:00:00+00:00",
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-03",
+        "claim_text": "The right framing is cooling signal, not verified settlement.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-01",
+          "legacy-source-02"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-03-23T00:00:00+00:00",
+        "promotion_state": "core"
+      }
+    ],
+    "not_confirmed": [],
+    "inference_only": [],
+    "conflict_matrix": [
+      {
+        "claim_id": "claim-01",
+        "status": "confirmed",
+        "support_count": 2,
+        "contradiction_count": 0,
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-02",
+        "status": "confirmed",
+        "support_count": 2,
+        "contradiction_count": 0,
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-03",
+        "status": "confirmed",
+        "support_count": 2,
+        "contradiction_count": 0,
+        "promotion_state": "core"
+      }
+    ],
+    "missing_confirmations": [],
+    "market_relevance": [],
+    "next_watch_items": [
+      "Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.",
+      "Treat ship-tracking as last public indication, not live military truth.",
+      "Watch for blocked or missing source families before calling the picture complete."
+    ],
+    "freshness_panel": [
+      {
+        "window": "10m",
+        "count": 2,
+        "core_count": 0,
+        "shadow_count": 2,
+        "blocked_count": 0
+      },
+      {
+        "window": "1h",
+        "count": 2,
+        "core_count": 0,
+        "shadow_count": 2,
+        "blocked_count": 0
+      },
+      {
+        "window": "6h",
+        "count": 2,
+        "core_count": 0,
+        "shadow_count": 2,
+        "blocked_count": 0
+      },
+      {
+        "window": "24h",
+        "count": 2,
+        "core_count": 0,
+        "shadow_count": 2,
+        "blocked_count": 0
+      }
+    ],
+    "source_layer_summary": {
+      "by_channel": {
+        "shadow": 2
+      },
+      "by_tier": {
+        "1": 2
+      },
+      "by_access_mode": {
+        "public": 2
+      }
+    },
+    "background_only": []
+  },
+  "retrieval_run_report": {
+    "fetch_order": [
+      "legacy-source-01",
+      "legacy-source-02"
+    ],
+    "sources_attempted": [
+      {
+        "source_id": "legacy-source-01",
+        "source_name": "AP",
+        "source_type": "wire",
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-02",
+        "source_name": "Axios",
+        "source_type": "news",
+        "access_mode": "public"
+      }
+    ],
+    "sources_blocked": [],
+    "top_recent_hits": [
+      {
+        "source_name": "AP",
+        "source_type": "wire",
+        "source_tier": 1,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 135,
+        "access_mode": "public",
+        "url": "https://apnews.com/article/iran-us-israel-trump-lebanon-march-23-2026-93c6b3234a5e8917aaf599bf85a03044",
+        "text_excerpt": "Trump delayed planned strikes by five days and said conversations were productive."
+      },
+      {
+        "source_name": "Axios",
+        "source_type": "news",
+        "source_tier": 1,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 135,
+        "access_mode": "public",
+        "url": "https://www.axios.com/2026/03/23/trump-suspends-iran-strikes-hormuz-negotiations",
+        "text_excerpt": "Iranian state media said no direct or indirect contact occurred in the prior two days."
+      }
+    ],
+    "shadow_to_core_promotions": [
+      "claim-01",
+      "claim-02",
+      "claim-03"
+    ],
+    "missed_expected_source_families": []
+  },
+  "retrieval_quality": {
+    "freshness_capture_score": 70,
+    "shadow_signal_discipline_score": 100,
+    "source_promotion_discipline_score": 100,
+    "blocked_source_handling_score": 100
+  },
+  "report_markdown": "# News Index Report: geopolitics\n\nOne-line judgment (2026-03-23T00:00:00+00:00, confidence 56-100, gate shadow-heavy): 3 core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel.\n\n## Confirmed\n- Trump signaled short-term de-escalation rather than a signed ceasefire agreement.\n- Iran publicly confirmed the same talks and terms.\n- The right framing is cooling signal, not verified settlement.\n\n## Not Confirmed\n- None\n\n## Inference Only\n- None\n\n## Latest Signals First\n\n| Source | Tier | Channel | Age | Rank | Note |\n|---|---:|---|---|---:|---|\n| AP | 1 | shadow | 0m | 135 | Trump delayed planned strikes by five days and said conversations were productive. |\n| Axios | 1 | shadow | 0m | 135 | Iranian state media said no direct or indirect contact occurred in the prior two days. |\n\n## Conflict Matrix\n\n| Claim | Status | Supports | Contradictions | Promotion |\n|---|---|---:|---:|---|\n| claim-01 | confirmed | 2 | 0 | core |\n| claim-02 | confirmed | 2 | 0 | core |\n| claim-03 | confirmed | 2 | 0 | core |\n\n## Freshness Panel\n- 10m: total 2, core 0, shadow 2, blocked 0\n- 1h: total 2, core 0, shadow 2, blocked 0\n- 6h: total 2, core 0, shadow 2, blocked 0\n- 24h: total 2, core 0, shadow 2, blocked 0\n\n## Source Layer Summary\n- By channel: {\"shadow\": 2}\n- By tier: {\"1\": 2}\n- By access mode: {\"public\": 2}\n\n## Live Tape\n- [AP] tier 1, 0m: Trump delayed planned strikes by five days and said conversations were productive.\n- [Axios] tier 1, 0m: Iranian state media said no direct or indirect contact occurred in the prior two days.\n\n## What Would Change My View\n- Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.\n- Treat ship-tracking as last public indication, not live military truth.\n- Watch for blocked or missing source families before calling the picture complete.\n"
+}

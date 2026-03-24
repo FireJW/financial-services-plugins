@@ -1,0 +1,83 @@
+{
+  "profile": "code-fix",
+  "task_id": "bug-006",
+  "evaluated_at": "2026-03-23T12:17:16.694469+00:00",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of notification retry marks delivery successful after provider timeout: When a provider call times out during a retry attempt, the system records the notification as delivered instead of leaving it retryable or failed.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "hard_checks": {
+    "passed": false,
+    "failures": [
+      "Issue was not reproducible before the fix",
+      "Fix was not verified after the change",
+      "New critical failure was introduced",
+      "Change scope exceeded the allowed boundary",
+      "Fix does not match the stated root cause"
+    ]
+  },
+  "soft_scores": {
+    "baseline_total": 0,
+    "candidate_total": 0,
+    "total": 0,
+    "delta": 0,
+    "dimensions": [
+      {
+        "name": "root_cause_quality",
+        "score": 0,
+        "weight": 25,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "fix_minimality",
+        "score": 0,
+        "weight": 20,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "verification_completeness",
+        "score": 0,
+        "weight": 20,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "regression_risk_control",
+        "score": 0,
+        "weight": 15,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "debugging_efficiency",
+        "score": 0,
+        "weight": 10,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "reuse_value",
+        "score": 0,
+        "weight": 10,
+        "baseline": 0,
+        "delta": 0
+      }
+    ]
+  },
+  "decision": {
+    "keep": false,
+    "rollback_to": "baseline-v1",
+    "reason": "Rollback because one or more hard checks failed",
+    "concerns": []
+  },
+  "stop_signal": {
+    "reached": false,
+    "reason": "No stop condition reached"
+  },
+  "notes": {
+    "winner_pattern": "Likely a timeout exception path falling through to a success-state update or a shared finally block setting the wrong status",
+    "loser_pattern": "A broad fix could break successful delivery accounting or create duplicate retries"
+  }
+}

@@ -1,0 +1,607 @@
+{
+  "task_id": "news-002",
+  "analysis_date": "2026-02-05",
+  "sample_set_version": "info-index-news-index-v1",
+  "task_goal": "Improve repeatable indexing of policy",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-news-index-v1",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "anchored_to_absolute_dates": true,
+    "key_claims_traceable": true,
+    "fact_and_inference_separated": true,
+    "conflicting_signals_disclosed": true,
+    "source_recency_checked": true
+  },
+  "baseline_scores": {
+    "source_coverage": 5,
+    "claim_traceability": 12,
+    "recency_discipline": 10,
+    "contradiction_handling": 5,
+    "signal_extraction": 6,
+    "retrieval_efficiency": 6
+  },
+  "candidate_scores": {
+    "source_coverage": 8,
+    "claim_traceability": 20,
+    "recency_discipline": 16,
+    "contradiction_handling": 9,
+    "signal_extraction": 10,
+    "retrieval_efficiency": 10
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_stale_source_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "Recency-first ranking with a separate live tape and explicit conflict disclosure.",
+  "loser_pattern": "Letting shadow signals raise core confidence without stronger confirmation.",
+  "source_pack": {
+    "analysis_date": "2026-02-05",
+    "event_label": "policy",
+    "sources": [
+      {
+        "source_id": "legacy-source-03",
+        "name": "Fed Spokesperson Statement",
+        "type": "official_statement",
+        "url": "https://example.com/fed-spokesperson-denial",
+        "published_at": "2026-02-05T00:00:00+00:00",
+        "observed_at": "2026-02-05T00:00:00+00:00",
+        "published_date": "2026-02-05",
+        "support": "A spokesperson said no off-cycle action had been announced.",
+        "channel": "shadow",
+        "source_tier": 0,
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-02",
+        "name": "Federal Reserve Calendar",
+        "type": "official_calendar",
+        "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+        "published_at": "2026-02-05T00:00:00+00:00",
+        "observed_at": "2026-02-05T00:00:00+00:00",
+        "published_date": "2026-02-05",
+        "support": "The next scheduled meeting remained unchanged and no emergency meeting was announced.",
+        "channel": "core",
+        "source_tier": 2,
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-01",
+        "name": "Trading Desk Scoop",
+        "type": "market_rumor",
+        "url": "https://example.com/desk-rumor-fed-cut",
+        "published_at": "2026-02-05T00:00:00+00:00",
+        "observed_at": "2026-02-05T00:00:00+00:00",
+        "published_date": "2026-02-05",
+        "support": "The note claimed the Fed had lined up an intermeeting rate cut within days.",
+        "channel": "shadow",
+        "source_tier": 3,
+        "access_mode": "public"
+      }
+    ],
+    "key_claims": [
+      {
+        "claim": "A market rumor about an emergency cut was circulating.",
+        "status": "confirmed",
+        "promotion_state": "core"
+      },
+      {
+        "claim": "The Fed had officially announced an intermeeting rate cut.",
+        "status": "confirmed",
+        "promotion_state": "core"
+      },
+      {
+        "claim": "The right framing is rumor with weak confirmation, not policy fact.",
+        "status": "confirmed",
+        "promotion_state": "core"
+      }
+    ]
+  },
+  "retrieval_result": {
+    "request": {
+      "topic": "policy",
+      "analysis_time": "2026-02-05T00:00:00+00:00",
+      "questions": [
+        "A trading-desk rumor said the Fed was preparing an emergency rate cut before its scheduled meeting. How credible is that message?"
+      ],
+      "use_case": "legacy-run-record-upgrade",
+      "source_preferences": [],
+      "mode": "generic",
+      "windows": [
+        "10m",
+        "1h",
+        "6h",
+        "24h"
+      ],
+      "claims": [
+        {
+          "claim_id": "claim-01",
+          "claim_text": "A market rumor about an emergency cut was circulating.",
+          "expected_status": "confirmed_by_reporting"
+        },
+        {
+          "claim_id": "claim-02",
+          "claim_text": "The Fed had officially announced an intermeeting rate cut.",
+          "expected_status": "contradicted"
+        },
+        {
+          "claim_id": "claim-03",
+          "claim_text": "The right framing is rumor with weak confirmation, not policy fact.",
+          "expected_status": "analytical_judgment"
+        }
+      ],
+      "candidates": [
+        {
+          "source_id": "legacy-source-01",
+          "source_name": "Trading Desk Scoop",
+          "source_type": "market_rumor",
+          "published_at": "2026-02-05",
+          "observed_at": "2026-02-05",
+          "url": "https://example.com/desk-rumor-fed-cut",
+          "text_excerpt": "The note claimed the Fed had lined up an intermeeting rate cut within days.",
+          "claim_ids": [
+            "claim-01",
+            "claim-02",
+            "claim-03"
+          ],
+          "channel": "shadow",
+          "access_mode": "public"
+        },
+        {
+          "source_id": "legacy-source-02",
+          "source_name": "Federal Reserve Calendar",
+          "source_type": "official_calendar",
+          "published_at": "2026-02-05",
+          "observed_at": "2026-02-05",
+          "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+          "text_excerpt": "The next scheduled meeting remained unchanged and no emergency meeting was announced.",
+          "claim_ids": [
+            "claim-01",
+            "claim-02",
+            "claim-03"
+          ],
+          "channel": "shadow",
+          "access_mode": "public"
+        },
+        {
+          "source_id": "legacy-source-03",
+          "source_name": "Fed Spokesperson Statement",
+          "source_type": "official_statement",
+          "published_at": "2026-02-05",
+          "observed_at": "2026-02-05",
+          "url": "https://example.com/fed-spokesperson-denial",
+          "text_excerpt": "A spokesperson said no off-cycle action had been announced.",
+          "claim_ids": [
+            "claim-01",
+            "claim-02",
+            "claim-03"
+          ],
+          "channel": "shadow",
+          "access_mode": "public"
+        }
+      ],
+      "market_relevance": [],
+      "expected_source_families": [],
+      "crisis_defaults": {}
+    },
+    "observations": [
+      {
+        "source_id": "legacy-source-03",
+        "source_name": "Fed Spokesperson Statement",
+        "source_type": "official_statement",
+        "source_tier": 0,
+        "channel": "shadow",
+        "published_at": "2026-02-05T00:00:00+00:00",
+        "observed_at": "2026-02-05T00:00:00+00:00",
+        "url": "https://example.com/fed-spokesperson-denial",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "entity_ids": [],
+        "vessel_ids": [],
+        "text_excerpt": "A spokesperson said no off-cycle action had been announced.",
+        "position_hint": null,
+        "geo_hint": null,
+        "access_mode": "public",
+        "rank_score": 165,
+        "recency_bucket": "0-10m",
+        "age_minutes": 0.0,
+        "age_label": "0m",
+        "claim_states": {
+          "claim-01": "support",
+          "claim-02": "support",
+          "claim-03": "support"
+        },
+        "claim_texts": {
+          "claim-01": "A market rumor about an emergency cut was circulating.",
+          "claim-02": "The Fed had officially announced an intermeeting rate cut.",
+          "claim-03": "The right framing is rumor with weak confirmation, not policy fact."
+        }
+      },
+      {
+        "source_id": "legacy-source-02",
+        "source_name": "Federal Reserve Calendar",
+        "source_type": "official_calendar",
+        "source_tier": 2,
+        "channel": "core",
+        "published_at": "2026-02-05T00:00:00+00:00",
+        "observed_at": "2026-02-05T00:00:00+00:00",
+        "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "entity_ids": [],
+        "vessel_ids": [],
+        "text_excerpt": "The next scheduled meeting remained unchanged and no emergency meeting was announced.",
+        "position_hint": null,
+        "geo_hint": null,
+        "access_mode": "public",
+        "rank_score": 125,
+        "recency_bucket": "0-10m",
+        "age_minutes": 0.0,
+        "age_label": "0m",
+        "claim_states": {
+          "claim-01": "support",
+          "claim-02": "support",
+          "claim-03": "support"
+        },
+        "claim_texts": {
+          "claim-01": "A market rumor about an emergency cut was circulating.",
+          "claim-02": "The Fed had officially announced an intermeeting rate cut.",
+          "claim-03": "The right framing is rumor with weak confirmation, not policy fact."
+        }
+      },
+      {
+        "source_id": "legacy-source-01",
+        "source_name": "Trading Desk Scoop",
+        "source_type": "market_rumor",
+        "source_tier": 3,
+        "channel": "shadow",
+        "published_at": "2026-02-05T00:00:00+00:00",
+        "observed_at": "2026-02-05T00:00:00+00:00",
+        "url": "https://example.com/desk-rumor-fed-cut",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "entity_ids": [],
+        "vessel_ids": [],
+        "text_excerpt": "The note claimed the Fed had lined up an intermeeting rate cut within days.",
+        "position_hint": null,
+        "geo_hint": null,
+        "access_mode": "public",
+        "rank_score": 100,
+        "recency_bucket": "0-10m",
+        "age_minutes": 0.0,
+        "age_label": "0m",
+        "claim_states": {
+          "claim-01": "support",
+          "claim-02": "support",
+          "claim-03": "support"
+        },
+        "claim_texts": {
+          "claim-01": "A market rumor about an emergency cut was circulating.",
+          "claim-02": "The Fed had officially announced an intermeeting rate cut.",
+          "claim-03": "The right framing is rumor with weak confirmation, not policy fact."
+        }
+      }
+    ],
+    "claim_ledger": [
+      {
+        "claim_id": "claim-01",
+        "claim_text": "A market rumor about an emergency cut was circulating.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-03",
+          "legacy-source-02",
+          "legacy-source-01"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-02-05T00:00:00+00:00",
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-02",
+        "claim_text": "The Fed had officially announced an intermeeting rate cut.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-03",
+          "legacy-source-02",
+          "legacy-source-01"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-02-05T00:00:00+00:00",
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-03",
+        "claim_text": "The right framing is rumor with weak confirmation, not policy fact.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-03",
+          "legacy-source-02",
+          "legacy-source-01"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-02-05T00:00:00+00:00",
+        "promotion_state": "core"
+      }
+    ],
+    "verdict_output": {
+      "core_verdict": "3 core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel.",
+      "live_tape": [
+        {
+          "source_name": "Fed Spokesperson Statement",
+          "age": "0m",
+          "source_tier": 0,
+          "text_excerpt": "A spokesperson said no off-cycle action had been announced."
+        },
+        {
+          "source_name": "Trading Desk Scoop",
+          "age": "0m",
+          "source_tier": 3,
+          "text_excerpt": "The note claimed the Fed had lined up an intermeeting rate cut within days."
+        }
+      ],
+      "confidence_interval": [
+        81,
+        100
+      ],
+      "confidence_gate": "usable",
+      "latest_signals": [
+        {
+          "source_name": "Fed Spokesperson Statement",
+          "source_type": "official_statement",
+          "source_tier": 0,
+          "channel": "shadow",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 165,
+          "access_mode": "public",
+          "url": "https://example.com/fed-spokesperson-denial",
+          "text_excerpt": "A spokesperson said no off-cycle action had been announced."
+        },
+        {
+          "source_name": "Federal Reserve Calendar",
+          "source_type": "official_calendar",
+          "source_tier": 2,
+          "channel": "core",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 125,
+          "access_mode": "public",
+          "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+          "text_excerpt": "The next scheduled meeting remained unchanged and no emergency meeting was announced."
+        },
+        {
+          "source_name": "Trading Desk Scoop",
+          "source_type": "market_rumor",
+          "source_tier": 3,
+          "channel": "shadow",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 100,
+          "access_mode": "public",
+          "url": "https://example.com/desk-rumor-fed-cut",
+          "text_excerpt": "The note claimed the Fed had lined up an intermeeting rate cut within days."
+        }
+      ],
+      "confirmed": [
+        {
+          "claim_id": "claim-01",
+          "claim_text": "A market rumor about an emergency cut was circulating.",
+          "status": "confirmed",
+          "supporting_sources": [
+            "legacy-source-03",
+            "legacy-source-02",
+            "legacy-source-01"
+          ],
+          "contradicting_sources": [],
+          "last_updated_at": "2026-02-05T00:00:00+00:00",
+          "promotion_state": "core"
+        },
+        {
+          "claim_id": "claim-02",
+          "claim_text": "The Fed had officially announced an intermeeting rate cut.",
+          "status": "confirmed",
+          "supporting_sources": [
+            "legacy-source-03",
+            "legacy-source-02",
+            "legacy-source-01"
+          ],
+          "contradicting_sources": [],
+          "last_updated_at": "2026-02-05T00:00:00+00:00",
+          "promotion_state": "core"
+        },
+        {
+          "claim_id": "claim-03",
+          "claim_text": "The right framing is rumor with weak confirmation, not policy fact.",
+          "status": "confirmed",
+          "supporting_sources": [
+            "legacy-source-03",
+            "legacy-source-02",
+            "legacy-source-01"
+          ],
+          "contradicting_sources": [],
+          "last_updated_at": "2026-02-05T00:00:00+00:00",
+          "promotion_state": "core"
+        }
+      ],
+      "not_confirmed": [],
+      "inference_only": [],
+      "conflict_matrix": [
+        {
+          "claim_id": "claim-01",
+          "status": "confirmed",
+          "support_count": 3,
+          "contradiction_count": 0,
+          "promotion_state": "core"
+        },
+        {
+          "claim_id": "claim-02",
+          "status": "confirmed",
+          "support_count": 3,
+          "contradiction_count": 0,
+          "promotion_state": "core"
+        },
+        {
+          "claim_id": "claim-03",
+          "status": "confirmed",
+          "support_count": 3,
+          "contradiction_count": 0,
+          "promotion_state": "core"
+        }
+      ],
+      "missing_confirmations": [],
+      "market_relevance": [],
+      "next_watch_items": [
+        "Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.",
+        "Treat ship-tracking as last public indication, not live military truth.",
+        "Watch for blocked or missing source families before calling the picture complete."
+      ],
+      "freshness_panel": [
+        {
+          "window": "10m",
+          "count": 3,
+          "core_count": 1,
+          "shadow_count": 2,
+          "blocked_count": 0
+        },
+        {
+          "window": "1h",
+          "count": 3,
+          "core_count": 1,
+          "shadow_count": 2,
+          "blocked_count": 0
+        },
+        {
+          "window": "6h",
+          "count": 3,
+          "core_count": 1,
+          "shadow_count": 2,
+          "blocked_count": 0
+        },
+        {
+          "window": "24h",
+          "count": 3,
+          "core_count": 1,
+          "shadow_count": 2,
+          "blocked_count": 0
+        }
+      ],
+      "source_layer_summary": {
+        "by_channel": {
+          "shadow": 2,
+          "core": 1
+        },
+        "by_tier": {
+          "0": 1,
+          "2": 1,
+          "3": 1
+        },
+        "by_access_mode": {
+          "public": 3
+        }
+      },
+      "background_only": []
+    },
+    "retrieval_run_report": {
+      "fetch_order": [
+        "legacy-source-03",
+        "legacy-source-02",
+        "legacy-source-01"
+      ],
+      "sources_attempted": [
+        {
+          "source_id": "legacy-source-03",
+          "source_name": "Fed Spokesperson Statement",
+          "source_type": "official_statement",
+          "access_mode": "public"
+        },
+        {
+          "source_id": "legacy-source-02",
+          "source_name": "Federal Reserve Calendar",
+          "source_type": "official_calendar",
+          "access_mode": "public"
+        },
+        {
+          "source_id": "legacy-source-01",
+          "source_name": "Trading Desk Scoop",
+          "source_type": "market_rumor",
+          "access_mode": "public"
+        }
+      ],
+      "sources_blocked": [],
+      "top_recent_hits": [
+        {
+          "source_name": "Fed Spokesperson Statement",
+          "source_type": "official_statement",
+          "source_tier": 0,
+          "channel": "shadow",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 165,
+          "access_mode": "public",
+          "url": "https://example.com/fed-spokesperson-denial",
+          "text_excerpt": "A spokesperson said no off-cycle action had been announced."
+        },
+        {
+          "source_name": "Federal Reserve Calendar",
+          "source_type": "official_calendar",
+          "source_tier": 2,
+          "channel": "core",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 125,
+          "access_mode": "public",
+          "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+          "text_excerpt": "The next scheduled meeting remained unchanged and no emergency meeting was announced."
+        },
+        {
+          "source_name": "Trading Desk Scoop",
+          "source_type": "market_rumor",
+          "source_tier": 3,
+          "channel": "shadow",
+          "age": "0m",
+          "recency_bucket": "0-10m",
+          "rank_score": 100,
+          "access_mode": "public",
+          "url": "https://example.com/desk-rumor-fed-cut",
+          "text_excerpt": "The note claimed the Fed had lined up an intermeeting rate cut within days."
+        }
+      ],
+      "shadow_to_core_promotions": [
+        "claim-01",
+        "claim-02",
+        "claim-03"
+      ],
+      "missed_expected_source_families": []
+    },
+    "retrieval_quality": {
+      "freshness_capture_score": 80,
+      "shadow_signal_discipline_score": 100,
+      "source_promotion_discipline_score": 100,
+      "blocked_source_handling_score": 100
+    },
+    "report_markdown": "# News Index Report: policy\n\nOne-line judgment (2026-02-05T00:00:00+00:00, confidence 81-100, gate usable): 3 core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel.\n\n## Confirmed\n- A market rumor about an emergency cut was circulating.\n- The Fed had officially announced an intermeeting rate cut.\n- The right framing is rumor with weak confirmation, not policy fact.\n\n## Not Confirmed\n- None\n\n## Inference Only\n- None\n\n## Latest Signals First\n\n| Source | Tier | Channel | Age | Rank | Note |\n|---|---:|---|---|---:|---|\n| Fed Spokesperson Statement | 0 | shadow | 0m | 165 | A spokesperson said no off-cycle action had been announced. |\n| Federal Reserve Calendar | 2 | core | 0m | 125 | The next scheduled meeting remained unchanged and no emergency meeting was announced. |\n| Trading Desk Scoop | 3 | shadow | 0m | 100 | The note claimed the Fed had lined up an intermeeting rate cut within days. |\n\n## Conflict Matrix\n\n| Claim | Status | Supports | Contradictions | Promotion |\n|---|---|---:|---:|---|\n| claim-01 | confirmed | 3 | 0 | core |\n| claim-02 | confirmed | 3 | 0 | core |\n| claim-03 | confirmed | 3 | 0 | core |\n\n## Freshness Panel\n- 10m: total 3, core 1, shadow 2, blocked 0\n- 1h: total 3, core 1, shadow 2, blocked 0\n- 6h: total 3, core 1, shadow 2, blocked 0\n- 24h: total 3, core 1, shadow 2, blocked 0\n\n## Source Layer Summary\n- By channel: {\"shadow\": 2, \"core\": 1}\n- By tier: {\"0\": 1, \"2\": 1, \"3\": 1}\n- By access mode: {\"public\": 3}\n\n## Live Tape\n- [Fed Spokesperson Statement] tier 0, 0m: A spokesperson said no off-cycle action had been announced.\n- [Trading Desk Scoop] tier 3, 0m: The note claimed the Fed had lined up an intermeeting rate cut within days.\n\n## What Would Change My View\n- Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.\n- Treat ship-tracking as last public indication, not live military truth.\n- Watch for blocked or missing source families before calling the picture complete.\n"
+  },
+  "source_item": {
+    "topic": "policy",
+    "questions": [
+      "A trading-desk rumor said the Fed was preparing an emergency rate cut before its scheduled meeting. How credible is that message?"
+    ],
+    "mode": "generic",
+    "market_relevance": []
+  }
+}

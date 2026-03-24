@@ -1,0 +1,42 @@
+{
+  "task_id": "bug-101",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Increase first-pass reliability for a repeatable API validation bug",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": true,
+    "fix_verified_after": true,
+    "no_new_critical_failures": true,
+    "scope_controlled": true,
+    "root_cause_aligned": true
+  },
+  "baseline_scores": {
+    "root_cause_quality": 15,
+    "fix_minimality": 12,
+    "verification_completeness": 11,
+    "regression_risk_control": 8,
+    "debugging_efficiency": 4,
+    "reuse_value": 3
+  },
+  "candidate_scores": {
+    "root_cause_quality": 20,
+    "fix_minimality": 16,
+    "verification_completeness": 17,
+    "regression_risk_control": 11,
+    "debugging_efficiency": 7,
+    "reuse_value": 7
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.6,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "Narrower fix plus stronger target-test coverage improved reliability"
+}

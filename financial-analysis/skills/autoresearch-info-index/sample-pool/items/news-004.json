@@ -1,0 +1,71 @@
+{
+  "item_id": "news-004",
+  "title": "Acquisition rumor followed by listed-company denial",
+  "topic": "rumor-denial",
+  "analysis_date": "2026-02-18",
+  "claim_to_evaluate": "A deal blog said a listed industrial company had agreed to sell itself, but the company later denied it. How credible is the original takeover claim now?",
+  "baseline_goal": "Train denial handling so the workflow gives proper weight to formal company responses without pretending denials always close the case.",
+  "required_output_sections": [
+    "what_is_confirmed",
+    "what_is_not_confirmed",
+    "credibility_judgment",
+    "market_relevance"
+  ],
+  "source_pack": {
+    "event_label": "M&A rumor with formal denial",
+    "sources": [
+      {
+        "name": "Deal Blog",
+        "type": "news",
+        "url": "https://example.com/deal-blog-industrial-sale",
+        "published_at": "2026-02-18",
+        "support": "The outlet said a private-equity buyer had already reached board-level agreement."
+      },
+      {
+        "name": "Exchange Filing",
+        "type": "exchange_filing",
+        "url": "https://example.com/exchange-filing-denial",
+        "published_at": "2026-02-18",
+        "support": "The company said it had no disclosable signed agreement and warned investors to be careful."
+      },
+      {
+        "name": "Second Press Report",
+        "type": "news",
+        "url": "https://example.com/second-report-talks-ongoing",
+        "published_at": "2026-02-19",
+        "support": "Another report said exploratory talks may have happened but were not finalized."
+      }
+    ],
+    "key_claims": [
+      {
+        "claim": "A takeover rumor was published and moved the stock.",
+        "status": "confirmed_by_reporting"
+      },
+      {
+        "claim": "A signed sale agreement had been confirmed by the company.",
+        "status": "contradicted"
+      },
+      {
+        "claim": "The right framing is that a signed deal was not confirmed, even if informal discussions may have existed.",
+        "status": "analytical_judgment"
+      }
+    ]
+  },
+  "credibility_reference": {
+    "source_strength": "medium-high",
+    "source_agreement": "conflicted",
+    "confidence_interval_pct": [
+      10,
+      30
+    ],
+    "expected_judgment": "Low confidence in a completed deal. Formal denial outweighs rumor until harder evidence appears."
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback if the output treats the initial rumor as stronger than the formal denial without new hard evidence."
+  },
+  "notes": {
+    "winner_pattern_hint": "Give exchange-filed denial more weight than unsourced rumor while still noting talks may have existed.",
+    "loser_pattern_hint": "Writing as if rumor plus price action equals confirmed acquisition."
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "task_id": "bug-006",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of notification retry marks delivery successful after provider timeout: When a provider call times out during a retry attempt, the system records the notification as delivered instead of leaving it retryable or failed.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": false,
+    "fix_verified_after": false,
+    "no_new_critical_failures": false,
+    "scope_controlled": false,
+    "root_cause_aligned": false
+  },
+  "baseline_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "candidate_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "Likely a timeout exception path falling through to a success-state update or a shared finally block setting the wrong status",
+  "loser_pattern": "A broad fix could break successful delivery accounting or create duplicate retries",
+  "source_bug": {
+    "bug_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\sample-pool\\bugs\\bug-006.json",
+    "title": "Notification retry marks delivery successful after provider timeout",
+    "priority": "high",
+    "module_boundary": {
+      "allowed_paths": [
+        "src/notifications",
+        "src/jobs",
+        "tests/notifications"
+      ],
+      "forbidden_paths": [
+        "src/ui",
+        "src/reporting",
+        "db/migrations"
+      ]
+    },
+    "reproduction": {
+      "preconditions": [
+        "A local notification worker or mocked retry path is available",
+        "A timeout fixture or provider mock can force a timeout on retry"
+      ],
+      "steps": [
+        "Trigger a notification retry using the timeout fixture or mocked provider timeout",
+        "Inspect the final delivery status and retry metadata"
+      ],
+      "expected_behavior": "The record remains pending retry or failed, and delivery success is not recorded.",
+      "actual_behavior": "The record is marked delivered despite a provider timeout."
+    },
+    "validation": {
+      "primary_command": "npm test -- retry-timeout-status",
+      "secondary_checks": [
+        "npm run lint -- src/notifications src/jobs/retry-notification.ts"
+      ],
+      "manual_checks": [
+        "Run the timeout retry fixture again and confirm status no longer becomes delivered",
+        "Confirm a real provider success path still records delivery correctly"
+      ]
+    },
+    "rollback": {
+      "stable_version": "baseline-v1",
+      "rollback_rule": "Rollback on any hard-check failure or if successful deliveries stop being recorded correctly",
+      "notes": "Keep the last stable retry-state behavior and a successful delivery fixture for comparison."
+    },
+    "scope_notes": "Keep the fix inside notification send/retry status handling. Do not redesign the whole retry scheduler or provider abstraction unless the root cause clearly requires it.",
+    "tags": [
+      "notifications",
+      "retry",
+      "status-handling"
+    ]
+  }
+}

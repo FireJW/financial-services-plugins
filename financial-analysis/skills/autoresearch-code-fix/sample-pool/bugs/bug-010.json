@@ -1,0 +1,72 @@
+{
+  "bug_id": "bug-010",
+  "title": "Access-control check allows archived record read to wrong role",
+  "priority": "high",
+  "module_boundary": {
+    "allowed_paths": [
+      "src/authz",
+      "src/api/records",
+      "tests/authz"
+    ],
+    "forbidden_paths": [
+      "src/frontend",
+      "src/import",
+      "db/migrations"
+    ]
+  },
+  "bug_description": "A read endpoint allows a role that should be denied to view archived records because the archived-state authorization branch is incomplete.",
+  "expected_behavior": "Only explicitly allowed roles should be able to read archived records, and denied roles should receive an authorization error.",
+  "actual_behavior": "A disallowed role can still retrieve archived records through the read endpoint.",
+  "reproduction": {
+    "preconditions": [
+      "Local API server is running with an archived record fixture",
+      "Test credentials exist for both an allowed role and a denied role"
+    ],
+    "steps": [
+      "Call the read endpoint for an archived record using the denied role credentials",
+      "Observe the response status and returned payload"
+    ],
+    "expected_behavior": "The denied role should receive an authorization failure and no record payload.",
+    "actual_behavior": "The denied role receives the archived record data successfully."
+  },
+  "evidence": {
+    "logs": [
+      "Authorization trace shows the archived-state branch falls back to the general read permission path"
+    ],
+    "related_files": [
+      "src/authz/can-read-record.ts",
+      "src/api/records/get-record.ts",
+      "tests/authz/archived-record-access.test.ts"
+    ]
+  },
+  "validation": {
+    "primary_command": "npm test -- archived-record-access",
+    "secondary_checks": [
+      "npm run lint -- src/authz src/api/records"
+    ],
+    "manual_checks": [
+      "Verify denied-role access to archived records is blocked",
+      "Verify allowed-role access still succeeds for the same archived record"
+    ]
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback on any hard-check failure or if the fix blocks a role that should retain archived-record access.",
+    "notes": "Keep the last passing authorization branch available for immediate restore."
+  },
+  "scope_notes": "Keep the fix inside archived-record authorization checks and the directly affected endpoint tests. Do not broaden into a full permission-system redesign.",
+  "notes": {
+    "root_cause_hint": "The archived-state path may bypass the stricter role check and reuse a generic read permission helper.",
+    "risk_hint": "A broad authorization change could accidentally break normal record reads for allowed roles.",
+    "similar_bugs": [
+      "archived-state check bypasses role-specific branch",
+      "authorization helper reused in stricter context without additional guard"
+    ]
+  },
+  "tags": [
+    "authorization",
+    "api",
+    "security",
+    "server"
+  ]
+}

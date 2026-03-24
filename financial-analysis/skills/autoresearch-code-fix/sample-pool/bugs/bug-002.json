@@ -1,0 +1,71 @@
+{
+  "bug_id": "bug-002",
+  "title": "Report export drops a required section when one field is empty",
+  "priority": "medium",
+  "module_boundary": {
+    "allowed_paths": [
+      "src/reporting/export",
+      "src/reporting/templates",
+      "tests/reporting/export"
+    ],
+    "forbidden_paths": [
+      "src/api/auth",
+      "src/search",
+      "db"
+    ]
+  },
+  "bug_description": "A generated report omits a required summary section when one optional source field is blank, producing an incomplete deliverable.",
+  "expected_behavior": "The required section should still appear with fallback text or an empty state that preserves document structure.",
+  "actual_behavior": "The section disappears entirely, causing missing content and a broken report layout.",
+  "reproduction": {
+    "preconditions": [
+      "A fixture report input exists where one optional upstream field is blank",
+      "The export command can run locally"
+    ],
+    "steps": [
+      "Generate the report using the fixture where the optional field is empty",
+      "Open or inspect the output and check whether the required summary section exists"
+    ],
+    "expected_behavior": "The report includes the required section in the correct order, even if some fields render fallback content.",
+    "actual_behavior": "The section is skipped and the output no longer matches the required structure."
+  },
+  "evidence": {
+    "logs": [
+      "Rendered output contains later sections but the summary block is missing"
+    ],
+    "related_files": [
+      "src/reporting/export/build-report.ts",
+      "src/reporting/templates/summary-section.ts",
+      "tests/reporting/export/build-report.test.ts"
+    ]
+  },
+  "validation": {
+    "primary_command": "npm test -- build-report summary-section",
+    "secondary_checks": [
+      "npm run lint -- src/reporting/export src/reporting/templates/summary-section.ts"
+    ],
+    "manual_checks": [
+      "Generate the report fixture again and confirm the required summary section is present",
+      "Visually compare the section order before and after the fix"
+    ]
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback on any hard-check failure or if the export format changes for unrelated sections",
+    "notes": "Preserve the last stable report rendering output for comparison."
+  },
+  "scope_notes": "Stay within report assembly and the affected template logic. Do not rewrite the entire export pipeline or unrelated templates.",
+  "notes": {
+    "root_cause_hint": "A conditional render may be tied to an optional field instead of the section requirement itself",
+    "risk_hint": "A naive fallback could duplicate the section or alter report ordering",
+    "similar_bugs": [
+      "footer hidden when disclaimer text is empty",
+      "chart block skipped when one datapoint is null"
+    ]
+  },
+  "tags": [
+    "reporting",
+    "template",
+    "output-integrity"
+  ]
+}
