@@ -138,6 +138,7 @@ def build_source_pack(result: dict[str, Any]) -> dict[str, Any]:
                 "source_id": item.get("source_id", ""),
                 "name": item.get("source_name", ""),
                 "type": item.get("source_type", ""),
+                "origin": item.get("origin", ""),
                 "url": item.get("url", ""),
                 "published_at": isoformat_or_blank(anchor),
                 "observed_at": isoformat_or_blank(observed_at),

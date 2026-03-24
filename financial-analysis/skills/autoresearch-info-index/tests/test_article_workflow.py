@@ -30,6 +30,7 @@ class ArticleWorkflowTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.examples = Path(__file__).resolve().parents[1] / "examples"
         cls.news_request = read_json(cls.examples / "news-index-crisis-request.json")
+        cls.realistic_news_request = read_json(cls.examples / "news-index-realistic-offline-request.json")
         cls.temp_root = Path.cwd() / ".tmp" / "article-workflow-tests"
         cls.temp_root.mkdir(parents=True, exist_ok=True)
 
@@ -267,8 +268,8 @@ class ArticleWorkflowTests(unittest.TestCase):
     def test_draft_claim_map_uses_fallback_citations_for_derived_thesis(self) -> None:
         claim_map = build_draft_claim_map(
             [
-                {"citation_id": "S1", "source_id": "wire-1"},
-                {"citation_id": "S2", "source_id": "gov-1"},
+                {"citation_id": "S1", "source_id": "wire-1", "channel": "core"},
+                {"citation_id": "S2", "source_id": "gov-1", "channel": "core"},
             ],
             {
                 "recommended_thesis": "The safest current read is cautious de-escalation.",
@@ -284,6 +285,7 @@ class ArticleWorkflowTests(unittest.TestCase):
         thesis = claim_map[0]
         self.assertEqual(thesis["claim_label"], "thesis")
         self.assertEqual(thesis["citation_ids"], ["S1", "S2"])
+        self.assertEqual(thesis["citation_channels"], ["core"])
         self.assertEqual(thesis["support_level"], "derived")
 
     def test_article_draft_style_profile_applied_exposes_effective_request(self) -> None:
@@ -376,6 +378,28 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("uncited-promoted-claims", attack_ids)
         self.assertEqual(review["quality_gate"], "block")
 
+    def test_red_team_flags_non_core_promoted_claims(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        package = draft["article_package"]
+        package["draft_claim_map"] = [
+            {
+                "claim_label": "canonical_fact",
+                "claim_text": "This promoted claim still lacks core confirmation.",
+                "citation_ids": ["S1"],
+                "support_level": "core",
+            }
+        ]
+        review = build_red_team_review(
+            package,
+            draft["analysis_brief"],
+            draft["source_summary"],
+            [{**draft["draft_context"]["citation_candidates"][0], "channel": "shadow"}],
+            package["selected_images"],
+        )
+        attack_ids = [item["attack_id"] for item in review["attacks"]]
+        self.assertIn("non-core-promoted-claims", attack_ids)
+        self.assertEqual(review["quality_gate"], "revise")
+
     def test_article_revision_preserves_manual_override_and_skips_auto_rewrite(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request)})
         manual_text = "# Manual draft\n\nThis version makes the point directly and never states what is still unconfirmed.\n"
@@ -398,6 +422,37 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(revised["article_package"]["manual_article_override"])
         self.assertIn("Manual override preserved; auto-rewrite skipped.", revised["article_package"]["editor_notes"])
         self.assertIn("Pre-rewrite quality gate", revised["report_markdown"])
+
+    def test_article_revision_manual_opt_in_allows_auto_rewrite(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        manual_text = "# Manual draft\n\nUnique marker: REWRITE-ME.\n"
+        revised = build_article_revision(
+            {
+                "draft_result": draft,
+                "edited_body_markdown": manual_text,
+                "edited_article_markdown": manual_text,
+                "allow_auto_rewrite_after_manual": True,
+            }
+        )
+        review_package = revised["review_rewrite_package"]
+        self.assertEqual(review_package["rewrite_mode"], "manual_opt_in_auto_rewrite")
+        self.assertTrue(review_package["pre_rewrite_attacks"])
+        self.assertEqual(revised["request"]["allow_auto_rewrite_after_manual"], True)
+        self.assertTrue(revised["revision_history"][-1]["manual_override"])
+        self.assertTrue(revised["revision_history"][-1]["allow_auto_rewrite_after_manual"])
+        self.assertNotEqual(revised["final_article_result"]["body_markdown"], manual_text)
+        self.assertNotIn("REWRITE-ME", revised["final_article_result"]["article_markdown"])
+        self.assertIn(
+            "Manual override was reviewed and then auto-rewritten because allow_auto_rewrite_after_manual was enabled.",
+            revised["article_package"]["editor_notes"],
+        )
+
+    def test_article_revision_manual_opt_in_without_manual_text_is_noop(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        revised = build_article_revision({"draft_result": draft, "allow_auto_rewrite_after_manual": True})
+        self.assertEqual(revised["review_rewrite_package"]["rewrite_mode"], "auto_rewrite")
+        self.assertFalse(revised["revision_history"][-1]["manual_override"])
+        self.assertTrue(revised["revision_history"][-1]["allow_auto_rewrite_after_manual"])
 
     def test_article_revision_preserves_manual_article_markdown_independently(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request)})
@@ -542,6 +597,8 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("feedback_profile_status", revision_template)
         self.assertIn("language_mode", revision_template)
         self.assertIn("image_strategy", revision_template)
+        self.assertIn("edited_article_markdown", revision_template)
+        self.assertEqual(revision_template["allow_auto_rewrite_after_manual"], False)
         self.assertIn("decision_trace", result)
         self.assertIn("recommended_thesis", result["decision_trace"]["brief"])
         self.assertIn("style_effective_request", result["decision_trace"]["draft"])
@@ -558,6 +615,32 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("review_result", result)
         self.assertIn("rewrite_mode", result["final_stage"])
         self.assertIn("pre_rewrite_quality_gate", result["final_stage"])
+
+    def test_article_workflow_runs_from_realistic_offline_request(self) -> None:
+        workflow_dir = self.case_dir("workflow-realistic-run")
+        result = run_article_workflow(
+            {
+                **self.realistic_news_request,
+                "output_dir": str(workflow_dir / "out"),
+                "draft_mode": "image_first",
+                "image_strategy": "prefer_images",
+                "max_images": 3,
+            }
+        )
+        self.assertEqual(result["source_stage"]["source_kind"], "news_index")
+        self.assertTrue(Path(result["source_stage"]["result_path"]).exists())
+        self.assertTrue(Path(result["draft_stage"]["result_path"]).exists())
+        self.assertTrue(Path(result["final_stage"]["result_path"]).exists())
+        draft_result = read_json(Path(result["draft_stage"]["result_path"]))
+        citation_urls = [item["url"] for item in draft_result["draft_context"]["citation_candidates"]]
+        blocked_sources = result["source_result"]["retrieval_run_report"]["sources_blocked"]
+        self.assertGreaterEqual(draft_result["article_package"]["draft_metrics"]["citation_count"], 6)
+        self.assertTrue(any("reuters.com" in url for url in citation_urls))
+        self.assertTrue(any(item["source_name"] == "Axios" for item in blocked_sources))
+        self.assertGreaterEqual(result["draft_stage"]["image_count"], 1)
+        self.assertGreaterEqual(result["asset_stage"]["local_ready_count"], 1)
+        self.assertIn("Rewrite mode", result["report_markdown"])
+        self.assertIn("Red Team Summary", result["report_markdown"])
 
     def test_article_cleanup_runtime_removes_old_dirs_and_keeps_recent(self) -> None:
         cleanup_root = self.case_dir("cleanup-runtime")
@@ -634,8 +717,15 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(Path(result["items"][1]["preview_path"]).exists())
         self.assertTrue(Path(result["items"][0]["revision_template_path"]).exists())
         self.assertTrue(Path(result["items"][1]["revision_template_path"]).exists())
+        self.assertTrue(Path(result["items"][0]["final_article_result_path"]).exists())
+        self.assertTrue(Path(result["items"][1]["final_article_result_path"]).exists())
+        self.assertIn("rewrite_mode", result["items"][0])
+        self.assertIn("pre_rewrite_quality_gate", result["items"][0])
+        self.assertIn("quality_gate", result["items"][0])
         self.assertEqual(result["max_parallel_topics"], 2)
         self.assertIn("Local images ready", result["report_markdown"])
+        self.assertIn("Rewrite mode", result["report_markdown"])
+        self.assertIn("Final quality gate", result["report_markdown"])
 
     def test_article_auto_queue_ranks_candidates_and_runs_batch_for_top_items(self) -> None:
         auto_dir = self.case_dir("auto-run")
@@ -667,6 +757,10 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(Path(result["report_path"]).exists())
         self.assertEqual(result["max_parallel_candidates"], 2)
         self.assertEqual(result["max_parallel_topics"], 2)
+        self.assertEqual(result["ranked_candidates"][0]["selection_status"], "selected")
+        self.assertEqual(result["ranked_candidates"][1]["selection_status"], "skipped")
+        self.assertIn("Final quality gate", result["report_markdown"])
+        self.assertIn("Selection", result["report_markdown"])
 
     def test_key_article_scripts_compile_cleanly(self) -> None:
         script_dir = Path(__file__).resolve().parents[1] / "scripts"

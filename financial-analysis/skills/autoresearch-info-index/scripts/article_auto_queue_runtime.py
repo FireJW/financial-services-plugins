@@ -303,6 +303,7 @@ def build_batch_request(request: dict[str, Any], ranked_candidates: list[dict[st
     for item in selected:
         items.append(
             {
+                "candidate_index": item["index"],
                 "label": item["label"],
                 "request_path": item["source_result_path"],
                 "draft_mode": item["draft_mode"],
@@ -342,12 +343,16 @@ def build_report(result: dict[str, Any]) -> str:
             [
                 f"### {clean_text(item.get('label'))}",
                 "",
+                f"- Selection: {clean_text(item.get('selection_status')) or 'n/a'}",
                 f"- Priority score: {item.get('priority_score', 0)}",
                 f"- Source kind: {clean_text(item.get('source_kind'))}",
                 f"- Draft mode: {clean_text(item.get('draft_mode'))}",
                 f"- Image strategy: {clean_text(item.get('image_strategy'))}",
+                f"- Blocked sources: {item.get('blocked_source_count', 0)}",
                 f"- Reason: {clean_text(item.get('reason_summary'))}",
                 f"- Source result: {clean_text(item.get('source_result_path'))}",
+                f"- Final quality gate: {clean_text(item.get('final_quality_gate')) or 'n/a'}",
+                f"- Rewrite mode: {clean_text(item.get('final_rewrite_mode')) or 'n/a'}",
                 "",
             ]
         )
@@ -373,6 +378,30 @@ def run_article_auto_queue(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "failed_items": 0,
             "report_markdown": "No valid candidates were available for batch execution.\n",
         }
+    selected_paths = {clean_text(item.get("request_path")) for item in batch_request["items"] if clean_text(item.get("request_path"))}
+    batch_items_by_path = {
+        clean_text(item.get("source_request_path")): item
+        for item in safe_list(batch_result.get("items"))
+        if clean_text(item.get("source_request_path"))
+    }
+    enriched_candidates = []
+    for item in ranked_candidates:
+        source_result_path = clean_text(item.get("source_result_path"))
+        batch_item = safe_dict(batch_items_by_path.get(source_result_path))
+        if clean_text(item.get("status")) != "ok":
+            selection_status = "error"
+        elif source_result_path in selected_paths:
+            selection_status = "selected"
+        else:
+            selection_status = "skipped"
+        enriched_candidates.append(
+            {
+                **item,
+                "selection_status": selection_status,
+                "final_quality_gate": clean_text(batch_item.get("quality_gate")),
+                "final_rewrite_mode": clean_text(batch_item.get("rewrite_mode")),
+            }
+        )
     batch_result_path = request["output_dir"] / "batch-result.json"
     write_json(batch_result_path, batch_result)
     result = {
@@ -383,7 +412,7 @@ def run_article_auto_queue(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "selected_count": len(batch_request["items"]),
         "max_parallel_candidates": request.get("max_parallel_candidates", 1),
         "max_parallel_topics": request.get("max_parallel_topics", 1),
-        "ranked_candidates": ranked_candidates,
+        "ranked_candidates": enriched_candidates,
         "batch_request_path": str(request["output_dir"] / "batch-request.json"),
         "batch_result": {
             "status": clean_text(batch_result.get("status")),

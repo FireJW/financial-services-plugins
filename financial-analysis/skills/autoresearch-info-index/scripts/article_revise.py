@@ -30,6 +30,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pin-image", action="append", default=[], help="Image ID to pin")
     parser.add_argument("--drop-image", action="append", default=[], help="Image ID to drop")
     parser.add_argument("--revision-note", help="Optional revision note")
+    parser.add_argument(
+        "--allow-auto-rewrite-after-manual",
+        action="store_true",
+        help="If manual markdown is provided, allow the red-team flow to replace it with an auto-rewritten draft.",
+    )
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON output")
     return parser.parse_args()
 
@@ -63,6 +68,8 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["drop_image_ids"] = args.drop_image
     if args.revision_note:
         payload["revision_note"] = args.revision_note
+    if args.allow_auto_rewrite_after_manual:
+        payload["allow_auto_rewrite_after_manual"] = True
     return payload
 
 

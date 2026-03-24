@@ -1,0 +1,43 @@
+{
+  "analysis_time": "2026-03-23T10:08:00+00:00",
+  "candidates": [
+    {
+      "source_id": "ap-20260323-2",
+      "source_name": "AP",
+      "source_type": "wire",
+      "published_at": "2026-03-23T10:06:00+00:00",
+      "url": "https://apnews.com/article/us-iran-indirect-contacts-20260323-update",
+      "text_excerpt": "AP says indirect contacts continue and there is still no finalized settlement.",
+      "claim_ids": [
+        "claim-negotiation",
+        "claim-deal"
+      ],
+      "claim_states": {
+        "claim-negotiation": "support",
+        "claim-deal": "contradict"
+      }
+    },
+    {
+      "source_id": "vesselfinder-20260323-1",
+      "source_name": "VesselFinder",
+      "source_type": "public_ship_tracker",
+      "published_at": "2026-03-23T10:05:00+00:00",
+      "url": "https://www.vesselfinder.com/?imo=0000001",
+      "text_excerpt": "A second public ship-tracking page points to the same naval movement, still only as a last public indication.",
+      "position_hint": {
+        "last_public_location": "Eastern Mediterranean",
+        "eta_hours_low": 20,
+        "eta_hours_high": 40
+      },
+      "vessel_ids": [
+        "LHD-01"
+      ],
+      "claim_ids": [
+        "claim-vessel"
+      ],
+      "claim_states": {
+        "claim-vessel": "support"
+      }
+    }
+  ]
+}

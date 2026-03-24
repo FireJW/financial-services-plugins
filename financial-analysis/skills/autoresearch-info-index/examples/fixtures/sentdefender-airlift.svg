@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#111827"/>
+  <rect x="40" y="40" width="1200" height="640" rx="24" fill="#0b1220" stroke="#a855f7" stroke-width="3"/>
+  <text x="90" y="110" fill="#f8fafc" font-size="34" font-family="Segoe UI, Arial, sans-serif">Thread screenshot summary</text>
+  <text x="90" y="158" fill="#c084fc" font-size="24" font-family="Segoe UI, Arial, sans-serif">Open-source chatter / shadow layer</text>
+  <text x="90" y="235" fill="#e5e7eb" font-size="28" font-family="Segoe UI, Arial, sans-serif">"35 C-17 flights from CONUS to the Middle East since March 12"</text>
+  <text x="90" y="300" fill="#cbd5e1" font-size="24" font-family="Segoe UI, Arial, sans-serif">Origins: Hunter Army Air Field, JBLM, Pope, Fort Campbell</text>
+  <text x="90" y="345" fill="#cbd5e1" font-size="24" font-family="Segoe UI, Arial, sans-serif">Destinations: Ovda Air Base, King Faisal Air Base, King Hussein Intl</text>
+  <rect x="90" y="400" width="500" height="180" rx="18" fill="#1f2937" stroke="#38bdf8" stroke-width="2"/>
+  <text x="120" y="460" fill="#bae6fd" font-size="24" font-family="Segoe UI, Arial, sans-serif">Use as context and urgency signal only.</text>
+  <text x="120" y="505" fill="#bae6fd" font-size="24" font-family="Segoe UI, Arial, sans-serif">Needs stronger-source confirmation before promotion.</text>
+  <rect x="660" y="210" width="480" height="340" rx="20" fill="#1f2937" stroke="#f59e0b" stroke-width="2"/>
+  <text x="700" y="285" fill="#fde68a" font-size="30" font-family="Segoe UI, Arial, sans-serif">Airlift pattern</text>
+  <text x="700" y="345" fill="#f8fafc" font-size="54" font-family="Segoe UI, Arial, sans-serif">35 flights</text>
+  <text x="700" y="405" fill="#cbd5e1" font-size="24" font-family="Segoe UI, Arial, sans-serif">High engagement thread</text>
+  <text x="700" y="445" fill="#cbd5e1" font-size="24" font-family="Segoe UI, Arial, sans-serif">Useful for image-first drafts</text>
+  <text x="700" y="485" fill="#cbd5e1" font-size="24" font-family="Segoe UI, Arial, sans-serif">Not enough for confirmed-force-posture claims</text>
+</svg>

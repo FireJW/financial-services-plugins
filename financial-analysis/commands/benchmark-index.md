@@ -5,9 +5,8 @@ argument-hint: "[benchmark-index-request-json]"
 
 # Benchmark Index Command
 
-Use this command when you already have a candidate pool of benchmark articles,
-ranklist picks, or manually collected cases and want a structured review instead
-of vague inspiration.
+Use this when you already have a benchmark case pool and need a strict review
+layer instead of vague inspiration.
 
 Input modes:
 
@@ -16,50 +15,27 @@ Input modes:
 
 What it does:
 
-1. loads a benchmark-case request JSON
-2. normalizes WeChat and Toutiao case metadata
-3. filters around a minimum read band such as `5w+` or `10w+`
-4. scores each case on:
-   - acquisition success
-   - commercial fit
-   - decision density
-   - publicness
-   - paid-linkage strength
-5. labels each case as:
-   - `acquisition`
-   - `commercial-fit`
-   - `mixed`
-   - `reject`
-6. outputs a review-ready report with:
-   - what to copy
-   - what to avoid
-   - strategy implications
+1. loads a benchmark case library or direct `cases[]`
+2. scores each case on acquisition fit, commercial fit, and decision density
+3. defaults to `include_curation_statuses=["reviewed"]`
+4. keeps unreviewed candidates out of reviewed benchmark counts
+5. separates threshold-qualified reviewed cases from below-threshold exceptions
+6. outputs JSON plus a markdown report
 
-This is the benchmark equivalent of `news-index`:
+Key rule:
 
-- one structured request
-- one normalized result JSON
-- one markdown report
+- `candidate` cases stay out of the default reviewed benchmark pool unless you
+  explicitly override `include_curation_statuses`
 
 Local helper:
 
 - `financial-analysis\skills\decision-journal-publishing\scripts\run_benchmark_index.cmd "<request.json>" [--output <result.json>] [--markdown-output <report.md>]`
 
-Use this when you want:
-
-- a reusable cases library reviewed the same way every week
-- `5W+` or `10W+` cases separated from high-commercial-fit exceptions
-- benchmark review that matches a pro-first finance account
-- a reusable benchmark-index file you can update every week
-
-Request toggle:
-
-- keep `strict_read_gate=false` to preserve below-threshold but high-commercial-fit exceptions
-- set `strict_read_gate=true` when you want a pure `10W+` sample pool only
-
 Recommended workflow:
 
-1. store cases in `cases/benchmark-case-library.json`
-2. point a small request file at that library with `library_path`
-3. run `benchmark-index`
-4. update the cases library every week instead of rebuilding `cases[]` by hand
+1. keep reviewed cases in `cases/benchmark-case-library.json`
+2. keep auto-discovered candidates in `cases/benchmark-case-candidates.json`
+3. keep machine refreshes in `cases/benchmark-case-observations.jsonl`
+4. point `benchmark-index` at the reviewed library for the canonical benchmark view
+5. override `include_curation_statuses=["candidate"]` only when you want triage, not the
+   canonical benchmark snapshot

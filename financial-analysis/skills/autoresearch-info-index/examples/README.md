@@ -26,6 +26,40 @@ Use it to understand two related paths:
 These are the default generated artifacts for the single-sample recency-first
 demo chain.
 
+## Realistic Offline Fixture
+
+- `news-index-realistic-offline-request.json`
+- `news-index-realistic-offline-refresh.json`
+- `fixtures/`
+
+This fixture set is still fully deterministic and offline, but it uses more
+realistic source domains, source families, conflict patterns, and local visual
+artifacts than the smaller baseline demo request. Use it when you want a smoke
+run that looks closer to a real geopolitical monitoring case without depending
+on live web access.
+
+Recommended smoke commands:
+
+```text
+scripts\run_news_index_realistic_demo.cmd
+scripts\run_phase1_realistic_demo.cmd
+scripts\run_article_workflow_realistic_demo.cmd
+```
+
+## Last30Days Bridge Fixture
+
+- `last30days-bridge-input.json`
+
+This request is a deterministic offline sample that treats `last30days` as a
+separate upstream discovery layer and then bridges the imported findings into
+`news-index`.
+
+Recommended smoke command:
+
+```text
+scripts\run_last30days_bridge_demo.cmd
+```
+
 ## Generated Scaffold Outputs
 
 - `batch-news-index-results/`

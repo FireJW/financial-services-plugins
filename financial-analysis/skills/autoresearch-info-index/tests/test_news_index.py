@@ -22,6 +22,8 @@ class NewsIndexTests(unittest.TestCase):
         cls.examples = Path(__file__).resolve().parents[1] / "examples"
         cls.request = read_json(cls.examples / "news-index-crisis-request.json")
         cls.refresh = read_json(cls.examples / "news-index-refresh-update.json")
+        cls.realistic_request = read_json(cls.examples / "news-index-realistic-offline-request.json")
+        cls.realistic_refresh = read_json(cls.examples / "news-index-realistic-offline-refresh.json")
 
     def test_crisis_request_builds_dual_track_result(self) -> None:
         result = run_news_index(self.request)
@@ -79,6 +81,31 @@ class NewsIndexTests(unittest.TestCase):
         self.assertIn("Vessel Movement Table", report)
         self.assertIn("Escalation Scenarios", report)
         self.assertIn("Last Public Indication", report)
+
+    def test_realistic_offline_fixture_keeps_source_mix_and_blocked_visibility(self) -> None:
+        result = run_news_index(self.realistic_request)
+        latest_urls = [item["url"] for item in result["verdict_output"]["latest_signals"]]
+        blocked_names = [item["source_name"] for item in result["retrieval_run_report"]["sources_blocked"]]
+        source_artifacts = result["verdict_output"]["source_artifacts"]
+        self.assertTrue(any("reuters.com" in url for url in latest_urls))
+        self.assertIn("Axios", blocked_names)
+        self.assertIn(
+            "US and Iran are still in active indirect contacts today.",
+            result["verdict_output"]["confirmed"],
+        )
+        self.assertIn(
+            "A finalized settlement or ceasefire has already been agreed.",
+            result["verdict_output"]["not_confirmed"],
+        )
+        self.assertTrue(any(item.get("root_post_screenshot_path") for item in source_artifacts))
+        self.assertTrue(any("marinetraffic.com" in item.get("url", "") for item in source_artifacts))
+
+    def test_realistic_offline_refresh_adds_second_tracker_source(self) -> None:
+        first = run_news_index(self.realistic_request)
+        refreshed = refresh_news_index(first, self.realistic_refresh)
+        latest_sources = [item["source_name"] for item in refreshed["verdict_output"]["latest_signals"]]
+        self.assertIn("VesselFinder", latest_sources)
+        self.assertGreaterEqual(len(refreshed["source_observations"]), len(first["source_observations"]))
 
     def test_x_index_prefers_direct_post_text_and_keeps_thread_and_media_fields(self) -> None:
         request = {

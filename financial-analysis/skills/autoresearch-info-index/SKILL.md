@@ -213,6 +213,13 @@ or `last public indication`.
 - [scripts/run_news_index.cmd](scripts/run_news_index.cmd) runs the one-shot retrieval entry
 - [scripts/x_index.py](scripts/x_index.py) builds an X-post evidence pack and bridges it into the recency-first retrieval flow
 - [scripts/run_x_index.cmd](scripts/run_x_index.cmd) runs the X-post evidence entry
+- [scripts/last30days_bridge_runtime.py](scripts/last30days_bridge_runtime.py) imports a separate `last30days` result and bridges selected findings into `news-index` as shadow observations
+- [scripts/last30days_bridge.py](scripts/last30days_bridge.py) runs the one-shot `last30days` bridge entry
+- [scripts/run_last30days_bridge.cmd](scripts/run_last30days_bridge.cmd) runs the `last30days` bridge through the local Python wrapper
+- [scripts/run_last30days_bridge_demo.cmd](scripts/run_last30days_bridge_demo.cmd) runs the fixed offline bridge fixture and writes result files
+- [scripts/last30days_deploy_check_runtime.py](scripts/last30days_deploy_check_runtime.py) inspects whether a separate `last30days` deployment exists and which runtime/config gaps remain
+- [scripts/last30days_deploy_check.py](scripts/last30days_deploy_check.py) runs the separate deployment check entry
+- [scripts/run_last30days_deploy_check.cmd](scripts/run_last30days_deploy_check.cmd) runs the deployment check through the local Python wrapper
 - [scripts/article_draft_flow_runtime.py](scripts/article_draft_flow_runtime.py) turns an x-index or news-index result into an article-ready package with citations and selected images
 - [scripts/article_draft_runtime.py](scripts/article_draft_runtime.py) is a compatibility wrapper that forwards older imports to the article draft flow runtime
 - [scripts/article_draft.py](scripts/article_draft.py) builds a one-shot article draft package

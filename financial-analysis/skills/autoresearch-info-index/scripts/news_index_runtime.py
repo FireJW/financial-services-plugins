@@ -415,6 +415,7 @@ def normalize_candidate(
         "source_name": source_name,
         "source_type": source_type,
         "source_tier": source_tier,
+        "origin": str(candidate.get("origin", "")).strip(),
         "channel": channel,
         "published_at": isoformat_or_blank(published_at),
         "observed_at": isoformat_or_blank(observed_at),
@@ -475,6 +476,7 @@ def error_observation(
         "source_name": source_name,
         "source_type": normalize_source_type(candidate.get("source_type") or candidate.get("type") or "social"),
         "source_tier": 3,
+        "origin": str(candidate.get("origin", "")).strip(),
         "channel": "background",
         "published_at": isoformat_or_blank(published_at),
         "observed_at": isoformat_or_blank(observed_at),
@@ -529,6 +531,8 @@ def dedupe_observations(observations: list[dict[str, Any]]) -> list[dict[str, An
         existing["claim_texts"].update(observation.get("claim_texts", {}))
         if access_rank(observation.get("access_mode", "")) > access_rank(existing.get("access_mode", "")):
             existing["access_mode"] = observation.get("access_mode", "")
+        if observation.get("origin") and not existing.get("origin"):
+            existing["origin"] = observation.get("origin", "")
         if len(observation.get("text_excerpt", "")) > len(existing.get("text_excerpt", "")):
             existing["text_excerpt"] = observation.get("text_excerpt", "")
         if len(observation.get("post_text_raw", "")) > len(existing.get("post_text_raw", "")):
@@ -669,7 +673,10 @@ def promoted_to_core(supports: list[dict[str, Any]]) -> bool:
     ]
     if not fresh_supports:
         return False
-    if any(item.get("source_tier", 3) <= 1 for item in fresh_supports):
+    direct_supports = [item for item in fresh_supports if item.get("origin") != "last30days"]
+    if not direct_supports:
+        return False
+    if any(item.get("source_tier", 3) <= 1 for item in direct_supports):
         return True
     tier_two_sources = {item.get("source_id") for item in fresh_supports if item.get("source_tier", 3) == 2}
     return len(tier_two_sources) >= 2
@@ -742,6 +749,7 @@ def build_latest_signals(observations: list[dict[str, Any]], limit: int = 8) -> 
             "source_name": item.get("source_name", ""),
             "source_type": item.get("source_type", ""),
             "source_tier": item.get("source_tier", 3),
+            "origin": item.get("origin", ""),
             "channel": item.get("channel", ""),
             "age": item.get("age_label", ""),
             "recency_bucket": item.get("recency_bucket", ""),
@@ -807,6 +815,7 @@ def build_source_artifacts(observations: list[dict[str, Any]]) -> list[dict[str,
             {
                 "source_name": observation.get("source_name", ""),
                 "source_tier": observation.get("source_tier", 3),
+                "origin": observation.get("origin", ""),
                 "channel": observation.get("channel", ""),
                 "access_mode": observation.get("access_mode", ""),
                 "url": observation.get("url", ""),
@@ -990,6 +999,7 @@ def build_retrieval_run_report(request: dict[str, Any], observations: list[dict[
             "source_id": item.get("source_id", ""),
             "source_name": item.get("source_name", ""),
             "source_type": item.get("source_type", ""),
+            "origin": item.get("origin", ""),
             "access_mode": item.get("access_mode", ""),
         }
         for item in observations
@@ -1148,23 +1158,36 @@ def merge_refresh(existing_result: dict[str, Any], refresh_payload: dict[str, An
         published_at = parse_datetime(observation.get("published_at"), fallback=refresh_request["analysis_time"])
         if published_at and published_at >= fresh_cutoff:
             carried_candidates.append(
-                {
-                    "source_id": observation.get("source_id", ""),
-                    "source_name": observation.get("source_name", ""),
-                    "source_type": observation.get("source_type", ""),
-                    "published_at": observation.get("published_at", ""),
-                    "observed_at": observation.get("observed_at", ""),
-                    "url": observation.get("url", ""),
-                    "claim_ids": observation.get("claim_ids", []),
-                    "entity_ids": observation.get("entity_ids", []),
+            {
+                "source_id": observation.get("source_id", ""),
+                "source_name": observation.get("source_name", ""),
+                "source_type": observation.get("source_type", ""),
+                "origin": observation.get("origin", ""),
+                "published_at": observation.get("published_at", ""),
+                "observed_at": observation.get("observed_at", ""),
+                "url": observation.get("url", ""),
+                "claim_ids": observation.get("claim_ids", []),
+                "entity_ids": observation.get("entity_ids", []),
                     "vessel_ids": observation.get("vessel_ids", []),
                     "text_excerpt": observation.get("text_excerpt", ""),
-                    "position_hint": observation.get("position_hint"),
-                    "geo_hint": observation.get("geo_hint"),
-                    "access_mode": observation.get("access_mode", "public"),
-                    "claim_states": observation.get("claim_states", {}),
-                }
-            )
+                "position_hint": observation.get("position_hint"),
+                "geo_hint": observation.get("geo_hint"),
+                "access_mode": observation.get("access_mode", "public"),
+                "claim_states": observation.get("claim_states", {}),
+                "artifact_manifest": observation.get("artifact_manifest", []),
+                "post_text_raw": observation.get("post_text_raw", ""),
+                "post_text_source": observation.get("post_text_source", ""),
+                "post_text_confidence": observation.get("post_text_confidence", 0.0),
+                "root_post_screenshot_path": observation.get("root_post_screenshot_path", ""),
+                "thread_posts": observation.get("thread_posts", []),
+                "media_items": observation.get("media_items", []),
+                "post_summary": observation.get("post_summary", ""),
+                "media_summary": observation.get("media_summary", ""),
+                "combined_summary": observation.get("combined_summary", ""),
+                "discovery_reason": observation.get("discovery_reason", ""),
+                "crawl_notes": observation.get("crawl_notes", []),
+            }
+        )
 
     combined_request = {
         **base_request,

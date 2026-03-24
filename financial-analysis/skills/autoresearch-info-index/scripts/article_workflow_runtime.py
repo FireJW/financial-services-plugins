@@ -169,6 +169,8 @@ def build_revision_template(draft_result: dict[str, Any]) -> dict[str, Any]:
         "angle": "",
         "angle_zh": "",
         "edited_body_markdown": "",
+        "edited_article_markdown": "",
+        "allow_auto_rewrite_after_manual": False,
         "feedback_profile_status": profile_status,
         "feedback_reuse_help": {
             "save_for_all_future_drafts": "Set persist_feedback.scope to global.",

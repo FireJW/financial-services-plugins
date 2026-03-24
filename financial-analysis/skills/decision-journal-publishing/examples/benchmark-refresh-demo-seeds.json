@@ -1,0 +1,25 @@
+{
+  "library_name": "decision-journal-benchmark-refresh-seeds-demo",
+  "version": "2026-03-24.3",
+  "updated_at": "2026-03-24T22:30:00+08:00",
+  "sources": [
+    {
+      "source_id": "demo-toutiao-seed",
+      "enabled": true,
+      "platform": "toutiao",
+      "account_name": "Demo Toutiao",
+      "seed_url": "financial-analysis\\skills\\decision-journal-publishing\\examples\\benchmark-refresh-fixtures\\refresh-seed-toutiao.html",
+      "include_url_patterns": [
+        "refresh-candidate"
+      ],
+      "exclude_url_patterns": [],
+      "include_title_keywords": [],
+      "exclude_title_keywords": [],
+      "max_candidates": 10,
+      "max_age_days": 30,
+      "candidate_defaults": {
+        "notes": "Demo candidate discovered from a local seed page."
+      }
+    }
+  ]
+}

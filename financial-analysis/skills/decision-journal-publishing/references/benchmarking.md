@@ -197,6 +197,20 @@ When indexing benchmark articles, track:
 
 This should feel closer to a `news-index` record than a vague inspiration list.
 
+## Library Hygiene
+
+Use three separate artifacts:
+
+1. `benchmark-case-library.json` for curated human-owned case metadata
+2. `benchmark-refresh-seeds.json` for discovery source definitions
+3. `benchmark-case-observations.jsonl` for append-only machine refreshes
+
+Rules:
+
+1. machine refreshes can update scoring inputs, but they do not overwrite curated notes
+2. new discoveries start as `candidate`, never as `reviewed`
+3. the scored benchmark pool should default to `reviewed` cases only
+
 ## What This Means For Your Strategy
 
 1. WeChat needs both `broad-hook event explainers` and `core template demos`.

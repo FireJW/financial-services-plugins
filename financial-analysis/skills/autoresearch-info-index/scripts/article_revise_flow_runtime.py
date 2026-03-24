@@ -8,6 +8,7 @@ from typing import Any
 from article_feedback_profiles import (
     feedback_profile_status,
     normalize_profile_feedback,
+    parse_bool,
     request_defaults_from_request,
     resolve_profile_dir,
     save_feedback_profiles,
@@ -103,6 +104,7 @@ def normalize_revision_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "persist_feedback": normalize_profile_feedback(raw_payload.get("persist_feedback")),
         "edited_body_markdown": raw_payload.get("edited_body_markdown") if isinstance(raw_payload.get("edited_body_markdown"), str) else "",
         "edited_article_markdown": raw_payload.get("edited_article_markdown") if isinstance(raw_payload.get("edited_article_markdown"), str) else "",
+        "allow_auto_rewrite_after_manual": parse_bool(raw_payload.get("allow_auto_rewrite_after_manual"), default=False),
         "article_result": article_result,
         "feedback": feedback,
     }
@@ -168,6 +170,41 @@ def has_boundary_language(text: str) -> bool:
     ]
     lowered = text.lower()
     return any(marker in lowered or marker in text for marker in markers)
+
+
+def collect_non_core_promoted_claims(article_package: dict[str, Any], citation_by_id: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    flagged: list[dict[str, Any]] = []
+    for item in safe_list(article_package.get("draft_claim_map")):
+        claim_text = clean_text(item.get("claim_text"))
+        if not claim_text:
+            continue
+        claim_label = clean_text(item.get("claim_label")) or "claim"
+        if claim_label == "thesis":
+            continue
+        support_level = clean_text(item.get("support_level"))
+        if support_level not in {"core", "derived"}:
+            continue
+        citation_ids = clean_string_list(item.get("citation_ids"))
+        supporting_citations = [citation_by_id[citation_id] for citation_id in citation_ids if citation_id in citation_by_id]
+        if not supporting_citations:
+            continue
+        if any(clean_text(citation.get("channel")) == "core" for citation in supporting_citations):
+            continue
+        flagged.append(
+            {
+                "claim_label": claim_label,
+                "claim_text": claim_text,
+                "citation_count": len(supporting_citations),
+                "source_count": len(
+                    {
+                        clean_text(citation.get("source_id") or citation.get("source_name") or citation.get("citation_id"))
+                        for citation in supporting_citations
+                        if clean_text(citation.get("source_id") or citation.get("source_name") or citation.get("citation_id"))
+                    }
+                ),
+            }
+        )
+    return flagged
 
 
 def build_red_team_review(
@@ -236,6 +273,21 @@ def build_red_team_review(
             }
         )
         softened.extend(item.get("claim_text", "") for item in uncited_promoted_claims)
+
+    non_core_promoted_claims = collect_non_core_promoted_claims(article_package, citation_by_id)
+    if non_core_promoted_claims:
+        attacks.append(
+            {
+                "attack_id": "non-core-promoted-claims",
+                "severity": "major",
+                "title": "Some promoted claims still rely only on non-core evidence.",
+                "detail": (
+                    f"{len(non_core_promoted_claims)} promoted claim(s) are backed only by shadow/background citations. "
+                    "Those claims should be softened or moved out of the confirmed-facts lane."
+                ),
+            }
+        )
+        softened.extend(item.get("claim_text", "") for item in non_core_promoted_claims)
 
     not_proven = safe_list(analysis_brief.get("not_proven"))
     if not_proven and not has_boundary_language(text):
@@ -316,6 +368,7 @@ def rewrite_request_after_attack(request: dict[str, Any], analysis_brief: dict[s
     existing_avoid = clean_string_list(rewritten.get("must_avoid"))
     voice_constraints = clean_string_list(analysis_brief.get("voice_constraints"))
     not_proven = safe_list(analysis_brief.get("not_proven"))
+    attack_ids = {clean_text(item.get("attack_id")) for item in safe_list(review.get("attacks"))}
 
     include_updates = [
         "state the strongest confirmed fact before any scenario",
@@ -325,6 +378,10 @@ def rewrite_request_after_attack(request: dict[str, Any], analysis_brief: dict[s
         include_updates.append(f"treat this as not proven unless upgraded: {clean_text(not_proven[0].get('claim_text'))}")
     if voice_constraints:
         include_updates.extend(voice_constraints[:2])
+    if "non-core-promoted-claims" in attack_ids:
+        include_updates.append("keep non-core signals out of the confirmed-facts lane unless stronger sourcing appears")
+    if "blocked-sources-hidden" in attack_ids:
+        include_updates.append("say clearly when important sources were blocked or inaccessible")
     rewritten["must_include"] = clean_string_list(existing_include + include_updates)
     rewritten["must_avoid"] = clean_string_list(existing_avoid + ["actual position", "confirmed position", "live position"])
     rewritten["tone"] = clean_text(rewritten.get("tone") or "neutral-cautious") or "neutral-cautious"
@@ -439,7 +496,9 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
     article_package["char_count"] = article_package["draft_metrics"]["char_count"]
 
     pre_rewrite_review = build_red_team_review(article_package, analysis_brief, source_summary, citations, selected_images)
-    if manual_override:
+    allow_auto_rewrite_after_manual = bool(request.get("allow_auto_rewrite_after_manual"))
+    preserve_manual_override = manual_override and not allow_auto_rewrite_after_manual
+    if preserve_manual_override:
         review_rewrite_package = {
             **pre_rewrite_review,
             "rewrite_mode": "manual_preserved",
@@ -477,7 +536,7 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         final_review = build_red_team_review(rewritten_package, analysis_brief, source_summary, citations, rewritten_images)
         review_rewrite_package = {
             **pre_rewrite_review,
-            "rewrite_mode": "auto_rewrite",
+            "rewrite_mode": "manual_opt_in_auto_rewrite" if manual_override else "auto_rewrite",
             "pre_rewrite_quality_gate": clean_text(pre_rewrite_review.get("quality_gate")),
             "pre_rewrite_attacks": deepcopy(safe_list(pre_rewrite_review.get("attacks"))),
             "pre_rewrite_remaining_risks": deepcopy(clean_string_list(pre_rewrite_review.get("remaining_risks"))),
@@ -489,9 +548,16 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
                 + clean_string_list(final_review.get("claims_removed_or_softened"))
             ),
         }
+        rewritten_package["manual_body_override"] = manual_body_override
+        rewritten_package["manual_article_override"] = manual_article_override
         rewritten_package["editor_notes"] = clean_string_list(
             safe_list(article_package.get("editor_notes"))
             + [
+                (
+                    "Manual override was reviewed and then auto-rewritten because allow_auto_rewrite_after_manual was enabled."
+                    if manual_override
+                    else ""
+                ),
                 f"Red-team pre-rewrite quality gate: {clean_text(review_rewrite_package.get('pre_rewrite_quality_gate')) or 'unknown'}.",
                 f"Red-team final quality gate: {clean_text(review_rewrite_package.get('quality_gate')) or 'unknown'}.",
             ]
@@ -542,6 +608,7 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "language_mode": request.get("language_mode"),
         "must_include": request.get("must_include"),
         "must_avoid": request.get("must_avoid"),
+        "allow_auto_rewrite_after_manual": allow_auto_rewrite_after_manual,
         "feedback_profile_dir": request.get("feedback_profile_dir"),
         "source_result": None,
     }
@@ -580,6 +647,7 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
     revision_entry = {
         "revised_at": isoformat_or_blank(request["analysis_time"]),
         "manual_override": manual_override,
+        "allow_auto_rewrite_after_manual": allow_auto_rewrite_after_manual,
         "rewrite_mode": clean_text(review_rewrite_package.get("rewrite_mode")),
         "feedback_notes": request["feedback"].get("feedback_notes", []),
         "image_count": len(selected_images),

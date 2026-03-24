@@ -1,0 +1,98 @@
+{
+  "topic": "Hormuz escalation and regional mediation watch",
+  "analysis_time": "2026-03-24T12:00:00+00:00",
+  "questions": [
+    "What fresh claims about talks, force movements, and shipping disruption are circulating right now?"
+  ],
+  "use_case": "last30days-bridge-demo",
+  "mode": "crisis",
+  "claims": [
+    {
+      "claim_id": "claim-talks",
+      "claim_text": "Indirect mediation contacts are still active."
+    },
+    {
+      "claim_id": "claim-airlift",
+      "claim_text": "US regional airlift activity has intensified."
+    }
+  ],
+  "findings": [
+    {
+      "platform": "x",
+      "author_handle": "sentdefender",
+      "url": "https://x.com/sentdefender/status/2036153038906196133",
+      "published_at": "2026-03-24T09:30:00+00:00",
+      "observed_at": "2026-03-24T11:50:00+00:00",
+      "post_text_raw": "A significant movement is underway from US Army, Navy and Air Force bases in CONUS to the Middle East comprised of at least 35 C-17 flights since March 12th.",
+      "post_text_source": "dom",
+      "post_text_confidence": 0.96,
+      "post_summary": "SentDefender says at least 35 C-17 flights moved from CONUS into the Middle East since March 12.",
+      "media_summary": "Attached chart lists Fort Stewart, JBLM, Ovda Air Base, and King Faisal Air Base.",
+      "combined_summary": "SentDefender claims at least 35 C-17 flights moved into the region, with the attached chart listing CONUS origins and Israeli and Jordanian destinations.",
+      "claim_ids": [
+        "claim-airlift"
+      ],
+      "claim_states": {
+        "claim-airlift": "support"
+      },
+      "root_post_screenshot_path": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-info-index\\examples\\fixtures\\sentdefender-airlift.svg",
+      "artifact_manifest": [
+        {
+          "role": "root_post_screenshot",
+          "path": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-info-index\\examples\\fixtures\\sentdefender-airlift.svg",
+          "source_url": "https://x.com/sentdefender/status/2036153038906196133",
+          "media_type": "image/svg+xml"
+        }
+      ],
+      "discovery_reason": "High-engagement X post surfaced by last30days cross-platform discovery."
+    }
+  ],
+  "web": [
+    {
+      "source_name": "Reuters",
+      "url": "https://www.reuters.com/world/middle-east/mediators-push-fresh-iran-contact-2026-03-24/",
+      "published_at": "2026-03-24T10:40:00+00:00",
+      "summary": "Reuters says mediators remain in contact and no public breakthrough has been announced.",
+      "claim_ids": [
+        "claim-talks"
+      ],
+      "claim_states": {
+        "claim-talks": "support"
+      },
+      "discovery_reason": "last30days web scan found a same-day Reuters update."
+    },
+    {
+      "source_name": "Axios",
+      "url": "https://www.axios.com/2026/03/24/iran-talks-market",
+      "published_at": "2026-03-24T09:55:00+00:00",
+      "summary": "Axios card captured by last30days says the White House is still trying to keep an indirect channel open.",
+      "access_mode": "blocked",
+      "claim_ids": [
+        "claim-talks"
+      ],
+      "artifact_manifest": [
+        {
+          "role": "blocked_card",
+          "path": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-info-index\\examples\\fixtures\\axios-blocked-card.svg",
+          "source_url": "https://www.axios.com/2026/03/24/iran-talks-market",
+          "media_type": "image/svg+xml"
+        }
+      ]
+    }
+  ],
+  "polymarket": [
+    {
+      "platform": "polymarket",
+      "url": "https://polymarket.com/event/hormuz-reopens-before-april",
+      "published_at": "2026-03-22T06:00:00+00:00",
+      "summary": "A two-day-old market note says traders still price a delayed reopening.",
+      "claim_ids": [
+        "claim-talks"
+      ],
+      "claim_states": {
+        "claim-talks": "unclear"
+      },
+      "discovery_reason": "Older context kept for background only."
+    }
+  ]
+}

@@ -26,6 +26,11 @@ Default behavior:
 4. rebuild the article package in a safer form
 5. append a revision-history entry
 
+Manual edit behavior:
+
+- `edited_body_markdown` and `edited_article_markdown` are preserved by default
+- set `allow_auto_rewrite_after_manual=true` only when you want the system to red-team your manual draft and then generate a safer rewritten version
+
 Useful revision inputs:
 
 - `feedback.summary`
@@ -38,6 +43,10 @@ Useful revision inputs:
   - keep or pin only the requested images near the front
 - `edited_body_markdown`
   - replace the body while keeping citations, image assets, and revision history attached
+- `edited_article_markdown`
+  - replace the full article markdown while keeping the evidence package attached
+- `allow_auto_rewrite_after_manual`
+  - default `false`; opt in only if you want automatic rewrite after the manual draft is reviewed
 
 This command is designed for the review loop:
 

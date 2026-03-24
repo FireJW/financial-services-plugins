@@ -158,6 +158,9 @@ def build_batch_report(result: dict[str, Any]) -> str:
                 f"- Status: {clean_text(item.get('status'))}",
                 f"- Draft title: {clean_text(item.get('draft_title')) or 'n/a'}",
                 f"- Draft mode: {clean_text(item.get('draft_mode')) or 'n/a'}",
+                f"- Rewrite mode: {clean_text(item.get('rewrite_mode')) or 'n/a'}",
+                f"- Pre-rewrite quality gate: {clean_text(item.get('pre_rewrite_quality_gate')) or 'n/a'}",
+                f"- Final quality gate: {clean_text(item.get('quality_gate')) or 'n/a'}",
                 f"- Images: {item.get('image_count', 0)}",
                 f"- Local images ready: {item.get('local_ready_count', 0)}",
                 f"- Remote images pending: {item.get('remote_only_count', 0)}",
@@ -165,6 +168,7 @@ def build_batch_report(result: dict[str, Any]) -> str:
                 f"- Workflow report: {clean_text(item.get('workflow_report_path')) or 'n/a'}",
                 f"- Draft preview: {clean_text(item.get('preview_path')) or 'n/a'}",
                 f"- Review template: {clean_text(item.get('revision_template_path')) or 'n/a'}",
+                f"- Final article result: {clean_text(item.get('final_article_result_path')) or 'n/a'}",
                 "",
             ]
         )
@@ -189,12 +193,16 @@ def run_batch_item(request: dict[str, Any], item: dict[str, Any], index: int) ->
     draft_stage = safe_dict(workflow_result.get("draft_stage"))
     asset_stage = safe_dict(workflow_result.get("asset_stage"))
     review_stage = safe_dict(workflow_result.get("review_stage"))
+    final_stage = safe_dict(workflow_result.get("final_stage"))
     result_item = {
         "index": index,
         "label": label,
         "status": clean_text(workflow_result.get("status")) or "ok",
+        "source_request_path": clean_text(item.get("request_path")),
         "draft_title": clean_text(draft_stage.get("title")),
         "draft_mode": clean_text(draft_stage.get("draft_mode")),
+        "rewrite_mode": clean_text(final_stage.get("rewrite_mode")),
+        "pre_rewrite_quality_gate": clean_text(final_stage.get("pre_rewrite_quality_gate")),
         "image_count": int(draft_stage.get("image_count", 0) or 0),
         "local_ready_count": int(asset_stage.get("local_ready_count", 0) or 0),
         "remote_only_count": int(asset_stage.get("remote_only_count", 0) or 0),
@@ -204,7 +212,8 @@ def run_batch_item(request: dict[str, Any], item: dict[str, Any], index: int) ->
         "preview_path": clean_text(draft_stage.get("preview_path")),
         "revision_template_path": clean_text(review_stage.get("revision_template_path")),
         "review_result_path": clean_text(review_stage.get("result_path")),
-        "quality_gate": clean_text(safe_dict(workflow_result.get("final_stage")).get("quality_gate")),
+        "final_article_result_path": clean_text(final_stage.get("result_path")),
+        "quality_gate": clean_text(final_stage.get("quality_gate")),
         "suggested_revise_command": clean_text(review_stage.get("suggested_revise_command")),
         "suggested_asset_hydrate_command": clean_text(asset_stage.get("suggested_asset_hydrate_command")),
     }

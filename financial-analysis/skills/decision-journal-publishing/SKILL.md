@@ -47,12 +47,29 @@ reusable paid assets.
 
 - [scripts/run_benchmark_index.cmd](scripts/run_benchmark_index.cmd) runs the
   benchmark-case indexing and review flow
+- [scripts/run_benchmark_library_refresh.cmd](scripts/run_benchmark_library_refresh.cmd)
+  refreshes reviewed cases, appends machine observations, and fills the
+  candidate inbox
+- [scripts/run_benchmark_readiness.cmd](scripts/run_benchmark_readiness.cmd)
+  audits whether the checked-in refresh request is actually ready for 24h
+  automation
 - [cases/benchmark-case-library.json](cases/benchmark-case-library.json) is the
-  reusable case library for WeChat and Toutiao benchmarks
+  reviewed benchmark library for WeChat and Toutiao
+- [cases/benchmark-case-candidates.json](cases/benchmark-case-candidates.json)
+  is the auto-discovered candidate inbox
+- [cases/benchmark-case-observations.jsonl](cases/benchmark-case-observations.jsonl)
+  is the append-only machine observation log
+- [cases/benchmark-refresh-seeds.json](cases/benchmark-refresh-seeds.json) is
+  the source seed file for the 24h refresh loop
+- [cases/benchmark-refresh-daily-request.json](cases/benchmark-refresh-daily-request.json)
+  is the scheduler-friendly request template for the 24h refresh loop; the CLI
+  injects `analysis_time` when omitted
 - [examples/benchmark-index-library-request.json](examples/benchmark-index-library-request.json)
   is the recommended library-backed request shape
 - [examples/benchmark-index-demo-request.json](examples/benchmark-index-demo-request.json)
   is a seeded example request using the benchmark logic in this skill
+- [examples/benchmark-refresh-demo-request.json](examples/benchmark-refresh-demo-request.json)
+  is the local fixture refresh demo
 
 ## Workflow
 
@@ -150,6 +167,10 @@ Default deliverable should include:
 10. explicit deferred items
 11. if the task is benchmark-driven, separate acquisition benchmarks from
     commercial-fit benchmarks
+12. if the task includes case maintenance, keep reviewed cases, candidates, and
+    machine observations as separate artifacts
+13. treat reviewed-library `machine_state` as the latest readable snapshot and
+    JSONL observations as the audit trail, not the other way around
 
 ## Output Requirements
 

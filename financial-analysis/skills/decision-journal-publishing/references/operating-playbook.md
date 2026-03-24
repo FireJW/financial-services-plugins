@@ -70,6 +70,7 @@ Minimum weekly review:
 
 1. two WeChat cases
 2. two Toutiao cases
+3. one scheduled `benchmark-refresh` run that updates the observation log and candidate inbox
 
 When possible, include at least:
 
@@ -95,6 +96,12 @@ Track these fields:
 
 Do not review reference cases as inspiration only. Review them as structured
 records.
+
+Daily maintenance rule:
+
+1. refresh into the observation log every 24 hours
+2. keep the curated library stable unless a human promotes or archives a case
+3. score only `reviewed` cases by default
 
 ## 30-Topic Structure
 

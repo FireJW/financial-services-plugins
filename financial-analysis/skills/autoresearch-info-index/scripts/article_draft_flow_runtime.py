@@ -495,6 +495,17 @@ def preferred_citation_ids(
     return top_citation_ids(ranked or citations, limit=limit)
 
 
+def citation_channels_for_ids(citations: list[dict[str, Any]], citation_ids: list[str]) -> list[str]:
+    channels: list[str] = []
+    wanted = set(clean_string_list(citation_ids))
+    for citation in citations:
+        citation_id = clean_text(citation.get("citation_id"))
+        channel = clean_text(citation.get("channel"))
+        if citation_id in wanted and channel and channel not in channels:
+            channels.append(channel)
+    return channels
+
+
 def join_with_semicolons(items: list[str], empty_text: str) -> str:
     clean_items = [clean_text(item) for item in items if clean_text(item)]
     return "; ".join(clean_items) if clean_items else empty_text
@@ -872,27 +883,35 @@ def build_draft_claim_map(citations: list[dict[str, Any]], analysis_brief: dict[
             {
                 "claim_label": "thesis",
                 "claim_text": recommended_thesis,
+                "source_ids": thesis_sources,
                 "citation_ids": thesis_citation_ids,
+                "citation_channels": citation_channels_for_ids(citations, thesis_citation_ids),
                 "support_level": "core" if thesis_sources else "derived" if thesis_citation_ids else "shadow-heavy",
             }
         )
     for item in canonical_facts[:3]:
         source_ids = clean_string_list(item.get("source_ids"))
+        citation_ids = preferred_citation_ids(citations, source_ids)
         claim_map.append(
             {
                 "claim_label": clean_text(item.get("claim_id")) or "canonical_fact",
                 "claim_text": clean_text(item.get("claim_text")),
-                "citation_ids": preferred_citation_ids(citations, source_ids),
+                "source_ids": source_ids,
+                "citation_ids": citation_ids,
+                "citation_channels": citation_channels_for_ids(citations, citation_ids),
                 "support_level": clean_text(item.get("promotion_state")) or "core",
             }
         )
     for item in safe_list(analysis_brief.get("not_proven"))[:2]:
         source_ids = clean_string_list(item.get("source_ids"))
+        citation_ids = preferred_citation_ids(citations, source_ids)
         claim_map.append(
             {
                 "claim_label": clean_text(item.get("claim_id")) or "not_proven",
                 "claim_text": clean_text(item.get("claim_text")),
-                "citation_ids": preferred_citation_ids(citations, source_ids),
+                "source_ids": source_ids,
+                "citation_ids": citation_ids,
+                "citation_channels": citation_channels_for_ids(citations, citation_ids),
                 "support_level": clean_text(item.get("status")) or "unclear",
             }
         )

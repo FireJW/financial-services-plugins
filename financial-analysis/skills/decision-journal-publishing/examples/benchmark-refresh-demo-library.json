@@ -1,0 +1,73 @@
+{
+  "library_name": "decision-journal-benchmark-cases-demo",
+  "version": "2026-03-24.3",
+  "updated_at": "2026-03-24T22:30:00+08:00",
+  "last_machine_refresh_at": "2026-03-24T14:00:00+00:00",
+  "default_request": {
+    "goal": "Review demo WeChat and Toutiao benchmark cases",
+    "commercial_center": "professional investors, research users, and high-participation retail investors who pay for better judgment structure",
+    "minimum_read_band": "5w+",
+    "strict_read_gate": false,
+    "allow_below_threshold_commercial_exceptions": true,
+    "platforms": [
+      "wechat",
+      "toutiao"
+    ],
+    "include_curation_statuses": [
+      "reviewed"
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "demo-reviewed-wechat",
+      "platform": "wechat",
+      "account_name": "Demo WeChat",
+      "title": "Reviewed benchmark demo",
+      "url": "https://example.com/reviewed-demo",
+      "canonical_url": "https://example.com/reviewed-demo",
+      "fetch_url": "financial-analysis\\skills\\decision-journal-publishing\\examples\\benchmark-refresh-fixtures\\refresh-reviewed-case.html",
+      "published_at": "2026-03-20T08:00:00+08:00",
+      "read_signal": "5w+",
+      "account_positioning": "high-frequency finance readers paying to reduce selection cost",
+      "topic_type": "paid daily must-read utility",
+      "hook_type": "selection and opportunity-cost reduction",
+      "affected_group": "serious finance readers with repeated information overload",
+      "cta_type": "paid subscription",
+      "paid_asset_linkage": "high",
+      "decision_density_score": 88,
+      "notes": "Demo reviewed case used for refresh verification.",
+      "curation_status": "reviewed",
+      "machine_state": {
+        "last_checked_at": "2026-03-24T14:00:00+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "file:///C:/Users/rickylu/.gemini/antigravity/scratch/financial-services-plugins/financial-analysis/skills/decision-journal-publishing/examples/benchmark-refresh-fixtures/refresh-reviewed-case.html",
+        "last_observation_at": "2026-03-24T14:00:00+00:00",
+        "current_observation_id": "obs-f0193c2c14af1124",
+        "current_read_signal": "6.8w+",
+        "current_read_count_estimate": 68000,
+        "current_published_at": "2026-03-20T08:00:00+08:00",
+        "current_title": "Reviewed benchmark demo updated",
+        "change_flags": []
+      },
+      "discovery_state": {
+        "discovered_at": "",
+        "source_id": "",
+        "source_url": "",
+        "discovery_method": "manual"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": true,
+        "notes": true
+      }
+    }
+  ],
+  "candidate_library_path": "benchmark-refresh-demo-candidates.json",
+  "observation_log_path": "benchmark-refresh-demo-observations.jsonl",
+  "refresh_seed_path": "benchmark-refresh-demo-seeds.json",
+  "machine_refresh_summary": {
+    "reviewed_cases_refreshed": 1,
+    "matched_existing_cases": 0
+  }
+}
