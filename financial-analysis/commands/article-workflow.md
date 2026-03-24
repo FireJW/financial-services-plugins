@@ -8,15 +8,22 @@ argument-hint: "[request-json]"
 Use this command when the user wants one runnable flow that:
 
 1. takes an existing `x-index` or `news-index` result, or a fresh index request
-2. builds the first article draft with images attached
-3. prepares the next revision template so the review loop can continue without re-grabbing the same inputs
+2. builds a structured analysis brief from that evidence
+3. builds the first article draft with images attached
+4. runs a red-team challenge plus automatic rewrite pass
+5. prepares the next revision template so the review loop can continue without re-grabbing the same inputs
 
 The workflow writes staged outputs for:
 
 - the source result
 - the source report
+- the analysis brief result
+- the analysis brief report
 - the article draft result
 - the article draft report
+- the article review result
+- the article review report
+- the final article result
 - the article revision template
 - the workflow summary report
 
@@ -41,6 +48,8 @@ Local helper:
 
 Use this when you want the practical loop:
 
-- hot topic -> first draft with images
+- hot topic -> fact-checked brief
+- brief -> first draft with images
+- draft -> red-team challenge -> rewritten draft
 - your review notes -> revision template
 - revised draft without re-indexing the same source package

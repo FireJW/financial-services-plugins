@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import os
+import py_compile
 import unittest
 from pathlib import Path
 from time import time
+from unittest.mock import patch
 
 import sys
 
@@ -13,8 +15,9 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from article_cleanup_runtime import cleanup_article_temp_dirs
-from article_draft_flow_runtime import build_article_draft
-from article_revise_flow_runtime import build_article_revision
+from article_brief_runtime import build_analysis_brief
+from article_draft_flow_runtime import build_article_draft, build_draft_claim_map, build_sections
+from article_revise_flow_runtime import build_article_revision, build_red_team_review
 from article_batch_workflow_runtime import run_article_batch_workflow
 from article_auto_queue_runtime import run_article_auto_queue
 from article_workflow_runtime import run_article_workflow
@@ -131,6 +134,64 @@ class ArticleWorkflowTests(unittest.TestCase):
         }
         return run_x_index(request)
 
+    def build_shadow_only_news_result(self) -> dict:
+        return run_news_index(
+            {
+                "topic": "Shadow-only rumor",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-shadow",
+                        "claim_text": "The United States has already committed to a ground entry.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "social-1",
+                        "source_name": "Social rumor account",
+                        "source_type": "social",
+                        "published_at": "2026-03-24T11:56:00+00:00",
+                        "observed_at": "2026-03-24T11:57:00+00:00",
+                        "url": "https://example.com/social-rumor",
+                        "text_excerpt": "Ground entry is already decided.",
+                        "claim_ids": ["claim-shadow"],
+                        "claim_states": {"claim-shadow": "support"},
+                    }
+                ],
+            }
+        )
+
+    def test_article_brief_builds_fact_firewall_fields(self) -> None:
+        brief = build_analysis_brief({"source_result": run_news_index(self.news_request)})
+        analysis_brief = brief["analysis_brief"]
+        self.assertIn("canonical_facts", analysis_brief)
+        self.assertIn("not_proven", analysis_brief)
+        self.assertIn("open_questions", analysis_brief)
+        self.assertIn("scenario_matrix", analysis_brief)
+        self.assertIn("story_angles", analysis_brief)
+        self.assertIn("image_keep_reasons", analysis_brief)
+        self.assertIn("voice_constraints", analysis_brief)
+        self.assertIn("misread_risks", analysis_brief)
+        self.assertIn("recommended_thesis", analysis_brief)
+        self.assertTrue(brief["supporting_citations"])
+        self.assertIn("## Open Questions", brief["report_markdown"])
+        self.assertIn("## Scenario Matrix", brief["report_markdown"])
+
+    def test_article_brief_not_proven_entries_include_reasoning_fields(self) -> None:
+        brief = build_analysis_brief({"source_result": self.build_shadow_only_news_result()})
+        not_proven = brief["analysis_brief"]["not_proven"]
+        self.assertTrue(not_proven)
+        first = not_proven[0]
+        self.assertIn("why_not_proven", first)
+        self.assertIn("support_count", first)
+        self.assertIn("contradiction_count", first)
+        self.assertTrue(first["why_not_proven"])
+
+    def test_article_brief_report_surfaces_image_keep_reasons(self) -> None:
+        brief = build_analysis_brief({"source_result": self.build_seed_x_index_result(self.case_dir("brief-x-seed"))})
+        self.assertTrue(brief["analysis_brief"]["image_keep_reasons"])
+        self.assertIn("## Image Keep Reasons", brief["report_markdown"])
+
     def test_article_draft_from_x_index_selects_images_and_citations(self) -> None:
         draft = build_article_draft({"source_result": self.build_seed_x_index_result(self.case_dir("x-seed")), "max_images": 2})
         package = draft["article_package"]
@@ -141,6 +202,11 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn(f"![{package['selected_images'][0]['image_id']}](", package["article_markdown"])
         self.assertTrue(any(item["status"] == "local_ready" for item in package["selected_images"]))
         self.assertEqual(len(package["selected_images"]), len(package["image_blocks"]))
+        self.assertTrue(draft["analysis_brief"])
+        self.assertTrue(package["draft_claim_map"])
+        self.assertIn("draft_thesis", package)
+        self.assertIn("style_profile_applied", package)
+        self.assertIn("writer_risk_notes", package)
 
     def test_article_draft_from_blocked_x_index_keeps_screenshot_boundary(self) -> None:
         draft = build_article_draft(
@@ -170,6 +236,20 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertNotIn("core claim(s)", draft["article_package"]["body_markdown"])
         self.assertIn("<html>", draft["preview_html"])
 
+    def test_build_sections_without_analysis_brief_uses_derived_brief_path(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request), "target_length_chars": 800})
+        sections = build_sections(
+            draft["request"],
+            draft["source_summary"],
+            draft["evidence_digest"],
+            draft["draft_context"]["citation_candidates"],
+            draft["draft_context"]["selected_images"],
+            None,
+        )
+        headings = [section["heading"] for section in sections]
+        self.assertIn("Story Angles", headings)
+        self.assertIn("Why This Matters", headings)
+
     def test_article_draft_bilingual_mode_emits_zh_and_en_sections(self) -> None:
         draft = build_article_draft(
             {
@@ -183,6 +263,64 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("核心判断 | Bottom Line", draft["article_package"]["body_markdown"])
         self.assertIn("截至", draft["article_package"]["body_markdown"])
         self.assertIn("English title", draft["article_package"]["article_markdown"])
+
+    def test_draft_claim_map_uses_fallback_citations_for_derived_thesis(self) -> None:
+        claim_map = build_draft_claim_map(
+            [
+                {"citation_id": "S1", "source_id": "wire-1"},
+                {"citation_id": "S2", "source_id": "gov-1"},
+            ],
+            {
+                "recommended_thesis": "The safest current read is cautious de-escalation.",
+                "canonical_facts": [
+                    {
+                        "claim_id": "fact-1",
+                        "claim_text": "Talks remain indirect.",
+                        "source_ids": [],
+                    }
+                ],
+            },
+        )
+        thesis = claim_map[0]
+        self.assertEqual(thesis["claim_label"], "thesis")
+        self.assertEqual(thesis["citation_ids"], ["S1", "S2"])
+        self.assertEqual(thesis["support_level"], "derived")
+
+    def test_article_draft_style_profile_applied_exposes_effective_request(self) -> None:
+        draft = build_article_draft(
+            {
+                "source_result": run_news_index(self.news_request),
+                "language_mode": "bilingual",
+                "draft_mode": "image_first",
+                "image_strategy": "prefer_images",
+                "tone": "urgent-but-cautious",
+                "target_length_chars": 1200,
+                "max_images": 2,
+                "must_include": ["separate facts from inference"],
+                "must_avoid": ["guaranteed"],
+            }
+        )
+        style = draft["article_package"]["style_profile_applied"]
+        effective = style["effective_request"]
+        self.assertEqual(effective["language_mode"], "bilingual")
+        self.assertEqual(effective["draft_mode"], "image_first")
+        self.assertEqual(effective["image_strategy"], "prefer_images")
+        self.assertEqual(effective["tone"], "urgent-but-cautious")
+        self.assertEqual(effective["target_length_chars"], 1200)
+        self.assertEqual(effective["max_images"], 2)
+        self.assertIn("separate facts from inference", effective["must_include"])
+        self.assertIn("guaranteed", effective["must_avoid"])
+        self.assertIn("separate facts from inference", style["constraints"]["must_include"])
+        self.assertIn("guaranteed", style["constraints"]["must_avoid"])
+
+    def test_article_draft_uses_derived_brief_when_brief_builder_returns_empty(self) -> None:
+        with patch("article_draft_flow_runtime.build_analysis_brief", return_value={}):
+            draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        self.assertTrue(draft["analysis_brief"])
+        self.assertTrue(draft["analysis_brief"]["recommended_thesis"])
+        self.assertEqual(draft["draft_context"]["analysis_brief"], draft["analysis_brief"])
+        self.assertEqual(draft["article_package"]["render_context"]["analysis_brief"], draft["analysis_brief"])
+        self.assertTrue(draft["article_package"]["draft_claim_map"])
 
     def test_article_revision_preserves_citations_and_pinned_image(self) -> None:
         draft = build_article_draft({"source_result": self.build_seed_x_index_result(self.case_dir("x-revise")), "max_images": 2})
@@ -205,6 +343,76 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertEqual(len(revised["revision_history"]), 1)
         self.assertEqual(len(revised["revision_log"]), 1)
         self.assertIn("market impact", revised["article_package"]["body_markdown"].lower())
+        self.assertIn("review_rewrite_package", revised)
+        self.assertIn("quality_gate", revised["review_rewrite_package"])
+
+    def test_article_revision_blocks_shadow_only_thesis(self) -> None:
+        draft = build_article_draft({"source_result": self.build_shadow_only_news_result()})
+        revised = build_article_revision({"draft_result": draft})
+        self.assertEqual(revised["review_rewrite_package"]["pre_rewrite_quality_gate"], "block")
+        self.assertEqual(revised["review_rewrite_package"]["quality_gate"], "block")
+        self.assertTrue(revised["review_rewrite_package"]["attacks"])
+        self.assertIn("final_article_result", revised)
+
+    def test_red_team_flags_uncited_promoted_claims(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        package = draft["article_package"]
+        package["draft_claim_map"] = [
+            {
+                "claim_label": "thesis",
+                "claim_text": package["draft_thesis"],
+                "citation_ids": [],
+                "support_level": "derived",
+            }
+        ]
+        review = build_red_team_review(
+            package,
+            draft["analysis_brief"],
+            draft["source_summary"],
+            draft["draft_context"]["citation_candidates"],
+            package["selected_images"],
+        )
+        attack_ids = [item["attack_id"] for item in review["attacks"]]
+        self.assertIn("uncited-promoted-claims", attack_ids)
+        self.assertEqual(review["quality_gate"], "block")
+
+    def test_article_revision_preserves_manual_override_and_skips_auto_rewrite(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        manual_text = "# Manual draft\n\nThis version makes the point directly and never states what is still unconfirmed.\n"
+        revised = build_article_revision(
+            {
+                "draft_result": draft,
+                "edited_body_markdown": manual_text,
+                "edited_article_markdown": manual_text,
+            }
+        )
+        review_package = revised["review_rewrite_package"]
+        self.assertEqual(review_package["rewrite_mode"], "manual_preserved")
+        self.assertEqual(review_package["pre_rewrite_quality_gate"], review_package["quality_gate"])
+        self.assertTrue(review_package["pre_rewrite_attacks"])
+        self.assertEqual(revised["final_article_result"]["body_markdown"], manual_text)
+        self.assertEqual(revised["final_article_result"]["article_markdown"], manual_text)
+        self.assertTrue(revised["revision_history"][-1]["manual_override"])
+        self.assertEqual(revised["revision_history"][-1]["rewrite_mode"], "manual_preserved")
+        self.assertTrue(revised["article_package"]["manual_body_override"])
+        self.assertTrue(revised["article_package"]["manual_article_override"])
+        self.assertIn("Manual override preserved; auto-rewrite skipped.", revised["article_package"]["editor_notes"])
+        self.assertIn("Pre-rewrite quality gate", revised["report_markdown"])
+
+    def test_article_revision_preserves_manual_article_markdown_independently(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        manual_article = "# Manual article\n\nUnique marker: KEEP-ME-ARTICLE.\n"
+        revised = build_article_revision(
+            {
+                "draft_result": draft,
+                "edited_article_markdown": manual_article,
+            }
+        )
+        self.assertEqual(revised["review_rewrite_package"]["rewrite_mode"], "manual_preserved")
+        self.assertEqual(revised["final_article_result"]["article_markdown"], manual_article)
+        self.assertIn("KEEP-ME-ARTICLE", revised["final_article_result"]["article_markdown"])
+        self.assertTrue(revised["article_package"]["manual_article_override"])
+        self.assertFalse(revised["article_package"]["manual_body_override"])
 
     def test_article_workflow_localizes_remote_image_assets(self) -> None:
         workflow_dir = self.case_dir("workflow-remote-image")
@@ -320,9 +528,12 @@ class ArticleWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(result["source_stage"]["source_kind"], "x_index")
         self.assertTrue(Path(result["source_stage"]["result_path"]).exists())
+        self.assertTrue(Path(result["brief_stage"]["result_path"]).exists())
         self.assertTrue(Path(result["draft_stage"]["result_path"]).exists())
         self.assertTrue(Path(result["draft_stage"]["preview_path"]).exists())
+        self.assertTrue(Path(result["review_stage"]["result_path"]).exists())
         self.assertTrue(Path(result["review_stage"]["revision_template_path"]).exists())
+        self.assertTrue(Path(result["final_stage"]["result_path"]).exists())
         draft_result = read_json(Path(result["draft_stage"]["result_path"]))
         self.assertGreaterEqual(draft_result["article_package"]["draft_metrics"]["citation_count"], 1)
         self.assertGreaterEqual(draft_result["article_package"]["draft_metrics"]["image_count"], 1)
@@ -331,8 +542,22 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("feedback_profile_status", revision_template)
         self.assertIn("language_mode", revision_template)
         self.assertIn("image_strategy", revision_template)
+        self.assertIn("decision_trace", result)
+        self.assertIn("recommended_thesis", result["decision_trace"]["brief"])
+        self.assertIn("style_effective_request", result["decision_trace"]["draft"])
+        self.assertIn("quality_gate", result["decision_trace"]["review"])
+        self.assertIn("## Why This Draft Looks This Way", result["report_markdown"])
+        self.assertIn("## Claim Support Map", result["report_markdown"])
+        self.assertIn("## Red Team Summary", result["report_markdown"])
         self.assertIn("## Images", result["report_markdown"])
         self.assertIn("## Feedback Reuse", result["report_markdown"])
+        self.assertIn("## Files", result["report_markdown"])
+        self.assertIn("Rewrite mode", result["report_markdown"])
+        self.assertIn("Pre-rewrite quality gate", result["report_markdown"])
+        self.assertIn("brief_stage", result)
+        self.assertIn("review_result", result)
+        self.assertIn("rewrite_mode", result["final_stage"])
+        self.assertIn("pre_rewrite_quality_gate", result["final_stage"])
 
     def test_article_cleanup_runtime_removes_old_dirs_and_keeps_recent(self) -> None:
         cleanup_root = self.case_dir("cleanup-runtime")
@@ -385,6 +610,7 @@ class ArticleWorkflowTests(unittest.TestCase):
                 "output_dir": str(batch_dir / "out"),
                 "default_draft_mode": "image_first",
                 "default_image_strategy": "prefer_images",
+                "max_parallel_topics": 2,
                 "items": [
                     {
                         "label": "x-seed",
@@ -408,6 +634,7 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(Path(result["items"][1]["preview_path"]).exists())
         self.assertTrue(Path(result["items"][0]["revision_template_path"]).exists())
         self.assertTrue(Path(result["items"][1]["revision_template_path"]).exists())
+        self.assertEqual(result["max_parallel_topics"], 2)
         self.assertIn("Local images ready", result["report_markdown"])
 
     def test_article_auto_queue_ranks_candidates_and_runs_batch_for_top_items(self) -> None:
@@ -418,6 +645,8 @@ class ArticleWorkflowTests(unittest.TestCase):
                 "output_dir": str(auto_dir / "out"),
                 "top_n": 1,
                 "prefer_visuals": True,
+                "max_parallel_candidates": 2,
+                "max_parallel_topics": 2,
                 "candidates": [
                     {
                         "label": "x-candidate",
@@ -436,6 +665,118 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertEqual(result["ranked_candidates"][0]["label"], "x-candidate")
         self.assertTrue(Path(result["batch_result"]["result_path"]).exists())
         self.assertTrue(Path(result["report_path"]).exists())
+        self.assertEqual(result["max_parallel_candidates"], 2)
+        self.assertEqual(result["max_parallel_topics"], 2)
+
+    def test_key_article_scripts_compile_cleanly(self) -> None:
+        script_dir = Path(__file__).resolve().parents[1] / "scripts"
+        for name in [
+            "article_brief.py",
+            "article_draft.py",
+            "article_revise.py",
+            "article_workflow.py",
+            "article_brief_runtime.py",
+            "article_draft_flow_runtime.py",
+            "article_revise_flow_runtime.py",
+            "article_workflow_runtime.py",
+        ]:
+            py_compile.compile(str(script_dir / name), doraise=True)
+
+    def test_article_auto_queue_propagates_default_language_mode(self) -> None:
+        auto_dir = self.case_dir("auto-language")
+        result = run_article_auto_queue(
+            {
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "output_dir": str(auto_dir / "out"),
+                "top_n": 1,
+                "default_language_mode": "bilingual",
+                "candidates": [
+                    {
+                        "label": "news-candidate",
+                        "payload": self.news_request,
+                    }
+                ],
+            }
+        )
+        batch_request = read_json(Path(result["batch_request_path"]))
+        self.assertEqual(batch_request["default_language_mode"], "bilingual")
+        batch_result = read_json(Path(result["batch_result"]["result_path"]))
+        workflow_result = read_json(Path(batch_result["items"][0]["workflow_result_path"]))
+        self.assertEqual(workflow_result["draft_result"]["request"]["language_mode"], "bilingual")
+
+    def test_article_auto_queue_survives_parallel_candidate_failure(self) -> None:
+        auto_dir = self.case_dir("auto-partial")
+        result = run_article_auto_queue(
+            {
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "output_dir": str(auto_dir / "out"),
+                "top_n": 1,
+                "max_parallel_candidates": 2,
+                "candidates": [
+                    {
+                        "label": "broken-candidate",
+                    },
+                    {
+                        "label": "good-candidate",
+                        "payload": self.news_request,
+                    },
+                ],
+            }
+        )
+        self.assertEqual(result["candidate_count"], 2)
+        self.assertEqual(result["selected_count"], 1)
+        self.assertEqual(result["batch_result"]["succeeded_items"], 1)
+        self.assertTrue(any(item["status"] == "error" for item in result["ranked_candidates"]))
+        self.assertTrue(Path(result["batch_result"]["result_path"]).exists())
+
+    def test_news_index_survives_parallel_candidate_normalization_failure(self) -> None:
+        class ExplodingText:
+            def __str__(self) -> str:
+                raise RuntimeError("boom")
+
+        result = run_news_index(
+            {
+                "topic": "Normalization failure",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "max_parallel_candidates": 2,
+                "claims": [
+                    {
+                        "claim_id": "claim-test",
+                        "claim_text": "A transport movement is underway.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "good-source",
+                        "source_name": "Wire Desk",
+                        "source_type": "wire",
+                        "published_at": "2026-03-24T11:30:00+00:00",
+                        "observed_at": "2026-03-24T11:31:00+00:00",
+                        "url": "https://example.com/good",
+                        "text_excerpt": "A transport movement is underway.",
+                        "claim_ids": ["claim-test"],
+                        "claim_states": {"claim-test": "support"},
+                    },
+                    {
+                        "source_id": "bad-source",
+                        "source_name": "Broken Feed",
+                        "source_type": "social",
+                        "published_at": "2026-03-24T11:50:00+00:00",
+                        "observed_at": "2026-03-24T11:51:00+00:00",
+                        "url": "https://example.com/bad",
+                        "text_excerpt": ExplodingText(),
+                        "claim_ids": ["claim-test"],
+                    },
+                ],
+            }
+        )
+        self.assertEqual(len(result["observations"]), 2)
+        blocked = [item for item in result["observations"] if item["access_mode"] == "blocked"]
+        self.assertEqual(len(blocked), 1)
+        self.assertEqual(blocked[0]["channel"], "background")
+        self.assertIn("normalization failed", blocked[0]["text_excerpt"].lower())
+        self.assertEqual(result["retrieval_run_report"]["sources_blocked"][0]["source_id"], "bad-source")
+        self.assertGreaterEqual(result["retrieval_quality"]["blocked_source_handling_score"], 80)
 
 
 if __name__ == "__main__":

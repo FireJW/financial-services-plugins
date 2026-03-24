@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,7 @@ def normalize_batch_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "cleanup_days": int(raw_payload.get("cleanup_days", 4) or 4),
         "cleanup_root_dir": clean_text(raw_payload.get("cleanup_root_dir")),
         "stop_on_error": bool(raw_payload.get("stop_on_error", False)),
+        "max_parallel_topics": max(1, int(raw_payload.get("max_parallel_topics", min(4, len(items))) or 1)),
         "output_dir": output_dir,
     }
 
@@ -127,6 +129,7 @@ def build_batch_report(result: dict[str, Any]) -> str:
         f"- Total items: {result.get('total_items', 0)}",
         f"- Succeeded: {result.get('succeeded_items', 0)}",
         f"- Failed: {result.get('failed_items', 0)}",
+        f"- Max parallel topics: {result.get('max_parallel_topics', 1)}",
         "",
     ]
     if cleanup_stage:
@@ -177,6 +180,38 @@ def build_batch_report(result: dict[str, Any]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def run_batch_item(request: dict[str, Any], item: dict[str, Any], index: int) -> tuple[int, dict[str, Any]]:
+    payload = load_item_payload(item)
+    label = item_label(item, payload, index)
+    item_dir = request["output_dir"] / f"{index:02d}-{slugify(label, f'item-{index:02d}')}"
+    workflow_payload = merge_item_request(request, item, payload, item_dir)
+    workflow_result = run_article_workflow(workflow_payload)
+    draft_stage = safe_dict(workflow_result.get("draft_stage"))
+    asset_stage = safe_dict(workflow_result.get("asset_stage"))
+    review_stage = safe_dict(workflow_result.get("review_stage"))
+    result_item = {
+        "index": index,
+        "label": label,
+        "status": clean_text(workflow_result.get("status")) or "ok",
+        "draft_title": clean_text(draft_stage.get("title")),
+        "draft_mode": clean_text(draft_stage.get("draft_mode")),
+        "image_count": int(draft_stage.get("image_count", 0) or 0),
+        "local_ready_count": int(asset_stage.get("local_ready_count", 0) or 0),
+        "remote_only_count": int(asset_stage.get("remote_only_count", 0) or 0),
+        "citation_count": int(draft_stage.get("citation_count", 0) or 0),
+        "workflow_report_path": clean_text(workflow_result.get("workflow_report_path")),
+        "workflow_result_path": str(item_dir / "workflow-result.json"),
+        "preview_path": clean_text(draft_stage.get("preview_path")),
+        "revision_template_path": clean_text(review_stage.get("revision_template_path")),
+        "review_result_path": clean_text(review_stage.get("result_path")),
+        "quality_gate": clean_text(safe_dict(workflow_result.get("final_stage")).get("quality_gate")),
+        "suggested_revise_command": clean_text(review_stage.get("suggested_revise_command")),
+        "suggested_asset_hydrate_command": clean_text(asset_stage.get("suggested_asset_hydrate_command")),
+    }
+    write_json(item_dir / "workflow-result.json", workflow_result)
+    return index, result_item
+
+
 def run_article_batch_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = normalize_batch_request(raw_payload)
     cleanup_stage = {}
@@ -190,53 +225,48 @@ def run_article_batch_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
         )
     request["output_dir"].mkdir(parents=True, exist_ok=True)
 
-    items_result: list[dict[str, Any]] = []
+    items_result_by_index: dict[int, dict[str, Any]] = {}
     succeeded = 0
     failed = 0
-    for index, item in enumerate(request["items"], start=1):
-        item = safe_dict(item)
-        try:
-            payload = load_item_payload(item)
-            label = item_label(item, payload, index)
-            item_dir = request["output_dir"] / f"{index:02d}-{slugify(label, f'item-{index:02d}')}"
-            workflow_payload = merge_item_request(request, item, payload, item_dir)
-            workflow_result = run_article_workflow(workflow_payload)
-            draft_stage = safe_dict(workflow_result.get("draft_stage"))
-            asset_stage = safe_dict(workflow_result.get("asset_stage"))
-            review_stage = safe_dict(workflow_result.get("review_stage"))
-            items_result.append(
-                {
-                    "index": index,
-                    "label": label,
-                    "status": clean_text(workflow_result.get("status")) or "ok",
-                    "draft_title": clean_text(draft_stage.get("title")),
-                    "draft_mode": clean_text(draft_stage.get("draft_mode")),
-                    "image_count": int(draft_stage.get("image_count", 0) or 0),
-                    "local_ready_count": int(asset_stage.get("local_ready_count", 0) or 0),
-                    "remote_only_count": int(asset_stage.get("remote_only_count", 0) or 0),
-                    "citation_count": int(draft_stage.get("citation_count", 0) or 0),
-                    "workflow_report_path": clean_text(workflow_result.get("workflow_report_path")),
-                    "workflow_result_path": str(item_dir / "workflow-result.json"),
-                    "preview_path": clean_text(draft_stage.get("preview_path")),
-                    "revision_template_path": clean_text(review_stage.get("revision_template_path")),
-                    "suggested_revise_command": clean_text(review_stage.get("suggested_revise_command")),
-                    "suggested_asset_hydrate_command": clean_text(asset_stage.get("suggested_asset_hydrate_command")),
-                }
-            )
-            write_json(item_dir / "workflow-result.json", workflow_result)
-            succeeded += 1
-        except Exception as exc:
-            label = clean_text(item.get("label")) or f"item-{index:02d}"
-            items_result.append({"index": index, "label": label, "status": "error", "error": str(exc)})
-            failed += 1
-            if request.get("stop_on_error"):
-                break
+    serial_mode = request.get("stop_on_error") or request.get("max_parallel_topics", 1) <= 1 or len(request["items"]) <= 1
+    if serial_mode:
+        for index, item in enumerate(request["items"], start=1):
+            item = safe_dict(item)
+            try:
+                _, result_item = run_batch_item(request, item, index)
+                items_result_by_index[index] = result_item
+                succeeded += 1
+            except Exception as exc:
+                label = clean_text(item.get("label")) or f"item-{index:02d}"
+                items_result_by_index[index] = {"index": index, "label": label, "status": "error", "error": str(exc)}
+                failed += 1
+                if request.get("stop_on_error"):
+                    break
+    else:
+        with ThreadPoolExecutor(max_workers=request["max_parallel_topics"]) as executor:
+            future_map = {
+                executor.submit(run_batch_item, request, safe_dict(item), index): (index, safe_dict(item))
+                for index, item in enumerate(request["items"], start=1)
+            }
+            for future in as_completed(future_map):
+                index, item = future_map[future]
+                try:
+                    _, result_item = future.result()
+                    items_result_by_index[index] = result_item
+                    succeeded += 1
+                except Exception as exc:
+                    label = clean_text(item.get("label")) or f"item-{index:02d}"
+                    items_result_by_index[index] = {"index": index, "label": label, "status": "error", "error": str(exc)}
+                    failed += 1
+
+    items_result = [items_result_by_index[index] for index in sorted(items_result_by_index)]
 
     result = {
         "status": "ok" if failed == 0 else "partial",
         "workflow_kind": "article_batch_workflow",
         "analysis_time": request["analysis_time"].isoformat(),
         "output_dir": str(request["output_dir"]),
+        "max_parallel_topics": request.get("max_parallel_topics", 1),
         "total_items": len(request["items"]),
         "succeeded_items": succeeded,
         "failed_items": failed,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -51,9 +52,12 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "prefer_visuals": bool(raw_payload.get("prefer_visuals", True)),
         "default_draft_mode": clean_text(raw_payload.get("default_draft_mode") or raw_payload.get("draft_mode")),
         "default_image_strategy": clean_text(raw_payload.get("default_image_strategy") or raw_payload.get("image_strategy")),
+        "default_language_mode": clean_text(raw_payload.get("default_language_mode") or raw_payload.get("language_mode")),
         "default_tone": clean_text(raw_payload.get("default_tone") or raw_payload.get("tone")),
         "default_max_images": raw_payload.get("default_max_images", raw_payload.get("max_images")),
         "default_target_length_chars": raw_payload.get("default_target_length_chars", raw_payload.get("target_length_chars")),
+        "max_parallel_topics": max(1, int(raw_payload.get("max_parallel_topics", min(4, top_n)) or 1)),
+        "max_parallel_candidates": max(1, int(raw_payload.get("max_parallel_candidates", min(4, len(candidates))) or 1)),
         "output_dir": output_dir,
     }
 
@@ -206,36 +210,95 @@ def choose_defaults(candidate: dict[str, Any], metrics: dict[str, Any], batch_re
     return draft_mode, image_strategy
 
 
+def rank_single_candidate(request: dict[str, Any], candidate: dict[str, Any], index: int, sources_dir: Path) -> tuple[int, dict[str, Any]]:
+    payload = load_candidate_payload(candidate)
+    label = candidate_label(candidate, payload, index)
+    source_payload, source_kind = resolve_source_payload(candidate, payload)
+    metrics = priority_metrics(source_payload, source_kind, request["prefer_visuals"])
+    draft_mode, image_strategy = choose_defaults(candidate, metrics, request)
+    source_result_path = sources_dir / f"{index:02d}-{slugify(label, f'candidate-{index:02d}')}-source-result.json"
+    write_json(source_result_path, source_payload)
+    return (
+        index,
+        {
+            "index": index,
+            "label": label,
+            "status": "ok",
+            "source_kind": source_kind,
+            "source_result_path": str(source_result_path),
+            "draft_mode": draft_mode,
+            "image_strategy": image_strategy,
+            **metrics,
+        },
+    )
+
+
+def build_candidate_error_result(request: dict[str, Any], candidate: dict[str, Any], index: int, error: Exception) -> dict[str, Any]:
+    label = clean_text(candidate.get("label") or candidate.get("topic")) or f"candidate-{index:02d}"
+    draft_mode = clean_text(candidate.get("draft_mode")) or clean_text(request.get("default_draft_mode")) or "balanced"
+    image_strategy = clean_text(candidate.get("image_strategy")) or clean_text(request.get("default_image_strategy")) or "mixed"
+    message = clean_text(error) or error.__class__.__name__
+    return {
+        "index": index,
+        "label": label,
+        "status": "error",
+        "error_message": message,
+        "source_kind": "error",
+        "source_result_path": "",
+        "draft_mode": draft_mode,
+        "image_strategy": image_strategy,
+        "priority_score": -1,
+        "local_image_count": 0,
+        "remote_image_count": 0,
+        "blocked_source_count": 0,
+        "source_count": 0,
+        "top_signal_score": 0,
+        "confidence_width": 100,
+        "reason_summary": f"Candidate failed during ranking: {message}",
+    }
+
+
 def build_ranked_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
-    ranked: list[dict[str, Any]] = []
     sources_dir = request["output_dir"] / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
-    for index, candidate in enumerate(request["candidates"], start=1):
-        candidate = safe_dict(candidate)
-        payload = load_candidate_payload(candidate)
-        label = candidate_label(candidate, payload, index)
-        source_payload, source_kind = resolve_source_payload(candidate, payload)
-        metrics = priority_metrics(source_payload, source_kind, request["prefer_visuals"])
-        draft_mode, image_strategy = choose_defaults(candidate, metrics, request)
-        source_result_path = sources_dir / f"{index:02d}-{slugify(label, f'candidate-{index:02d}')}-source-result.json"
-        write_json(source_result_path, source_payload)
-        ranked.append(
-            {
-                "index": index,
-                "label": label,
-                "source_kind": source_kind,
-                "source_result_path": str(source_result_path),
-                "draft_mode": draft_mode,
-                "image_strategy": image_strategy,
-                **metrics,
+    ranked_by_index: dict[int, dict[str, Any]] = {}
+    candidate_by_index = {index: safe_dict(candidate) for index, candidate in enumerate(request["candidates"], start=1)}
+    serial_mode = request.get("max_parallel_candidates", 1) <= 1 or len(request["candidates"]) <= 1
+    if serial_mode:
+        for index, candidate in candidate_by_index.items():
+            try:
+                _, result_item = rank_single_candidate(request, candidate, index, sources_dir)
+            except Exception as exc:
+                result_item = build_candidate_error_result(request, candidate, index, exc)
+            ranked_by_index[index] = result_item
+    else:
+        with ThreadPoolExecutor(max_workers=request["max_parallel_candidates"]) as executor:
+            future_map = {
+                executor.submit(rank_single_candidate, request, candidate, index, sources_dir): index
+                for index, candidate in candidate_by_index.items()
             }
-        )
-    ranked.sort(key=lambda item: (int(item.get("priority_score", 0)), int(item.get("local_image_count", 0)), int(item.get("source_count", 0))), reverse=True)
+            for future in as_completed(future_map):
+                index = future_map[future]
+                try:
+                    _, result_item = future.result()
+                except Exception as exc:
+                    result_item = build_candidate_error_result(request, candidate_by_index[index], index, exc)
+                ranked_by_index[index] = result_item
+    ranked = [ranked_by_index[index] for index in sorted(ranked_by_index)]
+    ranked.sort(
+        key=lambda item: (
+            int(item.get("status") == "ok"),
+            int(item.get("priority_score", 0)),
+            int(item.get("local_image_count", 0)),
+            int(item.get("source_count", 0)),
+        ),
+        reverse=True,
+    )
     return ranked
 
 
 def build_batch_request(request: dict[str, Any], ranked_candidates: list[dict[str, Any]]) -> dict[str, Any]:
-    selected = ranked_candidates[: request["top_n"]]
+    selected = [item for item in ranked_candidates if item.get("status") == "ok"][: request["top_n"]]
     items = []
     for item in selected:
         items.append(
@@ -251,9 +314,11 @@ def build_batch_request(request: dict[str, Any], ranked_candidates: list[dict[st
         "output_dir": str(request["output_dir"] / "batch"),
         "default_draft_mode": request.get("default_draft_mode"),
         "default_image_strategy": request.get("default_image_strategy"),
+        "default_language_mode": request.get("default_language_mode"),
         "default_tone": request.get("default_tone"),
         "default_max_images": request.get("default_max_images"),
         "default_target_length_chars": request.get("default_target_length_chars"),
+        "max_parallel_topics": request.get("max_parallel_topics", 1),
         "items": items,
     }
     return batch_request
@@ -266,6 +331,8 @@ def build_report(result: dict[str, Any]) -> str:
         f"- Analysis time: {clean_text(result.get('analysis_time'))}",
         f"- Candidates scanned: {result.get('candidate_count', 0)}",
         f"- Selected for batch: {result.get('selected_count', 0)}",
+        f"- Max parallel candidates: {result.get('max_parallel_candidates', 1)}",
+        f"- Max parallel topics: {result.get('max_parallel_topics', 1)}",
         "",
         "## Ranking",
         "",
@@ -295,15 +362,27 @@ def run_article_auto_queue(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request["output_dir"].mkdir(parents=True, exist_ok=True)
     ranked_candidates = build_ranked_candidates(request)
     batch_request = build_batch_request(request, ranked_candidates)
-    batch_result = run_article_batch_workflow(batch_request)
+    if batch_request["items"]:
+        batch_result = run_article_batch_workflow(batch_request)
+    else:
+        batch_result = {
+            "status": "skipped",
+            "report_path": "",
+            "items": [],
+            "succeeded_items": 0,
+            "failed_items": 0,
+            "report_markdown": "No valid candidates were available for batch execution.\n",
+        }
     batch_result_path = request["output_dir"] / "batch-result.json"
     write_json(batch_result_path, batch_result)
     result = {
-        "status": "ok",
+        "status": "ok" if batch_request["items"] else "partial",
         "workflow_kind": "article_auto_queue",
         "analysis_time": request["analysis_time"].isoformat(),
         "candidate_count": len(ranked_candidates),
-        "selected_count": request["top_n"],
+        "selected_count": len(batch_request["items"]),
+        "max_parallel_candidates": request.get("max_parallel_candidates", 1),
+        "max_parallel_topics": request.get("max_parallel_topics", 1),
         "ranked_candidates": ranked_candidates,
         "batch_request_path": str(request["output_dir"] / "batch-request.json"),
         "batch_result": {

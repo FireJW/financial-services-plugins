@@ -6,7 +6,8 @@ argument-hint: "[request-json]"
 # Article Draft Command
 
 Use this command when the user wants a first article package built from an
-existing `x-index` or `news-index` result.
+existing `x-index` or `news-index` result, optionally with an attached
+`analysis_brief`.
 
 The output should include:
 
@@ -20,9 +21,10 @@ The output should include:
 Default behavior:
 
 1. load an existing indexed evidence result
-2. choose the most useful images and screenshots
-3. generate a reviewable article draft
-4. keep the citation list and image package attached
+2. load or build an `analysis_brief`
+3. choose the most useful images and screenshots
+4. generate a reviewable article draft
+5. keep the citation list and image package attached
 
 Useful modes:
 
@@ -61,6 +63,10 @@ The draft result includes both:
   - direct image assets ready to embed in the article markdown
 - `article_markdown`
   - a reviewable article draft with those images already inserted
+- `draft_thesis`
+  - the current article-level main point
+- `draft_claim_map`
+  - the key draft claims and the citations supporting them
 
 Useful request flags:
 

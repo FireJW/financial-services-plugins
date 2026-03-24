@@ -5,9 +5,11 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from article_brief_runtime import build_analysis_brief
 from article_cleanup_runtime import cleanup_article_temp_dirs
 from article_feedback_profiles import feedback_profile_status, resolve_profile_dir
 from article_draft_flow_runtime import build_article_draft, clean_text, load_json, safe_dict, safe_list, write_json
+from article_revise_flow_runtime import build_article_revision
 from news_index_runtime import isoformat_or_blank, parse_datetime, run_news_index, slugify
 from x_index_runtime import run_x_index
 
@@ -114,6 +116,15 @@ def build_draft_payload(request: dict[str, Any], source_result: dict[str, Any]) 
     return draft_payload
 
 
+def build_brief_payload(request: dict[str, Any], source_result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source_result": source_result,
+        "source_result_path": request.get("source_result_path"),
+        "topic": request.get("topic"),
+        "analysis_time": isoformat_or_blank(request["analysis_time"]),
+    }
+
+
 def build_revision_template(draft_result: dict[str, Any]) -> dict[str, Any]:
     request = safe_dict(draft_result.get("request"))
     article_package = safe_dict(draft_result.get("article_package"))
@@ -197,19 +208,118 @@ def summarize_feedback_stage(draft_result: dict[str, Any]) -> dict[str, Any]:
     return feedback_profile_status(profile_dir, topic)
 
 
+def summarize_brief_decisions(brief_result: dict[str, Any]) -> dict[str, Any]:
+    analysis_brief = safe_dict(brief_result.get("analysis_brief"))
+    canonical_facts = safe_list(analysis_brief.get("canonical_facts"))
+    not_proven = safe_list(analysis_brief.get("not_proven"))
+    story_angles = safe_list(analysis_brief.get("story_angles"))
+    lead_canonical_fact = clean_text(safe_dict((canonical_facts or [{}])[0]).get("claim_text"))
+    lead_not_proven = clean_text(safe_dict((not_proven or [{}])[0]).get("claim_text"))
+    top_story_angle = clean_text(safe_dict((story_angles or [{}])[0]).get("angle"))
+    return {
+        "recommended_thesis": clean_text(analysis_brief.get("recommended_thesis")),
+        "lead_canonical_fact": lead_canonical_fact,
+        "lead_not_proven": lead_not_proven,
+        "top_story_angle": top_story_angle,
+        "voice_constraints": clean_text_list_preview(analysis_brief.get("voice_constraints"), limit=3),
+        "canonical_fact_count": len(canonical_facts),
+        "not_proven_count": len(not_proven),
+    }
+
+
+def clean_text_list_preview(value: Any, *, limit: int = 3) -> list[str]:
+    return [clean_text(item) for item in safe_list(value) if clean_text(item)][: max(1, limit)]
+
+
+def summarize_draft_decisions(draft_result: dict[str, Any]) -> dict[str, Any]:
+    article_package = safe_dict(draft_result.get("article_package"))
+    style_profile = safe_dict(article_package.get("style_profile_applied"))
+    effective_request = safe_dict(style_profile.get("effective_request"))
+    draft_claim_map = safe_list(article_package.get("draft_claim_map"))
+    return {
+        "title": clean_text(article_package.get("title")),
+        "draft_thesis": clean_text(article_package.get("draft_thesis")),
+        "top_claims": [
+            {
+                "claim_label": clean_text(item.get("claim_label")),
+                "claim_text": clean_text(item.get("claim_text")),
+                "citation_ids": clean_text_list_preview(item.get("citation_ids"), limit=4),
+                "support_level": clean_text(item.get("support_level")),
+            }
+            for item in draft_claim_map[:4]
+            if clean_text(item.get("claim_text"))
+        ],
+        "style_effective_request": {
+            "language_mode": clean_text(effective_request.get("language_mode")),
+            "draft_mode": clean_text(effective_request.get("draft_mode")),
+            "image_strategy": clean_text(effective_request.get("image_strategy")),
+            "tone": clean_text(effective_request.get("tone")),
+            "must_include": clean_text_list_preview(effective_request.get("must_include"), limit=3),
+            "must_avoid": clean_text_list_preview(effective_request.get("must_avoid"), limit=3),
+        },
+        "writer_risk_notes": clean_text_list_preview(article_package.get("writer_risk_notes"), limit=4),
+    }
+
+
+def summarize_review_decisions(review_result: dict[str, Any]) -> dict[str, Any]:
+    review_package = safe_dict(review_result.get("review_rewrite_package"))
+    attacks = safe_list(review_package.get("attacks"))
+    severity_rank = {"critical": 3, "major": 2, "minor": 1}
+    highest_attack = {}
+    for item in attacks:
+        if severity_rank.get(clean_text(item.get("severity")), 0) > severity_rank.get(clean_text(highest_attack.get("severity")), 0):
+            highest_attack = safe_dict(item)
+    return {
+        "quality_gate": clean_text(review_package.get("quality_gate")),
+        "attack_count": len(attacks),
+        "highest_attack": {
+            "severity": clean_text(highest_attack.get("severity")),
+            "title": clean_text(highest_attack.get("title")),
+        },
+        "attacks": [
+            {
+                "severity": clean_text(item.get("severity")),
+                "title": clean_text(item.get("title")),
+                "detail": clean_text(item.get("detail")),
+            }
+            for item in attacks[:4]
+        ],
+        "claims_removed_or_softened": clean_text_list_preview(review_package.get("claims_removed_or_softened"), limit=4),
+        "remaining_risks": clean_text_list_preview(review_package.get("remaining_risks"), limit=4),
+    }
+
+
+def build_decision_trace(brief_result: dict[str, Any], draft_result: dict[str, Any], review_result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "brief": summarize_brief_decisions(brief_result),
+        "draft": summarize_draft_decisions(draft_result),
+        "review": summarize_review_decisions(review_result),
+    }
+
+
 def build_report_markdown(result: dict[str, Any]) -> str:
     source_stage = safe_dict(result.get("source_stage"))
+    brief_stage = safe_dict(result.get("brief_stage"))
     draft_stage = safe_dict(result.get("draft_stage"))
     review_stage = safe_dict(result.get("review_stage"))
+    final_stage = safe_dict(result.get("final_stage"))
     asset_stage = safe_dict(result.get("asset_stage"))
     feedback_stage = safe_dict(result.get("feedback_stage"))
+    decision_trace = safe_dict(result.get("decision_trace"))
+    brief_trace = safe_dict(decision_trace.get("brief"))
+    draft_trace = safe_dict(decision_trace.get("draft"))
+    review_trace = safe_dict(decision_trace.get("review"))
     lines = [
         f"# Article Workflow: {clean_text(result.get('topic'))}",
         "",
         f"- Analysis time: {clean_text(result.get('analysis_time'))}",
         f"- Source stage: {clean_text(source_stage.get('source_kind'))}",
+        f"- Brief thesis: {clean_text(brief_stage.get('recommended_thesis')) or 'n/a'}",
         f"- Draft mode: {clean_text(draft_stage.get('draft_mode'))}",
         f"- Draft title: {clean_text(draft_stage.get('title'))}",
+        f"- Rewrite mode: {clean_text(final_stage.get('rewrite_mode')) or 'n/a'}",
+        f"- Pre-rewrite quality gate: {clean_text(final_stage.get('pre_rewrite_quality_gate')) or 'n/a'}",
+        f"- Review quality gate: {clean_text(final_stage.get('quality_gate')) or 'n/a'}",
         f"- Images kept: {draft_stage.get('image_count', 0)}",
         f"- Citations kept: {draft_stage.get('citation_count', 0)}",
         "",
@@ -217,15 +327,60 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         "",
         f"- Source result: {clean_text(source_stage.get('result_path')) or 'not written'}",
         f"- Source report: {clean_text(source_stage.get('report_path')) or 'not written'}",
+        f"- Brief result: {clean_text(brief_stage.get('result_path')) or 'not written'}",
+        f"- Brief report: {clean_text(brief_stage.get('report_path')) or 'not written'}",
         f"- Draft result: {clean_text(draft_stage.get('result_path')) or 'not written'}",
         f"- Draft report: {clean_text(draft_stage.get('report_path')) or 'not written'}",
         f"- Draft preview: {clean_text(draft_stage.get('preview_path')) or 'not written'}",
+        f"- Review result: {clean_text(review_stage.get('result_path')) or 'not written'}",
+        f"- Review report: {clean_text(review_stage.get('report_path')) or 'not written'}",
         f"- Review template: {clean_text(review_stage.get('revision_template_path')) or 'not written'}",
+        f"- Final article result: {clean_text(final_stage.get('result_path')) or 'not written'}",
         "",
         "## Next Step",
         "",
-        "Use the draft result plus the review template to run one revision pass without re-indexing the same material.",
+        "Use the final article result as the current best version, and keep the review template for the next human-guided revision pass.",
     ]
+    lines.extend(
+        [
+            "",
+            "## Why This Draft Looks This Way",
+            "",
+            f"- Recommended thesis: {clean_text(brief_trace.get('recommended_thesis')) or 'none'}",
+            f"- Lead confirmed fact: {clean_text(brief_trace.get('lead_canonical_fact')) or 'none'}",
+            f"- Main unresolved claim: {clean_text(brief_trace.get('lead_not_proven')) or 'none'}",
+            f"- Chosen story angle: {clean_text(brief_trace.get('top_story_angle')) or 'none'}",
+            f"- Style applied: language={clean_text(safe_dict(draft_trace.get('style_effective_request')).get('language_mode')) or 'n/a'}, draft_mode={clean_text(safe_dict(draft_trace.get('style_effective_request')).get('draft_mode')) or 'n/a'}, image_strategy={clean_text(safe_dict(draft_trace.get('style_effective_request')).get('image_strategy')) or 'n/a'}, tone={clean_text(safe_dict(draft_trace.get('style_effective_request')).get('tone')) or 'n/a'}",
+        ]
+    )
+    for item in clean_text_list_preview(brief_trace.get("voice_constraints"), limit=3):
+        lines.append(f"- Voice constraint: {item}")
+    for item in clean_text_list_preview(draft_trace.get("writer_risk_notes"), limit=3):
+        lines.append(f"- Writer risk note: {item}")
+    lines.extend(["", "## Claim Support Map", ""])
+    for item in safe_list(draft_trace.get("top_claims")):
+        lines.append(
+            f"- {clean_text(item.get('claim_label'))}: {clean_text(item.get('claim_text'))} | citations: "
+            f"{', '.join(clean_text_list_preview(item.get('citation_ids'), limit=4)) or 'none'} | support: {clean_text(item.get('support_level')) or 'unknown'}"
+        )
+    if not safe_list(draft_trace.get("top_claims")):
+        lines.append("- None")
+    lines.extend(
+        [
+            "",
+            "## Red Team Summary",
+            "",
+            f"- Quality gate: {clean_text(review_trace.get('quality_gate')) or 'unknown'}",
+            f"- Attack count: {review_trace.get('attack_count', 0)}",
+            f"- Highest attack: {clean_text(safe_dict(review_trace.get('highest_attack')).get('severity')).upper() or 'NONE'} | {clean_text(safe_dict(review_trace.get('highest_attack')).get('title')) or 'none'}",
+        ]
+    )
+    for item in safe_list(review_trace.get("attacks")):
+        lines.append(f"- Attack: {clean_text(item.get('severity')).upper()} | {clean_text(item.get('title'))} | {clean_text(item.get('detail'))}")
+    for item in clean_text_list_preview(review_trace.get("claims_removed_or_softened"), limit=4):
+        lines.append(f"- Softened or removed: {item}")
+    for item in clean_text_list_preview(review_trace.get("remaining_risks"), limit=4):
+        lines.append(f"- Remaining risk: {item}")
     cleanup_stage = safe_dict(result.get("cleanup_stage"))
     if cleanup_stage:
         lines.extend(
@@ -305,7 +460,16 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     write_json(source_result_path, source_payload)
     source_report_path.write_text(source_payload.get("report_markdown", ""), encoding="utf-8-sig")
 
+    brief_payload = build_brief_payload(request, source_payload)
+    brief_result = build_analysis_brief(brief_payload)
+    brief_result_path = request["output_dir"] / "analysis-brief-result.json"
+    brief_report_path = request["output_dir"] / "analysis-brief-report.md"
+    write_json(brief_result_path, brief_result)
+    brief_report_path.write_text(brief_result.get("report_markdown", ""), encoding="utf-8-sig")
+
     draft_payload = build_draft_payload(request, source_payload)
+    draft_payload["analysis_brief"] = safe_dict(brief_result.get("analysis_brief"))
+    draft_payload["analysis_brief_path"] = str(brief_result_path)
     draft_result = build_article_draft(draft_payload)
     draft_result_path = request["output_dir"] / "article-draft-result.json"
     draft_report_path = request["output_dir"] / "article-draft-report.md"
@@ -314,6 +478,22 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     draft_report_path.write_text(draft_result.get("report_markdown", ""), encoding="utf-8-sig")
     draft_preview_path.write_text(draft_result.get("preview_html", ""), encoding="utf-8-sig")
 
+    review_result = build_article_revision(
+        {
+            "draft_result": draft_result,
+            "analysis_time": isoformat_or_blank(request["analysis_time"]),
+            "feedback_profile_dir": request.get("feedback_profile_dir"),
+        }
+    )
+    review_result_path = request["output_dir"] / "article-revise-result.json"
+    review_report_path = request["output_dir"] / "article-revise-report.md"
+    review_preview_path = request["output_dir"] / "article-revise-preview.html"
+    final_article_result_path = request["output_dir"] / "final-article-result.json"
+    write_json(review_result_path, review_result)
+    review_report_path.write_text(review_result.get("report_markdown", ""), encoding="utf-8-sig")
+    review_preview_path.write_text(review_result.get("preview_html", ""), encoding="utf-8-sig")
+    write_json(final_article_result_path, safe_dict(review_result.get("final_article_result")))
+
     revision_template = build_revision_template(draft_result)
     revision_template_path = request["output_dir"] / "article-revise-template.json"
     write_json(revision_template_path, revision_template)
@@ -321,8 +501,9 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     article_package = safe_dict(draft_result.get("article_package"))
     selected_images = safe_list(article_package.get("selected_images")) or safe_list(article_package.get("image_blocks"))
     citations = safe_list(article_package.get("citations"))
-    asset_stage = summarize_asset_stage(draft_result, draft_result_path)
-    feedback_stage = summarize_feedback_stage(draft_result)
+    asset_stage = summarize_asset_stage(review_result, review_result_path)
+    feedback_stage = summarize_feedback_stage(review_result)
+    decision_trace = build_decision_trace(brief_result, draft_result, review_result)
     result = {
         "status": "ok",
         "workflow_kind": "article_workflow",
@@ -333,12 +514,24 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "result_path": str(source_result_path),
             "report_path": str(source_report_path),
         },
+        "brief_stage": {
+            "result_path": str(brief_result_path),
+            "report_path": str(brief_report_path),
+            "recommended_thesis": clean_text(safe_dict(brief_result.get("analysis_brief")).get("recommended_thesis")),
+            "canonical_fact_count": len(safe_list(safe_dict(brief_result.get("analysis_brief")).get("canonical_facts"))),
+            "not_proven_count": len(safe_list(safe_dict(brief_result.get("analysis_brief")).get("not_proven"))),
+            "top_story_angle": clean_text(
+                safe_dict((safe_list(safe_dict(brief_result.get("analysis_brief")).get("story_angles")) or [{}])[0]).get("angle")
+            ),
+        },
         "draft_stage": {
             "result_path": str(draft_result_path),
             "report_path": str(draft_report_path),
             "preview_path": str(draft_preview_path),
             "title": clean_text(article_package.get("title")),
+            "draft_thesis": clean_text(article_package.get("draft_thesis")),
             "draft_mode": clean_text(article_package.get("draft_mode")),
+            "style_profile_applied": deepcopy(safe_dict(article_package.get("style_profile_applied"))),
             "image_count": len(selected_images),
             "citation_count": len(citations),
         },
@@ -346,13 +539,31 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "asset_stage": asset_stage,
         "feedback_stage": feedback_stage,
         "review_stage": {
+            "result_path": str(review_result_path),
+            "report_path": str(review_report_path),
+            "preview_path": str(review_preview_path),
             "revision_template_path": str(revision_template_path),
+            "attack_count": len(safe_list(safe_dict(review_result.get("review_rewrite_package")).get("attacks"))),
+            "claims_softened_count": len(clean_text_list_preview(safe_dict(review_result.get("review_rewrite_package")).get("claims_removed_or_softened"), limit=20)),
             "suggested_revise_command": (
                 f"financial-analysis\\skills\\autoresearch-info-index\\scripts\\run_article_revise.cmd "
                 f"\"{draft_result_path}\" \"{revision_template_path}\" --output \"{request['output_dir'] / 'article-revise-result.json'}\" "
                 f"--markdown-output \"{request['output_dir'] / 'article-revise-report.md'}\""
             ),
         },
+        "final_stage": {
+            "result_path": str(final_article_result_path),
+            "rewrite_mode": clean_text(safe_dict(review_result.get("review_rewrite_package")).get("rewrite_mode")),
+            "pre_rewrite_quality_gate": clean_text(safe_dict(review_result.get("review_rewrite_package")).get("pre_rewrite_quality_gate")),
+            "quality_gate": clean_text(safe_dict(review_result.get("review_rewrite_package")).get("quality_gate")),
+            "draft_thesis": clean_text(safe_dict(review_result.get("final_article_result")).get("draft_thesis")),
+        },
+        "source_result": source_payload,
+        "analysis_brief": safe_dict(brief_result.get("analysis_brief")),
+        "draft_result": draft_result,
+        "review_result": review_result,
+        "final_article_result": safe_dict(review_result.get("final_article_result")),
+        "decision_trace": decision_trace,
     }
     result["report_markdown"] = build_report_markdown(result)
     workflow_report_path = request["output_dir"] / "workflow-report.md"

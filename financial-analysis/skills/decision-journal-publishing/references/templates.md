@@ -13,6 +13,12 @@ Use this structure:
 7. CTA: `领取 Lite 模板` or `进入模板包等候名单`
 8. mandatory footer
 
+Packaging rule:
+
+1. if the post is top-of-funnel, lead the title with a real event, affected
+   group, or concrete consequence
+2. put the method term inside the body or subtitle, not always in the headline
+
 ## Mandatory Footer
 
 Every public finance post should end with:
@@ -31,6 +37,12 @@ Every public finance post should end with:
 5. one next watch item
 6. CTA to WeChat
 7. one-line boundary statement if the topic is sensitive
+
+Headline rule:
+
+1. prefer `who is affected + what changed + why it matters`
+2. avoid headlines that start with internal method jargon such as `冲突矩阵`,
+   `模板骨架`, or `证据分层`
 
 ## Xiaohongshu Slice Template
 
@@ -128,6 +140,20 @@ Avoid:
 3. `精准预言`
 4. `闭眼上`
 5. `稳赚`
+
+## Benchmark-Aligned Outer Packaging
+
+High-read benchmark cases on WeChat and Toutiao usually package serious content
+with one of these outer shells:
+
+1. a public event that already has attention
+2. an affected group under pressure
+3. one concrete puzzle the reader wants resolved
+4. one obvious business or market consequence
+
+Your inner structure can stay evidence-first and method-heavy.
+
+Your outer packaging should still feel public-facing.
 
 ## CTA Split
 

@@ -1,3 +1,2 @@
 @echo off
-set PYTHONDONTWRITEBYTECODE=1
 "D:\Users\rickylu\.codex\vendor\python312\python.exe" %*

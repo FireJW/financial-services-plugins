@@ -10,6 +10,7 @@ from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
+from article_brief_runtime import build_analysis_brief
 from article_feedback_profiles import feedback_profile_status, load_feedback_profiles, merge_request_with_profiles, resolve_profile_dir
 from news_index_runtime import isoformat_or_blank, load_json, parse_datetime, short_excerpt, write_json
 
@@ -81,6 +82,11 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         source_result = load_json(Path(source_result_path).resolve())
     if not isinstance(source_result, dict):
         raise ValueError("article-draft requires source_result or source_result_path")
+    analysis_brief = safe_dict(payload.get("analysis_brief"))
+    analysis_brief_path = clean_text(payload.get("analysis_brief_path"))
+    if not analysis_brief and analysis_brief_path:
+        loaded_brief = load_json(Path(analysis_brief_path).resolve())
+        analysis_brief = safe_dict(loaded_brief.get("analysis_brief")) or loaded_brief
 
     source_request = (
         safe_dict(source_result.get("request"))
@@ -114,6 +120,8 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "feedback_profile_dir": clean_text(payload.get("feedback_profile_dir")),
         "source_result": source_result,
         "source_result_path": source_result_path,
+        "analysis_brief": analysis_brief,
+        "analysis_brief_path": analysis_brief_path,
     }
     profile_dir = resolve_profile_dir(request.get("feedback_profile_dir"))
     profiles = load_feedback_profiles(profile_dir, request.get("topic", "article-topic"))
@@ -243,6 +251,7 @@ def build_citations(source_result: dict[str, Any]) -> list[dict[str, Any]]:
         citations.append(
             {
                 "citation_id": f"S{len(citations) + 1}",
+                "source_id": clean_text(observation.get("source_id")),
                 "source_name": clean_text(observation.get("source_name")) or "Unknown source",
                 "url": clean_text(observation.get("url")),
                 "source_tier": int(observation.get("source_tier", 3)),
@@ -440,11 +449,50 @@ def build_subtitle(request: dict[str, Any], summary: dict[str, Any], selected_im
     )
 
 
-def apply_must_avoid(text: str, must_avoid: list[str]) -> str:
-    updated = text
-    for phrase in must_avoid:
-        updated = updated.replace(phrase, "")
-    return updated
+def citation_ids_for_source_ids(citations: list[dict[str, Any]], source_ids: list[str]) -> list[str]:
+    citation_ids: list[str] = []
+    source_id_set = set(clean_string_list(source_ids))
+    for citation in citations:
+        citation_source_id = clean_text(citation.get("source_id"))
+        citation_id = clean_text(citation.get("citation_id"))
+        if citation_source_id in source_id_set and citation_id and citation_id not in citation_ids:
+            citation_ids.append(citation_id)
+    return citation_ids
+
+
+def refs_for_source_ids(citations: list[dict[str, Any]], source_ids: list[str]) -> str:
+    refs = [f"[{citation_id}]" for citation_id in citation_ids_for_source_ids(citations, source_ids)]
+    return "".join(refs)
+
+
+def top_citation_ids(citations: list[dict[str, Any]], limit: int = 2) -> list[str]:
+    citation_ids: list[str] = []
+    for citation in citations:
+        citation_id = clean_text(citation.get("citation_id"))
+        if citation_id and citation_id not in citation_ids:
+            citation_ids.append(citation_id)
+        if len(citation_ids) >= max(1, limit):
+            break
+    return citation_ids
+
+
+def preferred_citation_ids(
+    citations: list[dict[str, Any]],
+    source_ids: list[str] | None = None,
+    *,
+    limit: int = 2,
+) -> list[str]:
+    matched = citation_ids_for_source_ids(citations, clean_string_list(source_ids))
+    if matched:
+        return matched[: max(1, limit)]
+    ranked = [
+        item
+        for item in citations
+        if clean_text(item.get("access_mode")) != "blocked" and int(item.get("source_tier", 3)) <= 1
+    ]
+    if not ranked:
+        ranked = [item for item in citations if clean_text(item.get("access_mode")) != "blocked"]
+    return top_citation_ids(ranked or citations, limit=limit)
 
 
 def join_with_semicolons(items: list[str], empty_text: str) -> str:
@@ -456,20 +504,11 @@ def strip_terminal_punctuation(text: str) -> str:
     return clean_text(text).rstrip(" .;:")
 
 
-def sentence_case_list(items: list[str]) -> list[str]:
-    return [strip_terminal_punctuation(item) for item in items if strip_terminal_punctuation(item)]
-
-
 def lowercase_first(text: str) -> str:
     cleaned = clean_text(text)
     if not cleaned:
         return ""
     return cleaned[:1].lower() + cleaned[1:]
-
-
-def citation_refs(citations: list[dict[str, Any]], start: int = 0, count: int = 2) -> str:
-    refs = [f"[{item.get('citation_id', '')}]" for item in citations[start : start + count] if clean_text(item.get("citation_id"))]
-    return "".join(refs)
 
 
 def join_with_commas(items: list[str], empty_text: str) -> str:
@@ -481,20 +520,6 @@ def join_with_commas(items: list[str], empty_text: str) -> str:
     if len(clean_items) == 2:
         return f"{clean_items[0]} and {clean_items[1]}"
     return f"{', '.join(clean_items[:-1])}, and {clean_items[-1]}"
-
-
-def claim_sentence(items: list[str], empty_text: str) -> str:
-    clean_items = sentence_case_list(items)
-    return join_with_semicolons(clean_items, empty_text)
-
-
-def latest_source_names(signals: list[dict[str, Any]]) -> str:
-    names: list[str] = []
-    for item in signals[:3]:
-        name = clean_text(item.get("source_name"))
-        if name and name not in names:
-            names.append(name)
-    return join_with_commas(names, "recent public reporting")
 
 
 def bilingual_heading(zh: str, en: str, mode: str) -> str:
@@ -556,28 +581,268 @@ def visual_evidence_sentence(images: list[dict[str, Any]]) -> str:
     return "Visual evidence layer: " + "; ".join(parts) + "."
 
 
-def image_sentence_zh(images: list[dict[str, Any]]) -> str:
-    if not images:
-        return "当前这版草稿还没有可直接复用的图片资产。"
-    parts = []
-    for item in images[:3]:
-        source_name = clean_text(item.get("source_name")) or "未命名来源"
-        caption = short_excerpt(clean_text(item.get("caption")), limit=80) or "暂无机器摘要"
-        parts.append(f"{source_name}：{caption}")
-    return "当前保留下来的图片包括：" + "；".join(parts) + "。"
+def apply_must_avoid(text: str, must_avoid: list[str]) -> str:
+    updated = text
+    for phrase in must_avoid:
+        updated = updated.replace(phrase, "")
+    return updated
 
 
-def visual_evidence_sentence_zh(images: list[dict[str, Any]]) -> str:
-    if not images:
-        return "目前没有可直接复用的图片资产，因此这版内容实际上还不能算真正的图文优先稿。"
-    parts = []
-    for item in images[:3]:
-        role = clean_text(item.get("role")).replace("_", " ")
-        status = clean_text(item.get("status")) or "unknown"
-        caption = short_excerpt(clean_text(item.get("caption")), limit=90) or "暂无机器摘要"
-        parts.append(f"{role}：{caption} [{status}]")
-    return "图片证据层显示：" + "；".join(parts) + "。"
+def derive_analysis_brief_from_digest(
+    source_summary: dict[str, Any],
+    evidence_digest: dict[str, Any],
+    citations: list[dict[str, Any]],
+    images: list[dict[str, Any]],
+) -> dict[str, Any]:
+    primary_source_ids = clean_string_list([citation.get("source_id") for citation in citations[:2]])
+    canonical_facts = [
+        {
+            "claim_id": f"derived-confirmed-{index + 1}",
+            "claim_text": text,
+            "source_ids": primary_source_ids if index == 0 else [],
+            "promotion_state": "core",
+        }
+        for index, text in enumerate(clean_string_list(evidence_digest.get("confirmed"))[:4])
+    ]
+    not_proven = [
+        {
+            "claim_id": f"derived-not-proven-{index + 1}",
+            "claim_text": text,
+            "source_ids": [],
+            "status": "unclear",
+        }
+        for index, text in enumerate(clean_string_list(evidence_digest.get("not_confirmed"))[:4])
+    ]
+    latest_signal_summary = signal_sentence(normalize_latest_signals(evidence_digest.get("latest_signals")))
+    story_angles = [
+        {
+            "angle": "Lead with the confirmed public record before discussing faster-moving signals.",
+            "risk": "Do not turn social or single-source updates into settled fact.",
+        }
+    ]
+    if images:
+        story_angles.append(
+            {
+                "angle": "Use saved images as supporting context, not as proof beyond what they visibly show.",
+                "risk": "Treat visuals as the last public indication, not ground truth.",
+            }
+        )
+    open_questions = clean_string_list(evidence_digest.get("next_watch_items"))[:4]
+    voice_constraints = [
+        "Keep facts, inference, and visual hints clearly separated.",
+        "Do not write past the strongest confirmed evidence.",
+    ]
+    if int(source_summary.get("blocked_source_count", 0) or 0) > 0:
+        voice_constraints.append("Some sources were blocked, so the draft should not imply the search was complete.")
+    if clean_text(source_summary.get("confidence_gate")) == "shadow-heavy":
+        voice_constraints.append("Shadow-only signals can raise attention, but they cannot carry the main conclusion alone.")
+    misread_risks = []
+    if not canonical_facts:
+        misread_risks.append("The package does not yet have a strong confirmed fact to anchor the draft.")
+    if int(source_summary.get("blocked_source_count", 0) or 0) > 0:
+        misread_risks.append("Blocked or missing sources could hide confirming or contradicting evidence.")
+    if images:
+        misread_risks.append("Readers may overread the images if the captions are written too strongly.")
+    recommended_thesis = (
+        clean_text(source_summary.get("core_verdict"))
+        or (clean_string_list(evidence_digest.get("confirmed")) or ["Current evidence remains incomplete."])[0]
+    )
+    return {
+        "canonical_facts": canonical_facts,
+        "not_proven": not_proven,
+        "open_questions": open_questions,
+        "trend_lines": [
+            {
+                "trend": "Latest signals",
+                "detail": latest_signal_summary,
+            }
+        ],
+        "scenario_matrix": [],
+        "market_or_reader_relevance": clean_string_list(evidence_digest.get("market_relevance")),
+        "story_angles": story_angles,
+        "image_keep_reasons": [
+            {
+                "image_id": clean_text(item.get("image_id") or item.get("asset_id")),
+                "reason": clean_text(item.get("caption")) or "Retained as visual context for the draft.",
+            }
+            for item in images[:3]
+        ],
+        "voice_constraints": voice_constraints,
+        "recommended_thesis": recommended_thesis,
+        "misread_risks": misread_risks,
+    }
 
+
+def brief_items_text(items: list[dict[str, Any]], fallback: str, *, field: str = "claim_text") -> str:
+    texts = [strip_terminal_punctuation(item.get(field, "")) for item in items if strip_terminal_punctuation(item.get(field, ""))]
+    return join_with_semicolons(texts, fallback)
+
+
+def build_sections_from_brief(
+    request: dict[str, Any],
+    source_summary: dict[str, Any],
+    citations: list[dict[str, Any]],
+    images: list[dict[str, Any]],
+    analysis_brief: dict[str, Any],
+) -> list[dict[str, Any]]:
+    language_mode = request.get("language_mode", "english")
+    canonical_facts = safe_list(analysis_brief.get("canonical_facts"))
+    not_proven = safe_list(analysis_brief.get("not_proven"))
+    trend_lines = safe_list(analysis_brief.get("trend_lines"))
+    story_angles = safe_list(analysis_brief.get("story_angles"))
+    market_relevance = clean_string_list(analysis_brief.get("market_or_reader_relevance"))
+    open_questions = clean_string_list(analysis_brief.get("open_questions"))
+    voice_constraints = clean_string_list(analysis_brief.get("voice_constraints"))
+    recommended_thesis = clean_text(analysis_brief.get("recommended_thesis")) or clean_text(source_summary.get("core_verdict"))
+
+    lead_fact = safe_dict(canonical_facts[0]) if canonical_facts else {}
+    lead_fact_text = clean_text(lead_fact.get("claim_text"))
+    lead_fact_refs = refs_for_source_ids(citations, clean_string_list(lead_fact.get("source_ids")))
+    lead_not_proven = safe_dict(not_proven[0]) if not_proven else {}
+    lead_not_proven_text = clean_text(lead_not_proven.get("claim_text"))
+    lead_not_proven_refs = refs_for_source_ids(citations, clean_string_list(lead_not_proven.get("source_ids")))
+    top_trend = safe_dict(trend_lines[0]) if trend_lines else {}
+    angle_en = clean_text(request.get("angle"))
+    angle_zh = clean_text(request.get("angle_zh") or request.get("angle"))
+
+    opening_parts = []
+    if recommended_thesis:
+        opening_parts.append(f"As of {source_summary.get('analysis_time', '')}, the best writer-safe thesis is: {recommended_thesis}")
+    if lead_fact_text:
+        opening_parts.append(f"The strongest confirmed fact is {lowercase_first(lead_fact_text)}.{lead_fact_refs}")
+    if lead_not_proven_text:
+        opening_parts.append(f"The main unsupported leap is {lowercase_first(lead_not_proven_text)}.{lead_not_proven_refs}")
+    if angle_en:
+        opening_parts.append(f"The chosen writing lens is {strip_terminal_punctuation(angle_en)}.")
+    opening = " ".join(part for part in opening_parts if part)
+
+    opening_zh_parts = []
+    if recommended_thesis:
+        opening_zh_parts.append("\u622a\u81f3 " + source_summary.get("analysis_time", "") + "\uff0c\u5f53\u524d\u6700\u7a33\u59a5\u7684\u5199\u6cd5\u662f\uff1a" + recommended_thesis)
+    if lead_fact_text:
+        opening_zh_parts.append("\u5f53\u524d\u6700\u5f3a\u7684\u5df2\u786e\u8ba4\u4e8b\u5b9e\u662f\uff1a" + lead_fact_text + lead_fact_refs)
+    if lead_not_proven_text:
+        opening_zh_parts.append("\u5f53\u524d\u6700\u9700\u8981\u538b\u4f4f\u7684\u672a\u8bc1\u5b9e\u8df3\u8dc3\u662f\uff1a" + lead_not_proven_text + lead_not_proven_refs)
+    if angle_zh:
+        opening_zh_parts.append("\u8fd9\u7bc7\u7a3f\u5b50\u7684\u5199\u4f5c\u89d2\u5ea6\u662f\uff1a" + strip_terminal_punctuation(angle_zh) + "\u3002")
+    opening_zh = "".join(opening_zh_parts)
+
+    confirmed_sentence = brief_items_text(canonical_facts[:4], "No high-confidence public confirmation is available yet.")
+    confirmed_sentence_zh = brief_items_text(canonical_facts[:4], "\u76ee\u524d\u8fd8\u6ca1\u6709\u8db3\u591f\u5f3a\u7684\u9ad8\u7f6e\u4fe1\u786e\u8ba4\u3002")
+    not_proven_sentence = brief_items_text(not_proven[:4], "No additional unsupported leap stands out yet.")
+    not_proven_sentence_zh = brief_items_text(not_proven[:4], "\u76ee\u524d\u6ca1\u6709\u989d\u5916\u9700\u8981\u5355\u72ec\u5f3a\u8c03\u7684\u672a\u8bc1\u5b9e\u8df3\u8dc3\u3002")
+    trend_sentence = join_with_semicolons(
+        [clean_text(item.get("detail")) or clean_text(item.get("trend")) for item in trend_lines[:3]],
+        "There is not enough clean movement in the evidence pack yet to describe a clear trend.",
+    )
+    trend_sentence_zh = join_with_semicolons(
+        [clean_text(item.get("detail")) or clean_text(item.get("trend")) for item in trend_lines[:3]],
+        "\u5f53\u524d\u8bc1\u636e\u5305\u8fd8\u4e0d\u8db3\u4ee5\u652f\u6301\u66f4\u7ec6\u7684\u8d8b\u52bf\u63cf\u8ff0\u3002",
+    )
+    why_matter = (
+        f"This matters most for {join_with_commas(market_relevance, 'headline-sensitive readers and markets')}."
+        if market_relevance
+        else "This matters because the public evidence is changing fast enough to reshape how the story should be framed."
+    )
+    why_matter_zh = (
+        "\u8fd9\u4ef6\u4e8b\u6700\u503c\u5f97\u5173\u6ce8\u7684\u5bf9\u8c61\u662f " + join_with_commas(market_relevance, "\u5bf9\u6d88\u606f\u9762\u654f\u611f\u7684\u8bfb\u8005\u548c\u5e02\u573a") + "\u3002"
+        if market_relevance
+        else "\u8fd9\u4ef6\u4e8b\u503c\u5f97\u5199\uff0c\u662f\u56e0\u4e3a\u516c\u5f00\u8bc1\u636e\u53d8\u5316\u5f97\u8db3\u591f\u5feb\uff0c\u5df2\u7ecf\u4f1a\u5f71\u54cd\u6545\u4e8b\u8be5\u600e\u4e48\u8bb2\u3002"
+    )
+    angle_sentence = join_with_semicolons(
+        [clean_text(item.get("angle")) for item in story_angles[:3] if clean_text(item.get("angle"))],
+        "No alternate story angle has been isolated yet.",
+    )
+    angle_sentence_zh = join_with_semicolons(
+        [clean_text(item.get("angle")) for item in story_angles[:3] if clean_text(item.get("angle"))],
+        "\u5f53\u524d\u8fd8\u6ca1\u6709\u5355\u72ec\u5206\u79bb\u51fa\u7684\u66ff\u4ee3\u5199\u4f5c\u89d2\u5ea6\u3002",
+    )
+    question_sentence = join_with_semicolons(open_questions[:4], "No additional open question was recorded.")
+    question_sentence_zh = join_with_semicolons(open_questions[:4], "\u5f53\u524d\u6ca1\u6709\u989d\u5916\u8bb0\u5f55\u7684\u5f85\u786e\u8ba4\u95ee\u9898\u3002")
+    boundary_sentence = join_with_semicolons(
+        voice_constraints[:4],
+        "Keep the article cautious where evidence remains partial or conflicted.",
+    )
+    boundary_sentence_zh = join_with_semicolons(
+        voice_constraints[:4],
+        "\u5f53\u8bc1\u636e\u4ecd\u7136\u90e8\u5206\u7f3a\u5931\u6216\u4e92\u76f8\u51b2\u7a81\u65f6\uff0c\u6587\u7ae0\u9700\u8981\u4fdd\u6301\u514b\u5236\u3002",
+    )
+
+    if request.get("draft_mode") == "image_only":
+        return [
+            {
+                "heading": bilingual_heading("\u6838\u5fc3\u5224\u65ad", "Bottom Line", language_mode),
+                "paragraph": bilingual_text(opening_zh or recommended_thesis, opening or recommended_thesis, language_mode),
+            },
+            {
+                "heading": bilingual_heading("\u56fe\u7247\u663e\u793a\u4e86\u4ec0\u4e48", "What The Images Show", language_mode),
+                "paragraph": bilingual_text("\u56fe\u7247\u5c42\u663e\u793a\u7684\u662f\u5f53\u524d\u4fdd\u7559\u4e0b\u6765\u7684\u89c6\u89c9\u8bc1\u636e\u3002", visual_evidence_sentence(images), language_mode),
+            },
+            {
+                "heading": bilingual_heading("\u56fe\u7247\u4e0d\u80fd\u8bc1\u660e\u4ec0\u4e48", "What The Images Do Not Prove", language_mode),
+                "paragraph": bilingual_text(
+                    "\u4ec5\u9760\u56fe\u7247\u5c42\u672c\u8eab\uff0c\u8fd8\u4e0d\u80fd\u8bc1\u660e\uff1a" + not_proven_sentence_zh,
+                    f"The image layer does not by itself prove {not_proven_sentence}.",
+                    language_mode,
+                ),
+            },
+            {
+                "heading": bilingual_heading("\u8fb9\u754c\u6761\u4ef6", "Boundaries", language_mode),
+                "paragraph": bilingual_text(boundary_sentence_zh, boundary_sentence, language_mode),
+            },
+        ]
+
+    sections = [
+        {
+            "heading": bilingual_heading("\u6838\u5fc3\u5224\u65ad", "Bottom Line", language_mode),
+            "paragraph": bilingual_text(opening_zh or recommended_thesis, opening or recommended_thesis, language_mode),
+        },
+        {
+            "heading": bilingual_heading("\u5df2\u786e\u8ba4\u4e0e\u672a\u786e\u8ba4", "Confirmed And Not Confirmed", language_mode),
+            "paragraph": bilingual_text(
+                "\u5df2\u786e\u8ba4\uff1a" + confirmed_sentence_zh + "\u3002\u672a\u8bc1\u5b9e\uff1a" + not_proven_sentence_zh + "\u3002",
+                f"Confirmed: {confirmed_sentence}. Not proven: {not_proven_sentence}.",
+                language_mode,
+            ),
+        },
+        {
+            "heading": bilingual_heading("\u8d8b\u52bf\u4e0e\u6838\u5fc3\u89c2\u70b9", "Trends And Core View", language_mode),
+            "paragraph": bilingual_text(
+                (clean_text(top_trend.get("trend")) or "\u5f53\u524d\u8d8b\u52bf") + "\uff1a" + trend_sentence_zh,
+                f"{clean_text(top_trend.get('trend')) or 'Current trend line'}: {trend_sentence}",
+                language_mode,
+            ),
+        },
+        {
+            "heading": bilingual_heading("\u53ef\u5199\u89d2\u5ea6", "Story Angles", language_mode),
+            "paragraph": bilingual_text(angle_sentence_zh, angle_sentence, language_mode),
+        },
+        {
+            "heading": bilingual_heading("\u4e3a\u4ec0\u4e48\u8fd9\u4ef6\u4e8b\u91cd\u8981", "Why This Matters", language_mode),
+            "paragraph": bilingual_text(why_matter_zh, why_matter, language_mode),
+        },
+        {
+            "heading": bilingual_heading("\u56fe\u7247\u4e0e\u622a\u56fe", "Images And Screenshots", language_mode),
+            "paragraph": bilingual_text("\u5f53\u524d\u4fdd\u7559\u4e0b\u6765\u7684\u56fe\u7247\u548c\u622a\u56fe\u662f\u540e\u7eed\u6210\u6587\u65f6\u6700\u503c\u5f97\u590d\u7528\u7684\u89c6\u89c9\u8bc1\u636e\u3002", image_sentence(images), language_mode),
+        },
+        {
+            "heading": bilingual_heading("\u8fb9\u754c\u4e0e\u5f85\u786e\u8ba4\u70b9", "Boundaries And Open Questions", language_mode),
+            "paragraph": bilingual_text(
+                "\u5f85\u786e\u8ba4\u70b9\uff1a" + question_sentence_zh + "\u3002\u5199\u4f5c\u7ea6\u675f\uff1a" + boundary_sentence_zh,
+                f"Open questions: {question_sentence}. Constraints: {boundary_sentence}",
+                language_mode,
+            ),
+        },
+    ]
+    if request.get("draft_mode") == "image_first":
+        sections.insert(
+            1,
+            {
+                "heading": bilingual_heading("\u89c6\u89c9\u8bc1\u636e", "Visual Evidence", language_mode),
+                "paragraph": bilingual_text("\u89c6\u89c9\u8bc1\u636e\u5c42\u7528\u4e8e\u8bf4\u660e\u56fe\u7247\u73b0\u5728\u5b9e\u9645\u80fd\u652f\u6301\u5230\u54ea\u4e00\u6b65\u3002", visual_evidence_sentence(images), language_mode),
+            },
+        )
+    return sections
 
 def build_sections(
     request: dict[str, Any],
@@ -585,213 +850,87 @@ def build_sections(
     evidence_digest: dict[str, Any],
     citations: list[dict[str, Any]],
     images: list[dict[str, Any]],
+    analysis_brief: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    draft_mode = request.get("draft_mode", "balanced")
-    language_mode = request.get("language_mode", "english")
-    topic = source_summary.get("topic", request.get("topic"))
-    analysis_time = source_summary.get("analysis_time", "")
-    lead_refs = citation_refs(citations, 0, 2)
-    support_refs = citation_refs(citations, 2, 2) or lead_refs
-    background_refs = citation_refs(citations, 4, 2) or support_refs or lead_refs
-    confirmed_items = sentence_case_list(evidence_digest.get("confirmed", []))
-    not_confirmed_items = sentence_case_list(evidence_digest.get("not_confirmed", []))
-    inference_items = sentence_case_list(evidence_digest.get("inference_only", []))
-    confirmed_items_zh = sentence_case_list(evidence_digest.get("confirmed_zh", []))
-    not_confirmed_items_zh = sentence_case_list(evidence_digest.get("not_confirmed_zh", []))
-    inference_items_zh = sentence_case_list(evidence_digest.get("inference_only_zh", []))
-    market_relevance = clean_string_list(evidence_digest.get("market_relevance"))
-    market_relevance_zh = clean_string_list(evidence_digest.get("market_relevance_zh"))
-    signals = normalize_latest_signals(evidence_digest.get("latest_signals"))
-    lead_confirmed = confirmed_items[0] if confirmed_items else ""
-    lead_not_confirmed = not_confirmed_items[0] if not_confirmed_items else ""
-    lead_confirmed_zh = confirmed_items_zh[0] if confirmed_items_zh else lead_confirmed
-    lead_not_confirmed_zh = not_confirmed_items_zh[0] if not_confirmed_items_zh else lead_not_confirmed
+    effective_brief = safe_dict(analysis_brief) or derive_analysis_brief_from_digest(
+        source_summary,
+        evidence_digest,
+        citations,
+        images,
+    )
+    return build_sections_from_brief(request, source_summary, citations, images, effective_brief)
 
-    opening_parts = []
-    if lead_confirmed:
-        opening_parts.append(
-            f"As of {analysis_time}, the strongest public read on '{topic}' is that {lowercase_first(lead_confirmed)}.{lead_refs}"
-        )
-    else:
-        opening_parts.append(
-            f"As of {analysis_time}, the public record around '{topic}' is still incomplete and does not support a single high-conviction call.{lead_refs}"
-        )
-    if lead_not_confirmed:
-        opening_parts.append(
-            f"The same record still does not confirm a stronger leap: {lowercase_first(lead_not_confirmed)}.{support_refs}"
-        )
-    if signals:
-        opening_parts.append(
-            f"The freshest movement in the story is coming from {latest_source_names(signals)}, which keeps the situation active but not settled."
-        )
-    if request.get("angle"):
-        opening_parts.append(f"This draft is written with a specific lens: {strip_terminal_punctuation(request.get('angle'))}.")
-    if request.get("must_include"):
-        opening_parts.append(
-            f"Priority points to keep in view are {join_with_commas(request.get('must_include', [])[:3], 'none')}."
-        )
-    opening = " ".join(opening_parts)
-    opening_zh_parts = []
-    if lead_confirmed_zh:
-        opening_zh_parts.append(
-            f"截至 {analysis_time}，围绕“{topic}”目前最稳妥的公开判断是：{strip_terminal_punctuation(lead_confirmed_zh)}。{lead_refs}"
-        )
-    else:
-        opening_zh_parts.append(
-            f"截至 {analysis_time}，关于“{topic}”的公开信息仍然不完整，还不足以支撑单一且高把握度的判断。{lead_refs}"
-        )
-    if lead_not_confirmed_zh:
-        opening_zh_parts.append(
-            f"但同一批公开材料仍然不足以证明更强的说法：{strip_terminal_punctuation(lead_not_confirmed_zh)}。{support_refs}"
-        )
-    if signals:
-        opening_zh_parts.append(
-            f"最近一轮增量信息主要来自 {latest_source_names(signals)}，这说明局势仍在推进，但远没有尘埃落定。"
-        )
-    if request.get("angle_zh"):
-        opening_zh_parts.append(f"这篇稿子的中文角度是：{strip_terminal_punctuation(request.get('angle_zh'))}。")
-    elif request.get("angle"):
-        opening_zh_parts.append(f"这篇稿子的写作重点是：{strip_terminal_punctuation(request.get('angle'))}。")
-    if request.get("must_include"):
-        opening_zh_parts.append(f"需要优先保留的点包括：{join_with_commas(request.get('must_include')[:3], '无')}。")
-    opening_zh = "".join(opening_zh_parts)
 
-    confirmed_text = claim_sentence(
-        evidence_digest.get("confirmed", [])[:4],
-        "No high-confidence public confirmation is available yet.",
-    )
-    confirmed_text_zh = claim_sentence(
-        evidence_digest.get("confirmed_zh", [])[:4],
-        "目前还没有高置信度的公开确认。",
-    )
-    not_confirmed_text = claim_sentence(
-        evidence_digest.get("not_confirmed", [])[:4],
-        "No additional unconfirmed items were separately listed.",
-    )
-    not_confirmed_text_zh = claim_sentence(
-        evidence_digest.get("not_confirmed_zh", [])[:4],
-        "目前没有额外需要单独标出的未证实事项。",
-    )
-    inference_text = claim_sentence(
-        evidence_digest.get("inference_only", [])[:3],
-        "No inference-only items were separately listed.",
-    )
-    inference_text_zh = claim_sentence(
-        evidence_digest.get("inference_only_zh", [])[:3],
-        "目前没有需要单独列出的纯推断项。",
-    )
-    interval = evidence_digest.get("confidence_interval", [0, 0])
-    next_watch = join_with_semicolons(
-        evidence_digest.get("next_watch_items", [])[:3],
-        "wait for stronger sources to confirm or contradict the current picture",
-    )
-    confidence_text = f"This is still a {interval[0]}-{interval[1]} confidence call, which means the read is usable but far from locked."
-    blocked_text = (
-        f" There are {source_summary.get('blocked_source_count', 0)} blocked sources in the package, so any stronger conclusion would need cleaner confirmation."
-        if int(source_summary.get("blocked_source_count", 0)) > 0
-        else ""
-    )
-    boundary = f"{confidence_text}{blocked_text} The main things to watch next are: {next_watch}."
-    boundary_zh = (
-        f"这仍然只是一个 {interval[0]}-{interval[1]} 的把握区间，说明当前判断可以使用，但远远谈不上锁定。"
-        f"{' 当前包里还有被阻挡的来源，因此如果要得出更强结论，还需要更干净的确认。' if int(source_summary.get('blocked_source_count', 0)) > 0 else ''}"
-        f"下一步最值得盯住的是：{next_watch}。"
-    )
-
-    confirmed_paragraph = (
-        f"The clearest point supported by current public reporting is {confirmed_text}.{lead_refs} "
-        f"What the same reporting does not establish is {not_confirmed_text}.{support_refs} "
-        f"If the story moves beyond that line, the evidence base will need to improve first."
-    )
-    confirmed_paragraph_zh = (
-        f"当前公开报道最能支持的判断是：{confirmed_text_zh}。{lead_refs}"
-        f"但同一批报道并不能证明的是：{not_confirmed_text_zh}。{support_refs}"
-        f"如果后续叙事要再往前走，证据质量必须先提升。"
-    )
-    latest_paragraph = (
-        f"The most recent reporting is clustered in {latest_source_names(signals)}. "
-        f"{signal_sentence(signals)} "
-        f"Taken together, those signals reinforce the base case without proving the more aggressive claims.{support_refs}"
-        if signals
-        else signal_sentence(signals)
-    )
-    latest_paragraph_zh = (
-        f"最近的公开报道主要集中在 {latest_source_names(signals)}。"
-        f"{'这些来源共同强化了当前的基础判断，但还不足以证明更激进的说法。' if signals else ''}"
-    )
-    why_matter_paragraph = (
-        f"This matters most for {join_with_commas(market_relevance, 'headline-sensitive markets')}. "
-        "Even before the facts fully settle, changes in the tone of talks, force posture, or shipping risk can move expectations quickly."
-    )
-    why_matter_paragraph_zh = (
-        f"这件事最直接影响的是 {join_with_commas(market_relevance_zh or market_relevance, '对消息面敏感的市场')}。"
-        "即便事实还没有完全落定，只要和谈语气、军事姿态或航运风险出现变化，市场预期就可能快速重估。"
-    )
-
-    if draft_mode == "image_only":
-        return [
+def build_draft_claim_map(citations: list[dict[str, Any]], analysis_brief: dict[str, Any]) -> list[dict[str, Any]]:
+    claim_map: list[dict[str, Any]] = []
+    canonical_facts = safe_list(analysis_brief.get("canonical_facts"))
+    recommended_thesis = clean_text(analysis_brief.get("recommended_thesis"))
+    thesis_sources = clean_string_list(safe_dict(canonical_facts[0]).get("source_ids")) if canonical_facts else []
+    thesis_citation_ids = preferred_citation_ids(citations, thesis_sources)
+    if recommended_thesis:
+        claim_map.append(
             {
-                "heading": bilingual_heading("核心判断", "Bottom Line", language_mode),
-                "paragraph": bilingual_text(opening_zh, opening, language_mode),
-            },
-            {
-                "heading": bilingual_heading("图片显示了什么", "What The Images Show", language_mode),
-                "paragraph": bilingual_text(visual_evidence_sentence_zh(images), visual_evidence_sentence(images), language_mode),
-            },
-            {
-                "heading": bilingual_heading("图片不能证明什么", "What The Images Do Not Prove", language_mode),
-                "paragraph": bilingual_text(
-                    f"仅靠图片层本身，并不能证明：{not_confirmed_text_zh}。纯推断项仍然包括：{inference_text_zh}。",
-                    f"The visual layer does not by itself prove {not_confirmed_text}. Inference-only items remain {inference_text}.",
-                    language_mode,
-                ),
-            },
-            {
-                "heading": bilingual_heading("边界条件", "Boundaries", language_mode),
-                "paragraph": bilingual_text(boundary_zh, boundary, language_mode),
-            },
-        ]
-
-    sections = [
-        {
-            "heading": bilingual_heading("核心判断", "Bottom Line", language_mode),
-            "paragraph": bilingual_text(opening_zh, opening, language_mode),
-        },
-        {
-            "heading": bilingual_heading("已确认与未确认", "Confirmed And Not Confirmed", language_mode),
-            "paragraph": bilingual_text(confirmed_paragraph_zh, confirmed_paragraph, language_mode),
-        },
-        {
-            "heading": bilingual_heading("最新增量信息", "Latest Signals", language_mode),
-            "paragraph": bilingual_text(latest_paragraph_zh, latest_paragraph, language_mode),
-        },
-        {
-            "heading": bilingual_heading("为什么这件事重要", "Why This Matters", language_mode),
-            "paragraph": bilingual_text(why_matter_paragraph_zh, why_matter_paragraph, language_mode),
-        },
-        {
-            "heading": bilingual_heading("图片与截图", "Images And Screenshots", language_mode),
-            "paragraph": bilingual_text(image_sentence_zh(images), image_sentence(images), language_mode),
-        },
-        {
-            "heading": bilingual_heading("边界条件", "Boundaries", language_mode),
-            "paragraph": bilingual_text(
-                f"{boundary_zh} {'当前包里没有明显的纯推断项。' if not inference_items_zh else '仍处在推断层的内容包括：' + inference_text_zh + '。'}",
-                f"{boundary} {'There are no major inference-only items in the current package.' if not inference_items else 'Inference-only items still in the background are ' + inference_text + '.'}",
-                language_mode,
-            ),
-        },
-    ]
-    if draft_mode == "image_first":
-        sections.insert(
-            1,
-            {
-                "heading": bilingual_heading("视觉证据", "Visual Evidence", language_mode),
-                "paragraph": bilingual_text(visual_evidence_sentence_zh(images), visual_evidence_sentence(images), language_mode),
-            },
+                "claim_label": "thesis",
+                "claim_text": recommended_thesis,
+                "citation_ids": thesis_citation_ids,
+                "support_level": "core" if thesis_sources else "derived" if thesis_citation_ids else "shadow-heavy",
+            }
         )
-    return sections
+    for item in canonical_facts[:3]:
+        source_ids = clean_string_list(item.get("source_ids"))
+        claim_map.append(
+            {
+                "claim_label": clean_text(item.get("claim_id")) or "canonical_fact",
+                "claim_text": clean_text(item.get("claim_text")),
+                "citation_ids": preferred_citation_ids(citations, source_ids),
+                "support_level": clean_text(item.get("promotion_state")) or "core",
+            }
+        )
+    for item in safe_list(analysis_brief.get("not_proven"))[:2]:
+        source_ids = clean_string_list(item.get("source_ids"))
+        claim_map.append(
+            {
+                "claim_label": clean_text(item.get("claim_id")) or "not_proven",
+                "claim_text": clean_text(item.get("claim_text")),
+                "citation_ids": preferred_citation_ids(citations, source_ids),
+                "support_level": clean_text(item.get("status")) or "unclear",
+            }
+        )
+    return [item for item in claim_map if clean_text(item.get("claim_text"))]
 
+
+def build_style_profile_applied(request: dict[str, Any]) -> dict[str, Any]:
+    profile_status = safe_dict(request.get("feedback_profile_status"))
+    applied_paths = clean_string_list(request.get("applied_feedback_profiles")) or clean_string_list(profile_status.get("applied_paths"))
+    constraints = {
+        "must_include": clean_string_list(request.get("must_include")),
+        "must_avoid": clean_string_list(request.get("must_avoid")),
+    }
+    return {
+        "applied_paths": applied_paths,
+        "global_profile_applied": bool(profile_status.get("global_exists")),
+        "topic_profile_applied": bool(profile_status.get("topic_exists")),
+        "constraints": constraints,
+        "effective_request": {
+            "language_mode": clean_text(request.get("language_mode")),
+            "draft_mode": clean_text(request.get("draft_mode")),
+            "image_strategy": clean_text(request.get("image_strategy")),
+            "tone": clean_text(request.get("tone")),
+            "target_length_chars": int(request.get("target_length_chars", 0) or 0),
+            "max_images": int(request.get("max_images", 0) or 0),
+            "must_include": constraints["must_include"],
+            "must_avoid": constraints["must_avoid"],
+        },
+    }
+
+
+def build_writer_risk_notes(analysis_brief: dict[str, Any], source_summary: dict[str, Any]) -> list[str]:
+    notes = clean_string_list(analysis_brief.get("misread_risks"))
+    if int(source_summary.get("blocked_source_count", 0) or 0) > 0:
+        notes.append("Some sources were blocked, so the writer must avoid treating the package as fully checked.")
+    if not notes:
+        notes.append("The main remaining writer risk is sounding more certain than the evidence allows.")
+    return notes[:5]
 
 def build_body_markdown(title: str, subtitle: str, sections: list[dict[str, Any]]) -> str:
     lines = [f"# {title}", "", subtitle]
@@ -859,6 +998,7 @@ def refresh_article_package(article_package: dict[str, Any], must_avoid: list[st
             safe_dict(render_context.get("evidence_digest")),
             citations,
             images,
+            safe_dict(render_context.get("analysis_brief")),
         )
         article_package["sections"] = deepcopy(sections)
         article_package["body_sections"] = deepcopy(sections)
@@ -1090,6 +1230,21 @@ def build_report_markdown(article_package: dict[str, Any]) -> str:
         lines.append(f"  Excerpt: {item.get('excerpt', '') or 'none'}")
     if not safe_list(article_package.get("citations")):
         lines.append("- None")
+    lines.extend(["", "## Draft Thesis", clean_text(article_package.get("draft_thesis")) or "None"])
+    lines.extend(["", "## Draft Claim Map"])
+    for item in safe_list(article_package.get("draft_claim_map")):
+        lines.append(
+            f"- {clean_text(item.get('claim_label'))}: {clean_text(item.get('claim_text'))} | "
+            f"citations: {', '.join(clean_string_list(item.get('citation_ids'))) or 'none'} | "
+            f"support: {clean_text(item.get('support_level')) or 'unknown'}"
+        )
+    if not safe_list(article_package.get("draft_claim_map")):
+        lines.append("- None")
+    lines.extend(["", "## Writer Risk Notes"])
+    for item in clean_string_list(article_package.get("writer_risk_notes")):
+        lines.append(f"- {item}")
+    if not clean_string_list(article_package.get("writer_risk_notes")):
+        lines.append("- None")
     localization = safe_dict(article_package.get("asset_localization"))
     if localization:
         lines.extend(
@@ -1125,17 +1280,28 @@ def assemble_article_package(
     evidence_digest: dict[str, Any],
     citations: list[dict[str, Any]],
     image_candidates: list[dict[str, Any]],
+    analysis_brief: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     selected_images = build_selected_images(image_candidates, request)
     title = build_title(request, evidence_digest, selected_images)
     subtitle = build_subtitle(request, source_summary, selected_images)
-    sections = build_sections(request, source_summary, evidence_digest, citations, selected_images)
+    effective_analysis_brief = safe_dict(analysis_brief) or derive_analysis_brief_from_digest(
+        source_summary,
+        evidence_digest,
+        citations,
+        selected_images,
+    )
+    sections = build_sections(request, source_summary, evidence_digest, citations, selected_images, effective_analysis_brief)
     body_markdown = apply_must_avoid(build_body_markdown(title, subtitle, sections), request.get("must_avoid", []))
     lede = sections[0]["paragraph"] if sections else ""
     article_markdown = apply_must_avoid(
         build_article_markdown(title, subtitle, lede, sections, selected_images, citations),
         request.get("must_avoid", []),
     )
+    draft_thesis = clean_text(effective_analysis_brief.get("recommended_thesis")) or clean_text(source_summary.get("core_verdict"))
+    draft_claim_map = build_draft_claim_map(citations, effective_analysis_brief) if effective_analysis_brief else []
+    style_profile_applied = build_style_profile_applied(request)
+    writer_risk_notes = build_writer_risk_notes(effective_analysis_brief, source_summary) if effective_analysis_brief else []
 
     editor_notes = []
     if int(source_summary.get("blocked_source_count", 0)) > 0:
@@ -1159,6 +1325,10 @@ def assemble_article_package(
         "editor_notes": editor_notes,
         "draft_mode": request.get("draft_mode"),
         "language_mode": request.get("language_mode"),
+        "draft_thesis": draft_thesis,
+        "draft_claim_map": draft_claim_map,
+        "style_profile_applied": style_profile_applied,
+        "writer_risk_notes": writer_risk_notes,
         "feedback_profile_status": deepcopy(safe_dict(request.get("feedback_profile_status"))),
         "render_context": {
             "request": {
@@ -1173,6 +1343,7 @@ def assemble_article_package(
             },
             "source_summary": deepcopy(source_summary),
             "evidence_digest": deepcopy(evidence_digest),
+            "analysis_brief": deepcopy(effective_analysis_brief),
         },
     }
     refresh_article_package(package, request.get("must_avoid", []))
@@ -1184,7 +1355,32 @@ def build_article_draft(raw_payload: dict[str, Any]) -> dict[str, Any]:
     source_summary, evidence_digest = build_source_summary(request["source_result"], request)
     citations = build_citations(request["source_result"])
     image_candidates = build_image_candidates(request["source_result"], request)
-    article_package, selected_images = assemble_article_package(request, source_summary, evidence_digest, citations, image_candidates)
+    analysis_brief = safe_dict(request.get("analysis_brief"))
+    if not analysis_brief:
+        analysis_brief_result = build_analysis_brief(
+            {
+                "source_result": request["source_result"],
+                "source_result_path": request.get("source_result_path"),
+                "topic": request.get("topic"),
+                "analysis_time": isoformat_or_blank(request["analysis_time"]),
+            }
+        )
+        analysis_brief = safe_dict(analysis_brief_result.get("analysis_brief"))
+    analysis_brief = analysis_brief or derive_analysis_brief_from_digest(
+        source_summary,
+        evidence_digest,
+        citations,
+        image_candidates,
+    )
+    request["analysis_brief"] = analysis_brief
+    article_package, selected_images = assemble_article_package(
+        request,
+        source_summary,
+        evidence_digest,
+        citations,
+        image_candidates,
+        analysis_brief,
+    )
     if clean_string_list(request.get("applied_feedback_profiles")):
         article_package["editor_notes"] = clean_string_list(
             safe_list(article_package.get("editor_notes"))
@@ -1203,9 +1399,11 @@ def build_article_draft(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "source_result_path": request.get("source_result_path", ""),
         },
         "evidence_digest": evidence_digest,
+        "analysis_brief": analysis_brief,
         "draft_context": {
             "source_summary": source_summary,
             "evidence_digest": evidence_digest,
+            "analysis_brief": analysis_brief,
             "citation_candidates": citations,
             "image_candidates": image_candidates,
             "selected_images": deepcopy(selected_images),
@@ -1248,3 +1446,5 @@ __all__ = [
     "safe_list",
     "write_json",
 ]
+
+

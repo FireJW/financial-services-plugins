@@ -6,6 +6,7 @@ import re
 import urllib.error
 import urllib.request
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -363,6 +364,10 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "market_relevance": clean_string_list(payload.get("market_relevance")),
         "expected_source_families": expected_source_families,
         "crisis_defaults": safe_dict(payload.get("crisis_defaults")),
+        "max_parallel_candidates": max(
+            1,
+            int(payload.get("max_parallel_candidates", payload.get("parallel_candidates", 4)) or 1),
+        ),
     }
 
 
@@ -440,6 +445,66 @@ def normalize_candidate(
         "combined_summary": str(candidate.get("combined_summary", "")).strip(),
         "discovery_reason": str(candidate.get("discovery_reason", "")).strip(),
         "crawl_notes": deepcopy(candidate.get("crawl_notes")) if isinstance(candidate.get("crawl_notes"), list) else [],
+    }
+
+
+def error_observation(
+    candidate: dict[str, Any],
+    analysis_time: datetime,
+    claim_texts: dict[str, str],
+    index: int,
+    error: Exception,
+) -> dict[str, Any]:
+    try:
+        source_name = str(candidate.get("source_name") or candidate.get("name") or candidate.get("url") or "").strip()
+    except Exception:
+        source_name = ""
+    source_name = source_name or f"source-{index:02d}"
+    published_at = parse_datetime(candidate.get("published_at"), fallback=analysis_time) or analysis_time
+    observed_at = parse_datetime(candidate.get("observed_at"), fallback=published_at) or published_at
+    claim_ids = clean_string_list(candidate.get("claim_ids"))
+    raw_states = safe_dict(candidate.get("claim_states") or candidate.get("stance_by_claim"))
+    claim_states = {
+        claim_id: normalize_claim_state(raw_states.get(claim_id) or candidate.get("claim_state") or "unclear")
+        for claim_id in claim_ids
+    }
+    message = short_excerpt(f"Candidate normalization failed: {error}", limit=220)
+    age = age_minutes_since(analysis_time, published_at, observed_at)
+    return {
+        "source_id": str(candidate.get("source_id") or f"error-source-{index:02d}").strip() or f"error-source-{index:02d}",
+        "source_name": source_name,
+        "source_type": normalize_source_type(candidate.get("source_type") or candidate.get("type") or "social"),
+        "source_tier": 3,
+        "channel": "background",
+        "published_at": isoformat_or_blank(published_at),
+        "observed_at": isoformat_or_blank(observed_at),
+        "url": str(candidate.get("url", "")).strip(),
+        "claim_ids": claim_ids,
+        "entity_ids": clean_string_list(candidate.get("entity_ids")),
+        "vessel_ids": clean_string_list(candidate.get("vessel_ids")),
+        "text_excerpt": message,
+        "position_hint": deepcopy(candidate.get("position_hint")),
+        "geo_hint": deepcopy(candidate.get("geo_hint")),
+        "access_mode": "blocked",
+        "rank_score": 0,
+        "recency_bucket": recency_bucket(age),
+        "age_minutes": round(age, 2),
+        "age_label": minutes_label(age),
+        "claim_states": claim_states,
+        "claim_texts": {claim_id: claim_texts.get(claim_id, "") for claim_id in claim_ids},
+        "artifact_manifest": clean_artifact_manifest(candidate.get("artifact_manifest")),
+        "x_post_record": {},
+        "post_text_raw": "",
+        "post_text_source": "unavailable",
+        "post_text_confidence": 0.0,
+        "root_post_screenshot_path": "",
+        "thread_posts": [],
+        "media_items": [],
+        "post_summary": "",
+        "media_summary": "",
+        "combined_summary": "",
+        "discovery_reason": "",
+        "crawl_notes": [{"kind": "normalization_error", "message": str(error)}],
     }
 
 
@@ -776,11 +841,23 @@ def build_retrieval_quality(observations: list[dict[str, Any]], claim_ledger: li
     top_recent = sum(1 for item in top_hits if item.get("recency_bucket") in {"0-10m", "10-60m", "1-6h"})
     improper_shadow_core = sum(1 for item in observations if item.get("channel") == "core" and item.get("source_tier", 3) == 3)
     improper_promotion = sum(1 for item in claim_ledger if item.get("promotion_state") == "core" and not item.get("supporting_sources"))
+    blocked_sources = [item for item in observations if item.get("access_mode") == "blocked"]
+    blocked_background = sum(1 for item in blocked_sources if item.get("channel") == "background")
+    blocked_identified = sum(1 for item in blocked_sources if item.get("source_name") or item.get("url"))
+    blocked_overweighted = sum(1 for item in blocked_sources if item.get("channel") in {"core", "shadow"})
+    blocked_source_score = 100
+    if blocked_sources:
+        blocked_source_score = clamp(
+            40
+            + (blocked_background / len(blocked_sources)) * 40
+            + (blocked_identified / len(blocked_sources)) * 20
+            - blocked_overweighted * 20
+        )
     return {
         "freshness_capture_score": clamp(50 + top_recent * 10),
         "shadow_signal_discipline_score": clamp(100 - improper_shadow_core * 35),
         "source_promotion_discipline_score": clamp(100 - improper_promotion * 40),
-        "blocked_source_handling_score": 100,
+        "blocked_source_handling_score": blocked_source_score,
     }
 
 
@@ -1014,10 +1091,33 @@ def build_markdown_report(result: dict[str, Any]) -> str:
 def run_news_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = normalize_request(raw_payload)
     claim_texts = claim_text_map_from_request(request)
-    observations = [
-        normalize_candidate(candidate, request["analysis_time"], claim_texts, index)
-        for index, candidate in enumerate(request.get("candidates", []), start=1)
-    ]
+    candidates = list(enumerate(request.get("candidates", []), start=1))
+    parallel_workers = min(max(1, int(request.get("max_parallel_candidates", 1) or 1)), max(1, len(candidates)))
+    if parallel_workers > 1 and len(candidates) > 1:
+        observation_by_index: dict[int, dict[str, Any]] = {}
+        candidate_by_index = {index: candidate for index, candidate in candidates}
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            future_map = {
+                executor.submit(normalize_candidate, candidate, request["analysis_time"], claim_texts, index): index
+                for index, candidate in candidates
+            }
+            for future in as_completed(future_map):
+                index = future_map[future]
+                try:
+                    observation_by_index[index] = future.result()
+                except Exception as exc:
+                    observation_by_index[index] = error_observation(
+                        candidate_by_index[index], request["analysis_time"], claim_texts, index, exc
+                    )
+        observations = [observation_by_index[index] for index, _ in candidates if index in observation_by_index]
+    else:
+        observations = []
+        for index, candidate in candidates:
+            try:
+                observation = normalize_candidate(candidate, request["analysis_time"], claim_texts, index)
+            except Exception as exc:
+                observation = error_observation(candidate, request["analysis_time"], claim_texts, index, exc)
+            observations.append(observation)
     observations = dedupe_observations(observations)
     evidence_index = build_claim_evidence(observations)
     observations = rerank_observations(observations, evidence_index)

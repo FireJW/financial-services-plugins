@@ -43,6 +43,17 @@ reusable paid assets.
 - For concrete post structures, CTA language, and product-pack templates, read
   [references/templates.md](references/templates.md).
 
+## Local Helper Scripts
+
+- [scripts/run_benchmark_index.cmd](scripts/run_benchmark_index.cmd) runs the
+  benchmark-case indexing and review flow
+- [cases/benchmark-case-library.json](cases/benchmark-case-library.json) is the
+  reusable case library for WeChat and Toutiao benchmarks
+- [examples/benchmark-index-library-request.json](examples/benchmark-index-library-request.json)
+  is the recommended library-backed request shape
+- [examples/benchmark-index-demo-request.json](examples/benchmark-index-demo-request.json)
+  is a seeded example request using the benchmark logic in this skill
+
 ## Workflow
 
 ### 1. Lock the audience split

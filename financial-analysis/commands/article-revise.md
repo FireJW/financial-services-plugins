@@ -6,7 +6,8 @@ argument-hint: "[request-json]"
 # Article Revise Command
 
 Use this command when the user has already reviewed an article package and wants
-Codex to rebuild it without dropping source links or images.
+Codex to rebuild it without dropping source links or images. The revise step now
+also runs a red-team challenge and produces a rewritten final draft.
 
 The output should preserve:
 
@@ -14,13 +15,16 @@ The output should preserve:
 - the selected images unless explicitly changed
 - revision history
 - the article-ready markdown with image embeds
+- a `review_rewrite_package`
+- a `quality_gate`
 
 Default behavior:
 
 1. load an existing article draft result
 2. apply revision notes or a manual body override
-3. rebuild the article package
-4. append a revision-history entry
+3. red-team the draft for unsupported leaps and overclaiming
+4. rebuild the article package in a safer form
+5. append a revision-history entry
 
 Useful revision inputs:
 
