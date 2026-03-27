@@ -617,6 +617,222 @@ class BenchmarkToolTests(unittest.TestCase):
         finally:
             shutil.rmtree(base, ignore_errors=True)
 
+    def test_readiness_audit_distinguishes_allowed_proxy_cases_from_upgrade_gaps(self) -> None:
+        base = fresh_case_dir("readiness-refresh-policy")
+        try:
+            library_path = base / "benchmark-case-library.json"
+            candidate_library_path = base / "benchmark-case-candidates.json"
+            seeds_path = base / "benchmark-refresh-seeds.json"
+            write_json(
+                library_path,
+                {
+                    "library_name": "test-library",
+                    "version": "1",
+                    "cases": [
+                        {
+                            "case_id": "mirror-case",
+                            "curation_status": "reviewed",
+                            "platform": "wechat",
+                            "account_name": "Mirror",
+                            "title": "Mirror article",
+                            "url": "https://example.com/article",
+                            "canonical_url": "https://example.com/article",
+                            "fetch_url": "https://mirror.example.com/article",
+                            "fetch_provenance": "mirror",
+                        },
+                        {
+                            "case_id": "proxy-case",
+                            "curation_status": "reviewed",
+                            "platform": "toutiao",
+                            "account_name": "Proxy",
+                            "title": "Proxy benchmark",
+                            "url": "https://example.com/case-study",
+                            "canonical_url": "https://example.com/case-study",
+                            "fetch_url": "https://commentary.example.com/case-study",
+                            "fetch_provenance": "commentary_only",
+                            "refresh_surface_policy": "proxy_allowed",
+                            "benchmark_case_shape": "cited_case_proxy",
+                        },
+                    ],
+                },
+            )
+            write_json(
+                candidate_library_path,
+                {
+                    "library_name": "candidate-library",
+                    "version": "1",
+                    "cases": [
+                        {
+                            "case_id": "candidate-case",
+                            "curation_status": "candidate",
+                            "platform": "wechat",
+                            "account_name": "Candidate",
+                            "title": "Candidate case",
+                            "url": "https://example.com/candidate",
+                            "canonical_url": "https://example.com/candidate",
+                        }
+                    ],
+                },
+            )
+            write_json(
+                seeds_path,
+                {
+                    "sources": [
+                        {
+                            "source_id": "fixture-source",
+                            "enabled": True,
+                            "seed_url": "https://example.com/source",
+                            "exclude_url_patterns": ["/video/"],
+                        }
+                    ]
+                },
+            )
+            result = run_benchmark_readiness_audit(
+                {
+                    "library_path": str(library_path),
+                    "candidate_library_path": str(candidate_library_path),
+                    "seeds_path": str(seeds_path),
+                    "refresh_existing_cases": True,
+                    "discover_new_cases": True,
+                    "allow_reference_url_fallback": False,
+                }
+            )
+            self.assertEqual(result["summary"]["reviewed_non_primary_fetches"], 2)
+            self.assertEqual(result["summary"]["reviewed_non_primary_fetches_requiring_upgrade"], 1)
+            self.assertEqual(result["summary"]["reviewed_non_primary_fetches_allowed"], 1)
+            self.assertEqual(result["reviewed_non_primary_fetches_requiring_upgrade"][0]["case_id"], "mirror-case")
+            self.assertEqual(result["reviewed_non_primary_fetches_allowed"][0]["case_id"], "proxy-case")
+            self.assertIn("without an allowed refresh policy", " ".join(result["warnings"]))
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_readiness_audit_accepts_declared_proxy_and_mirror_refresh_policies(self) -> None:
+        base = fresh_case_dir("readiness-allowed-proxy")
+        try:
+            library_path = base / "benchmark-case-library.json"
+            candidate_library_path = base / "benchmark-case-candidates.json"
+            write_json(
+                library_path,
+                {
+                    "library_name": "test-library",
+                    "version": "1",
+                    "cases": [
+                        {
+                            "case_id": "mirror-case",
+                            "curation_status": "reviewed",
+                            "platform": "wechat",
+                            "account_name": "Mirror",
+                            "title": "Mirror benchmark",
+                            "url": "https://example.com/reference-mirror",
+                            "canonical_url": "https://example.com/reference-mirror",
+                            "fetch_url": "https://example.com/fetch-mirror",
+                            "fetch_provenance": "mirror",
+                            "refresh_surface_policy": "mirror_allowed",
+                            "benchmark_case_shape": "article",
+                            "read_signal": "10w+",
+                        },
+                        {
+                            "case_id": "proxy-case",
+                            "curation_status": "reviewed",
+                            "platform": "toutiao",
+                            "account_name": "Proxy",
+                            "title": "Proxy benchmark",
+                            "url": "https://example.com/reference-proxy",
+                            "canonical_url": "https://example.com/reference-proxy",
+                            "fetch_url": "https://example.com/fetch-proxy",
+                            "fetch_provenance": "commentary_only",
+                            "refresh_surface_policy": "proxy_allowed",
+                            "benchmark_case_shape": "account_model",
+                            "read_signal": "5w+",
+                        },
+                    ],
+                },
+            )
+            write_json(
+                candidate_library_path,
+                {
+                    "library_name": "candidate-library",
+                    "version": "1",
+                    "cases": [
+                        {
+                            "case_id": "candidate-case",
+                            "curation_status": "candidate",
+                            "platform": "wechat",
+                            "account_name": "Candidate",
+                            "title": "Candidate benchmark",
+                            "url": "https://example.com/candidate",
+                            "canonical_url": "https://example.com/candidate",
+                        }
+                    ],
+                },
+            )
+            result = run_benchmark_readiness_audit(
+                {
+                    "library_path": str(library_path),
+                    "candidate_library_path": str(candidate_library_path),
+                    "discover_new_cases": False,
+                    "auto_add_new_cases": False,
+                }
+            )
+            self.assertEqual(result["summary"]["reviewed_non_primary_fetches"], 2)
+            self.assertEqual(result["summary"]["reviewed_non_primary_fetches_requiring_upgrade"], 0)
+            self.assertEqual(result["summary"]["reviewed_non_primary_fetches_allowed"], 2)
+            self.assertFalse(
+                any("mirror or commentary surfaces" in warning for warning in result["warnings"])
+            )
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_benchmark_index_surfaces_proxy_evidence_mode(self) -> None:
+        base = fresh_case_dir("index-proxy-evidence")
+        try:
+            library_path = base / "benchmark-case-library.json"
+            write_json(
+                library_path,
+                {
+                    "library_name": "test-library",
+                    "version": "1",
+                    "default_request": {
+                        "minimum_read_band": "5w+",
+                        "include_curation_statuses": ["reviewed"],
+                    },
+                    "cases": [
+                        {
+                            "case_id": "proxy-case",
+                            "curation_status": "reviewed",
+                            "platform": "wechat",
+                            "account_name": "Proxy",
+                            "title": "Proxy benchmark",
+                            "url": "https://example.com/reference-proxy",
+                            "canonical_url": "https://example.com/reference-proxy",
+                            "fetch_provenance": "commentary_only",
+                            "refresh_surface_policy": "proxy_allowed",
+                            "benchmark_case_shape": "account_model",
+                            "read_signal": "5w+",
+                            "account_positioning": "institutional finance readers",
+                            "topic_type": "account analysis",
+                            "hook_type": "business model",
+                            "affected_group": "research users",
+                            "cta_type": "membership",
+                            "paid_asset_linkage": "high",
+                        }
+                    ],
+                },
+            )
+            result = run_benchmark_index(
+                {
+                    "analysis_time": "2026-03-24T20:00:00+08:00",
+                    "library_path": str(library_path),
+                }
+            )
+            case = result["cases"][0]
+            self.assertEqual(case["benchmark_case_shape"], "account_model")
+            self.assertEqual(case["refresh_surface_policy"], "proxy_allowed")
+            self.assertEqual(case["fetch_provenance"], "commentary_only")
+            self.assertIn("- Evidence surface: account_model via commentary_only", result["report_markdown"])
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
     def test_refresh_does_not_treat_plain_business_metrics_as_read_signal(self) -> None:
         base = fresh_case_dir("refresh-read-signal-guard")
         try:
@@ -685,6 +901,222 @@ class BenchmarkToolTests(unittest.TestCase):
             self.assertEqual(result["summary"]["candidates_discovered"], 1)
             self.assertEqual(candidate_library["cases"][0]["read_signal"], "")
             self.assertEqual(candidate_library["cases"][0]["machine_state"]["current_read_signal"], "")
+            self.assertFalse(candidate_library["cases"][0]["human_locks"]["read_signal"])
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_refresh_clears_stale_candidate_read_signal_when_detection_is_blank(self) -> None:
+        base = fresh_case_dir("refresh-clear-candidate-read-signal")
+        try:
+            fixtures = base / "fixtures"
+            fixtures.mkdir(parents=True, exist_ok=True)
+            candidate_path = fixtures / "candidate.html"
+            candidate_path.write_text(
+                """
+                <html>
+                  <head>
+                    <meta property="og:title" content="Existing candidate" />
+                    <meta property="article:published_time" content="2026-03-24T10:00:00+08:00" />
+                  </head>
+                  <body>2025年净利润38.22亿，同比增长47.74%</body>
+                </html>
+                """.strip(),
+                encoding="utf-8",
+            )
+            library_path = base / "benchmark-case-library.json"
+            candidate_library_path = base / "benchmark-case-candidates.json"
+            seeds_path = base / "benchmark-refresh-seeds.json"
+            observations_path = base / "benchmark-case-observations.jsonl"
+            write_json(library_path, {"library_name": "test-library", "version": "1", "cases": []})
+            write_json(
+                candidate_library_path,
+                {
+                    "library_name": "candidate-library",
+                    "version": "1",
+                    "cases": [
+                        {
+                            "case_id": "wallstreetcn-old-case",
+                            "curation_status": "candidate",
+                            "platform": "wechat",
+                            "account_name": "Wallstreet",
+                            "title": "Existing candidate",
+                            "url": candidate_path.resolve().as_uri(),
+                            "canonical_url": candidate_path.resolve().as_uri(),
+                            "fetch_url": candidate_path.resolve().as_uri(),
+                            "read_signal": "38.22亿",
+                            "machine_state": {
+                                "current_read_signal": "38.22亿",
+                                "current_read_count_estimate": 3822000000,
+                            },
+                            "human_locks": {
+                                "read_signal": False,
+                            },
+                        }
+                    ],
+                },
+            )
+            write_json(seeds_path, {"sources": []})
+            result = run_benchmark_library_refresh(
+                {
+                    "analysis_time": "2026-03-24T20:00:00+08:00",
+                    "library_path": str(library_path),
+                    "candidate_library_path": str(candidate_library_path),
+                    "seeds_path": str(seeds_path),
+                    "observations_path": str(observations_path),
+                    "output_dir": str(base / "output"),
+                    "discover_new_cases": False,
+                    "run_benchmark_index_after_refresh": False,
+                }
+            )
+            candidate_library = json.loads(candidate_library_path.read_text(encoding="utf-8"))
+            refreshed = candidate_library["cases"][0]
+            self.assertEqual(result["summary"]["candidate_cases_refreshed"], 1)
+            self.assertEqual(refreshed["read_signal"], "")
+            self.assertEqual(refreshed["machine_state"]["current_read_signal"], "")
+            self.assertIsNone(refreshed["machine_state"]["current_read_count_estimate"])
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_refresh_keeps_reviewed_read_signal_when_detection_is_blank(self) -> None:
+        base = fresh_case_dir("refresh-keep-reviewed-read-signal")
+        try:
+            fixtures = base / "fixtures"
+            fixtures.mkdir(parents=True, exist_ok=True)
+            reviewed_path = fixtures / "reviewed.html"
+            reviewed_path.write_text(
+                """
+                <html>
+                  <head>
+                    <meta property="og:title" content="Reviewed candidate" />
+                    <meta property="article:published_time" content="2026-03-24T10:00:00+08:00" />
+                  </head>
+                  <body>2025年净利润38.22亿，同比增长47.74%</body>
+                </html>
+                """.strip(),
+                encoding="utf-8",
+            )
+            library_path = base / "benchmark-case-library.json"
+            candidate_library_path = base / "benchmark-case-candidates.json"
+            seeds_path = base / "benchmark-refresh-seeds.json"
+            observations_path = base / "benchmark-case-observations.jsonl"
+            write_json(
+                library_path,
+                {
+                    "library_name": "test-library",
+                    "version": "1",
+                    "cases": [
+                        {
+                            "case_id": "reviewed-case",
+                            "curation_status": "reviewed",
+                            "platform": "wechat",
+                            "account_name": "Reviewed",
+                            "title": "Reviewed candidate",
+                            "url": reviewed_path.resolve().as_uri(),
+                            "canonical_url": reviewed_path.resolve().as_uri(),
+                            "fetch_url": reviewed_path.resolve().as_uri(),
+                            "read_signal": "5w+",
+                            "machine_state": {
+                                "current_read_signal": "5w+",
+                                "current_read_count_estimate": 50000,
+                            },
+                            "human_locks": {
+                                "read_signal": True,
+                            },
+                        }
+                    ],
+                },
+            )
+            write_json(candidate_library_path, {"library_name": "candidate-library", "version": "1", "cases": []})
+            write_json(seeds_path, {"sources": []})
+            result = run_benchmark_library_refresh(
+                {
+                    "analysis_time": "2026-03-24T20:00:00+08:00",
+                    "library_path": str(library_path),
+                    "candidate_library_path": str(candidate_library_path),
+                    "seeds_path": str(seeds_path),
+                    "observations_path": str(observations_path),
+                    "output_dir": str(base / "output"),
+                    "discover_new_cases": False,
+                    "run_benchmark_index_after_refresh": False,
+                }
+            )
+            library = json.loads(library_path.read_text(encoding="utf-8"))
+            refreshed = library["cases"][0]
+            self.assertEqual(result["summary"]["reviewed_cases_refreshed"], 1)
+            self.assertEqual(refreshed["read_signal"], "5w+")
+            self.assertEqual(refreshed["machine_state"]["current_read_signal"], "5w+")
+            self.assertEqual(refreshed["machine_state"]["current_read_count_estimate"], 50000)
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_refresh_reviewed_case_can_use_sina_newmedia_feed_as_fetch_surface(self) -> None:
+        base = fresh_case_dir("refresh-reviewed-sina-feed")
+        try:
+            fixtures = base / "fixtures"
+            fixtures.mkdir(parents=True, exist_ok=True)
+            feed_path = fixtures / "sina-feed.json"
+            write_json(
+                feed_path,
+                {
+                    "status": 0,
+                    "data": [
+                        {
+                            "title": "Feed top line",
+                            "longTitle": "Feed top line",
+                            "ctime": "1774361256",
+                            "link": "https://example.com/article",
+                        }
+                    ],
+                },
+            )
+            library_path = base / "benchmark-case-library.json"
+            candidate_library_path = base / "benchmark-case-candidates.json"
+            seeds_path = base / "benchmark-refresh-seeds.json"
+            observations_path = base / "benchmark-case-observations.jsonl"
+            write_json(
+                library_path,
+                {
+                    "library_name": "test-library",
+                    "version": "1",
+                    "cases": [
+                        {
+                            "case_id": "feed-reviewed",
+                            "curation_status": "reviewed",
+                            "platform": "wechat",
+                            "account_name": "Feed account",
+                            "title": "Curated title",
+                            "url": "https://example.com/reference",
+                            "canonical_url": "https://example.com/reference",
+                            "fetch_url": feed_path.resolve().as_uri(),
+                            "fetch_provenance": "first_party_feed",
+                            "read_signal": "5w+",
+                            "machine_state": {
+                                "current_title": "Old title",
+                                "current_published_at": "",
+                            },
+                        }
+                    ],
+                },
+            )
+            write_json(candidate_library_path, {"library_name": "candidate-library", "version": "1", "cases": []})
+            write_json(seeds_path, {"sources": []})
+            run_benchmark_library_refresh(
+                {
+                    "analysis_time": "2026-03-24T20:00:00+08:00",
+                    "library_path": str(library_path),
+                    "candidate_library_path": str(candidate_library_path),
+                    "seeds_path": str(seeds_path),
+                    "observations_path": str(observations_path),
+                    "output_dir": str(base / "output"),
+                    "discover_new_cases": False,
+                    "run_benchmark_index_after_refresh": False,
+                }
+            )
+            library = json.loads(library_path.read_text(encoding="utf-8"))
+            refreshed = library["cases"][0]
+            self.assertEqual(refreshed["machine_state"]["current_title"], "Feed top line")
+            self.assertEqual(refreshed["machine_state"]["current_published_at"], "2026-03-24T14:07:36+00:00")
+            self.assertEqual(refreshed["read_signal"], "5w+")
         finally:
             shutil.rmtree(base, ignore_errors=True)
 

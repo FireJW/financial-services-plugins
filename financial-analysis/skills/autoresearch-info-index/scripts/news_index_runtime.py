@@ -25,6 +25,54 @@ CRISIS_EXPECTED_SOURCE_FAMILIES = [
     "public_ship_tracker",
     "social",
 ]
+ENERGY_WAR_EXPECTED_SOURCE_FAMILIES = [
+    "government",
+    "wire",
+    "major_news",
+    "specialist",
+    "public_ship_tracker",
+    "social",
+]
+ENERGY_WAR_DEFAULT_MARKET_RELEVANCE = [
+    "Brent and seaborne oil shock sensitivity",
+    "TTF and Asian LNG sensitivity relative to Henry Hub",
+    "Rates, inflation, and risk-asset headline sensitivity",
+]
+ENERGY_WAR_BENCHMARK_WATCHLIST = [
+    "Brent",
+    "WTI",
+    "TTF",
+    "JKM-style LNG",
+    "Henry Hub",
+    "tanker rates",
+    "prompt spreads",
+    "reserve releases",
+    "OPEC spare capacity",
+    "Qatar LNG flows",
+    "Hormuz flows",
+]
+ENERGY_WAR_NEXT_WATCH_ITEMS = [
+    "Check whether price action is led by Brent, not just WTI.",
+    "Check whether TTF and Asian LNG are reacting more than Henry Hub.",
+    "Separate physical disruption from pure risk premium using flow, freight, and insurance evidence.",
+    "Track reserve releases, rerouting, and spare-capacity language before calling the shock persistent.",
+]
+ENERGY_WAR_KEYWORDS = {
+    "hormuz",
+    "oil",
+    "crude",
+    "lng",
+    "gas",
+    "brent",
+    "wti",
+    "ttf",
+    "jkm",
+    "henry hub",
+    "qatar",
+    "tanker",
+    "shipping",
+    "energy war",
+}
 
 TIER_BY_SOURCE_TYPE = {
     "official": 0,
@@ -192,6 +240,38 @@ def clean_string_list(value: Any) -> list[str]:
     return cleaned
 
 
+def normalize_preset(value: Any) -> str:
+    return str(value or "").strip().lower().replace("_", "-").replace(" ", "-")
+
+
+def infer_preset(payload: dict[str, Any]) -> str:
+    explicit = normalize_preset(payload.get("preset") or payload.get("news_preset") or payload.get("crisis_preset"))
+    if explicit:
+        return explicit
+    haystack_parts = [
+        str(payload.get("topic", "")).strip(),
+        str(payload.get("use_case", "")).strip(),
+        " ".join(clean_string_list(payload.get("questions"))),
+        " ".join(clean_string_list(payload.get("market_relevance"))),
+    ]
+    for claim in safe_list(payload.get("claims")):
+        if isinstance(claim, dict):
+            haystack_parts.append(str(claim.get("claim_text", "")).strip())
+    haystack = " ".join(part.lower() for part in haystack_parts if part)
+    if any(keyword in haystack for keyword in ENERGY_WAR_KEYWORDS):
+        return "energy-war"
+    return ""
+
+
+def merge_unique_strings(base: list[str], additions: list[str]) -> list[str]:
+    merged = list(base)
+    for item in additions:
+        text = str(item).strip()
+        if text and text not in merged:
+            merged.append(text)
+    return merged
+
+
 def clean_artifact_manifest(value: Any) -> list[dict[str, Any]]:
     cleaned: list[dict[str, Any]] = []
     for item in safe_list(value):
@@ -340,12 +420,24 @@ def upgrade_legacy_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     payload = upgrade_legacy_payload(raw_payload)
     analysis_time = parse_datetime(payload.get("analysis_time"), fallback=now_utc()) or now_utc()
-    mode = "crisis" if str(payload.get("mode", "")).strip().lower() == "crisis" else "generic"
+    preset = infer_preset(payload)
+    mode = "crisis" if preset == "energy-war" or str(payload.get("mode", "")).strip().lower() == "crisis" else "generic"
     expected_source_families = clean_string_list(payload.get("expected_source_families"))
     if mode == "crisis":
         for family in CRISIS_EXPECTED_SOURCE_FAMILIES:
             if family not in expected_source_families:
                 expected_source_families.append(family)
+    market_relevance = clean_string_list(payload.get("market_relevance"))
+    benchmark_watchlist = clean_string_list(payload.get("benchmark_watchlist"))
+    preset_watch_items = clean_string_list(payload.get("preset_watch_items"))
+    if preset == "energy-war":
+        expected_source_families = merge_unique_strings(expected_source_families, ENERGY_WAR_EXPECTED_SOURCE_FAMILIES)
+        if not market_relevance:
+            market_relevance = list(ENERGY_WAR_DEFAULT_MARKET_RELEVANCE)
+        if not benchmark_watchlist:
+            benchmark_watchlist = list(ENERGY_WAR_BENCHMARK_WATCHLIST)
+        if not preset_watch_items:
+            preset_watch_items = list(ENERGY_WAR_NEXT_WATCH_ITEMS)
 
     return {
         "topic": str(payload.get("topic", "")).strip() or "news-index-topic",
@@ -361,9 +453,12 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
             for item in safe_list(payload.get("candidates") or payload.get("source_candidates"))
             if isinstance(item, dict)
         ],
-        "market_relevance": clean_string_list(payload.get("market_relevance")),
+        "market_relevance": market_relevance,
         "expected_source_families": expected_source_families,
         "crisis_defaults": safe_dict(payload.get("crisis_defaults")),
+        "preset": preset,
+        "benchmark_watchlist": benchmark_watchlist,
+        "preset_watch_items": preset_watch_items,
         "max_parallel_candidates": max(
             1,
             int(payload.get("max_parallel_candidates", payload.get("parallel_candidates", 4)) or 1),
@@ -952,6 +1047,13 @@ def build_verdict_output(request: dict[str, Any], observations: list[dict[str, A
     else:
         judgment = "Current evidence is thin or stale; there is no strong confirmed read yet."
 
+    next_watch_items = [
+        "Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.",
+        "Treat ship-tracking as last public indication, not live military truth.",
+        "Watch for blocked or missing source families before calling the picture complete.",
+    ]
+    next_watch_items = merge_unique_strings(next_watch_items, request.get("preset_watch_items", []))
+
     verdict = {
         "core_verdict": judgment,
         "live_tape": [
@@ -972,11 +1074,7 @@ def build_verdict_output(request: dict[str, Any], observations: list[dict[str, A
         "conflict_matrix": build_conflict_matrix(claim_ledger),
         "missing_confirmations": [item.get("claim_text", "") for item in not_confirmed if item.get("claim_text")],
         "market_relevance": request.get("market_relevance", []),
-        "next_watch_items": [
-            "Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.",
-            "Treat ship-tracking as last public indication, not live military truth.",
-            "Watch for blocked or missing source families before calling the picture complete.",
-        ],
+        "next_watch_items": next_watch_items,
         "freshness_panel": build_freshness_panel(observations),
         "source_layer_summary": build_source_layer_summary(observations),
         "source_artifacts": build_source_artifacts(observations),
@@ -989,6 +1087,17 @@ def build_verdict_output(request: dict[str, Any], observations: list[dict[str, A
             for item in background[:5]
         ],
     }
+    if request.get("preset") == "energy-war":
+        verdict["energy_war_preset"] = {
+            "preset": "energy-war",
+            "benchmark_watchlist": request.get("benchmark_watchlist", []),
+            "focus_areas": [
+                "Physical flow disruption versus risk premium",
+                "Brent versus WTI leadership",
+                "Ex-US gas versus Henry Hub divergence",
+                "Reserve releases, rerouting, and spare-capacity buffers",
+            ],
+        }
     verdict.update(build_crisis_sections(request, observations, claim_ledger))
     return verdict
 
@@ -1005,7 +1114,7 @@ def build_retrieval_run_report(request: dict[str, Any], observations: list[dict[
         for item in observations
     ]
     observed_families = {source_family_for(item.get("source_type", "")) for item in observations}
-    return {
+    report = {
         "fetch_order": [item.get("source_id", "") for item in observations],
         "sources_attempted": attempted,
         "sources_blocked": [item for item in attempted if item.get("access_mode") == "blocked"],
@@ -1015,6 +1124,9 @@ def build_retrieval_run_report(request: dict[str, Any], observations: list[dict[
             item for item in request.get("expected_source_families", []) if source_family_for(item) not in observed_families
         ],
     }
+    if request.get("preset") == "energy-war":
+        report["benchmark_watchlist"] = request.get("benchmark_watchlist", [])
+    return report
 
 
 def build_markdown_report(result: dict[str, Any]) -> str:
@@ -1060,6 +1172,13 @@ def build_markdown_report(result: dict[str, Any]) -> str:
     lines.append(f"- By channel: {json.dumps(summary.get('by_channel', {}), ensure_ascii=False)}")
     lines.append(f"- By tier: {json.dumps(summary.get('by_tier', {}), ensure_ascii=False)}")
     lines.append(f"- By access mode: {json.dumps(summary.get('by_access_mode', {}), ensure_ascii=False)}")
+
+    if verdict.get("energy_war_preset"):
+        preset = verdict.get("energy_war_preset", {})
+        lines.extend(["", "## Energy-War Preset"])
+        lines.append(f"- Preset: {preset.get('preset', '')}")
+        lines.append(f"- Benchmark watchlist: {', '.join(preset.get('benchmark_watchlist', [])) or 'None'}")
+        lines.extend([f"- Focus: {item}" for item in preset.get("focus_areas", [])] or ["- None"])
 
     source_artifacts = verdict.get("source_artifacts", [])
     if source_artifacts:
@@ -1133,7 +1252,6 @@ def run_news_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
     observations = rerank_observations(observations, evidence_index)
     claim_ledger = build_claim_ledger(request, observations)
     promote_observation_channels(observations, claim_ledger)
-    observations = rerank_observations(observations, build_claim_evidence(observations))
     result = {
         "request": {**request, "analysis_time": isoformat_or_blank(request["analysis_time"])},
         "observations": observations,
@@ -1198,6 +1316,9 @@ def merge_refresh(existing_result: dict[str, Any], refresh_payload: dict[str, An
         "market_relevance": refresh_request.get("market_relevance") or base_request.get("market_relevance"),
         "expected_source_families": refresh_request.get("expected_source_families") or base_request.get("expected_source_families"),
         "mode": "crisis" if refresh_mode == "crisis" else base_request.get("mode"),
+        "preset": refresh_request.get("preset") or base_request.get("preset"),
+        "benchmark_watchlist": refresh_request.get("benchmark_watchlist") or base_request.get("benchmark_watchlist"),
+        "preset_watch_items": refresh_request.get("preset_watch_items") or base_request.get("preset_watch_items"),
         "candidates": carried_candidates + refresh_request.get("candidates", []),
     }
 

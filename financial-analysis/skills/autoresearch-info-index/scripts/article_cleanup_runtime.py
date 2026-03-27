@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from runtime_paths import resolve_runtime_root
+
 
 ARTICLE_MARKER_FILES = {
     "article-draft-result.json",
@@ -47,7 +49,7 @@ def parse_bool(value: Any, default: bool = False) -> bool:
 
 def normalize_root_dir(value: Any) -> Path:
     text = clean_text(value)
-    return Path(text).expanduser().resolve() if text else (Path.cwd() / ".tmp").resolve()
+    return Path(text).expanduser().resolve() if text else resolve_runtime_root()
 
 
 def looks_like_article_temp_dir(path: Path, prefixes: tuple[str, ...]) -> bool:

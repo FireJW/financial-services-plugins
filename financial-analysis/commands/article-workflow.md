@@ -12,6 +12,7 @@ Use this command when the user wants one runnable flow that:
 3. builds the first article draft with images attached
 4. runs a red-team challenge plus automatic rewrite pass
 5. prepares the next revision template so the review loop can continue without re-grabbing the same inputs
+6. writes `ARTICLE-FEEDBACK.md` so the next edit pass can happen in markdown instead of JSON
 
 The workflow writes staged outputs for:
 

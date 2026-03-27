@@ -210,6 +210,44 @@ Rules:
 1. machine refreshes can update scoring inputs, but they do not overwrite curated notes
 2. new discoveries start as `candidate`, never as `reviewed`
 3. the scored benchmark pool should default to `reviewed` cases only
+4. keep `canonical_url` and `fetch_url` separate when needed:
+   the reference page explains why the case belongs in the library, while the
+   fetch page should be the most durable public surface you can refresh
+5. do not point a reviewed benchmark at a generic account feed unless the
+   runtime can preserve channel-level semantics without overwriting the case
+   with an unrelated latest post
+
+## Refresh Surface Policies
+
+`reviewed` does not mean every benchmark is backed by a first-party article URL.
+
+Some reviewed cases are:
+
+1. direct article benchmarks
+2. recurring channel or column benchmarks
+3. account-model benchmarks curated from financing or profile coverage
+4. cited-case proxies where the benchmark claim is carried by platform coverage,
+   not by a durable original post URL
+
+Use `benchmark_case_shape` to declare which shape a reviewed case belongs to.
+
+Use `refresh_surface_policy` to declare what kind of refresh surface is
+acceptable:
+
+1. `first_party_required`
+2. `mirror_allowed`
+3. `proxy_allowed`
+
+Rules:
+
+1. keep `first_party_required` as the default for normal article benchmarks
+2. use `mirror_allowed` only when the benchmark is still a direct article case,
+   but the durable public surface is a mirror
+3. use `proxy_allowed` only when the case is intentionally refreshed from a
+   commentary page, profile page, or cited-coverage page that is itself the
+   benchmark evidence surface
+4. benchmark index outputs should surface the evidence mode so proxy-backed
+   cases are never mistaken for direct article URLs
 
 ## What This Means For Your Strategy
 

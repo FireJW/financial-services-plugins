@@ -97,9 +97,25 @@ plugin-name/
 
 - **Skills** encode the domain expertise, best practices, and step-by-step workflows Claude needs to deliver professional-quality financial work. Claude draws on them automatically when relevant.
 - **Commands** are explicit actions you trigger (e.g., `/comps`, `/earnings`, `/ic-memo`).
-- **Connectors** wire Claude to the external data sources your workflow depends on — financial data terminals, research platforms, document management, and more — via [MCP servers](https://modelcontextprotocol.io/).
+- **Connectors** wire Claude to the external data sources your workflow depends on - financial data terminals, research platforms, document management, and more - via [MCP servers](https://modelcontextprotocol.io/).
 
-Every component is file-based — markdown and JSON, no code, no infrastructure, no build steps.
+Every component is file-based - markdown and JSON, no code, no infrastructure, no build steps.
+
+## Capability-First Usage
+
+When a workflow already exists in a plugin, use the plugin's native command and
+runtime before reaching for generic browsing or one-off scraping.
+
+Preferred operator order:
+
+1. find a matching slash command under `commands/`
+2. follow the linked skill/runtime path
+3. use generic browser automation only when the repo does not provide a better native path
+
+Example: for X / Twitter thread collection, use `/x-index` first. On Windows,
+prefer `browser_session.strategy = "remote_debugging"` with a real signed-in
+Edge or Chrome session. Use `cookie_file` only when remote debugging is not
+available.
 
 ## MCP Integrations
 
@@ -132,6 +148,15 @@ These plugins are starting points. They become much more useful when you customi
 - **Build new plugins** — Follow the structure above to create plugins for workflows we haven't covered yet.
 
 As your team builds and shares plugins, Claude becomes a cross-functional expert. The context you define gets baked into every relevant interaction, so leaders can spend less time enforcing processes and more time improving them.
+
+## Git Safety
+
+- Local runtime artifacts belong in `.tmp/`, `.tmp-*`, or root-level `tmp-*` paths and should stay out of git history.
+- This repo includes a versioned pre-commit guard under `.githooks/` that blocks staged temp artifacts, browser profile data, caches, and unusually large staged diffs.
+- For staging, prefer `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-stage-safe.ps1 <path>...` so accidental `.tmp` additions are scrubbed immediately instead of surviving until commit time.
+- If an external tool already staged files, run `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-scrub-staged-runtime-artifacts.ps1` to clean the index before continuing.
+- Enable the guard in each clone with `git config core.hooksPath .githooks`.
+- If a generated artifact needs to live in the repo, move it to a stable non-temp location such as `examples/` or `tests/fixtures/`.
 
 ## Contributing
 

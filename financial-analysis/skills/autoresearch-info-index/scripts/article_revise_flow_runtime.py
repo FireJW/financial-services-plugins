@@ -11,7 +11,7 @@ from article_feedback_profiles import (
     parse_bool,
     request_defaults_from_request,
     resolve_profile_dir,
-    save_feedback_profiles,
+    save_feedback_profiles_detailed,
 )
 from article_draft_flow_runtime import (
     assemble_article_package,
@@ -22,12 +22,40 @@ from article_draft_flow_runtime import (
     draft_metrics,
     load_json,
     localize_selected_images,
+    merge_localized_image_candidates,
     safe_dict,
     safe_list,
     sanitize_draft_mode,
     write_json,
 )
+from article_style_learning import (
+    build_revision_diff,
+    build_style_learning,
+    human_feedback_form_to_edit_reason_feedback,
+    merge_edit_reason_feedback,
+    normalize_edit_reason_feedback,
+    normalize_human_feedback_form,
+)
 from news_index_runtime import isoformat_or_blank, parse_datetime
+
+
+ARTICLE_REBUILD_KEYS = (
+    "topic",
+    "title_hint",
+    "title_hint_zh",
+    "subtitle_hint",
+    "subtitle_hint_zh",
+    "angle",
+    "angle_zh",
+    "tone",
+    "target_length_chars",
+    "max_images",
+    "image_strategy",
+    "draft_mode",
+    "language_mode",
+    "must_include",
+    "must_avoid",
+)
 
 
 def load_draft_result(raw_payload: dict[str, Any]) -> dict[str, Any]:
@@ -64,11 +92,78 @@ def normalize_feedback(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def derive_persist_feedback(
+    raw_persist_feedback: Any,
+    edit_reason_feedback: Any,
+) -> dict[str, Any]:
+    explicit = normalize_profile_feedback(raw_persist_feedback)
+    if explicit.get("scope") != "none":
+        return explicit
+
+    normalized_feedback = normalize_edit_reason_feedback(edit_reason_feedback)
+    reusable_preferences = [
+        item
+        for item in safe_list(normalized_feedback.get("reusable_preferences"))
+        if clean_text(item.get("key")) and normalize_profile_feedback({"scope": item.get("scope")}).get("scope") in {"topic", "global"}
+    ]
+    if not reusable_preferences:
+        return explicit
+
+    scopes = {
+        normalize_profile_feedback({"scope": item.get("scope")}).get("scope")
+        for item in reusable_preferences
+        if normalize_profile_feedback({"scope": item.get("scope")}).get("scope") in {"topic", "global"}
+    }
+    if len(scopes) != 1:
+        return explicit
+
+    defaults: dict[str, Any] = {}
+    for item in reusable_preferences:
+        key = clean_text(item.get("key")).lower()
+        value = item.get("value")
+        if key in {"must_include", "must_avoid"}:
+            existing = clean_string_list(defaults.get(key))
+            additions = clean_string_list(value)
+            merged = existing + [entry for entry in additions if entry not in existing]
+            if merged:
+                defaults[key] = merged
+            continue
+        if value not in (None, "", []):
+            defaults[key] = value
+
+    if not defaults:
+        return explicit
+
+    derived_notes = clean_string_list(
+        safe_list(explicit.get("notes"))
+        + [
+            "Auto-derived from reusable preferences in the human review form.",
+            clean_text(normalized_feedback.get("summary")),
+        ]
+        + [clean_text(item.get("why")) for item in reusable_preferences]
+    )
+    return normalize_profile_feedback(
+        {
+            "scope": next(iter(scopes)),
+            "defaults": defaults,
+            "notes": derived_notes,
+            "use_current_request_defaults": False,
+        }
+    )
+
+
 def normalize_revision_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     article_result = load_draft_result(raw_payload)
     prior_request = safe_dict(article_result.get("request"))
     source_summary = safe_dict(article_result.get("source_summary")) or safe_dict(article_result.get("source_context"))
     feedback = normalize_feedback(raw_payload)
+    explicit_edit_reason_feedback = normalize_edit_reason_feedback(raw_payload.get("edit_reason_feedback"))
+    human_feedback_form = normalize_human_feedback_form(raw_payload.get("human_feedback_form"))
+    merged_edit_reason_feedback = merge_edit_reason_feedback(
+        explicit_edit_reason_feedback,
+        human_feedback_form_to_edit_reason_feedback(human_feedback_form),
+    )
+    persist_feedback = derive_persist_feedback(raw_payload.get("persist_feedback"), merged_edit_reason_feedback)
 
     analysis_time = parse_datetime(raw_payload.get("analysis_time"), fallback=None) or parse_datetime(
         prior_request.get("analysis_time"),
@@ -101,9 +196,11 @@ def normalize_revision_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "asset_output_dir": clean_text(raw_payload.get("asset_output_dir") or safe_dict(article_result.get("draft_context")).get("asset_output_dir")),
         "download_remote_images": True,
         "feedback_profile_dir": clean_text(raw_payload.get("feedback_profile_dir") or prior_request.get("feedback_profile_dir")),
-        "persist_feedback": normalize_profile_feedback(raw_payload.get("persist_feedback")),
+        "persist_feedback": persist_feedback,
         "edited_body_markdown": raw_payload.get("edited_body_markdown") if isinstance(raw_payload.get("edited_body_markdown"), str) else "",
         "edited_article_markdown": raw_payload.get("edited_article_markdown") if isinstance(raw_payload.get("edited_article_markdown"), str) else "",
+        "edit_reason_feedback": merged_edit_reason_feedback,
+        "human_feedback_form": human_feedback_form,
         "allow_auto_rewrite_after_manual": parse_bool(raw_payload.get("allow_auto_rewrite_after_manual"), default=False),
         "article_result": article_result,
         "feedback": feedback,
@@ -136,6 +233,38 @@ def reorder_candidates(image_candidates: list[dict[str, Any]], keep_image_ids: l
             continue
         ordered.append(item)
     return ordered
+
+
+def preserve_localized_image_assets(
+    image_candidates: list[dict[str, Any]],
+    *cached_image_sets: Any,
+) -> list[dict[str, Any]]:
+    cached_images: list[dict[str, Any]] = []
+    for image_set in cached_image_sets:
+        cached_images.extend(item for item in safe_list(image_set) if isinstance(item, dict))
+    return merge_localized_image_candidates(image_candidates, cached_images)
+
+
+def normalize_rebuild_value(key: str, value: Any) -> Any:
+    if key in {"must_include", "must_avoid"}:
+        return clean_string_list(value)
+    if key in {"target_length_chars", "max_images"}:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+    return clean_text(value)
+
+
+def request_needs_package_rebuild(request: dict[str, Any], prior_request: dict[str, Any]) -> bool:
+    for key in ARTICLE_REBUILD_KEYS:
+        if normalize_rebuild_value(key, request.get(key)) != normalize_rebuild_value(key, prior_request.get(key)):
+            return True
+    if clean_string_list(safe_dict(request.get("feedback")).get("keep_image_ids")):
+        return True
+    if clean_string_list(safe_dict(request.get("feedback")).get("drop_image_ids")):
+        return True
+    return False
 
 
 def article_text(article_package: dict[str, Any]) -> str:
@@ -395,10 +524,13 @@ def rewrite_request_after_attack(request: dict[str, Any], analysis_brief: dict[s
 def build_review_report_markdown(article_package: dict[str, Any], review_package: dict[str, Any]) -> str:
     lines = [build_report_markdown(article_package).rstrip(), "", "## Red Team Review", ""]
     lines.append(f"- Rewrite mode: {clean_text(review_package.get('rewrite_mode')) or 'auto_rewrite'}")
+    lines.append(f"- Base package mode: {clean_text(review_package.get('base_package_mode')) or 'unknown'}")
     lines.append(
         f"- Pre-rewrite quality gate: {clean_text(review_package.get('pre_rewrite_quality_gate')) or clean_text(review_package.get('quality_gate')) or 'unknown'}"
     )
     lines.append(f"- Final quality gate: {clean_text(review_package.get('quality_gate')) or 'unknown'}")
+    if clean_text(review_package.get("rewrite_decision_reason")):
+        lines.append(f"- Rewrite decision: {clean_text(review_package.get('rewrite_decision_reason'))}")
     lines.append("")
     pre_attacks = safe_list(review_package.get("pre_rewrite_attacks"))
     if pre_attacks:
@@ -429,30 +561,98 @@ def build_review_report_markdown(article_package: dict[str, Any], review_package
         lines.append(f"- {item}")
     if not clean_string_list(review_package.get("remaining_risks")):
         lines.append("- None")
+    style_learning = safe_dict(review_package.get("style_learning"))
+    profile_update_decision = safe_dict(review_package.get("profile_update_decision"))
+    lines.extend(["", "## Style Learning", ""])
+    lines.append(
+        f"- Decision: {clean_text(profile_update_decision.get('status')) or 'unknown'} | "
+        f"{clean_text(profile_update_decision.get('reason')) or 'No learning decision recorded.'}"
+    )
+    for item in clean_string_list(style_learning.get("change_summary")):
+        lines.append(f"- Change summary: {item}")
+    high_rules = safe_list(style_learning.get("high_confidence_rules"))
+    medium_rules = safe_list(style_learning.get("medium_confidence_rules"))
+    low_rules = safe_list(style_learning.get("low_confidence_rules"))
+    lines.append(f"- High-confidence reusable rules: {len(high_rules)}")
+    lines.append(f"- Medium-confidence candidates: {len(medium_rules)}")
+    lines.append(f"- Low-confidence observations: {len(low_rules)}")
+    lines.append(f"- Human change reasons used: {int(style_learning.get('explicit_change_count', 0) or 0)}")
+    lines.append(f"- Human reusable preferences used: {int(style_learning.get('explicit_preference_count', 0) or 0)}")
+    human_feedback_form = safe_dict(review_package.get("human_feedback_form"))
+    if human_feedback_form:
+        lines.append(
+            f"- Human-friendly form entries: "
+            f"change_requests={len(safe_list(human_feedback_form.get('what_to_change')))}, "
+            f"remember_next_time={len(safe_list(human_feedback_form.get('what_to_remember_next_time')))}, "
+            f"one_off_fixes={len(safe_list(human_feedback_form.get('one_off_fixes_not_style')))}"
+        )
+    proposed_defaults = safe_dict(safe_dict(style_learning.get("proposed_profile_feedback")).get("defaults"))
+    if proposed_defaults:
+        for key, value in proposed_defaults.items():
+            lines.append(f"- Proposed default: {clean_text(key)} = {value}")
+    for item in clean_string_list(style_learning.get("excluded_signals")):
+        lines.append(f"- Excluded from reuse: {item}")
     return "\n".join(lines).strip() + "\n"
+
+
+def resolve_revision_evidence_bundle(article_result: dict[str, Any], draft_context: dict[str, Any]) -> dict[str, Any]:
+    bundle = safe_dict(article_result.get("evidence_bundle")) or safe_dict(draft_context.get("evidence_bundle"))
+    if clean_text(bundle.get("contract_version")):
+        return deepcopy(bundle)
+    return {}
+
+
+def matching_cached_feedback_profile_status(request: dict[str, Any], *candidates: Any) -> dict[str, Any]:
+    profile_dir = str(resolve_profile_dir(request.get("feedback_profile_dir")))
+    topic = clean_text(request.get("topic"))
+    for candidate in candidates:
+        status = safe_dict(candidate)
+        if (
+            clean_text(status.get("profile_dir")) == profile_dir
+            and clean_text(status.get("topic")) == topic
+        ):
+            return deepcopy(status)
+    return {}
 
 
 def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = normalize_revision_request(raw_payload)
     article_result = deepcopy(request["article_result"])
-    source_summary = deepcopy(safe_dict(article_result.get("source_summary")) or safe_dict(article_result.get("source_context")))
-    evidence_digest = deepcopy(safe_dict(article_result.get("evidence_digest")))
+    prior_request = safe_dict(article_result.get("request"))
     draft_context = deepcopy(safe_dict(article_result.get("draft_context")))
+    revision_evidence_bundle = resolve_revision_evidence_bundle(article_result, draft_context)
+    source_summary = deepcopy(
+        safe_dict(revision_evidence_bundle.get("source_summary"))
+        or safe_dict(article_result.get("source_summary"))
+        or safe_dict(article_result.get("source_context"))
+    )
+    evidence_digest = deepcopy(
+        safe_dict(revision_evidence_bundle.get("evidence_digest"))
+        or safe_dict(article_result.get("evidence_digest"))
+    )
     analysis_brief = deepcopy(
         safe_dict(article_result.get("analysis_brief"))
         or safe_dict(draft_context.get("analysis_brief"))
         or safe_dict(safe_dict(safe_dict(article_result.get("article_package")).get("render_context")).get("analysis_brief"))
     )
 
-    citations = deepcopy(safe_list(draft_context.get("citation_candidates"))) or deepcopy(
+    citations = deepcopy(safe_list(revision_evidence_bundle.get("citations"))) or deepcopy(safe_list(draft_context.get("citation_candidates"))) or deepcopy(
         safe_list(safe_dict(article_result.get("article_package")).get("citations"))
     )
-    image_candidates = deepcopy(safe_list(draft_context.get("image_candidates")))
+    image_candidates = deepcopy(safe_list(revision_evidence_bundle.get("image_candidates"))) or deepcopy(
+        safe_list(draft_context.get("image_candidates"))
+    )
     if not image_candidates:
         image_candidates = deepcopy(
             safe_list(safe_dict(article_result.get("article_package")).get("selected_images"))
             or safe_list(safe_dict(article_result.get("article_package")).get("image_blocks"))
         )
+    image_candidates = preserve_localized_image_assets(
+        image_candidates,
+        safe_list(safe_dict(article_result.get("article_package")).get("selected_images"))
+        or safe_list(safe_dict(article_result.get("article_package")).get("image_blocks")),
+        draft_context.get("selected_images"),
+    )
     image_candidates = reorder_candidates(
         image_candidates,
         request["feedback"].get("keep_image_ids", []),
@@ -462,14 +662,25 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
     source_summary["topic"] = clean_text(request.get("topic")) or clean_text(source_summary.get("topic"))
     source_summary["analysis_time"] = isoformat_or_blank(request["analysis_time"])
 
-    article_package, selected_images = assemble_article_package(
-        request,
-        source_summary,
-        evidence_digest,
-        citations,
-        image_candidates,
-        analysis_brief,
-    )
+    reuse_existing_package = not request_needs_package_rebuild(request, prior_request) and bool(safe_dict(article_result.get("article_package")))
+    if reuse_existing_package:
+        article_package = deepcopy(safe_dict(article_result.get("article_package")))
+        selected_images = deepcopy(
+            safe_list(article_package.get("selected_images")) or safe_list(article_package.get("image_blocks"))
+        )
+        article_package["feedback_profile_status"] = deepcopy(
+            safe_dict(request.get("feedback_profile_status")) or safe_dict(article_package.get("feedback_profile_status"))
+        )
+    else:
+        article_package, selected_images = assemble_article_package(
+            request,
+            source_summary,
+            evidence_digest,
+            citations,
+            image_candidates,
+            analysis_brief,
+        )
+    base_package_mode = "reused_draft_package" if reuse_existing_package else "reassembled"
 
     manual_override = False
     manual_body_override = False
@@ -502,6 +713,8 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         review_rewrite_package = {
             **pre_rewrite_review,
             "rewrite_mode": "manual_preserved",
+            "base_package_mode": base_package_mode,
+            "rewrite_decision_reason": "Manual override was preserved because auto rewrite after manual edits was not enabled.",
             "pre_rewrite_quality_gate": clean_text(pre_rewrite_review.get("quality_gate")),
             "pre_rewrite_attacks": deepcopy(safe_list(pre_rewrite_review.get("attacks"))),
             "pre_rewrite_remaining_risks": deepcopy(clean_string_list(pre_rewrite_review.get("remaining_risks"))),
@@ -515,6 +728,33 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
             + [
                 "Manual override preserved; auto-rewrite skipped.",
                 f"Red-team quality gate on manual draft: {clean_text(review_rewrite_package.get('quality_gate')) or 'unknown'}.",
+            ]
+        )
+        review_rewrite_package["final_draft"] = {
+            "title": clean_text(article_package.get("title")),
+            "draft_thesis": clean_text(article_package.get("draft_thesis")),
+            "body_markdown": article_package.get("body_markdown", ""),
+            "article_markdown": article_package.get("article_markdown", ""),
+        }
+    elif not manual_override and not safe_list(pre_rewrite_review.get("attacks")) and clean_text(pre_rewrite_review.get("quality_gate")) == "pass":
+        review_rewrite_package = {
+            **pre_rewrite_review,
+            "rewrite_mode": "no_rewrite_needed",
+            "base_package_mode": base_package_mode,
+            "rewrite_decision_reason": "Red-team review passed without attacks, so the current package was kept as the final draft.",
+            "pre_rewrite_quality_gate": clean_text(pre_rewrite_review.get("quality_gate")),
+            "pre_rewrite_attacks": [],
+            "pre_rewrite_remaining_risks": deepcopy(clean_string_list(pre_rewrite_review.get("remaining_risks"))),
+            "quality_gate": clean_text(pre_rewrite_review.get("quality_gate")),
+            "attacks": [],
+            "remaining_risks": deepcopy(clean_string_list(pre_rewrite_review.get("remaining_risks"))),
+            "claims_removed_or_softened": clean_string_list(pre_rewrite_review.get("claims_removed_or_softened")),
+        }
+        article_package["editor_notes"] = clean_string_list(
+            safe_list(article_package.get("editor_notes"))
+            + [
+                "Red-team review passed without requiring an auto-rewrite; kept the current draft package.",
+                f"Red-team quality gate: {clean_text(review_rewrite_package.get('quality_gate')) or 'unknown'}.",
             ]
         )
         review_rewrite_package["final_draft"] = {
@@ -537,6 +777,12 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         review_rewrite_package = {
             **pre_rewrite_review,
             "rewrite_mode": "manual_opt_in_auto_rewrite" if manual_override else "auto_rewrite",
+            "base_package_mode": base_package_mode,
+            "rewrite_decision_reason": (
+                "Manual override requested auto rewrite after review."
+                if manual_override
+                else "Red-team review found issues that required a safer regenerated draft."
+            ),
             "pre_rewrite_quality_gate": clean_text(pre_rewrite_review.get("quality_gate")),
             "pre_rewrite_attacks": deepcopy(safe_list(pre_rewrite_review.get("attacks"))),
             "pre_rewrite_remaining_risks": deepcopy(clean_string_list(pre_rewrite_review.get("remaining_risks"))),
@@ -572,21 +818,53 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         selected_images = rewritten_images
     asset_localization = localize_selected_images(article_package, request)
     selected_images = deepcopy(safe_list(article_package.get("selected_images") or article_package.get("image_blocks")))
-    saved_profile_paths = save_feedback_profiles(
-        resolve_profile_dir(request.get("feedback_profile_dir")),
+    image_candidates = preserve_localized_image_assets(image_candidates, selected_images)
+    revision_diff = build_revision_diff(article_result, request, article_package, selected_images, citations)
+    style_learning = build_style_learning(
+        article_result,
+        request,
+        article_package,
+        review_rewrite_package,
+        revision_diff,
+        request.get("edit_reason_feedback"),
+    )
+    profile_update_decision = safe_dict(style_learning.get("profile_update_decision"))
+    review_rewrite_package["style_learning"] = deepcopy(style_learning)
+    review_rewrite_package["profile_update_decision"] = deepcopy(profile_update_decision)
+    review_rewrite_package["human_feedback_form"] = deepcopy(safe_dict(request.get("human_feedback_form")))
+
+    profile_dir = resolve_profile_dir(request.get("feedback_profile_dir"))
+    save_result = save_feedback_profiles_detailed(
+        profile_dir,
         request.get("topic"),
         request["analysis_time"],
         request.get("persist_feedback"),
         request_defaults=request_defaults_from_request(request),
     )
-    article_package["feedback_profile_status"] = feedback_profile_status(
-        resolve_profile_dir(request.get("feedback_profile_dir")),
-        request.get("topic"),
+    saved_profile_paths = clean_string_list(save_result.get("saved_paths"))
+    profile_backup_paths = clean_string_list(save_result.get("backup_paths"))
+    cached_feedback_status = matching_cached_feedback_profile_status(
+        request,
+        article_result.get("feedback_profile_status"),
+        safe_dict(safe_dict(article_result.get("article_package")).get("feedback_profile_status")),
+        draft_context.get("feedback_profile_status"),
     )
+    if saved_profile_paths or profile_backup_paths or not cached_feedback_status:
+        article_package["feedback_profile_status"] = feedback_profile_status(
+            profile_dir,
+            request.get("topic"),
+        )
+    else:
+        article_package["feedback_profile_status"] = cached_feedback_status
     if saved_profile_paths:
         article_package["editor_notes"] = clean_string_list(
             safe_list(article_package.get("editor_notes"))
             + [f"Saved feedback profile updates: {', '.join(saved_profile_paths)}"]
+        )
+    if profile_backup_paths:
+        article_package["editor_notes"] = clean_string_list(
+            safe_list(article_package.get("editor_notes"))
+            + [f"Backed up previous feedback profiles: {', '.join(profile_backup_paths)}"]
         )
 
     result = deepcopy(article_result)
@@ -610,6 +888,9 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "must_avoid": request.get("must_avoid"),
         "allow_auto_rewrite_after_manual": allow_auto_rewrite_after_manual,
         "feedback_profile_dir": request.get("feedback_profile_dir"),
+        "persist_feedback": deepcopy(request.get("persist_feedback")),
+        "edit_reason_feedback": request.get("edit_reason_feedback"),
+        "human_feedback_form": request.get("human_feedback_form"),
         "source_result": None,
     }
     result["source_summary"] = source_summary
@@ -619,6 +900,13 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "analysis_time": source_summary.get("analysis_time"),
         "source_result_path": clean_text(safe_dict(article_result.get("source_context")).get("source_result_path")),
     }
+    if revision_evidence_bundle:
+        revision_evidence_bundle["topic"] = clean_text(request.get("topic")) or clean_text(revision_evidence_bundle.get("topic"))
+        revision_evidence_bundle["analysis_time"] = isoformat_or_blank(request["analysis_time"])
+        revision_evidence_bundle["source_summary"] = deepcopy(source_summary)
+        revision_evidence_bundle["evidence_digest"] = deepcopy(evidence_digest)
+        revision_evidence_bundle["citations"] = deepcopy(citations)
+        revision_evidence_bundle["image_candidates"] = deepcopy(image_candidates)
     result["draft_context"] = {
         **draft_context,
         "source_summary": source_summary,
@@ -627,8 +915,10 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "citation_candidates": citations,
         "image_candidates": image_candidates,
         "selected_images": deepcopy(selected_images),
+        "evidence_bundle": revision_evidence_bundle,
         "asset_output_dir": request.get("asset_output_dir"),
     }
+    result["evidence_bundle"] = revision_evidence_bundle
     result["analysis_brief"] = analysis_brief
     result["article_package"] = article_package
     result["review_rewrite_package"] = review_rewrite_package
@@ -639,7 +929,12 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "article_markdown": article_package.get("article_markdown", ""),
         "quality_gate": clean_text(review_rewrite_package.get("quality_gate")),
     }
+    result["revision_diff"] = revision_diff
+    result["style_learning"] = style_learning
+    result["profile_update_decision"] = profile_update_decision
+    result["human_feedback_form"] = deepcopy(safe_dict(request.get("human_feedback_form")))
     result["saved_feedback_profiles"] = saved_profile_paths
+    result["profile_backup_paths"] = profile_backup_paths
     result["feedback_profile_status"] = deepcopy(safe_dict(article_package.get("feedback_profile_status")))
     result["asset_localization"] = asset_localization
     result["preview_html"] = build_article_preview_html(article_package)
@@ -656,6 +951,19 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "dropped_image_ids": request["feedback"].get("drop_image_ids", []),
         "quality_gate": clean_text(review_rewrite_package.get("quality_gate")),
         "saved_feedback_profiles": saved_profile_paths,
+        "profile_backup_paths": profile_backup_paths,
+        "edit_reason_feedback": request.get("edit_reason_feedback"),
+        "human_feedback_form": request.get("human_feedback_form"),
+        "base_package_mode": base_package_mode,
+        "revision_diff": revision_diff,
+        "style_learning_summary": {
+            "high_confidence_rule_count": len(safe_list(style_learning.get("high_confidence_rules"))),
+            "medium_confidence_rule_count": len(safe_list(style_learning.get("medium_confidence_rules"))),
+            "low_confidence_rule_count": len(safe_list(style_learning.get("low_confidence_rules"))),
+            "decision": clean_text(profile_update_decision.get("status")),
+            "explicit_change_count": int(style_learning.get("explicit_change_count", 0) or 0),
+            "explicit_preference_count": int(style_learning.get("explicit_preference_count", 0) or 0),
+        },
     }
     result["revision_history"] = safe_list(article_result.get("revision_history")) + [revision_entry]
     result["revision_log"] = safe_list(article_result.get("revision_log")) + [revision_entry]

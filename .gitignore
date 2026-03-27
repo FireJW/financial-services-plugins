@@ -46,3 +46,17 @@ TASKS.md
 MEMORY.md
 .claude/worktrees/
 .gstack/
+
+# Local runtime artifacts
+.tmp/
+.tmp-*/
+tmp-*/
+tmp-*.json
+tmp-*.md
+tmp-*.html
+tmp-*.png
+tmp-*.jpg
+tmp-*.jpeg
+tmp-*.webp
+tmp-*.db
+tmp-*.sqlite

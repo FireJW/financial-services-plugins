@@ -11,6 +11,7 @@ from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
 from article_brief_runtime import build_analysis_brief
+from article_evidence_bundle import CONTRACT_VERSION as EVIDENCE_BUNDLE_CONTRACT_VERSION, build_shared_evidence_bundle
 from article_feedback_profiles import feedback_profile_status, load_feedback_profiles, merge_request_with_profiles, resolve_profile_dir
 from news_index_runtime import isoformat_or_blank, load_json, parse_datetime, short_excerpt, write_json
 
@@ -21,6 +22,15 @@ def now_utc() -> datetime:
 
 def clean_text(value: Any) -> str:
     return " ".join(str(value or "").replace("\u200b", " ").split()).strip()
+
+
+def meaningful_image_hint(value: Any) -> str:
+    cleaned = clean_text(value)
+    if not cleaned:
+        return ""
+    if cleaned.lower().strip(" .,:;!?") in {"image", "images", "photo", "photos", "picture", "pictures", "media", "graphic", "图像", "图片", "照片"}:
+        return ""
+    return cleaned
 
 
 def safe_dict(value: Any) -> dict[str, Any]:
@@ -87,6 +97,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     if not analysis_brief and analysis_brief_path:
         loaded_brief = load_json(Path(analysis_brief_path).resolve())
         analysis_brief = safe_dict(loaded_brief.get("analysis_brief")) or loaded_brief
+    evidence_bundle = safe_dict(payload.get("evidence_bundle"))
 
     source_request = (
         safe_dict(source_result.get("request"))
@@ -122,6 +133,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "source_result_path": source_result_path,
         "analysis_brief": analysis_brief,
         "analysis_brief_path": analysis_brief_path,
+        "evidence_bundle": evidence_bundle,
     }
     profile_dir = resolve_profile_dir(request.get("feedback_profile_dir"))
     profiles = load_feedback_profiles(profile_dir, request.get("topic", "article-topic"))
@@ -132,8 +144,22 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request["draft_mode"] = sanitize_draft_mode(request.get("draft_mode"))
     request["language_mode"] = sanitize_language_mode(request.get("language_mode"))
     request["feedback_profile_dir"] = str(profile_dir)
-    request["feedback_profile_status"] = feedback_profile_status(profile_dir, request.get("topic", "article-topic"))
+    request["feedback_profile_status"] = feedback_profile_status(
+        profile_dir,
+        request.get("topic", "article-topic"),
+        profiles=profiles,
+    )
     return request
+
+
+def ensure_evidence_bundle(request: dict[str, Any]) -> dict[str, Any]:
+    bundle = safe_dict(request.get("evidence_bundle"))
+    if clean_text(bundle.get("contract_version")) != EVIDENCE_BUNDLE_CONTRACT_VERSION:
+        bundle = {}
+    required_keys = {"source_summary", "evidence_digest", "citations", "image_candidates"}
+    if not required_keys.issubset(bundle.keys()):
+        bundle = build_shared_evidence_bundle(request["source_result"], request)
+    return deepcopy(bundle)
 
 def extract_runtime_result(source_result: dict[str, Any]) -> dict[str, Any]:
     runtime = safe_dict(source_result.get("retrieval_result"))
@@ -275,7 +301,18 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
 
-    def add(role: str, source_name: str, path: str, source_url: str, summary: str, access_mode: str, relevance: str, source_tier: int) -> None:
+    def add(
+        role: str,
+        source_name: str,
+        path: str,
+        source_url: str,
+        summary: str,
+        access_mode: str,
+        relevance: str,
+        source_tier: int,
+        alt_text: str = "",
+        capture_method: str = "",
+    ) -> None:
         clean_path = clean_text(path)
         clean_url = clean_text(source_url)
         if not clean_path and not clean_url:
@@ -322,6 +359,8 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
                 "access_mode": clean_text(access_mode) or "unknown",
                 "relevance": clean_text(relevance) or "medium",
                 "source_tier": int(source_tier),
+                "alt_text": clean_text(alt_text),
+                "capture_method": clean_text(capture_method),
                 "score": score,
             }
         )
@@ -350,10 +389,12 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
                 source_name,
                 clean_text(media.get("local_artifact_path")),
                 clean_text(media.get("source_url")),
-                clean_text(media.get("ocr_summary") or media.get("ocr_text_raw")),
+                clean_text(media.get("ocr_summary") or media.get("ocr_text_raw") or meaningful_image_hint(media.get("alt_text"))),
                 access_mode,
                 clean_text(media.get("image_relevance_to_post")) or "medium",
                 3,
+                meaningful_image_hint(media.get("alt_text")),
+                clean_text(media.get("capture_method")),
             )
 
     verdict = safe_dict(extract_runtime_result(source_result).get("verdict_output"))
@@ -382,10 +423,16 @@ def build_selected_images(image_candidates: list[dict[str, Any]], request: dict[
         source_url = clean_text(item.get("source_url"))
         access_mode = clean_text(item.get("access_mode"))
         summary = clean_text(item.get("summary") or item.get("caption"))
+        alt_text = clean_text(item.get("alt_text"))
+        capture_method = clean_text(item.get("capture_method"))
         if summary:
             caption = summary
+        elif alt_text:
+            caption = alt_text
         elif item.get("role") == "root_post_screenshot" and access_mode == "blocked":
             caption = "Root post screenshot from a blocked page. Keep it as visual evidence only."
+        elif item.get("role") == "post_media" and capture_method == "dom_clip":
+            caption = "Browser-captured image from the original X post."
         elif item.get("role") == "root_post_screenshot":
             caption = "Root post screenshot."
         else:
@@ -406,6 +453,63 @@ def build_selected_images(image_candidates: list[dict[str, Any]], request: dict[
             }
         )
     return selected
+
+
+def image_candidate_match_keys(item: dict[str, Any]) -> list[tuple[str, ...]]:
+    keys: list[tuple[str, ...]] = []
+    image_id = clean_text(item.get("image_id") or item.get("asset_id"))
+    if image_id:
+        keys.append(("id", image_id))
+    role = clean_text(item.get("role"))
+    source_url = clean_text(item.get("source_url") or item.get("localized_from"))
+    source_name = clean_text(item.get("source_name"))
+    if role or source_url or source_name:
+        keys.append(("source", role, source_url, source_name))
+    path_text = clean_text(item.get("path") or item.get("render_target") or item.get("embed_target"))
+    if role and path_text:
+        keys.append(("path", role, path_text))
+    return keys
+
+
+def merge_localized_image_candidates(
+    image_candidates: list[dict[str, Any]],
+    localized_images: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    localized_lookup: dict[tuple[str, ...], dict[str, Any]] = {}
+    for item in localized_images:
+        local_path = clean_text(item.get("path") or item.get("render_target") or item.get("embed_target"))
+        if not local_path or not path_exists(local_path):
+            continue
+        localized_item = deepcopy(item)
+        localized_item["path"] = local_path
+        for key in image_candidate_match_keys(localized_item):
+            localized_lookup[key] = localized_item
+
+    if not localized_lookup:
+        return deepcopy(image_candidates)
+
+    merged_candidates: list[dict[str, Any]] = []
+    for item in image_candidates:
+        merged = deepcopy(item)
+        match = next((localized_lookup[key] for key in image_candidate_match_keys(merged) if key in localized_lookup), None)
+        if not match:
+            merged_candidates.append(merged)
+            continue
+
+        merged["path"] = clean_text(match.get("path"))
+        merged["status"] = "local_ready"
+        localized_from = clean_text(match.get("localized_from"))
+        if localized_from:
+            merged["localized_from"] = localized_from
+            if not clean_text(merged.get("source_url")):
+                merged["source_url"] = localized_from
+        for field in ("summary", "caption", "alt_text", "capture_method", "access_mode", "relevance"):
+            if not clean_text(merged.get(field)) and clean_text(match.get(field)):
+                merged[field] = clean_text(match.get(field))
+        if merged.get("source_tier") in (None, "") and match.get("source_tier") not in (None, ""):
+            merged["source_tier"] = int(match.get("source_tier"))
+        merged_candidates.append(merged)
+    return merged_candidates
 
 
 def build_title(request: dict[str, Any], digest: dict[str, Any], selected_images: list[dict[str, Any]]) -> str:
@@ -1002,7 +1106,44 @@ def build_article_markdown(
     return "\n".join(lines).strip() + "\n"
 
 
-def refresh_article_package(article_package: dict[str, Any], must_avoid: list[str] | None = None) -> dict[str, Any]:
+def body_refresh_signature(images: list[dict[str, Any]], draft_mode: str) -> list[tuple[str, str, str, str]]:
+    signature: list[tuple[str, str, str, str]] = []
+    include_status = draft_mode in {"image_first", "image_only"}
+    for item in images[:3]:
+        signature.append(
+            (
+                clean_text(item.get("source_name")),
+                clean_text(item.get("caption")),
+                clean_text(item.get("role")),
+                clean_text(item.get("status")) if include_status else "",
+            )
+        )
+    return signature
+
+
+def should_rebuild_body_for_image_refresh(
+    article_package: dict[str, Any],
+    previous_images: list[dict[str, Any]],
+    next_images: list[dict[str, Any]],
+) -> bool:
+    if article_package.get("manual_body_override"):
+        return False
+    render_context = safe_dict(article_package.get("render_context"))
+    if not render_context:
+        return False
+    if not safe_list(article_package.get("sections") or article_package.get("body_sections")):
+        return True
+    request_context = safe_dict(render_context.get("request"))
+    draft_mode = clean_text(request_context.get("draft_mode"))
+    return body_refresh_signature(previous_images, draft_mode) != body_refresh_signature(next_images, draft_mode)
+
+
+def refresh_article_package(
+    article_package: dict[str, Any],
+    must_avoid: list[str] | None = None,
+    *,
+    rebuild_body: bool = True,
+) -> dict[str, Any]:
     title = clean_text(article_package.get("title"))
     subtitle = clean_text(article_package.get("subtitle"))
     images = deepcopy(safe_list(article_package.get("selected_images") or article_package.get("image_blocks")))
@@ -1010,7 +1151,8 @@ def refresh_article_package(article_package: dict[str, Any], must_avoid: list[st
     render_context = safe_dict(article_package.get("render_context"))
     request_context = safe_dict(render_context.get("request"))
     section_must_avoid = clean_string_list(must_avoid if must_avoid is not None else request_context.get("must_avoid"))
-    if render_context and not article_package.get("manual_body_override"):
+    should_refresh_body = rebuild_body or not safe_list(article_package.get("sections") or article_package.get("body_sections"))
+    if render_context and not article_package.get("manual_body_override") and should_refresh_body:
         sections = build_sections(
             request_context,
             safe_dict(render_context.get("source_summary")),
@@ -1096,9 +1238,10 @@ def localize_selected_images(article_package: dict[str, Any], request: dict[str,
             "failed_assets": [],
         }
         article_package["asset_localization"] = localization
-        refresh_article_package(article_package, request.get("must_avoid", []))
+        refresh_article_package(article_package, request.get("must_avoid", []), rebuild_body=False)
         return localization
 
+    previous_images = deepcopy(selected_images)
     asset_dir = Path(asset_output_dir)
     downloaded_assets: list[str] = []
     failed_assets: list[str] = []
@@ -1139,7 +1282,11 @@ def localize_selected_images(article_package: dict[str, Any], request: dict[str,
         "downloaded_assets": downloaded_assets,
         "failed_assets": failed_assets,
     }
-    refresh_article_package(article_package, request.get("must_avoid", []))
+    refresh_article_package(
+        article_package,
+        request.get("must_avoid", []),
+        rebuild_body=should_rebuild_body_for_image_refresh(article_package, previous_images, selected_images),
+    )
     return article_package["asset_localization"]
 
 
@@ -1371,9 +1518,12 @@ def assemble_article_package(
 
 def build_article_draft(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = normalize_request(raw_payload)
-    source_summary, evidence_digest = build_source_summary(request["source_result"], request)
-    citations = build_citations(request["source_result"])
-    image_candidates = build_image_candidates(request["source_result"], request)
+    evidence_bundle = ensure_evidence_bundle(request)
+    request["evidence_bundle"] = evidence_bundle
+    source_summary = safe_dict(evidence_bundle.get("source_summary"))
+    evidence_digest = safe_dict(evidence_bundle.get("evidence_digest"))
+    citations = deepcopy(safe_list(evidence_bundle.get("citations")))
+    image_candidates = deepcopy(safe_list(evidence_bundle.get("image_candidates")))
     analysis_brief = safe_dict(request.get("analysis_brief"))
     if not analysis_brief:
         analysis_brief_result = build_analysis_brief(
@@ -1407,9 +1557,20 @@ def build_article_draft(raw_payload: dict[str, Any]) -> dict[str, Any]:
         )
     asset_localization = localize_selected_images(article_package, request)
     selected_images = deepcopy(safe_list(article_package.get("selected_images") or article_package.get("image_blocks")))
+    image_candidates = merge_localized_image_candidates(image_candidates, selected_images)
+    evidence_bundle["image_candidates"] = deepcopy(image_candidates)
 
     result = {
-        "request": {**request, "analysis_time": isoformat_or_blank(request["analysis_time"]), "source_result": None},
+        "request": {
+            **request,
+            "analysis_time": isoformat_or_blank(request["analysis_time"]),
+            "source_result": None,
+            "evidence_bundle": {
+                "contract_version": clean_text(evidence_bundle.get("contract_version")),
+                "citation_count": len(citations),
+                "image_candidate_count": len(image_candidates),
+            },
+        },
         "source_summary": source_summary,
         "source_context": {
             "source_kind": source_summary.get("source_kind"),
@@ -1418,6 +1579,7 @@ def build_article_draft(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "source_result_path": request.get("source_result_path", ""),
         },
         "evidence_digest": evidence_digest,
+        "evidence_bundle": evidence_bundle,
         "analysis_brief": analysis_brief,
         "draft_context": {
             "source_summary": source_summary,
@@ -1426,6 +1588,7 @@ def build_article_draft(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "citation_candidates": citations,
             "image_candidates": image_candidates,
             "selected_images": deepcopy(selected_images),
+            "evidence_bundle": evidence_bundle,
             "source_result_path": request.get("source_result_path", ""),
             "applied_feedback_profiles": clean_string_list(request.get("applied_feedback_profiles")),
             "asset_output_dir": clean_text(request.get("asset_output_dir")),
@@ -1458,6 +1621,7 @@ __all__ = [
     "clean_text",
     "draft_metrics",
     "load_json",
+    "merge_localized_image_candidates",
     "normalize_latest_signals",
     "normalize_request",
     "path_exists",

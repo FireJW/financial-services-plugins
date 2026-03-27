@@ -157,6 +157,10 @@ The runnable top-level result currently includes:
 - `retrieval_quality`
 - `report_markdown`
 
+`news-index` also supports `preset=energy-war`, which forces the crisis path
+and backfills an energy benchmark watchlist plus preset watch items when the
+user has not supplied custom ones.
+
 ## Credibility Metrics
 
 Every evaluated result should also expose a credibility snapshot that is easy to
@@ -213,6 +217,8 @@ or `last public indication`.
 - [scripts/run_news_index.cmd](scripts/run_news_index.cmd) runs the one-shot retrieval entry
 - [scripts/x_index.py](scripts/x_index.py) builds an X-post evidence pack and bridges it into the recency-first retrieval flow
 - [scripts/run_x_index.cmd](scripts/run_x_index.cmd) runs the X-post evidence entry
+- [scripts/macro_note_workflow.py](scripts/macro_note_workflow.py) chains `news-index/x-index -> article-brief -> macro note`
+- [scripts/run_macro_note_workflow.cmd](scripts/run_macro_note_workflow.cmd) runs the macro-note workflow entry
 - [scripts/last30days_bridge_runtime.py](scripts/last30days_bridge_runtime.py) imports a separate `last30days` result and bridges selected findings into `news-index` as shadow observations
 - [scripts/last30days_bridge.py](scripts/last30days_bridge.py) runs the one-shot `last30days` bridge entry
 - [scripts/run_last30days_bridge.cmd](scripts/run_last30days_bridge.cmd) runs the `last30days` bridge through the local Python wrapper
@@ -227,6 +233,9 @@ or `last public indication`.
 - [scripts/article_workflow_runtime.py](scripts/article_workflow_runtime.py) chains indexing if needed, then builds the first draft and writes a revision template for the next review pass
 - [scripts/article_workflow.py](scripts/article_workflow.py) runs the end-to-end article workflow entry
 - [scripts/run_article_workflow.cmd](scripts/run_article_workflow.cmd) runs the article workflow entry through the local Python wrapper
+- [scripts/macro_note_workflow_runtime.py](scripts/macro_note_workflow_runtime.py) chains indexing if needed, builds the analysis brief, and emits a macro-note result instead of a publishable article
+- [scripts/macro_note_workflow.py](scripts/macro_note_workflow.py) runs the end-to-end macro note workflow entry
+- [scripts/run_macro_note_workflow.cmd](scripts/run_macro_note_workflow.cmd) runs the macro note workflow entry through the local Python wrapper
 - [scripts/article_batch_workflow_runtime.py](scripts/article_batch_workflow_runtime.py) runs the automatic multi-topic article queue on top of the single-article workflow
 - [scripts/article_batch_workflow.py](scripts/article_batch_workflow.py) runs the batch workflow entry
 - [scripts/run_article_batch_workflow.cmd](scripts/run_article_batch_workflow.cmd) runs the batch workflow through the local Python wrapper

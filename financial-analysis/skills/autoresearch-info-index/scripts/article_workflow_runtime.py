@@ -7,10 +7,12 @@ from typing import Any
 
 from article_brief_runtime import build_analysis_brief
 from article_cleanup_runtime import cleanup_article_temp_dirs
+from article_feedback_markdown import build_feedback_markdown
 from article_feedback_profiles import feedback_profile_status, resolve_profile_dir
 from article_draft_flow_runtime import build_article_draft, clean_text, load_json, safe_dict, safe_list, write_json
 from article_revise_flow_runtime import build_article_revision
 from news_index_runtime import isoformat_or_blank, parse_datetime, run_news_index, slugify
+from runtime_paths import runtime_subdir
 from x_index_runtime import run_x_index
 
 
@@ -60,7 +62,7 @@ def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     output_dir = (
         Path(clean_text(payload.get("output_dir"))).expanduser()
         if clean_text(payload.get("output_dir"))
-        else Path.cwd() / ".tmp" / "article-workflow" / slugify(topic, "article-topic") / analysis_time.strftime("%Y%m%dT%H%M%SZ")
+        else runtime_subdir("article-workflow", slugify(topic, "article-topic"), analysis_time.strftime("%Y%m%dT%H%M%SZ"))
     )
     return {
         "payload_kind": payload_kind,
@@ -128,12 +130,32 @@ def build_brief_payload(request: dict[str, Any], source_result: dict[str, Any]) 
 def build_revision_template(draft_result: dict[str, Any]) -> dict[str, Any]:
     request = safe_dict(draft_result.get("request"))
     article_package = safe_dict(draft_result.get("article_package"))
+    analysis_brief = safe_dict(draft_result.get("analysis_brief")) or safe_dict(safe_dict(draft_result.get("draft_context")).get("analysis_brief"))
+    source_summary = safe_dict(draft_result.get("source_summary"))
     selected_images = safe_list(article_package.get("selected_images")) or safe_list(article_package.get("image_blocks"))
     hero_image_id = clean_text(selected_images[0].get("asset_id") or selected_images[0].get("image_id")) if selected_images else ""
-    profile_status = feedback_profile_status(
-        resolve_profile_dir(request.get("feedback_profile_dir")),
-        clean_text(request.get("topic")) or clean_text(safe_dict(draft_result.get("source_summary")).get("topic")) or "article-topic",
-    )
+    profile_status = safe_dict(request.get("feedback_profile_status")) or safe_dict(draft_result.get("feedback_profile_status"))
+    if not profile_status:
+        profile_status = feedback_profile_status(
+            resolve_profile_dir(request.get("feedback_profile_dir")),
+            clean_text(request.get("topic")) or clean_text(safe_dict(draft_result.get("source_summary")).get("topic")) or "article-topic",
+        )
+    unresolved_claim = clean_text(safe_dict((safe_list(analysis_brief.get("not_proven")) or [{}])[0]).get("claim_text"))
+    review_focus_checks: list[str] = []
+    if unresolved_claim:
+        review_focus_checks.append(f"Check that the article still treats this as unresolved: {unresolved_claim}")
+    if int(source_summary.get("blocked_source_count", 0) or 0) > 0:
+        review_focus_checks.append("Check that blocked or inaccessible sources are disclosed clearly.")
+    for item in clean_text_list_preview(article_package.get("writer_risk_notes"), limit=2):
+        review_focus_checks.append(item)
+    if selected_images:
+        image_ids = [
+            clean_text(item.get("asset_id") or item.get("image_id"))
+            for item in selected_images[:4]
+            if clean_text(item.get("asset_id") or item.get("image_id"))
+        ]
+        if image_ids:
+            review_focus_checks.append(f"Confirm whether these image IDs should stay near the front: {', '.join(image_ids)}")
     template = {
         "feedback": {
             "summary": "",
@@ -170,6 +192,136 @@ def build_revision_template(draft_result: dict[str, Any]) -> dict[str, Any]:
         "angle_zh": "",
         "edited_body_markdown": "",
         "edited_article_markdown": "",
+        "human_feedback_form": {
+            "overall_goal_in_plain_english": "",
+            "what_to_keep": [],
+            "what_to_change": [
+                {
+                    "change": "",
+                    "why": "",
+                }
+            ],
+            "what_to_remember_next_time": [
+                {
+                    "key": "must_include",
+                    "value": "",
+                    "why": "",
+                }
+            ],
+            "one_off_fixes_not_style": [
+                {
+                    "change": "",
+                    "why": "",
+                }
+            ],
+            "help": {
+                "how_to_use": [
+                    "Fill this form if you want a simpler review path. The system will translate it into structured learning signals.",
+                    "Use what_to_keep only as soft context to preserve, not as a hard lock on the rewrite.",
+                    "Use what_to_change for edits you made in this draft.",
+                    "Use what_to_remember_next_time only for preferences you want reused later. If you omit scope, topic is assumed.",
+                    "Use one_off_fixes_not_style for fact corrections or evidence-bound fixes that should not become house style.",
+                    "Optional advanced fields like area, reason_tag, remember_for, and scope can be added only when they help.",
+                ],
+                "reason_tags": [
+                    "voice",
+                    "structure",
+                    "clarity",
+                    "factual_caution",
+                    "citation_handling",
+                    "image_usage",
+                    "translation",
+                    "audience_fit",
+                    "emphasis",
+                    "other",
+                ],
+                "areas": [
+                    "title",
+                    "subtitle",
+                    "lede",
+                    "body",
+                    "article",
+                    "structure",
+                    "images",
+                    "claims",
+                    "citations",
+                    "tone",
+                    "language",
+                    "other",
+                ],
+                "remember_for_meaning": {
+                    "review": "Good context for this review, but not a saved default yet.",
+                    "topic": "Save this preference for this topic only.",
+                    "global": "Save this preference across future drafts.",
+                },
+                "preference_keys": [
+                    "language_mode",
+                    "tone",
+                    "draft_mode",
+                    "image_strategy",
+                    "max_images",
+                    "must_include",
+                    "must_avoid",
+                ],
+            },
+        },
+        "edit_reason_feedback": {
+            "summary": "",
+            "changes": [],
+            "reusable_preferences": [],
+            "help": {
+                "reason_tags": [
+                    "voice",
+                    "structure",
+                    "clarity",
+                    "factual_caution",
+                    "citation_handling",
+                    "image_usage",
+                    "translation",
+                    "audience_fit",
+                    "emphasis",
+                    "other",
+                ],
+                "reuse_scope_meaning": {
+                    "none": "One-off edit. Keep it in history, but do not reuse it.",
+                    "review": "Useful signal for review, but not yet a default.",
+                    "topic": "Good default for this topic only.",
+                    "global": "Good default across future drafts.",
+                },
+                "preference_keys": [
+                    "language_mode",
+                    "tone",
+                    "draft_mode",
+                    "image_strategy",
+                    "max_images",
+                    "must_include",
+                    "must_avoid",
+                ],
+            },
+        },
+        "review_form_quickstart": {
+            "recommended_path": "Fill human_feedback_form first. Use edit_reason_feedback only if you want the lower-level structured version directly.",
+            "example_overall_goal": "Make the opening clearer and more cautious.",
+            "example_change": {
+                "change": "Lead with confirmed facts before scenarios.",
+                "why": "Readers should see what is known before what is possible.",
+            },
+            "example_preference": {
+                "key": "must_include",
+                "value": "Lead with the strongest confirmed fact before any scenario.",
+                "why": "This is the framing I want for this kind of article.",
+            },
+            "example_one_off_fix": {
+                "change": "Removed the line implying talks were already agreed.",
+                "why": "That was a fact correction, not a reusable writing preference.",
+            },
+        },
+        "review_focus_suggestions": {
+            "top_unresolved_claim": unresolved_claim,
+            "blocked_source_count": int(source_summary.get("blocked_source_count", 0) or 0),
+            "writer_risk_notes": clean_text_list_preview(article_package.get("writer_risk_notes"), limit=4),
+            "recommended_first_checks": clean_text_list_preview(review_focus_checks, limit=6),
+        },
         "allow_auto_rewrite_after_manual": False,
         "feedback_profile_status": profile_status,
         "feedback_reuse_help": {
@@ -179,6 +331,10 @@ def build_revision_template(draft_result: dict[str, Any]) -> dict[str, Any]:
         },
     }
     return template
+
+
+def build_revision_form_markdown(draft_result: dict[str, Any], revision_template: dict[str, Any]) -> str:
+    return build_feedback_markdown(draft_result, revision_template)
 
 
 def summarize_asset_stage(draft_result: dict[str, Any], draft_result_path: Path) -> dict[str, Any]:
@@ -205,6 +361,9 @@ def summarize_asset_stage(draft_result: dict[str, Any], draft_result_path: Path)
 
 def summarize_feedback_stage(draft_result: dict[str, Any]) -> dict[str, Any]:
     request = safe_dict(draft_result.get("request"))
+    cached = safe_dict(draft_result.get("feedback_profile_status")) or safe_dict(request.get("feedback_profile_status"))
+    if cached:
+        return cached
     profile_dir = resolve_profile_dir(request.get("feedback_profile_dir"))
     topic = clean_text(request.get("topic")) or clean_text(safe_dict(draft_result.get("source_summary")).get("topic")) or "article-topic"
     return feedback_profile_status(profile_dir, topic)
@@ -265,6 +424,8 @@ def summarize_draft_decisions(draft_result: dict[str, Any]) -> dict[str, Any]:
 
 def summarize_review_decisions(review_result: dict[str, Any]) -> dict[str, Any]:
     review_package = safe_dict(review_result.get("review_rewrite_package"))
+    style_learning = safe_dict(review_result.get("style_learning"))
+    profile_update_decision = safe_dict(review_result.get("profile_update_decision"))
     attacks = safe_list(review_package.get("attacks"))
     severity_rank = {"critical": 3, "major": 2, "minor": 1}
     highest_attack = {}
@@ -288,6 +449,17 @@ def summarize_review_decisions(review_result: dict[str, Any]) -> dict[str, Any]:
         ],
         "claims_removed_or_softened": clean_text_list_preview(review_package.get("claims_removed_or_softened"), limit=4),
         "remaining_risks": clean_text_list_preview(review_package.get("remaining_risks"), limit=4),
+        "style_learning": {
+            "decision": clean_text(profile_update_decision.get("status")),
+            "reason": clean_text(profile_update_decision.get("reason")),
+            "high_confidence_rule_count": len(safe_list(style_learning.get("high_confidence_rules"))),
+            "medium_confidence_rule_count": len(safe_list(style_learning.get("medium_confidence_rules"))),
+            "low_confidence_rule_count": len(safe_list(style_learning.get("low_confidence_rules"))),
+            "explicit_change_count": int(style_learning.get("explicit_change_count", 0) or 0),
+            "explicit_preference_count": int(style_learning.get("explicit_preference_count", 0) or 0),
+            "used_explicit_feedback": bool(style_learning.get("used_explicit_feedback")),
+            "proposed_defaults": deepcopy(safe_dict(safe_dict(style_learning.get("proposed_profile_feedback")).get("defaults"))),
+        },
     }
 
 
@@ -337,11 +509,13 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         f"- Review result: {clean_text(review_stage.get('result_path')) or 'not written'}",
         f"- Review report: {clean_text(review_stage.get('report_path')) or 'not written'}",
         f"- Review template: {clean_text(review_stage.get('revision_template_path')) or 'not written'}",
+        f"- Review form: {clean_text(review_stage.get('revision_form_path')) or 'not written'}",
+        f"- Feedback markdown: {clean_text(review_stage.get('feedback_markdown_path')) or 'not written'}",
         f"- Final article result: {clean_text(final_stage.get('result_path')) or 'not written'}",
         "",
         "## Next Step",
         "",
-        "Use the final article result as the current best version, and keep the review template for the next human-guided revision pass.",
+        "Use the final article result as the current best version, then edit the feedback markdown file for the next revision pass.",
     ]
     lines.extend(
         [
@@ -383,6 +557,24 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         lines.append(f"- Softened or removed: {item}")
     for item in clean_text_list_preview(review_trace.get("remaining_risks"), limit=4):
         lines.append(f"- Remaining risk: {item}")
+    learning_trace = safe_dict(review_trace.get("style_learning"))
+    lines.extend(
+        [
+            "",
+            "## Learning Signals",
+            "",
+            f"- Decision: {clean_text(learning_trace.get('decision')) or 'unknown'}",
+            f"- Reason: {clean_text(learning_trace.get('reason')) or 'none'}",
+            f"- High-confidence reusable rules: {learning_trace.get('high_confidence_rule_count', 0)}",
+            f"- Medium-confidence candidates: {learning_trace.get('medium_confidence_rule_count', 0)}",
+            f"- Low-confidence observations: {learning_trace.get('low_confidence_rule_count', 0)}",
+            f"- Human change reasons used: {learning_trace.get('explicit_change_count', 0)}",
+            f"- Human reusable preferences used: {learning_trace.get('explicit_preference_count', 0)}",
+            f"- Human feedback path used: {'yes' if learning_trace.get('used_explicit_feedback') else 'no'}",
+        ]
+    )
+    for key, value in safe_dict(learning_trace.get("proposed_defaults")).items():
+        lines.append(f"- Proposed default: {clean_text(key)} = {value}")
     cleanup_stage = safe_dict(result.get("cleanup_stage"))
     if cleanup_stage:
         lines.extend(
@@ -427,8 +619,10 @@ def build_report_markdown(result: dict[str, Any]) -> str:
                 f"- Applied profiles now: {', '.join(applied_paths) if applied_paths else 'none'}",
                 f"- Global defaults file: {clean_text(feedback_stage.get('global_profile_path')) or 'none'} ({'saved' if feedback_stage.get('global_exists') else 'not saved yet'})",
                 f"- Topic defaults file: {clean_text(feedback_stage.get('topic_profile_path')) or 'none'} ({'saved' if feedback_stage.get('topic_exists') else 'not saved yet'})",
-                "- To save this draft style for all future drafts, set persist_feedback.scope to global in the review template.",
-                "- To save it only for this topic, set persist_feedback.scope to topic in the review template.",
+                f"- Global backup snapshots: {feedback_stage.get('global_history_count', 0)}",
+                f"- Topic backup snapshots: {feedback_stage.get('topic_history_count', 0)}",
+                "- To save this draft style for all future drafts, set `Persist feedback scope: global` in the feedback markdown file.",
+                "- To save it only for this topic, set `Persist feedback scope: topic` in the feedback markdown file.",
             ]
         )
     return "\n".join(lines).strip() + "\n"
@@ -472,6 +666,7 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     draft_payload = build_draft_payload(request, source_payload)
     draft_payload["analysis_brief"] = safe_dict(brief_result.get("analysis_brief"))
     draft_payload["analysis_brief_path"] = str(brief_result_path)
+    draft_payload["evidence_bundle"] = deepcopy(safe_dict(brief_result.get("evidence_bundle")))
     draft_result = build_article_draft(draft_payload)
     draft_result_path = request["output_dir"] / "article-draft-result.json"
     draft_report_path = request["output_dir"] / "article-draft-report.md"
@@ -498,7 +693,12 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
 
     revision_template = build_revision_template(draft_result)
     revision_template_path = request["output_dir"] / "article-revise-template.json"
+    revision_form_path = request["output_dir"] / "article-revise-form.md"
+    feedback_markdown_path = request["output_dir"] / "ARTICLE-FEEDBACK.md"
+    feedback_markdown = build_feedback_markdown(draft_result, revision_template, draft_result_path=str(draft_result_path))
     write_json(revision_template_path, revision_template)
+    revision_form_path.write_text(feedback_markdown, encoding="utf-8-sig")
+    feedback_markdown_path.write_text(feedback_markdown, encoding="utf-8-sig")
 
     article_package = safe_dict(draft_result.get("article_package"))
     selected_images = safe_list(article_package.get("selected_images")) or safe_list(article_package.get("image_blocks"))
@@ -506,6 +706,7 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     asset_stage = summarize_asset_stage(review_result, review_result_path)
     feedback_stage = summarize_feedback_stage(review_result)
     decision_trace = build_decision_trace(brief_result, draft_result, review_result)
+    learning_stage = safe_dict(safe_dict(decision_trace.get("review")).get("style_learning"))
     result = {
         "status": "ok",
         "workflow_kind": "article_workflow",
@@ -519,6 +720,9 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "brief_stage": {
             "result_path": str(brief_result_path),
             "report_path": str(brief_report_path),
+            "evidence_bundle_contract": clean_text(safe_dict(brief_result.get("evidence_bundle")).get("contract_version")),
+            "evidence_bundle_citation_count": len(safe_list(safe_dict(brief_result.get("evidence_bundle")).get("citations"))),
+            "evidence_bundle_image_candidate_count": len(safe_list(safe_dict(brief_result.get("evidence_bundle")).get("image_candidates"))),
             "recommended_thesis": clean_text(safe_dict(brief_result.get("analysis_brief")).get("recommended_thesis")),
             "canonical_fact_count": len(safe_list(safe_dict(brief_result.get("analysis_brief")).get("canonical_facts"))),
             "not_proven_count": len(safe_list(safe_dict(brief_result.get("analysis_brief")).get("not_proven"))),
@@ -540,16 +744,19 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "cleanup_stage": cleanup_stage,
         "asset_stage": asset_stage,
         "feedback_stage": feedback_stage,
+        "learning_stage": learning_stage,
         "review_stage": {
             "result_path": str(review_result_path),
             "report_path": str(review_report_path),
             "preview_path": str(review_preview_path),
             "revision_template_path": str(revision_template_path),
+            "revision_form_path": str(revision_form_path),
+            "feedback_markdown_path": str(feedback_markdown_path),
             "attack_count": len(safe_list(safe_dict(review_result.get("review_rewrite_package")).get("attacks"))),
             "claims_softened_count": len(clean_text_list_preview(safe_dict(review_result.get("review_rewrite_package")).get("claims_removed_or_softened"), limit=20)),
             "suggested_revise_command": (
                 f"financial-analysis\\skills\\autoresearch-info-index\\scripts\\run_article_revise.cmd "
-                f"\"{draft_result_path}\" \"{revision_template_path}\" --output \"{request['output_dir'] / 'article-revise-result.json'}\" "
+                f"\"{draft_result_path}\" \"{feedback_markdown_path}\" --output \"{request['output_dir'] / 'article-revise-result.json'}\" "
                 f"--markdown-output \"{request['output_dir'] / 'article-revise-report.md'}\""
             ),
         },

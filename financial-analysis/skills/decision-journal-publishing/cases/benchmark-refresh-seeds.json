@@ -1,7 +1,7 @@
 {
   "seed_set_name": "decision-journal-benchmark-refresh-seeds",
-  "version": "2026-03-25.3",
-  "updated_at": "2026-03-25T00:22:00+08:00",
+  "version": "2026-03-25.4",
+  "updated_at": "2026-03-25T10:05:00+08:00",
   "observations_path": "benchmark-case-observations.jsonl",
   "default_request": {
     "refresh_statuses": [
@@ -33,16 +33,25 @@
         "/video/",
         "/slide/"
       ],
-      "include_title_keywords": [],
+      "include_title_keywords": [
+        "为什么",
+        "背后",
+        "意味着",
+        "影响",
+        "风险",
+        "冲击",
+        "谁在买单"
+      ],
       "exclude_title_keywords": [
         "招聘",
         "课程",
         "直播",
         "活动",
-        "福利"
+        "福利",
+        "报名"
       ],
-      "max_candidates": 4,
-      "max_age_days": 90,
+      "max_candidates": 2,
+      "max_age_days": 45,
       "candidate_defaults": {
         "account_positioning": "industry and enterprise interpretation for broad business readers",
         "topic_type": "event explainer",
@@ -67,15 +76,27 @@
         "/video/",
         "/slide/"
       ],
-      "include_title_keywords": [],
+      "include_title_keywords": [
+        "必读",
+        "解读",
+        "复盘",
+        "深度",
+        "前瞻",
+        "专访"
+      ],
       "exclude_title_keywords": [
         "快讯",
         "直播",
         "公告",
-        "研报"
+        "研报",
+        "早报",
+        "收盘",
+        "盘前",
+        "盘中",
+        "异动"
       ],
-      "max_candidates": 3,
-      "max_age_days": 60,
+      "max_candidates": 2,
+      "max_age_days": 21,
       "candidate_defaults": {
         "account_positioning": "high-frequency finance readers paying to reduce selection cost",
         "topic_type": "paid daily utility",
@@ -88,7 +109,7 @@
     },
     {
       "source_id": "jinrongbaguanv-sina-feed",
-      "enabled": true,
+      "enabled": false,
       "platform": "toutiao",
       "account_name": "金融八卦女",
       "seed_mode": "sina_newmedia_json",
@@ -100,17 +121,34 @@
         "/video/",
         "/slide/"
       ],
-      "include_title_keywords": [],
+      "include_title_keywords": [
+        "老板",
+        "创始人",
+        "破产",
+        "暴雷",
+        "欠薪",
+        "清算",
+        "停摆",
+        "门店",
+        "商家",
+        "行业"
+      ],
       "exclude_title_keywords": [
         "活动",
         "课程",
         "直播",
         "招商",
         "福利",
-        "开箱"
+        "开课",
+        "名媛",
+        "豪门",
+        "绯闻",
+        "婚",
+        "学生",
+        "健康"
       ],
-      "max_candidates": 4,
-      "max_age_days": 90,
+      "max_candidates": 1,
+      "max_age_days": 30,
       "candidate_defaults": {
         "account_positioning": "deep business storytelling with finance and operator relevance",
         "topic_type": "business consequence feature",
@@ -118,7 +156,7 @@
         "affected_group": "operators, founders, and finance-curious readers under real-world pressure",
         "cta_type": "follow account",
         "paid_asset_linkage": "medium",
-        "notes": "Auto-discovered from the 金融八卦女 Sina newmedia feed. Favor consequence-led stories over entertainment packaging."
+        "notes": "Auto-discovered from the 金融八卦女 Sina newmedia feed. Keep disabled by default and use manually for Toutiao acquisition case hunting."
       }
     },
     {
@@ -135,17 +173,32 @@
         "/video/",
         "/slide/"
       ],
-      "include_title_keywords": [],
+      "include_title_keywords": [
+        "财报",
+        "业绩",
+        "年报",
+        "季报",
+        "估值",
+        "现金流",
+        "商业模式",
+        "盈利",
+        "造假",
+        "招股书"
+      ],
       "exclude_title_keywords": [
         "ETF",
         "基金",
         "指数",
         "认购",
         "开箱",
-        "直播"
+        "直播",
+        "一图",
+        "1分钟",
+        "概念股",
+        "名单"
       ],
-      "max_candidates": 4,
-      "max_age_days": 120,
+      "max_candidates": 2,
+      "max_age_days": 45,
       "candidate_defaults": {
         "account_positioning": "professional and high-net-worth investing audience",
         "topic_type": "deep company and capital-market analysis",

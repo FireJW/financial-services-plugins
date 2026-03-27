@@ -9,6 +9,7 @@ from typing import Any
 from article_batch_workflow_runtime import run_article_batch_workflow
 from article_workflow_runtime import load_json, write_json
 from news_index_runtime import parse_datetime, slugify, run_news_index
+from runtime_paths import runtime_subdir
 from x_index_runtime import run_x_index
 
 
@@ -42,7 +43,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     output_dir = (
         Path(clean_text(raw_payload.get("output_dir"))).expanduser()
         if clean_text(raw_payload.get("output_dir"))
-        else Path.cwd() / ".tmp" / "article-auto-queue" / analysis_time.strftime("%Y%m%dT%H%M%SZ")
+        else runtime_subdir("article-auto-queue", analysis_time.strftime("%Y%m%dT%H%M%SZ"))
     )
     top_n = int(raw_payload.get("top_n", min(3, len(candidates))))
     return {
@@ -216,8 +217,7 @@ def rank_single_candidate(request: dict[str, Any], candidate: dict[str, Any], in
     source_payload, source_kind = resolve_source_payload(candidate, payload)
     metrics = priority_metrics(source_payload, source_kind, request["prefer_visuals"])
     draft_mode, image_strategy = choose_defaults(candidate, metrics, request)
-    source_result_path = sources_dir / f"{index:02d}-{slugify(label, f'candidate-{index:02d}')}-source-result.json"
-    write_json(source_result_path, source_payload)
+    source_result_path = clean_text(candidate.get("request_path") or candidate.get("source_result_path") or candidate.get("input_path"))
     return (
         index,
         {
@@ -225,9 +225,10 @@ def rank_single_candidate(request: dict[str, Any], candidate: dict[str, Any], in
             "label": label,
             "status": "ok",
             "source_kind": source_kind,
-            "source_result_path": str(source_result_path),
+            "source_result_path": source_result_path,
             "draft_mode": draft_mode,
             "image_strategy": image_strategy,
+            "source_payload": source_payload,
             **metrics,
         },
     )
@@ -259,22 +260,20 @@ def build_candidate_error_result(request: dict[str, Any], candidate: dict[str, A
 
 
 def build_ranked_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
-    sources_dir = request["output_dir"] / "sources"
-    sources_dir.mkdir(parents=True, exist_ok=True)
     ranked_by_index: dict[int, dict[str, Any]] = {}
     candidate_by_index = {index: safe_dict(candidate) for index, candidate in enumerate(request["candidates"], start=1)}
     serial_mode = request.get("max_parallel_candidates", 1) <= 1 or len(request["candidates"]) <= 1
     if serial_mode:
         for index, candidate in candidate_by_index.items():
             try:
-                _, result_item = rank_single_candidate(request, candidate, index, sources_dir)
+                _, result_item = rank_single_candidate(request, candidate, index, request["output_dir"])
             except Exception as exc:
                 result_item = build_candidate_error_result(request, candidate, index, exc)
             ranked_by_index[index] = result_item
     else:
         with ThreadPoolExecutor(max_workers=request["max_parallel_candidates"]) as executor:
             future_map = {
-                executor.submit(rank_single_candidate, request, candidate, index, sources_dir): index
+                executor.submit(rank_single_candidate, request, candidate, index, request["output_dir"]): index
                 for index, candidate in candidate_by_index.items()
             }
             for future in as_completed(future_map):
@@ -305,7 +304,8 @@ def build_batch_request(request: dict[str, Any], ranked_candidates: list[dict[st
             {
                 "candidate_index": item["index"],
                 "label": item["label"],
-                "request_path": item["source_result_path"],
+                "payload": deepcopy(safe_dict(item.get("source_payload"))),
+                "source_result_path": item["source_result_path"],
                 "draft_mode": item["draft_mode"],
                 "image_strategy": item["image_strategy"],
             }
@@ -378,25 +378,28 @@ def run_article_auto_queue(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "failed_items": 0,
             "report_markdown": "No valid candidates were available for batch execution.\n",
         }
-    selected_paths = {clean_text(item.get("request_path")) for item in batch_request["items"] if clean_text(item.get("request_path"))}
-    batch_items_by_path = {
-        clean_text(item.get("source_request_path")): item
+    selected_indexes = {
+        int(item.get("candidate_index", 0) or 0)
+        for item in batch_request["items"]
+        if int(item.get("candidate_index", 0) or 0) > 0
+    }
+    batch_items_by_index = {
+        int(item.get("candidate_index", 0) or 0): item
         for item in safe_list(batch_result.get("items"))
-        if clean_text(item.get("source_request_path"))
+        if int(item.get("candidate_index", 0) or 0) > 0
     }
     enriched_candidates = []
     for item in ranked_candidates:
-        source_result_path = clean_text(item.get("source_result_path"))
-        batch_item = safe_dict(batch_items_by_path.get(source_result_path))
+        batch_item = safe_dict(batch_items_by_index.get(int(item.get("index", 0) or 0)))
         if clean_text(item.get("status")) != "ok":
             selection_status = "error"
-        elif source_result_path in selected_paths:
+        elif int(item.get("index", 0) or 0) in selected_indexes:
             selection_status = "selected"
         else:
             selection_status = "skipped"
         enriched_candidates.append(
             {
-                **item,
+                **{key: value for key, value in item.items() if key != "source_payload"},
                 "selection_status": selection_status,
                 "final_quality_gate": clean_text(batch_item.get("quality_gate")),
                 "final_rewrite_mode": clean_text(batch_item.get("rewrite_mode")),

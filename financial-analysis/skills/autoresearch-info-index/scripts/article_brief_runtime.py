@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from article_evidence_bundle import build_shared_evidence_bundle
 from news_index_runtime import isoformat_or_blank, load_json, parse_datetime, short_excerpt, write_json
 
 
@@ -29,6 +30,47 @@ def clean_string_list(value: Any) -> list[str]:
         if text and text not in items:
             items.append(text)
     return items
+
+
+def safe_nth_dict(value: Any, index: int) -> dict[str, Any]:
+    items = safe_list(value)
+    if 0 <= index < len(items) and isinstance(items[index], dict):
+        return items[index]
+    return {}
+
+
+POLICY_PRESSURE_KEYWORDS = {
+    "trump",
+    "taco",
+    "tariff",
+    "white house",
+    "approval",
+    "inflation expectation",
+    "inflation expectations",
+    "treasury yield",
+    "treasury yields",
+    "deutsche bank",
+    "pivot risk",
+    "policy retreat",
+}
+ENERGY_WAR_BRIEF_KEYWORDS = {
+    "hormuz",
+    "oil",
+    "crude",
+    "lng",
+    "gas",
+    "brent",
+    "wti",
+    "ttf",
+    "jkm",
+    "henry hub",
+    "qatar",
+    "shipping",
+    "tanker",
+    "energy war",
+    "missile",
+    "iran",
+}
 
 
 def is_source_result(payload: dict[str, Any]) -> bool:
@@ -493,24 +535,366 @@ def build_recommended_thesis(topic: str, canonical_facts: list[dict[str, Any]], 
     return f"For {topic}, the public evidence is still too sparse for a narrow or highly confident thesis."
 
 
+def topic_supports_policy_pressure(topic: str, canonical_facts: list[dict[str, Any]], not_proven: list[dict[str, Any]]) -> bool:
+    haystack_parts = [clean_text(topic)]
+    haystack_parts.extend(clean_text(item.get("claim_text")) for item in canonical_facts)
+    haystack_parts.extend(clean_text(item.get("claim_text")) for item in not_proven)
+    haystack = " ".join(part.lower() for part in haystack_parts if part)
+    return any(keyword in haystack for keyword in POLICY_PRESSURE_KEYWORDS)
+
+
+def build_policy_pressure_overlay(topic: str) -> dict[str, Any]:
+    return {
+        "overlay_name": "Trump pressure / pivot risk overlay",
+        "use_case": (
+            f"For {topic}, use this only as an overlay that estimates whether market and political stress "
+            "raise the odds of a tactical Trump policy retreat."
+        ),
+        "likely_components": [
+            {
+                "component": "S&P 500 20-day change",
+                "pressure_direction": "Higher pressure when equities fall",
+                "likely_sign_in_index": "negative",
+            },
+            {
+                "component": "10-year U.S. Treasury yield 20-day change",
+                "pressure_direction": "Higher pressure when long yields rise",
+                "likely_sign_in_index": "positive",
+            },
+            {
+                "component": "Trump approval rate 20-day change",
+                "pressure_direction": "Higher pressure when approval falls",
+                "likely_sign_in_index": "negative",
+            },
+            {
+                "component": "1-year forward inflation 20-day change",
+                "pressure_direction": "Higher pressure when inflation expectations rise",
+                "likely_sign_in_index": "positive",
+            },
+        ],
+        "candidate_formula_variants": [
+            "Equally weighted average of standardized 20-day changes with equity and approval signs inverted.",
+            "Equally weighted average of volatility-normalized 20-day changes with the same sign logic.",
+        ],
+        "read_rules": [
+            "A higher and rising reading implies higher odds of delay, carve-outs, softer rhetoric, or tactical policy retreat.",
+            "The cleanest pressure setup is equities down, yields up, approval down, and inflation expectations up at the same time.",
+            "Do not treat a high reading as proof that a pivot has already happened.",
+        ],
+        "false_positive_risks": [
+            "Equities can fall while yields also fall, which is weaker evidence of policy pressure than a stocks-down / yields-up setup.",
+            "Approval data often lags market moves.",
+            "Inflation-expectation measures can be noisy over short windows.",
+        ],
+        "workflow_instruction": (
+            "Place this after the factual section and scenario matrix. Use it to adjust pivot probability, not to replace "
+            "confirmed evidence or official-source reporting."
+        ),
+    }
+
+
+def brief_haystack(topic: str, canonical_facts: list[dict[str, Any]], not_proven: list[dict[str, Any]], market_relevance: list[str]) -> str:
+    parts = [clean_text(topic)]
+    parts.extend(clean_text(item.get("claim_text")) for item in canonical_facts)
+    parts.extend(clean_text(item.get("claim_text")) for item in not_proven)
+    parts.extend(clean_text(item) for item in market_relevance)
+    return " ".join(part.lower() for part in parts if part)
+
+
+def topic_supports_energy_war(
+    topic: str,
+    canonical_facts: list[dict[str, Any]],
+    not_proven: list[dict[str, Any]],
+    market_relevance: list[str],
+    source_request: dict[str, Any],
+) -> bool:
+    if clean_text(source_request.get("preset")) == "energy-war":
+        return True
+    haystack = brief_haystack(topic, canonical_facts, not_proven, market_relevance)
+    return any(keyword in haystack for keyword in ENERGY_WAR_BRIEF_KEYWORDS)
+
+
+def confidence_label(interval: list[int], canonical_facts: list[dict[str, Any]], not_proven: list[dict[str, Any]], blocked_source_count: int) -> str:
+    low = int((interval or [0, 0])[0] or 0)
+    if not canonical_facts:
+        return "preliminary"
+    if low >= 70 and blocked_source_count == 0 and len(not_proven) <= 2:
+        return "high"
+    if low >= 40:
+        return "medium"
+    return "low"
+
+
+def evidence_mode(canonical_facts: list[dict[str, Any]], not_proven: list[dict[str, Any]], blocked_source_count: int) -> str:
+    if not canonical_facts or blocked_source_count >= 2:
+        return "preliminary"
+    if canonical_facts and not_proven:
+        return "mixed"
+    return "confirmed-led"
+
+
+def build_one_line_judgment(
+    topic: str,
+    analysis_time: str,
+    canonical_facts: list[dict[str, Any]],
+    not_proven: list[dict[str, Any]],
+    interval: list[int],
+    blocked_source_count: int,
+    energy_war: bool,
+) -> dict[str, Any]:
+    label = confidence_label(interval, canonical_facts, not_proven, blocked_source_count)
+    lead_fact = clean_text(safe_nth_dict(canonical_facts, 0).get("claim_text"))
+    lead_risk = clean_text(safe_nth_dict(not_proven, 0).get("claim_text"))
+    if energy_war and lead_fact and lead_risk:
+        text = f"This remains a live energy-war shock: {lead_fact}, but {lead_risk} is still not fully proven."
+    elif lead_fact and lead_risk:
+        text = f"The strongest confirmed development is {lead_fact}, while {lead_risk} remains unresolved."
+    elif lead_fact:
+        text = f"The current evidence-led read on {topic} is anchored by: {lead_fact}."
+    else:
+        text = f"The public record on {topic} is still too thin for a narrow high-confidence call."
+    return {
+        "text": text,
+        "as_of": analysis_time,
+        "confidence_label": label,
+    }
+
+
+def build_confidence_markers(
+    source_summary: dict[str, Any],
+    canonical_facts: list[dict[str, Any]],
+    not_proven: list[dict[str, Any]],
+) -> dict[str, Any]:
+    interval = safe_list(source_summary.get("confidence_interval")) or [0, 0]
+    blocked = int(source_summary.get("blocked_source_count", 0) or 0)
+    return {
+        "confidence_label": confidence_label(interval, canonical_facts, not_proven, blocked),
+        "confidence_interval": interval,
+        "confidence_gate": clean_text(source_summary.get("confidence_gate")) or "unknown",
+        "blocked_source_count": blocked,
+        "evidence_mode": evidence_mode(canonical_facts, not_proven, blocked),
+    }
+
+
+def build_current_state_rows(canonical_facts: list[dict[str, Any]], not_proven: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in canonical_facts[:3]:
+        rows.append({"state": "confirmed", "detail": clean_text(item.get("claim_text"))})
+    for item in not_proven[:3]:
+        rows.append({"state": clean_text(item.get("status")) or "unclear", "detail": clean_text(item.get("claim_text"))})
+    return rows
+
+
+def build_physical_vs_risk_premium(
+    canonical_facts: list[dict[str, Any]],
+    not_proven: list[dict[str, Any]],
+    energy_war: bool,
+) -> list[dict[str, Any]]:
+    lead_fact = clean_text(safe_nth_dict(canonical_facts, 0).get("claim_text"))
+    second_fact = clean_text(safe_nth_dict(canonical_facts, 1).get("claim_text"))
+    lead_risk = clean_text(safe_nth_dict(not_proven, 0).get("claim_text"))
+    if energy_war:
+        return [
+            {
+                "bucket": "Observed / physical",
+                "assessment": lead_fact or "Use confirmed flow, outage, loading, or force-posture facts only.",
+            },
+            {
+                "bucket": "Risk premium / repricing",
+                "assessment": second_fact or "Use market moves, negotiation headlines, and force-option leaks as repricing drivers unless they prove a physical outage.",
+            },
+            {
+                "bucket": "Still unresolved",
+                "assessment": lead_risk or "Separate unresolved escalation claims from already observed disruption.",
+            },
+        ]
+    return [
+        {"bucket": "Observed", "assessment": lead_fact or "Lead with what is confirmed."},
+        {"bucket": "Narrative premium", "assessment": second_fact or "Separate narrative amplification from hard facts."},
+        {"bucket": "Still unresolved", "assessment": lead_risk or "Keep unresolved claims explicit."},
+    ]
+
+
+def build_benchmark_map(source_request: dict[str, Any], energy_war: bool) -> dict[str, Any]:
+    requested_watchlist = clean_string_list(source_request.get("benchmark_watchlist"))
+    if energy_war:
+        rows = [
+            {"benchmark": "Brent", "role": "primary", "why": "First benchmark for a seaborne oil and Hormuz shock."},
+            {"benchmark": "WTI", "role": "secondary", "why": "Useful, but usually less direct than Brent for maritime disruption."},
+            {"benchmark": "TTF", "role": "primary", "why": "Best Europe gas stress benchmark when LNG competition tightens."},
+            {"benchmark": "JKM-style LNG", "role": "primary", "why": "Best benchmark for Qatar and seaborne LNG stress."},
+            {"benchmark": "Henry Hub", "role": "secondary", "why": "Important U.S. gas reference, but should not be assumed to move one-for-one with TTF or LNG."},
+        ]
+        return {
+            "primary_benchmarks": ["Brent", "TTF", "JKM-style LNG"],
+            "secondary_benchmarks": ["WTI", "Henry Hub"],
+            "benchmark_rows": rows,
+            "benchmark_watchlist": requested_watchlist or ["Brent", "WTI", "TTF", "JKM-style LNG", "Henry Hub"],
+            "benchmark_note": "Use seaborne oil and ex-U.S. gas benchmarks first, then compare them against WTI and Henry Hub.",
+        }
+    primary = requested_watchlist[:2] or ["S&P 500", "10-year U.S. Treasury yield"]
+    secondary = requested_watchlist[2:4]
+    return {
+        "primary_benchmarks": primary,
+        "secondary_benchmarks": secondary,
+        "benchmark_rows": [
+            {"benchmark": item, "role": "primary" if index < len(primary) else "secondary", "why": "Track the benchmark most directly tied to the active macro claim."}
+            for index, item in enumerate(primary + secondary)
+        ],
+        "benchmark_watchlist": requested_watchlist,
+        "benchmark_note": "Choose the benchmark that most directly expresses the active shock rather than the noisiest headline proxy.",
+    }
+
+
+def build_bias_table(energy_war: bool, scenario_matrix: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if energy_war:
+        stronger = clean_text(safe_nth_dict(scenario_matrix, len(scenario_matrix) - 1).get("trigger")) or "Physical disruption extends or diplomacy fails again."
+        weaker = clean_text(safe_nth_dict(scenario_matrix, 0).get("trigger")) or "Flows normalize and stronger sources confirm de-escalation."
+        return [
+            {
+                "bias": "stronger",
+                "label": "More bullish oil",
+                "conditions": [stronger, "Brent leads WTI and prompt stress stays elevated."],
+                "market_readthrough": "Oil upside remains led by seaborne benchmarks.",
+            },
+            {
+                "bias": "stronger",
+                "label": "More bullish ex-U.S. gas",
+                "conditions": ["Qatar or Hormuz LNG stress worsens.", "TTF and LNG tighten more than Henry Hub."],
+                "market_readthrough": "Europe and Asia gas benchmarks outperform U.S. gas.",
+            },
+            {
+                "bias": "weaker",
+                "label": "Fade risk premium",
+                "conditions": [weaker, "Reserve releases and rerouting absorb the flow shock faster than expected."],
+                "market_readthrough": "The sharpest war premium starts to unwind.",
+            },
+        ]
+    return [
+        {
+            "bias": "stronger",
+            "label": "Base case stronger",
+            "conditions": [clean_text(safe_nth_dict(scenario_matrix, 0).get("trigger")) or "Fresh stronger-source confirmation supports the base case."],
+            "market_readthrough": "The current macro view holds.",
+        },
+        {
+            "bias": "weaker",
+            "label": "Base case weaker",
+            "conditions": [clean_text(safe_nth_dict(scenario_matrix, len(scenario_matrix) - 1).get("trigger")) or "A fresh contradiction lands against the current narrative."],
+            "market_readthrough": "Current conviction should be reduced.",
+        },
+    ]
+
+
+def build_horizon_table(energy_war: bool, open_questions: list[str]) -> list[dict[str, Any]]:
+    leading_question = clean_text(open_questions[0]) if open_questions else "Wait for stronger-source confirmation."
+    if energy_war:
+        return [
+            {
+                "horizon": "0-72h",
+                "base_case": "Headline risk and benchmark leadership matter most.",
+                "upside_case": "Physical disruption or failed diplomacy extends the spike.",
+                "downside_case": "Flows normalize faster than the market expects.",
+            },
+            {
+                "horizon": "1-4w",
+                "base_case": "Persistence depends on freight, insurance, and producer response.",
+                "upside_case": "Buffers prove insufficient and ex-U.S. gas tightens further.",
+                "downside_case": "Reserve releases and rerouting cap the move.",
+            },
+            {
+                "horizon": "1-3m",
+                "base_case": "Watch whether the shock embeds into broader inflation and policy delay.",
+                "upside_case": "The shock broadens from energy into macro spillover.",
+                "downside_case": "The move fades back into a contained relative-price shock.",
+            },
+        ]
+    return [
+        {"horizon": "0-72h", "base_case": leading_question, "upside_case": "Fresh confirmation strengthens the current call.", "downside_case": "A contradiction lands quickly."},
+        {"horizon": "1-4w", "base_case": "Watch whether the current claim persists or stalls.", "upside_case": "The scenario base broadens.", "downside_case": "The live tape fades without stronger confirmation."},
+        {"horizon": "1-3m", "base_case": "Only upgrade to a regime view if spillover proves durable.", "upside_case": "Second-round effects appear.", "downside_case": "The event stays localized."},
+    ]
+
+
+def build_what_changes_the_view(not_proven: list[dict[str, Any]], open_questions: list[str]) -> dict[str, list[str]]:
+    unresolved = clean_text(safe_nth_dict(not_proven, 0).get("claim_text"))
+    upgrades = []
+    downgrades = []
+    if unresolved:
+        upgrades.append(f"Fresh stronger-source confirmation on this unresolved claim: {unresolved}")
+        downgrades.append(f"Fresh stronger-source contradiction against this unresolved claim: {unresolved}")
+    for item in open_questions[:2]:
+        upgrades.append(clean_text(item))
+    for item in open_questions[2:4]:
+        downgrades.append(clean_text(item))
+    return {
+        "upgrades": [item for item in upgrades if item],
+        "downgrades": [item for item in downgrades if item],
+    }
+
+
+def build_macro_note_fields(
+    topic: str,
+    analysis_time: str,
+    source_summary: dict[str, Any],
+    source_request: dict[str, Any],
+    canonical_facts: list[dict[str, Any]],
+    not_proven: list[dict[str, Any]],
+    open_questions: list[str],
+    scenario_matrix: list[dict[str, Any]],
+    market_relevance: list[str],
+) -> dict[str, Any]:
+    interval = safe_list(source_summary.get("confidence_interval")) or [0, 0]
+    blocked = int(source_summary.get("blocked_source_count", 0) or 0)
+    energy_war = topic_supports_energy_war(topic, canonical_facts, not_proven, market_relevance, source_request)
+    fields = {
+        "preliminary_mode": evidence_mode(canonical_facts, not_proven, blocked) == "preliminary",
+        "one_line_judgment": build_one_line_judgment(topic, analysis_time, canonical_facts, not_proven, interval, blocked, energy_war),
+        "confidence_markers": build_confidence_markers(source_summary, canonical_facts, not_proven),
+        "current_state_rows": build_current_state_rows(canonical_facts, not_proven),
+        "physical_vs_risk_premium": build_physical_vs_risk_premium(canonical_facts, not_proven, energy_war),
+        "benchmark_map": build_benchmark_map(source_request, energy_war),
+        "bias_table": build_bias_table(energy_war, scenario_matrix),
+        "horizon_table": build_horizon_table(energy_war, open_questions),
+        "what_changes_the_view": build_what_changes_the_view(not_proven, open_questions),
+    }
+    return fields
+
+
 def build_analysis_brief_payload(request: dict[str, Any]) -> dict[str, Any]:
+    evidence_bundle = build_shared_evidence_bundle(request["source_result"], request)
     runtime = extract_runtime_result(request["source_result"])
-    observations = safe_list(runtime.get("observations"))
-    claim_ledger = safe_list(runtime.get("claim_ledger") or request["source_result"].get("claim_ledger"))
+    source_request = (
+        safe_dict(request["source_result"].get("request"))
+        or safe_dict(request["source_result"].get("retrieval_request"))
+        or safe_dict(runtime.get("request"))
+    )
+    observations = safe_list(evidence_bundle.get("observations"))
+    claim_ledger = safe_list(evidence_bundle.get("claim_ledger")) or safe_list(runtime.get("claim_ledger") or request["source_result"].get("claim_ledger"))
     verdict = safe_dict(runtime.get("verdict_output") or request["source_result"].get("verdict_output"))
-    source_summary = build_source_summary(request, runtime)
+    source_summary = safe_dict(evidence_bundle.get("source_summary")) or build_source_summary(request, runtime)
     source_names = source_name_map(observations)
-    citation_by_source_id, citations = citation_map(observations)
+    citations = safe_list(evidence_bundle.get("citations"))
+    citation_by_source_id = {
+        clean_text(source_id): clean_text(citation_id)
+        for source_id, citation_id in safe_dict(evidence_bundle.get("citation_by_source_id")).items()
+        if clean_text(source_id) and clean_text(citation_id)
+    }
+    if not citations or not citation_by_source_id:
+        citation_by_source_id, citations = citation_map(observations)
     canonical_facts = build_canonical_facts(claim_ledger, source_names, citation_by_source_id)
     not_proven = build_not_proven(claim_ledger, source_names, citation_by_source_id)
     image_keep_reasons = build_image_keep_reasons(request["source_result"], verdict)
+    open_questions = build_open_questions(verdict)
+    scenario_matrix = build_scenario_matrix(verdict, source_summary)
+    market_relevance = clean_string_list(verdict.get("market_relevance")) or clean_string_list(source_summary.get("market_relevance"))
     analysis_brief = {
         "canonical_facts": canonical_facts,
         "not_proven": not_proven,
-        "open_questions": build_open_questions(verdict),
+        "open_questions": open_questions,
         "trend_lines": build_trend_lines(observations, claim_ledger),
-        "scenario_matrix": build_scenario_matrix(verdict, source_summary),
-        "market_or_reader_relevance": clean_string_list(verdict.get("market_relevance")) or clean_string_list(source_summary.get("market_relevance")),
+        "scenario_matrix": scenario_matrix,
+        "market_or_reader_relevance": market_relevance,
         "story_angles": build_story_angles(request["topic"], canonical_facts, not_proven, image_keep_reasons),
         "image_keep_reasons": image_keep_reasons,
         "voice_constraints": build_voice_constraints(source_summary, not_proven),
@@ -518,6 +902,21 @@ def build_analysis_brief_payload(request: dict[str, Any]) -> dict[str, Any]:
         "recommended_thesis": build_recommended_thesis(request["topic"], canonical_facts, not_proven, observations),
         "recommended_thesis_zh": "",
     }
+    macro_note_fields = build_macro_note_fields(
+        request["topic"],
+        isoformat_or_blank(request["analysis_time"]),
+        source_summary,
+        source_request,
+        canonical_facts,
+        not_proven,
+        open_questions,
+        scenario_matrix,
+        market_relevance,
+    )
+    analysis_brief.update(macro_note_fields)
+    analysis_brief["macro_note_fields"] = macro_note_fields
+    if topic_supports_policy_pressure(request["topic"], canonical_facts, not_proven):
+        analysis_brief["policy_pressure_overlay"] = build_policy_pressure_overlay(request["topic"])
     return {
         "request": {
             "topic": request["topic"],
@@ -527,6 +926,7 @@ def build_analysis_brief_payload(request: dict[str, Any]) -> dict[str, Any]:
         "source_summary": source_summary,
         "analysis_brief": analysis_brief,
         "supporting_citations": citations,
+        "evidence_bundle": evidence_bundle,
     }
 
 
@@ -581,6 +981,49 @@ def build_markdown_report(result: dict[str, Any]) -> str:
             )
     else:
         lines.append("- None")
+    macro_fields = safe_dict(brief.get("macro_note_fields"))
+    if macro_fields:
+        one_line = safe_dict(macro_fields.get("one_line_judgment"))
+        confidence = safe_dict(macro_fields.get("confidence_markers"))
+        benchmark_map = safe_dict(macro_fields.get("benchmark_map"))
+        lines.extend(["", "## Macro Note Fields", ""])
+        lines.append(f"- One-line judgment: {clean_text(one_line.get('text')) or 'None'}")
+        lines.append(f"- As of: {clean_text(one_line.get('as_of')) or 'None'}")
+        lines.append(f"- Confidence label: {clean_text(confidence.get('confidence_label')) or 'None'}")
+        lines.append(f"- Confidence interval: {safe_list(confidence.get('confidence_interval'))}")
+        lines.append(f"- Confidence gate: {clean_text(confidence.get('confidence_gate')) or 'None'}")
+        lines.append(f"- Preliminary mode: {'yes' if macro_fields.get('preliminary_mode') else 'no'}")
+        lines.extend(["", "### Current State Rows", ""])
+        for item in safe_list(macro_fields.get("current_state_rows")):
+            lines.append(f"- {clean_text(item.get('state'))}: {clean_text(item.get('detail'))}")
+        lines.extend(["", "### Physical Vs Risk Premium", ""])
+        for item in safe_list(macro_fields.get("physical_vs_risk_premium")):
+            lines.append(f"- {clean_text(item.get('bucket'))}: {clean_text(item.get('assessment'))}")
+        lines.extend(["", "### Benchmark Map", ""])
+        lines.append(f"- Primary: {', '.join(clean_string_list(benchmark_map.get('primary_benchmarks'))) or 'None'}")
+        lines.append(f"- Secondary: {', '.join(clean_string_list(benchmark_map.get('secondary_benchmarks'))) or 'None'}")
+        lines.append(f"- Note: {clean_text(benchmark_map.get('benchmark_note')) or 'None'}")
+        for item in safe_list(benchmark_map.get("benchmark_rows")):
+            lines.append(
+                f"- {clean_text(item.get('benchmark'))} | {clean_text(item.get('role'))} | {clean_text(item.get('why'))}"
+            )
+        lines.extend(["", "### Bias Table", ""])
+        for item in safe_list(macro_fields.get("bias_table")):
+            lines.append(
+                f"- {clean_text(item.get('label'))} ({clean_text(item.get('bias'))}) | "
+                f"conditions: {', '.join(clean_string_list(item.get('conditions')))} | "
+                f"read-through: {clean_text(item.get('market_readthrough'))}"
+            )
+        lines.extend(["", "### Horizon Table", ""])
+        for item in safe_list(macro_fields.get("horizon_table")):
+            lines.append(
+                f"- {clean_text(item.get('horizon'))} | base: {clean_text(item.get('base_case'))} | "
+                f"upside: {clean_text(item.get('upside_case'))} | downside: {clean_text(item.get('downside_case'))}"
+            )
+        view_changes = safe_dict(macro_fields.get("what_changes_the_view"))
+        lines.extend(["", "### What Changes The View", ""])
+        lines.extend([f"- Upgrade: {item}" for item in clean_string_list(view_changes.get("upgrades"))] or ["- Upgrade: None"])
+        lines.extend([f"- Downgrade: {item}" for item in clean_string_list(view_changes.get("downgrades"))] or ["- Downgrade: None"])
     lines.extend(["", "## Story Angles", ""])
     for item in safe_list(brief.get("story_angles")):
         lines.append(f"- {clean_text(item.get('angle'))} | risk: {clean_text(item.get('risk'))}")
@@ -599,6 +1042,29 @@ def build_markdown_report(result: dict[str, Any]) -> str:
     lines.extend(["", "## Voice Constraints", ""])
     for item in clean_string_list(brief.get("voice_constraints")):
         lines.append(f"- {item}")
+    overlay = safe_dict(brief.get("policy_pressure_overlay"))
+    if overlay:
+        lines.extend(["", "## Policy Pressure Overlay", ""])
+        lines.append(f"- Name: {clean_text(overlay.get('overlay_name'))}")
+        lines.append(f"- Use case: {clean_text(overlay.get('use_case'))}")
+        lines.append(f"- Workflow instruction: {clean_text(overlay.get('workflow_instruction'))}")
+        lines.append("")
+        lines.append("### Likely Components")
+        lines.append("")
+        for item in safe_list(overlay.get("likely_components")):
+            lines.append(
+                f"- {clean_text(item.get('component'))} | {clean_text(item.get('pressure_direction'))} | sign: {clean_text(item.get('likely_sign_in_index'))}"
+            )
+        lines.append("")
+        lines.append("### Read Rules")
+        lines.append("")
+        for item in clean_string_list(overlay.get("read_rules")):
+            lines.append(f"- {item}")
+        lines.append("")
+        lines.append("### False Positive Risks")
+        lines.append("")
+        for item in clean_string_list(overlay.get("false_positive_risks")):
+            lines.append(f"- {item}")
     lines.extend(["", "## Misread Risks", ""])
     for item in clean_string_list(brief.get("misread_risks")):
         lines.append(f"- {item}")

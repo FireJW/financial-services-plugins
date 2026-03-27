@@ -518,6 +518,13 @@ def resolve_machine_state(case: dict[str, Any]) -> dict[str, Any]:
     return safe_dict(case.get("machine_state"))
 
 
+def normalize_refresh_surface_policy(value: Any) -> str:
+    text = clean_text(value).lower()
+    if text in {"mirror_allowed", "proxy_allowed"}:
+        return text
+    return "first_party_required"
+
+
 def is_human_locked(case: dict[str, Any], field_name: str) -> bool:
     locks = safe_dict(case.get("human_locks"))
     return bool(locks.get(field_name, False))
@@ -618,6 +625,9 @@ def normalize_case(case: dict[str, Any], request: dict[str, Any], index: int) ->
         "title": title,
         "url": clean_text(case.get("url")),
         "canonical_url": clean_text(case.get("canonical_url") or case.get("url")),
+        "fetch_provenance": clean_text(case.get("fetch_provenance")) or "unknown",
+        "refresh_surface_policy": normalize_refresh_surface_policy(case.get("refresh_surface_policy")),
+        "benchmark_case_shape": clean_text(case.get("benchmark_case_shape")) or "article",
         "published_at": published_at.isoformat() if published_at else "",
         "published_at_source": published_at_source,
         "read_signal": read_signal,
@@ -734,6 +744,7 @@ def build_report_section(title: str, cases: list[dict[str, Any]]) -> list[str]:
                 f"- Platform: {case['platform']}",
                 f"- Curation status: {case['curation_status']}",
                 f"- URL: {case['url'] or 'n/a'}",
+                f"- Evidence surface: {case['benchmark_case_shape']} via {case['fetch_provenance']}",
                 f"- Published at: {case['published_at'] or 'unknown'}",
                 f"- Read band: {case['read_band']}",
                 f"- Classification: {case['classification']} ({case['qualification_status']})",

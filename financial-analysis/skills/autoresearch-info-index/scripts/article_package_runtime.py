@@ -15,6 +15,7 @@ from news_index_runtime import (
     slugify,
     write_json,
 )
+from runtime_paths import runtime_subdir
 
 
 WHITESPACE_RE = re.compile(r"\s+")
@@ -149,7 +150,7 @@ def normalize_draft_request(raw_payload: dict[str, Any], source_payload: dict[st
     output_dir = (
         Path(clean_text(raw_payload.get("output_dir"))).expanduser()
         if clean_text(raw_payload.get("output_dir"))
-        else Path.cwd() / ".tmp" / "article-draft" / slugify(topic, "article-topic") / analysis_time.strftime("%Y%m%dT%H%M%SZ")
+        else runtime_subdir("article-draft", slugify(topic, "article-topic"), analysis_time.strftime("%Y%m%dT%H%M%SZ"))
     )
     return {
         "topic": topic,

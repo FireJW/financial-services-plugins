@@ -34,6 +34,34 @@ def host_for_url(value: Any) -> str:
     return clean_text(parsed.netloc).lower()
 
 
+def normalize_refresh_surface_policy(value: Any) -> str:
+    text = clean_text(value).lower()
+    if text in {"mirror_allowed", "proxy_allowed"}:
+        return text
+    return "first_party_required"
+
+
+def is_non_primary_fetch_allowed(fetch_provenance: str, refresh_surface_policy: str) -> bool:
+    provenance = clean_text(fetch_provenance).lower()
+    policy = normalize_refresh_surface_policy(refresh_surface_policy)
+    if provenance.startswith("first_party"):
+        return True
+    if policy == "mirror_allowed" and provenance == "mirror":
+        return True
+    if policy == "proxy_allowed" and provenance:
+        return True
+    return False
+
+
+def format_non_primary_fetch(item: dict[str, Any]) -> str:
+    shape = clean_text(item.get("benchmark_case_shape")) or "article"
+    return (
+        f"- {clean_text(item.get('case_id'))} | {clean_text(item.get('fetch_provenance'))} | "
+        f"policy={clean_text(item.get('refresh_surface_policy'))} | shape={shape} | "
+        f"{clean_text(item.get('fetch_url'))}"
+    )
+
+
 def resolve_audit_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     library_path = Path(clean_text(raw_payload.get("library_path"))).expanduser()
     if not clean_text(raw_payload.get("library_path")):
@@ -82,6 +110,8 @@ def build_report(result: dict[str, Any]) -> str:
         f"- Reviewed cases missing fetch_url: {summary.get('reviewed_cases_missing_fetch_url', 0)}",
         f"- Reviewed fetch_url coverage: {summary.get('reviewed_fetch_url_coverage_pct', 0)}%",
         f"- Reviewed non-primary fetch surfaces: {summary.get('reviewed_non_primary_fetches', 0)}",
+        f"- Reviewed non-primary fetches requiring upgrade: {summary.get('reviewed_non_primary_fetches_requiring_upgrade', 0)}",
+        f"- Reviewed allowed proxy or mirror fetches: {summary.get('reviewed_non_primary_fetches_allowed', 0)}",
         f"- Enabled seeds missing seed_url: {summary.get('enabled_seed_sources_missing_seed_url', 0)}",
         f"- Enabled seeds without filters: {summary.get('enabled_seed_sources_without_filters', 0)}",
         f"- Duplicate candidate case IDs: {summary.get('duplicate_candidate_case_ids', 0)}",
@@ -117,16 +147,20 @@ def build_report(result: dict[str, Any]) -> str:
                 f"- {clean_text(item.get('case_id'))} | {clean_text(item.get('account_name'))} | "
                 f"{clean_text(item.get('title'))} | {clean_text(item.get('reference_url_host'))}"
             )
-    lines.extend(["", "## Non-Primary Fetch Surfaces", ""])
-    non_primary = safe_list(result.get("reviewed_non_primary_fetches"))
+    lines.extend(["", "## Non-Primary Fetch Surfaces Requiring Upgrade", ""])
+    non_primary = safe_list(result.get("reviewed_non_primary_fetches_requiring_upgrade"))
     if not non_primary:
         lines.append("- none")
     else:
         for item in non_primary:
-            lines.append(
-                f"- {clean_text(item.get('case_id'))} | {clean_text(item.get('fetch_provenance'))} | "
-                f"{clean_text(item.get('fetch_url'))}"
-            )
+            lines.append(format_non_primary_fetch(item))
+    lines.extend(["", "## Accepted Proxy Or Mirror Fetch Surfaces", ""])
+    allowed_non_primary = safe_list(result.get("reviewed_non_primary_fetches_allowed"))
+    if not allowed_non_primary:
+        lines.append("- none")
+    else:
+        for item in allowed_non_primary:
+            lines.append(format_non_primary_fetch(item))
     lines.extend(["", "## Seed Gaps", ""])
     seed_gaps = safe_list(result.get("seed_findings"))
     if not seed_gaps:
@@ -174,16 +208,26 @@ def run_benchmark_readiness_audit(raw_payload: dict[str, Any]) -> dict[str, Any]
         for case in reviewed_cases
         if not clean_text(case.get("fetch_url"))
     ]
-    reviewed_non_primary_fetches = [
-        {
+    reviewed_non_primary_fetches = []
+    reviewed_non_primary_fetches_allowed = []
+    reviewed_non_primary_fetches_requiring_upgrade = []
+    for case in reviewed_cases:
+        fetch_url = clean_text(case.get("fetch_url"))
+        fetch_provenance = clean_text(case.get("fetch_provenance")) or "unknown"
+        if not fetch_url or fetch_provenance.lower().startswith("first_party"):
+            continue
+        item = {
             "case_id": clean_text(case.get("case_id")),
-            "fetch_provenance": clean_text(case.get("fetch_provenance")) or "unknown",
-            "fetch_url": clean_text(case.get("fetch_url")),
+            "fetch_provenance": fetch_provenance,
+            "fetch_url": fetch_url,
+            "refresh_surface_policy": normalize_refresh_surface_policy(case.get("refresh_surface_policy")),
+            "benchmark_case_shape": clean_text(case.get("benchmark_case_shape")) or "article",
         }
-        for case in reviewed_cases
-        if clean_text(case.get("fetch_url"))
-        and not clean_text(case.get("fetch_provenance")).lower().startswith("first_party")
-    ]
+        reviewed_non_primary_fetches.append(item)
+        if is_non_primary_fetch_allowed(fetch_provenance, item["refresh_surface_policy"]):
+            reviewed_non_primary_fetches_allowed.append(item)
+        else:
+            reviewed_non_primary_fetches_requiring_upgrade.append(item)
 
     seed_findings = []
     enabled_seed_sources_missing_seed_url = []
@@ -274,9 +318,9 @@ def run_benchmark_readiness_audit(raw_payload: dict[str, Any]) -> dict[str, Any]
     if request["allow_reference_url_fallback"]:
         warnings.append("Reference URL fallback is enabled; aggregator or commentary pages may be scraped as article truth.")
         next_actions.append("Prefer explicit fetch_url over reference fallback for reviewed cases.")
-    if reviewed_non_primary_fetches:
+    if reviewed_non_primary_fetches_requiring_upgrade:
         warnings.append(
-            f"{len(reviewed_non_primary_fetches)} reviewed cases currently refresh from mirror or commentary surfaces instead of first-party pages."
+            f"{len(reviewed_non_primary_fetches_requiring_upgrade)} reviewed cases still rely on mirror or commentary surfaces without an allowed refresh policy."
         )
         next_actions.append("Upgrade fetch_url to first-party public surfaces when durable originals can be confirmed.")
     if enabled_seed_sources_without_filters:
@@ -331,6 +375,8 @@ def run_benchmark_readiness_audit(raw_payload: dict[str, Any]) -> dict[str, Any]
                 1,
             ),
             "reviewed_non_primary_fetches": len(reviewed_non_primary_fetches),
+            "reviewed_non_primary_fetches_requiring_upgrade": len(reviewed_non_primary_fetches_requiring_upgrade),
+            "reviewed_non_primary_fetches_allowed": len(reviewed_non_primary_fetches_allowed),
             "enabled_seed_sources_missing_seed_url": len(enabled_seed_sources_missing_seed_url),
             "enabled_seed_sources_without_filters": len(enabled_seed_sources_without_filters),
             "duplicate_candidate_case_ids": len(duplicate_candidate_case_ids),
@@ -343,6 +389,8 @@ def run_benchmark_readiness_audit(raw_payload: dict[str, Any]) -> dict[str, Any]
         "next_actions": unique_keep_order(next_actions),
         "reviewed_case_fetch_url_gaps": reviewed_case_fetch_url_gaps,
         "reviewed_non_primary_fetches": reviewed_non_primary_fetches,
+        "reviewed_non_primary_fetches_requiring_upgrade": reviewed_non_primary_fetches_requiring_upgrade,
+        "reviewed_non_primary_fetches_allowed": reviewed_non_primary_fetches_allowed,
         "seed_findings": seed_findings,
         "candidate_hygiene": {
             "duplicate_candidate_case_ids": duplicate_candidate_case_ids,

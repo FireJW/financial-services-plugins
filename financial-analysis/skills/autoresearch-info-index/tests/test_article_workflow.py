@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import os
 import py_compile
 import unittest
+from argparse import Namespace
 from pathlib import Path
 from time import time
 from unittest.mock import patch
@@ -17,10 +19,14 @@ if str(SCRIPT_DIR) not in sys.path:
 from article_cleanup_runtime import cleanup_article_temp_dirs
 from article_brief_runtime import build_analysis_brief
 from article_draft_flow_runtime import build_article_draft, build_draft_claim_map, build_sections
+from article_feedback_markdown import parse_feedback_markdown
+from article_feedback_profiles import feedback_profile_status as real_feedback_profile_status
+from article_revise import build_payload as build_article_revise_payload
 from article_revise_flow_runtime import build_article_revision, build_red_team_review
 from article_batch_workflow_runtime import run_article_batch_workflow
 from article_auto_queue_runtime import run_article_auto_queue
-from article_workflow_runtime import run_article_workflow
+from article_workflow_runtime import build_revision_template, run_article_workflow
+from macro_note_workflow_runtime import run_macro_note_workflow
 from news_index_core import read_json, run_news_index
 from x_index_runtime import run_x_index
 
@@ -66,6 +72,9 @@ class ArticleWorkflowTests(unittest.TestCase):
                         </html>
                     """,
                     "root_post_screenshot_path": str(screenshot_path),
+                    "used_browser_session": True,
+                    "session_source": "remote_debugging",
+                    "session_status": "ready",
                     "media_items": [
                         {
                             "source_url": "https://pbs.twimg.com/media/test-airlift.jpg",
@@ -77,6 +86,32 @@ class ArticleWorkflowTests(unittest.TestCase):
             ],
         }
         return run_x_index(request)
+
+    def build_remote_image_source_result(self, tmpdir: Path) -> dict:
+        remote_asset = tmpdir / "remote-image.png"
+        remote_asset.write_bytes(b"remote-image")
+        return run_news_index(
+            {
+                "topic": "Revision image reuse",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "claims": [{"claim_id": "claim-1", "claim_text": "A public image is available."}],
+                "candidates": [
+                    {
+                        "source_id": "img-1",
+                        "source_name": "DVIDS",
+                        "source_type": "specialist_outlet",
+                        "published_at": "2026-03-24T11:00:00+00:00",
+                        "observed_at": "2026-03-24T11:05:00+00:00",
+                        "url": "https://example.com/dvids",
+                        "text_excerpt": "A public image is available.",
+                        "claim_ids": ["claim-1"],
+                        "claim_states": {"claim-1": "support"},
+                        "root_post_screenshot_path": remote_asset.resolve().as_uri(),
+                        "media_summary": "Remote image summary",
+                    }
+                ],
+            }
+        )
 
     def build_seed_x_request(self, tmpdir: Path) -> dict:
         tmpdir.mkdir(parents=True, exist_ok=True)
@@ -106,6 +141,9 @@ class ArticleWorkflowTests(unittest.TestCase):
                         </html>
                     """,
                     "root_post_screenshot_path": str(screenshot_path),
+                    "used_browser_session": True,
+                    "session_source": "remote_debugging",
+                    "session_status": "ready",
                     "media_items": [
                         {
                             "source_url": "https://pbs.twimg.com/media/test-airlift.jpg",
@@ -162,6 +200,62 @@ class ArticleWorkflowTests(unittest.TestCase):
             }
         )
 
+    def build_clean_core_news_result(self) -> dict:
+        return run_news_index(
+            {
+                "topic": "Clear core fact",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-core",
+                        "claim_text": "Indirect talks continue through intermediaries.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "gov-1",
+                        "source_name": "Oman Foreign Ministry",
+                        "source_type": "government",
+                        "published_at": "2026-03-24T11:20:00+00:00",
+                        "observed_at": "2026-03-24T11:25:00+00:00",
+                        "url": "https://example.com/oman-talks",
+                        "text_excerpt": "Indirect talks continue through intermediaries.",
+                        "claim_ids": ["claim-core"],
+                        "claim_states": {"claim-core": "support"},
+                    }
+                ],
+            }
+        )
+
+    def build_energy_war_news_result(self) -> dict:
+        return run_news_index(
+            {
+                "topic": "Hormuz energy shock",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "mode": "crisis",
+                "preset": "energy-war",
+                "claims": [
+                    {
+                        "claim_id": "claim-energy",
+                        "claim_text": "Hormuz disruption remains a primary transmission channel for oil and LNG stress.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "wire-1",
+                        "source_name": "Reuters",
+                        "source_type": "wire",
+                        "published_at": "2026-03-24T11:30:00+00:00",
+                        "observed_at": "2026-03-24T11:31:00+00:00",
+                        "url": "https://example.com/reuters-energy",
+                        "text_excerpt": "Hormuz disruption remains a primary transmission channel for oil and LNG stress.",
+                        "claim_ids": ["claim-energy"],
+                        "claim_states": {"claim-energy": "support"},
+                    }
+                ],
+            }
+        )
+
     def test_article_brief_builds_fact_firewall_fields(self) -> None:
         brief = build_analysis_brief({"source_result": run_news_index(self.news_request)})
         analysis_brief = brief["analysis_brief"]
@@ -188,6 +282,17 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("contradiction_count", first)
         self.assertTrue(first["why_not_proven"])
 
+    def test_article_brief_outputs_macro_note_fields(self) -> None:
+        brief = build_analysis_brief({"source_result": self.build_energy_war_news_result()})
+        analysis_brief = brief["analysis_brief"]
+        self.assertIn("macro_note_fields", analysis_brief)
+        self.assertIn("one_line_judgment", analysis_brief)
+        self.assertIn("benchmark_map", analysis_brief)
+        self.assertIn("bias_table", analysis_brief)
+        self.assertIn("horizon_table", analysis_brief)
+        self.assertTrue(analysis_brief["benchmark_map"]["primary_benchmarks"])
+        self.assertIn("## Macro Note Fields", brief["report_markdown"])
+
     def test_article_brief_report_surfaces_image_keep_reasons(self) -> None:
         brief = build_analysis_brief({"source_result": self.build_seed_x_index_result(self.case_dir("brief-x-seed"))})
         self.assertTrue(brief["analysis_brief"]["image_keep_reasons"])
@@ -202,12 +307,27 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("Images And Screenshots", package["body_markdown"])
         self.assertIn(f"![{package['selected_images'][0]['image_id']}](", package["article_markdown"])
         self.assertTrue(any(item["status"] == "local_ready" for item in package["selected_images"]))
+        self.assertTrue(any(item["role"] == "post_media" and item["status"] == "local_ready" for item in package["selected_images"]))
+        self.assertTrue(any("origins" in item["caption"].lower() or "ovda" in item["caption"].lower() for item in package["selected_images"]))
         self.assertEqual(len(package["selected_images"]), len(package["image_blocks"]))
         self.assertTrue(draft["analysis_brief"])
         self.assertTrue(package["draft_claim_map"])
         self.assertIn("draft_thesis", package)
         self.assertIn("style_profile_applied", package)
         self.assertIn("writer_risk_notes", package)
+        self.assertTrue(any(item.get("access_mode") == "browser_session" for item in draft["draft_context"]["citation_candidates"]))
+
+    def test_article_draft_browser_session_media_without_ocr_uses_capture_caption(self) -> None:
+        source_result = self.build_seed_x_index_result(self.case_dir("x-seed-capture-caption"))
+        media_item = source_result["x_posts"][0]["media_items"][0]
+        media_item["ocr_text_raw"] = ""
+        media_item["ocr_summary"] = ""
+        media_item["alt_text"] = ""
+        media_item["capture_method"] = "dom_clip"
+        draft = build_article_draft({"source_result": source_result, "max_images": 2, "image_strategy": "prefer_images"})
+        selected_post_media = next(item for item in draft["article_package"]["selected_images"] if item["role"] == "post_media")
+        self.assertEqual(selected_post_media["caption"], "Browser-captured image from the original X post.")
+        self.assertEqual(selected_post_media["status"], "local_ready")
 
     def test_article_draft_from_blocked_x_index_keeps_screenshot_boundary(self) -> None:
         draft = build_article_draft(
@@ -236,6 +356,52 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("Sources", draft["article_package"]["article_markdown"])
         self.assertNotIn("core claim(s)", draft["article_package"]["body_markdown"])
         self.assertIn("<html>", draft["preview_html"])
+
+    def test_macro_note_workflow_runs_and_writes_stage_outputs(self) -> None:
+        output_dir = self.case_dir("macro-note-workflow")
+        result = run_macro_note_workflow(
+            {
+                "source_result": self.build_energy_war_news_result(),
+                "topic": "Hormuz energy shock",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "output_dir": str(output_dir),
+            }
+        )
+        self.assertEqual(result["workflow_kind"], "macro_note_workflow")
+        self.assertTrue(Path(result["macro_note_stage"]["result_path"]).exists())
+        self.assertTrue(Path(result["macro_note_stage"]["report_path"]).exists())
+        self.assertIn("one_line_judgment", result["macro_note_result"]["macro_note"])
+        self.assertIn("# Macro Note:", result["macro_note_result"]["report_markdown"])
+
+    def test_macro_note_workflow_defaults_analysis_time_for_fresh_news_request(self) -> None:
+        request = json.loads(json.dumps(self.news_request))
+        request.pop("analysis_time", None)
+        result = run_macro_note_workflow(request)
+        self.assertEqual(result["workflow_kind"], "macro_note_workflow")
+        self.assertTrue(result["analysis_time"])
+
+    def test_macro_note_workflow_threads_staged_source_result_path(self) -> None:
+        output_dir = self.case_dir("macro-note-workflow-staged-source")
+        result = run_macro_note_workflow(
+            {
+                "source_result": self.build_energy_war_news_result(),
+                "topic": "Hormuz energy shock",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "output_dir": str(output_dir),
+            }
+        )
+        self.assertEqual(result["macro_note_result"]["request"]["source_result_path"], result["source_stage"]["result_path"])
+
+    def test_macro_note_workflow_x_request_reuses_output_tree_for_source_stage(self) -> None:
+        output_dir = self.case_dir("macro-note-workflow-x-request")
+        result = run_macro_note_workflow(
+            {
+                **self.build_seed_x_request(self.case_dir("macro-note-workflow-x-request-seed")),
+                "output_dir": str(output_dir),
+            }
+        )
+        x_output_dir = result["source_result"]["request"]["output_dir"]
+        self.assertTrue(x_output_dir.startswith(str((output_dir / "source-stage").resolve())))
 
     def test_build_sections_without_analysis_brief_uses_derived_brief_path(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request), "target_length_chars": 800})
@@ -347,6 +513,289 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("market impact", revised["article_package"]["body_markdown"].lower())
         self.assertIn("review_rewrite_package", revised)
         self.assertIn("quality_gate", revised["review_rewrite_package"])
+        self.assertIn("revision_diff", revised)
+        self.assertTrue(revised["revision_diff"]["title"]["changed"])
+        self.assertIn("style_learning", revised)
+        self.assertTrue(revised["style_learning"]["change_summary"])
+        self.assertIn("## Style Learning", revised["report_markdown"])
+
+    def test_article_revision_style_learning_tiers_explicit_style_controls(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        revised = build_article_revision(
+            {
+                "draft_result": draft,
+                "tone": "urgent-but-cautious",
+                "draft_mode": "image_first",
+                "image_strategy": "prefer_images",
+                "max_images": 2,
+            }
+        )
+        learning = revised["style_learning"]
+        high_keys = {item["key"] for item in learning["high_confidence_rules"]}
+        self.assertIn("tone", high_keys)
+        self.assertIn("draft_mode", high_keys)
+        self.assertIn("image_strategy", high_keys)
+        self.assertIn("max_images", high_keys)
+        self.assertEqual(revised["profile_update_decision"]["status"], "suggest_only")
+        self.assertEqual(learning["proposed_profile_feedback"]["defaults"]["tone"], "urgent-but-cautious")
+        self.assertEqual(learning["proposed_profile_feedback"]["defaults"]["draft_mode"], "image_first")
+
+    def test_article_revision_uses_explicit_edit_reason_feedback(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        revised = build_article_revision(
+            {
+                "draft_result": draft,
+                "edited_body_markdown": "# Revised body\n\nLead with the strongest confirmed fact before scenarios.\n",
+                "edit_reason_feedback": {
+                    "summary": "I want to be more explicit about why I changed the structure.",
+                    "changes": [
+                        {
+                            "area": "body",
+                            "change": "Lead with the strongest confirmed fact before scenarios.",
+                            "reason_tag": "structure",
+                            "why": "Lead with confirmed facts before any scenario language.",
+                            "reuse_scope": "topic",
+                        }
+                    ],
+                    "reusable_preferences": [
+                        {
+                            "key": "must_include",
+                            "value": "Lead with the strongest confirmed fact before any scenario.",
+                            "scope": "topic",
+                            "reason_tag": "structure",
+                            "why": "This is the framing I want for geopolitical pieces.",
+                        },
+                        {
+                            "key": "tone",
+                            "value": "neutral-cautious",
+                            "scope": "global",
+                            "reason_tag": "voice",
+                            "why": "Keep the tone careful even when the news is fast moving.",
+                        },
+                    ],
+                },
+            }
+        )
+        learning = revised["style_learning"]
+        self.assertTrue(learning["used_explicit_feedback"])
+        self.assertEqual(learning["explicit_change_count"], 1)
+        self.assertEqual(learning["explicit_preference_count"], 2)
+        self.assertEqual(learning["proposed_profile_feedback"]["defaults"]["tone"], "neutral-cautious")
+        self.assertIn(
+            "Lead with the strongest confirmed fact before any scenario.",
+            learning["proposed_profile_feedback"]["defaults"]["must_include"],
+        )
+        self.assertTrue(any(item["rule_type"] == "explicit_preference" for item in learning["high_confidence_rules"]))
+        self.assertIn("Human summary:", " ".join(learning["change_summary"]))
+        self.assertIn("Lead with the strongest confirmed fact before scenarios.", " ".join(learning["change_summary"]))
+        self.assertEqual(revised["request"]["edit_reason_feedback"]["changes"][0]["change"], "Lead with the strongest confirmed fact before scenarios.")
+        self.assertIn("Human change reasons used", revised["report_markdown"])
+
+    def test_article_revision_accepts_human_feedback_form(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        revised = build_article_revision(
+            {
+                "draft_result": draft,
+                "edited_body_markdown": "# Revised body\n\nReaders should see the strongest confirmed fact first.\n",
+                "human_feedback_form": {
+                    "overall_goal_in_plain_english": "Make the opening clearer and safer.",
+                    "what_to_change": [
+                        {
+                            "area": "body",
+                            "change": "Lead with confirmed facts before scenarios.",
+                            "why": "Readers should see what is known before what is possible.",
+                            "reason_tag": "clarity",
+                            "remember_for": "topic",
+                        }
+                    ],
+                    "what_to_remember_next_time": [
+                        {
+                            "key": "must_include",
+                            "value": "Lead with the strongest confirmed fact before any scenario.",
+                            "scope": "topic",
+                            "why": "This framing should repeat for this topic.",
+                            "reason_tag": "structure",
+                        }
+                    ],
+                    "one_off_fixes_not_style": [
+                        {
+                            "area": "claims",
+                            "change": "Removed the line implying talks were already agreed.",
+                            "why": "That was a fact correction, not a reusable preference.",
+                            "reason_tag": "factual_caution",
+                        }
+                    ],
+                },
+            }
+        )
+        self.assertIn("human_feedback_form", revised["request"])
+        self.assertEqual(revised["human_feedback_form"]["overall_goal_in_plain_english"], "Make the opening clearer and safer.")
+        self.assertTrue(revised["style_learning"]["used_explicit_feedback"])
+        self.assertEqual(revised["style_learning"]["explicit_change_count"], 2)
+        self.assertEqual(revised["style_learning"]["explicit_preference_count"], 1)
+        self.assertIn(
+            "Lead with the strongest confirmed fact before any scenario.",
+            revised["style_learning"]["proposed_profile_feedback"]["defaults"]["must_include"],
+        )
+        self.assertEqual(revised["request"]["edit_reason_feedback"]["changes"][0]["change"], "Lead with confirmed facts before scenarios.")
+        self.assertTrue(any("evidence-bound editing" in item for item in revised["style_learning"]["excluded_signals"]))
+
+    def test_article_revision_accepts_simple_human_feedback_change_without_tags(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        revised = build_article_revision(
+            {
+                "draft_result": draft,
+                "human_feedback_form": {
+                    "overall_goal_in_plain_english": "Make the opening easier to trust.",
+                    "what_to_change": [
+                        {
+                            "change": "Move the clearest confirmed development to the top.",
+                            "why": "Readers should not have to hunt for what is actually confirmed.",
+                        }
+                    ],
+                },
+            }
+        )
+        normalized_change = revised["human_feedback_form"]["what_to_change"][0]
+        self.assertEqual(normalized_change["area"], "other")
+        self.assertEqual(normalized_change["reason_tag"], "other")
+        self.assertEqual(normalized_change["reuse_scope"], "review")
+        self.assertEqual(
+            revised["request"]["edit_reason_feedback"]["changes"][0]["change"],
+            "Move the clearest confirmed development to the top.",
+        )
+
+    def test_feedback_markdown_parses_into_revision_payload(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        template = build_revision_template(draft)
+        payload = parse_feedback_markdown(
+            """
+# Article Feedback
+
+Persist feedback scope: topic
+Auto rewrite after manual: true
+
+## Overall Goal
+
+Make the opening clearer and more cautious.
+
+## Keep
+
+- Keep the strongest confirmed fact near the top.
+
+## Change Requests
+
+- Change: Lead with confirmed facts before scenarios.
+  Why: Readers should see what is known before what is possible.
+  Area: lede
+  Reason Tag: clarity
+
+## Remember Next Time
+
+- Key: must_include
+  Value: Lead with the strongest confirmed fact before any scenario.
+  Why: This framing should repeat for this topic.
+  Scope: topic
+
+## One-Off Fact Fixes
+
+- Change: Remove the line implying a final deal already exists.
+  Why: That was a fact correction, not a style preference.
+  Area: claims
+
+## Images To Keep Near Front
+
+- IMG-01
+
+## Images To Drop
+
+- IMG-02
+
+## Optional Full Rewrite
+
+```md
+# Revised draft
+
+Lead with the strongest confirmed fact.
+```
+            """,
+            base_template=template,
+        )
+        self.assertEqual(payload["persist_feedback"]["scope"], "topic")
+        self.assertEqual(payload["feedback"]["keep_image_asset_ids"], ["IMG-01"])
+        self.assertEqual(payload["feedback"]["drop_image_asset_ids"], ["IMG-02"])
+        self.assertTrue(payload["allow_auto_rewrite_after_manual"])
+        self.assertEqual(payload["human_feedback_form"]["overall_goal_in_plain_english"], "Make the opening clearer and more cautious.")
+        self.assertEqual(payload["human_feedback_form"]["what_to_keep"], ["Keep the strongest confirmed fact near the top."])
+        self.assertEqual(payload["human_feedback_form"]["what_to_change"][0]["change"], "Lead with confirmed facts before scenarios.")
+        self.assertEqual(payload["human_feedback_form"]["what_to_remember_next_time"][0]["key"], "must_include")
+        self.assertEqual(payload["human_feedback_form"]["one_off_fixes_not_style"][0]["area"], "claims")
+        self.assertIn("Lead with the strongest confirmed fact.", payload["edited_article_markdown"])
+
+    def test_article_revise_payload_accepts_markdown_feedback_file(self) -> None:
+        case_dir = self.case_dir("markdown-feedback-input")
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        draft_path = case_dir / "article-draft-result.json"
+        template_path = case_dir / "article-revise-template.json"
+        feedback_path = case_dir / "ARTICLE-FEEDBACK.md"
+        draft_path.write_text(json.dumps(draft, ensure_ascii=False, indent=2) + "\n", encoding="utf-8-sig")
+        template_path.write_text(json.dumps(build_revision_template(draft), ensure_ascii=False, indent=2) + "\n", encoding="utf-8-sig")
+        feedback_path.write_text(
+            """
+# Article Feedback
+
+Persist feedback scope: none
+Auto rewrite after manual: false
+
+## Overall Goal
+
+Make the article easier to trust.
+
+## Change Requests
+
+- Change: Move the clearest confirmed development to the top.
+  Why: Readers should not have to hunt for the confirmed point.
+            """.strip()
+            + "\n",
+            encoding="utf-8-sig",
+        )
+        payload = build_article_revise_payload(
+            Namespace(
+                draft=str(draft_path),
+                revision_input=str(feedback_path),
+                revision_template=None,
+                output=None,
+                markdown_output=None,
+                title_hint=None,
+                subtitle_hint=None,
+                angle=None,
+                tone=None,
+                target_length=None,
+                max_images=None,
+                image_strategy=None,
+                draft_mode=None,
+                pin_image=[],
+                drop_image=[],
+                revision_note=None,
+                allow_auto_rewrite_after_manual=False,
+                quiet=True,
+            )
+        )
+        self.assertEqual(payload["human_feedback_form"]["overall_goal_in_plain_english"], "Make the article easier to trust.")
+        self.assertEqual(
+            payload["human_feedback_form"]["what_to_change"][0]["change"],
+            "Move the clearest confirmed development to the top.",
+        )
+
+    def test_article_revision_skips_auto_rewrite_when_red_team_passes(self) -> None:
+        draft = build_article_draft({"source_result": self.build_clean_core_news_result()})
+        revised = build_article_revision({"draft_result": draft})
+        self.assertEqual(revised["review_rewrite_package"]["rewrite_mode"], "no_rewrite_needed")
+        self.assertEqual(revised["review_rewrite_package"]["base_package_mode"], "reused_draft_package")
+        self.assertEqual(revised["review_rewrite_package"]["quality_gate"], "pass")
+        self.assertEqual(revised["final_article_result"]["article_markdown"], draft["article_package"]["article_markdown"])
+        self.assertIn("Base package mode", revised["report_markdown"])
+        self.assertIn("Rewrite decision", revised["report_markdown"])
 
     def test_article_revision_blocks_shadow_only_thesis(self) -> None:
         draft = build_article_draft({"source_result": self.build_shadow_only_news_result()})
@@ -450,7 +899,7 @@ class ArticleWorkflowTests(unittest.TestCase):
     def test_article_revision_manual_opt_in_without_manual_text_is_noop(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request)})
         revised = build_article_revision({"draft_result": draft, "allow_auto_rewrite_after_manual": True})
-        self.assertEqual(revised["review_rewrite_package"]["rewrite_mode"], "auto_rewrite")
+        self.assertEqual(revised["review_rewrite_package"]["rewrite_mode"], "no_rewrite_needed")
         self.assertFalse(revised["revision_history"][-1]["manual_override"])
         self.assertTrue(revised["revision_history"][-1]["allow_auto_rewrite_after_manual"])
 
@@ -539,6 +988,14 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("keep market relevance explicit", applied["request"]["must_include"])
         self.assertIn("Applied feedback profiles", " ".join(applied["article_package"]["editor_notes"]))
 
+    def test_article_draft_reuses_loaded_profiles_when_building_status(self) -> None:
+        profile_dir = self.case_dir("feedback-profiles-status-cache")
+        with patch("article_draft_flow_runtime.feedback_profile_status", wraps=real_feedback_profile_status) as status_mock:
+            build_article_draft({"source_result": run_news_index(self.news_request), "feedback_profile_dir": str(profile_dir)})
+        self.assertTrue(status_mock.called)
+        self.assertIn("profiles", status_mock.call_args.kwargs)
+        self.assertIsInstance(status_mock.call_args.kwargs["profiles"], dict)
+
     def test_revision_feedback_profiles_can_capture_current_request_defaults(self) -> None:
         profile_dir = self.case_dir("feedback-profiles-current-request")
         draft = build_article_draft({"source_result": run_news_index(self.news_request), "feedback_profile_dir": str(profile_dir)})
@@ -570,6 +1027,197 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertEqual(applied["request"]["draft_mode"], "image_first")
         self.assertIn("lead with the latest confirmed development", applied["request"]["must_include"])
 
+    def test_revision_human_feedback_preferences_auto_save_when_scope_is_consistent(self) -> None:
+        profile_dir = self.case_dir("feedback-profiles-auto-derived")
+        draft = build_article_draft({"source_result": run_news_index(self.news_request), "feedback_profile_dir": str(profile_dir)})
+        revised = build_article_revision(
+            {
+                "draft_result": draft,
+                "feedback_profile_dir": str(profile_dir),
+                "human_feedback_form": {
+                    "overall_goal_in_plain_english": "Keep the opening grounded in what is confirmed.",
+                    "what_to_remember_next_time": [
+                        {
+                            "key": "must_include",
+                            "value": "Lead with the strongest confirmed fact before any scenario.",
+                            "scope": "topic",
+                            "why": "This is the default framing I want for this topic.",
+                        }
+                    ],
+                },
+            }
+        )
+        self.assertTrue(revised["saved_feedback_profiles"])
+        self.assertEqual(revised["request"]["persist_feedback"]["scope"], "topic")
+        self.assertIn(
+            "Lead with the strongest confirmed fact before any scenario.",
+            revised["request"]["persist_feedback"]["defaults"]["must_include"],
+        )
+
+        applied = build_article_draft(
+            {
+                "source_result": run_news_index(self.news_request),
+                "feedback_profile_dir": str(profile_dir),
+                "topic": draft["request"]["topic"],
+            }
+        )
+        self.assertIn(
+            "Lead with the strongest confirmed fact before any scenario.",
+            applied["request"]["must_include"],
+        )
+
+    def test_article_revision_uses_evidence_bundle_when_draft_context_lists_are_missing(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request), "draft_mode": "image_first", "image_strategy": "prefer_images"})
+        expected_citations = draft["evidence_bundle"]["citations"]
+        expected_images = draft["evidence_bundle"]["image_candidates"]
+        draft["draft_context"]["citation_candidates"] = []
+        draft["draft_context"]["image_candidates"] = []
+        draft["article_package"]["citations"] = []
+        draft["article_package"]["selected_images"] = []
+        draft["article_package"]["image_blocks"] = []
+
+        revised = build_article_revision({"draft_result": draft})
+
+        self.assertEqual(revised["draft_context"]["citation_candidates"], expected_citations)
+        self.assertEqual(revised["draft_context"]["image_candidates"], expected_images)
+        self.assertEqual(revised["evidence_bundle"]["citations"], expected_citations)
+        self.assertEqual(revised["evidence_bundle"]["image_candidates"], expected_images)
+
+    def test_article_revision_reuses_cached_feedback_profile_status_when_no_profile_save_occurs(self) -> None:
+        profile_dir = self.case_dir("feedback-profiles-revision-status-cache")
+        draft = build_article_draft({"source_result": run_news_index(self.news_request), "feedback_profile_dir": str(profile_dir)})
+
+        with patch("article_revise_flow_runtime.feedback_profile_status", wraps=real_feedback_profile_status) as status_mock:
+            revised = build_article_revision({"draft_result": draft, "feedback_profile_dir": str(profile_dir)})
+
+        self.assertFalse(status_mock.called)
+        self.assertEqual(revised["feedback_profile_status"], draft["article_package"]["feedback_profile_status"])
+
+    def test_article_revision_rebuild_preserves_localized_images_without_refetch(self) -> None:
+        case_dir = self.case_dir("revision-localized-image-rebuild")
+        draft = build_article_draft(
+            {
+                "source_result": self.build_remote_image_source_result(case_dir),
+                "asset_output_dir": str(case_dir / "out" / "assets"),
+                "download_remote_images": True,
+                "draft_mode": "balanced",
+                "image_strategy": "prefer_images",
+                "max_images": 1,
+            }
+        )
+        original_image = draft["article_package"]["selected_images"][0]
+        original_path = original_image["path"]
+        self.assertEqual(original_image["status"], "local_ready")
+        self.assertTrue(Path(original_path).exists())
+
+        with patch("article_draft_flow_runtime.fetch_remote_asset", side_effect=AssertionError("refetch should not run")):
+            revised = build_article_revision(
+                {
+                    "draft_result": draft,
+                    "title_hint": "Rebuilt title keeps image cache",
+                }
+            )
+
+        revised_image = revised["article_package"]["selected_images"][0]
+        self.assertEqual(revised_image["status"], "local_ready")
+        self.assertEqual(revised_image["path"], original_path)
+        self.assertEqual(revised["asset_localization"]["downloaded_count"], 0)
+        self.assertEqual(revised["draft_context"]["image_candidates"][0]["path"], original_path)
+        self.assertEqual(revised["evidence_bundle"]["image_candidates"][0]["path"], original_path)
+
+    def test_article_revision_auto_rewrite_preserves_localized_images_without_refetch(self) -> None:
+        case_dir = self.case_dir("revision-localized-image-auto-rewrite")
+        draft = build_article_draft(
+            {
+                "source_result": self.build_remote_image_source_result(case_dir),
+                "asset_output_dir": str(case_dir / "out" / "assets"),
+                "download_remote_images": True,
+                "draft_mode": "image_first",
+                "image_strategy": "prefer_images",
+                "max_images": 1,
+            }
+        )
+        original_path = draft["article_package"]["selected_images"][0]["path"]
+        self.assertTrue(Path(original_path).exists())
+
+        with patch("article_draft_flow_runtime.fetch_remote_asset", side_effect=AssertionError("refetch should not run")):
+            revised = build_article_revision(
+                {
+                    "draft_result": draft,
+                    "edited_body_markdown": "# Manual body\n\nOverstated claim.",
+                    "edited_article_markdown": "# Manual body\n\nOverstated claim.",
+                    "allow_auto_rewrite_after_manual": True,
+                }
+            )
+
+        revised_image = revised["article_package"]["selected_images"][0]
+        self.assertEqual(revised["review_rewrite_package"]["rewrite_mode"], "manual_opt_in_auto_rewrite")
+        self.assertEqual(revised_image["status"], "local_ready")
+        self.assertEqual(revised_image["path"], original_path)
+        self.assertEqual(revised["asset_localization"]["downloaded_count"], 0)
+        self.assertEqual(revised["draft_context"]["image_candidates"][0]["path"], original_path)
+
+    def test_revision_feedback_profiles_write_history_backups_before_overwrite(self) -> None:
+        profile_dir = self.case_dir("feedback-profiles-history")
+        first_draft = build_article_draft({"source_result": run_news_index(self.news_request), "feedback_profile_dir": str(profile_dir)})
+        build_article_revision(
+            {
+                "draft_result": first_draft,
+                "feedback_profile_dir": str(profile_dir),
+                "persist_feedback": {
+                    "scope": "global",
+                    "defaults": {"tone": "neutral-cautious"},
+                },
+            }
+        )
+
+        second_draft = build_article_draft({"source_result": run_news_index(self.news_request), "feedback_profile_dir": str(profile_dir)})
+        revised = build_article_revision(
+            {
+                "draft_result": second_draft,
+                "feedback_profile_dir": str(profile_dir),
+                "persist_feedback": {
+                    "scope": "global",
+                    "defaults": {"tone": "urgent-but-cautious"},
+                },
+            }
+        )
+        self.assertTrue(revised["profile_backup_paths"])
+        backup_path = Path(revised["profile_backup_paths"][0])
+        self.assertTrue(backup_path.exists())
+        status = revised["feedback_profile_status"]
+        self.assertGreaterEqual(status["global_history_count"], 1)
+        self.assertTrue(status["latest_global_backup_path"])
+
+    def test_style_learning_does_not_turn_manual_fact_edits_into_reusable_defaults(self) -> None:
+        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        manual_article = "# Manual article\n\nIran has already accepted a final ground-war deal and the sources are settled.\n"
+        revised = build_article_revision(
+            {
+                "draft_result": draft,
+                "edited_body_markdown": manual_article,
+                "edited_article_markdown": manual_article,
+                "edit_reason_feedback": {
+                    "summary": "This was a factual correction, not a house style preference.",
+                    "changes": [
+                        {
+                            "area": "claims",
+                            "reason_tag": "factual_caution",
+                            "why": "I was correcting what the draft implied about negotiation certainty.",
+                            "reuse_scope": "none",
+                        }
+                    ],
+                },
+            }
+        )
+        learning = revised["style_learning"]
+        defaults_blob = json.dumps(learning["proposed_profile_feedback"]["defaults"], ensure_ascii=False)
+        self.assertEqual(learning["proposed_profile_feedback"]["defaults"], {})
+        self.assertNotIn("ground-war deal", defaults_blob)
+        self.assertTrue(learning["low_confidence_rules"])
+        self.assertTrue(any("evidence-bound editing" in item for item in learning["excluded_signals"]))
+        self.assertTrue(learning["excluded_signals"] or learning["profile_update_decision"]["status"] in {"record_only", "hold"})
+
     def test_article_workflow_runs_from_x_request_and_writes_revision_template(self) -> None:
         workflow_dir = self.case_dir("workflow-run")
         result = run_article_workflow(
@@ -588,6 +1236,8 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(Path(result["draft_stage"]["preview_path"]).exists())
         self.assertTrue(Path(result["review_stage"]["result_path"]).exists())
         self.assertTrue(Path(result["review_stage"]["revision_template_path"]).exists())
+        self.assertTrue(Path(result["review_stage"]["revision_form_path"]).exists())
+        self.assertTrue(Path(result["review_stage"]["feedback_markdown_path"]).exists())
         self.assertTrue(Path(result["final_stage"]["result_path"]).exists())
         draft_result = read_json(Path(result["draft_stage"]["result_path"]))
         self.assertGreaterEqual(draft_result["article_package"]["draft_metrics"]["citation_count"], 1)
@@ -598,6 +1248,13 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("language_mode", revision_template)
         self.assertIn("image_strategy", revision_template)
         self.assertIn("edited_article_markdown", revision_template)
+        self.assertIn("human_feedback_form", revision_template)
+        self.assertIn("review_form_quickstart", revision_template)
+        self.assertIn("review_focus_suggestions", revision_template)
+        self.assertIn("how_to_use", revision_template["human_feedback_form"]["help"])
+        self.assertIn("edit_reason_feedback", revision_template)
+        self.assertIn("reason_tags", revision_template["edit_reason_feedback"]["help"])
+        self.assertIn("preference_keys", revision_template["edit_reason_feedback"]["help"])
         self.assertEqual(revision_template["allow_auto_rewrite_after_manual"], False)
         self.assertIn("decision_trace", result)
         self.assertIn("recommended_thesis", result["decision_trace"]["brief"])
@@ -606,15 +1263,26 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("## Why This Draft Looks This Way", result["report_markdown"])
         self.assertIn("## Claim Support Map", result["report_markdown"])
         self.assertIn("## Red Team Summary", result["report_markdown"])
+        self.assertIn("## Learning Signals", result["report_markdown"])
         self.assertIn("## Images", result["report_markdown"])
         self.assertIn("## Feedback Reuse", result["report_markdown"])
         self.assertIn("## Files", result["report_markdown"])
+        self.assertIn("Review form", result["report_markdown"])
+        self.assertIn("Feedback markdown", result["report_markdown"])
         self.assertIn("Rewrite mode", result["report_markdown"])
         self.assertIn("Pre-rewrite quality gate", result["report_markdown"])
+        self.assertIn("learning_stage", result)
         self.assertIn("brief_stage", result)
         self.assertIn("review_result", result)
         self.assertIn("rewrite_mode", result["final_stage"])
         self.assertIn("pre_rewrite_quality_gate", result["final_stage"])
+        revision_form_markdown = Path(result["review_stage"]["revision_form_path"]).read_text(encoding="utf-8-sig")
+        self.assertIn("# Article Feedback", revision_form_markdown)
+        self.assertIn("## Overall Goal", revision_form_markdown)
+        self.assertIn("## Suggested Review Focus", revision_form_markdown)
+        self.assertIn("## Optional Full Rewrite", revision_form_markdown)
+        self.assertIn("ARTICLE-FEEDBACK.md", result["review_stage"]["feedback_markdown_path"])
+        self.assertIn("ARTICLE-FEEDBACK.md", result["review_stage"]["suggested_revise_command"])
 
     def test_article_workflow_runs_from_realistic_offline_request(self) -> None:
         workflow_dir = self.case_dir("workflow-realistic-run")
@@ -767,6 +1435,7 @@ class ArticleWorkflowTests(unittest.TestCase):
         for name in [
             "article_brief.py",
             "article_draft.py",
+            "article_feedback_markdown.py",
             "article_revise.py",
             "article_workflow.py",
             "article_brief_runtime.py",

@@ -1,0 +1,198 @@
+# Oil And Gas War Shocks
+
+Use this reference when the macro shock is driven by war, sanctions, maritime
+disruption, or direct threats to energy infrastructure.
+
+## Contents
+
+1. Commodity split
+2. Physical questions before price questions
+3. Indicators that matter most
+4. Policy interpretation
+5. Country exposure map
+6. Default scenario logic
+7. Output shortcut
+8. Benchmark translation rules
+9. Recommended final template
+
+## 1. Start With The Right Commodity Split
+
+Do not treat "energy" as one line item.
+
+Split the analysis into:
+
+1. `global oil`
+   - Brent, Dubai/Oman, prompt spreads
+2. `seaborne LNG`
+   - Asian spot LNG, Atlantic vs Pacific tightness
+3. `European gas`
+   - pipeline substitution risk, storage sensitivity
+4. `U.S. gas`
+   - Henry Hub is often buffered relative to global gas
+5. `products and logistics`
+   - diesel, jet, shipping, tanker rates, insurance
+
+## 2. Physical Questions Before Price Questions
+
+Answer these first:
+
+1. Is supply actually offline, or just perceived at risk?
+2. Is the chokepoint disrupted, mined, delayed, or still operating?
+3. Can rerouting solve the problem, and at what time/cost penalty?
+4. Is spare capacity available from Saudi Arabia, the UAE, the U.S., or others?
+5. Are inventories and strategic reserves high enough to smooth the shock?
+6. Is LNG loading/export capacity physically blocked, or only repriced?
+
+## 3. Indicators That Matter Most
+
+### Oil
+
+- Brent level
+- Brent prompt spread / backwardation
+- Dubai or Oman spreads
+- tanker rates
+- refinery cracks
+- official SPR / reserve-release signals
+- OPEC spare-capacity language
+
+### Gas and LNG
+
+- Dutch TTF
+- Asian spot LNG / JKM-style benchmark
+- Henry Hub
+- LNG freight and charter conditions
+- European storage trend
+- Qatar export-flow headlines
+
+## 4. Policy Interpretation
+
+In energy war shocks, central banks are usually not the first responder.
+
+Check in this order:
+
+1. military / maritime reality
+2. producer response
+3. reserve release
+4. fiscal subsidy or tax smoothing
+5. only then broader monetary reaction
+
+## 5. Country Exposure Map
+
+Sort countries by sensitivity:
+
+### Highest direct vulnerability
+
+- net energy importers
+- LNG-import dependent Asia
+- European buyers with limited cheap substitutes
+
+### Relative buffers
+
+- large domestic producers
+- countries with reserve capacity or subsidy room
+- U.S. domestic gas versus global gas exposure
+
+## 6. Default Scenario Logic
+
+### Scenario A: No further escalation / partial fade
+
+- traffic continues with risk premium but no prolonged outage
+- oil gives back part of the spike
+- global gas stays firm but does not disorder
+- U.S. gas reacts less than global LNG or Europe
+
+### Scenario B: Persistent but contained
+
+- repeated attacks or disruption keep freight, insurance, and prompt pricing high
+- oil remains elevated
+- LNG and European gas stay tighter for longer
+- importers face inflation pressure and fiscal strain
+
+### Scenario C: Broad embedding / regime shift
+
+- prolonged outage, export loss, or infrastructure damage
+- oil shock feeds into inflation expectations and policy delay
+- LNG and Europe reprice sharply
+- U.S. gas rises too, but usually less than ex-U.S. benchmarks unless export constraints or domestic heat/power stress join the shock
+
+## 7. Output Shortcut
+
+For this kind of task, the final note should always answer:
+
+1. what is physically disrupted
+2. what is only a risk premium
+3. which benchmark should move the most
+4. which benchmark should move less than headlines imply
+5. what would make the spike fade
+6. what would make it turn into a multi-quarter macro problem
+
+## 8. Benchmark Translation Rules
+
+Do not write "gas up" or "oil up" without saying which benchmark.
+
+### Oil
+
+- `Brent`
+  - first call for global seaborne risk
+- `WTI`
+  - usually follows, but can lag Brent if the shock is mainly maritime and
+    outside North America
+- `Dubai/Oman`
+  - useful for Gulf and Asian refinery exposure
+
+### Gas
+
+- `Asian spot LNG / JKM-style`
+  - first call for Qatar and seaborne LNG disruption
+- `Dutch TTF`
+  - most relevant for Europe import stress and LNG competition
+- `Henry Hub`
+  - should not be assumed to move one-for-one with TTF or Asian LNG
+
+Default market translation:
+
+1. Hormuz / Qatar risk usually hits `JKM-style LNG` and `TTF` harder than
+   `Henry Hub`.
+2. Seaborne oil disruption usually widens `Brent over WTI`.
+3. A war premium without sustained outage can reverse quickly in outright price
+   but stay visible longer in freight, insurance, and prompt spreads.
+
+## 9. Recommended Final Template
+
+Use this exact order for oil and gas war-shock notes:
+
+1. `Shock in one line`
+2. `Physical disruption vs risk premium`
+3. `Which benchmarks matter`
+4. `Persistence judgment`
+5. `Scenario table`
+6. `Policy and buffer response`
+7. `Oil call`
+8. `Gas call`
+9. `Cross-market spillovers`
+10. `What would change the view`
+11. `Bias stronger if / bias weaker if`
+
+Minimum scenario table:
+
+| Scenario | Probability | Oil benchmark most affected | Gas benchmark most affected | Why | Invalidation |
+|----------|-------------|-----------------------------|-----------------------------|-----|--------------|
+| No further escalation / partial fade |  |  |  |  |  |
+| Persistent but contained |  |  |  |  |  |
+| Broad embedding / regime shift |  |  |  |  |  |
+
+Minimum bias table:
+
+| Directional bias | Conditions that strengthen it | Conditions that weaken it |
+|------------------|-------------------------------|---------------------------|
+| More bullish oil |  |  |
+| More bullish ex-U.S. gas |  |  |
+| More bullish U.S. gas |  |  |
+
+Minimum horizon table:
+
+| Horizon | Oil call | Gas call | What matters most |
+|---------|----------|----------|-------------------|
+| `0-72h` |  |  |  |
+| `1-4w` |  |  |  |
+| `1-3m` |  |  |  |

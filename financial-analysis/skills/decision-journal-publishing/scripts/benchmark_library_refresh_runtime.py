@@ -9,6 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,7 @@ if str(AUTORESEARCH_SCRIPT_DIR) not in sys.path:
 from news_index_runtime import load_json, parse_datetime, slugify, write_json
 
 
-PARSER_VERSION = "2026-03-24.3"
+PARSER_VERSION = "2026-03-25.1"
 TRACKING_QUERY_PREFIXES = ("utm_", "spm", "from", "source", "share_", "timestamp")
 DEFAULT_HTTP_HEADERS = {
     "User-Agent": (
@@ -59,6 +60,25 @@ READ_SIGNAL_PATTERNS = [
 HREF_PATTERN = re.compile(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.I | re.S)
 TAG_PATTERN = re.compile(r"<[^>]+>")
 SPACE_PATTERN = re.compile(r"\s+")
+JSON_PUBLISHED_FIELDS = (
+    "published_at",
+    "publishTime",
+    "publishedTime",
+    "ctime",
+    "pubDate",
+    "create_time",
+    "created_at",
+    "time",
+)
+JSON_READ_FIELDS = (
+    "read",
+    "readCount",
+    "read_count",
+    "readNum",
+    "read_num",
+    "views",
+    "viewCount",
+)
 
 
 def clean_text(value: Any) -> str:
@@ -130,12 +150,69 @@ def extract_read_signal(html: str) -> str:
     return ""
 
 
-def detect_metadata(html: str) -> dict[str, Any]:
-    raw_read_signal = extract_read_signal(html)
+def extract_json_read_signal(record: dict[str, Any]) -> str:
+    for field in JSON_READ_FIELDS:
+        value = clean_text(record.get(field))
+        if re.search(r"\d+(?:\.\d+)?\s*(?:\u4e07|\u4ebf|w)\+?", value, re.I):
+            return value
+    return ""
+
+
+def normalize_json_published_at(value: Any) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    if re.fullmatch(r"\d{10}", text):
+        return datetime.fromtimestamp(int(text), tz=timezone.utc).isoformat()
+    if re.fullmatch(r"\d{13}", text):
+        return datetime.fromtimestamp(int(text) / 1000.0, tz=timezone.utc).isoformat()
+    return text
+
+
+def detect_json_metadata(payload: Any) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    if isinstance(payload, dict):
+        records = [safe_dict(item) for item in safe_list(payload.get("data"))]
+    elif isinstance(payload, list):
+        records = [safe_dict(item) for item in payload]
+    first_record = next(
+        (
+            item
+            for item in records
+            if clean_text(item.get("longTitle") or item.get("title") or item.get("name"))
+        ),
+        {},
+    )
+    raw_read_signal = extract_json_read_signal(first_record)
     read_meta = normalize_read_band(raw_read_signal)
     return {
-        "detected_title": first_match(TITLE_PATTERNS, html),
-        "detected_published_at": first_match(PUBLISHED_PATTERNS, html),
+        "detected_title": clean_text(
+            first_record.get("longTitle")
+            or first_record.get("title")
+            or first_record.get("name")
+        ),
+        "detected_published_at": next(
+            (normalize_json_published_at(first_record.get(field)) for field in JSON_PUBLISHED_FIELDS if clean_text(first_record.get(field))),
+            "",
+        ),
+        "detected_read_signal": raw_read_signal,
+        "detected_read_count_estimate": read_meta["read_count_estimate"],
+        "detected_read_band": read_meta["read_band"],
+    }
+
+
+def detect_metadata(text: str) -> dict[str, Any]:
+    stripped = text.lstrip()
+    if stripped.startswith("{") or stripped.startswith("["):
+        try:
+            return detect_json_metadata(json.loads(text))
+        except json.JSONDecodeError:
+            pass
+    raw_read_signal = extract_read_signal(text)
+    read_meta = normalize_read_band(raw_read_signal)
+    return {
+        "detected_title": first_match(TITLE_PATTERNS, text),
+        "detected_published_at": first_match(PUBLISHED_PATTERNS, text),
         "detected_read_signal": raw_read_signal,
         "detected_read_count_estimate": read_meta["read_count_estimate"],
         "detected_read_band": read_meta["read_band"],
@@ -383,6 +460,11 @@ def build_observation(
 def apply_observation_to_case(case: dict[str, Any], observation: dict[str, Any]) -> dict[str, Any]:
     machine_state = {**default_machine_state(), **safe_dict(case.get("machine_state"))}
     locks = {**default_human_locks(), **safe_dict(case.get("human_locks"))}
+    is_candidate_read_signal_managed = (
+        clean_text(case.get("curation_status")) == "candidate"
+        and clean_text(observation.get("fetch_status")) == "ok"
+        and not locks.get("read_signal", True)
+    )
     change_flags: list[str] = []
     for machine_key, observation_key in (
         ("current_title", "detected_title"),
@@ -390,6 +472,8 @@ def apply_observation_to_case(case: dict[str, Any], observation: dict[str, Any])
         ("current_read_signal", "detected_read_signal"),
         ("current_read_count_estimate", "detected_read_count_estimate"),
     ):
+        if is_candidate_read_signal_managed and machine_key in {"current_read_signal", "current_read_count_estimate"}:
+            continue
         new_value = observation.get(observation_key)
         if new_value in {"", None}:
             continue
@@ -398,11 +482,7 @@ def apply_observation_to_case(case: dict[str, Any], observation: dict[str, Any])
             change_flags.append(machine_key)
             machine_state[machine_key] = new_value
 
-    if (
-        clean_text(case.get("curation_status")) == "candidate"
-        and clean_text(observation.get("fetch_status")) == "ok"
-        and not locks.get("read_signal", True)
-    ):
+    if is_candidate_read_signal_managed:
         detected_signal = clean_text(observation.get("detected_read_signal"))
         detected_count = observation.get("detected_read_count_estimate") if detected_signal else None
         if machine_state.get("current_read_signal") != detected_signal:
@@ -961,7 +1041,7 @@ def run_benchmark_library_refresh(raw_payload: dict[str, Any]) -> dict[str, Any]
         "candidate_cases_refreshed": len(candidate_case_refreshes),
         "candidates_discovered": len(discovered_candidates),
         "candidate_case_id_repairs": len(candidate_case_id_repairs),
-        "candidate_human_lock_repairs": len(candidate_human_lock_repairs),
+        "candidate_human_lock_repairs": candidate_human_lock_repairs,
     }
 
     write_json(request["library_path"], reviewed_library)
@@ -1006,7 +1086,7 @@ def run_benchmark_library_refresh(raw_payload: dict[str, Any]) -> dict[str, Any]
             "matched_existing_cases": len(matched_existing),
             "source_failures": sum(1 for item in source_runs if clean_text(item.get("status")) == "error"),
             "candidate_case_id_repairs": len(candidate_case_id_repairs),
-            "candidate_human_lock_repairs": len(candidate_human_lock_repairs),
+            "candidate_human_lock_repairs": candidate_human_lock_repairs,
         },
         "benchmark_index_result": benchmark_index_result,
     }

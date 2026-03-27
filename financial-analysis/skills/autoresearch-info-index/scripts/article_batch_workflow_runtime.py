@@ -9,6 +9,7 @@ from typing import Any
 from article_cleanup_runtime import cleanup_article_temp_dirs
 from article_workflow_runtime import load_json, run_article_workflow, write_json
 from news_index_runtime import parse_datetime, slugify
+from runtime_paths import runtime_subdir
 
 
 def clean_text(value: Any) -> str:
@@ -35,7 +36,7 @@ def normalize_batch_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     output_dir = (
         Path(clean_text(raw_payload.get("output_dir"))).expanduser()
         if clean_text(raw_payload.get("output_dir"))
-        else Path.cwd() / ".tmp" / "article-batch-workflow" / analysis_time.strftime("%Y%m%dT%H%M%SZ")
+        else runtime_subdir("article-batch-workflow", analysis_time.strftime("%Y%m%dT%H%M%SZ"))
     )
     return {
         "analysis_time": analysis_time,
@@ -196,9 +197,11 @@ def run_batch_item(request: dict[str, Any], item: dict[str, Any], index: int) ->
     final_stage = safe_dict(workflow_result.get("final_stage"))
     result_item = {
         "index": index,
+        "candidate_index": int(item.get("candidate_index", 0) or 0),
         "label": label,
         "status": clean_text(workflow_result.get("status")) or "ok",
         "source_request_path": clean_text(item.get("request_path")),
+        "source_result_path": clean_text(item.get("source_result_path")),
         "draft_title": clean_text(draft_stage.get("title")),
         "draft_mode": clean_text(draft_stage.get("draft_mode")),
         "rewrite_mode": clean_text(final_stage.get("rewrite_mode")),

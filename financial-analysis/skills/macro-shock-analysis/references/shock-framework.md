@@ -1,0 +1,149 @@
+# Shock Framework
+
+Use this reference when the user needs a more detailed macro diagnosis.
+
+## Contents
+
+1. Shock taxonomy
+2. Transmission checklist
+3. Persistence tests
+4. Broadening tests
+5. Policy capability test
+6. Upgrade / downgrade rules
+
+## 1. Shock Taxonomy
+
+Classify the shock before discussing outcomes.
+
+### By source
+
+- `supply`
+  - energy, food, shipping, labor, sanctions, war damage
+- `demand`
+  - fiscal stimulus, credit surge, reopening burst
+- `policy`
+  - tariffs, sanctions, subsidies, capital controls, tax changes
+- `financial`
+  - funding stress, banking stress, liquidity freeze
+- `expectations`
+  - de-anchoring of inflation expectations, confidence collapse
+
+### By scale
+
+- `small`
+  - noticeable in one market but limited macro spillover
+- `medium`
+  - visible in several prices or countries, but still containable
+- `large`
+  - systemic enough to alter policy, growth, or cross-asset pricing
+
+### By persistence
+
+- `one-off`
+  - level effect, then fades
+- `multi-week`
+  - relevant for near-term prints and headline risk
+- `multi-quarter`
+  - matters for policy and earnings
+- `structural`
+  - changes regime, sourcing, capex, or inflation process
+
+## 2. Transmission Checklist
+
+Map the chain explicitly.
+
+### Direct effects
+
+- commodity spot price
+- freight cost
+- import cost
+- regulated price changes
+
+### Indirect effects
+
+- producer margins
+- downstream pass-through
+- inventory draw or hoarding
+- substitution into other inputs
+
+### Second-round effects
+
+- wage bargaining
+- services inflation
+- inflation expectations
+- FX weakness amplifying imported inflation
+- credit repricing or tighter financial conditions
+
+## 3. Persistence Tests
+
+The best macro question is not "is it bad?" but "does it stick?"
+
+Ask:
+
+1. Is supply physically offline, or just delayed?
+2. Is rerouting possible?
+3. Is spare capacity available elsewhere?
+4. Are buffers, reserves, or subsidies absorbing the shock?
+5. Are higher prices reducing demand fast enough to self-correct?
+6. Are expectations and wage-setting starting to adapt upward?
+
+## 4. Broadening Tests
+
+The shock is becoming more dangerous if it moves from one relative price into a
+broader inflation process.
+
+Watch for:
+
+- headline inflation spreading into core
+- more categories running hot
+- rising wage settlements
+- shorter-duration inflation expectations rising
+- policy makers shifting from patience to concern
+
+## 5. Policy Capability Test
+
+Always separate what policy can solve from what it can only offset.
+
+### Central bank
+
+Can influence:
+
+- demand
+- credit conditions
+- inflation expectations
+- FX indirectly
+
+Cannot directly fix:
+
+- oil production
+- shipping lanes
+- physical supply shortages
+
+### Fiscal / administrative policy
+
+Can influence:
+
+- subsidies
+- caps
+- tax relief
+- reserve releases
+- targeted support
+- rationing or regulatory intervention
+
+## 6. Upgrade / Downgrade Rules
+
+Upgrade from `localized shock` toward `macro regime risk` when:
+
+1. the shock lasts longer than expected
+2. it broadens into core categories
+3. wages and expectations start to follow
+4. policy tolerance falls
+5. market stress spreads beyond the original asset
+
+Downgrade when:
+
+1. physical disruption clears
+2. alternative supply appears
+3. pass-through remains narrow
+4. inflation expectations stay anchored
+5. policy makers successfully look through it

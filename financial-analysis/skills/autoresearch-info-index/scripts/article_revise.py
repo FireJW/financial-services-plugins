@@ -10,13 +10,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from article_feedback_markdown import load_feedback_markdown
 from article_revise_flow_runtime import build_article_revision, load_json, write_json
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Revise an existing article package while preserving sources and images.")
     parser.add_argument("draft", help="Path to an existing article draft result JSON file")
-    parser.add_argument("revision_input", nargs="?", help="Optional path to a revision request JSON file")
+    parser.add_argument("revision_input", nargs="?", help="Optional path to a revision request JSON or markdown file")
+    parser.add_argument("--revision-template", help="Optional path to article-revise-template.json when using markdown feedback")
     parser.add_argument("--output", help="Optional path to save the revised result JSON")
     parser.add_argument("--markdown-output", help="Optional path to save the revised markdown report")
     parser.add_argument("--title-hint", help="Optional title override")
@@ -42,7 +44,12 @@ def parse_args() -> argparse.Namespace:
 def build_payload(args: argparse.Namespace) -> dict:
     payload = {"draft_result": load_json(Path(args.draft).resolve())}
     if args.revision_input:
-        revision_payload = load_json(Path(args.revision_input).resolve())
+        revision_input_path = Path(args.revision_input).resolve()
+        revision_template_path = Path(args.revision_template).resolve() if args.revision_template else None
+        if revision_input_path.suffix.lower() in {".md", ".markdown"}:
+            revision_payload = load_feedback_markdown(revision_input_path, template_path=revision_template_path)
+        else:
+            revision_payload = load_json(revision_input_path)
         if not isinstance(revision_payload, dict):
             raise ValueError("Revision input file must contain a JSON object")
         payload.update(revision_payload)

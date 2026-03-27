@@ -2,7 +2,7 @@
   "library_name": "decision-journal-benchmark-candidates",
   "version": "2026-03-24.3",
   "updated_at": "2026-03-24T22:30:00+08:00",
-  "last_machine_refresh_at": "2026-03-24T16:26:00+00:00",
+  "last_machine_refresh_at": "2026-03-25T01:54:04+00:00",
   "default_request": {
     "goal": "Triage newly discovered WeChat and Toutiao benchmark candidates",
     "commercial_center": "professional investors, research users, and high-participation retail investors who pay for better judgment structure",
@@ -27,7 +27,7 @@
       "canonical_url": "http://finance.sina.com.cn/roll/2026-01-20/doc-inhhxvex9049346.shtml",
       "fetch_url": "http://finance.sina.com.cn/roll/2026-01-20/doc-inhhxvex9049346.shtml",
       "published_at": "2026-01-20T21:35:35+08:00",
-      "read_signal": "12 w",
+      "read_signal": "",
       "account_positioning": "industry and enterprise interpretation for broad business readers",
       "topic_type": "event explainer",
       "hook_type": "public consequence question",
@@ -43,13 +43,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-01-20/doc-inhhxvex9049346.shtml",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-1a32a1118d945618",
-        "current_read_signal": "12 w",
-        "current_read_count_estimate": 120000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-10f7ae7c6e08be3f",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "2026-01-20T21:35:35+08:00",
         "current_title": "中国，为什么要让新能源车「减肥」？",
         "change_flags": []
@@ -57,7 +57,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -70,7 +70,7 @@
       "canonical_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhscaes7405505.shtml",
       "fetch_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhscaes7405505.shtml",
       "published_at": "2026-03-24T22:29:23+08:00",
-      "read_signal": "12 w",
+      "read_signal": "",
       "account_positioning": "high-frequency finance readers paying to reduce selection cost",
       "topic_type": "paid daily utility",
       "hook_type": "selection and opportunity-cost reduction",
@@ -86,13 +86,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhscaes7405505.shtml",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-5c8dfbf436542b76",
-        "current_read_signal": "12 w",
-        "current_read_count_estimate": 120000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-217274febf0050fc",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T22:29:23+08:00",
         "current_title": "华尔街评老铺黄金财报：业绩远超预期，公司正迈向中国首个真正奢侈品牌",
         "change_flags": []
@@ -100,7 +100,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -113,7 +113,7 @@
       "canonical_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhscaes7381354.shtml",
       "fetch_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhscaes7381354.shtml",
       "published_at": "2026-03-24T22:55:00+08:00",
-      "read_signal": "12 w",
+      "read_signal": "",
       "account_positioning": "high-frequency finance readers paying to reduce selection cost",
       "topic_type": "paid daily utility",
       "hook_type": "selection and opportunity-cost reduction",
@@ -129,13 +129,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhscaes7381354.shtml",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-43cb1da40cf970f9",
-        "current_read_signal": "12 w",
-        "current_read_count_estimate": 120000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-7126cece0618f293",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T22:55:00+08:00",
         "current_title": "SemiAnalysis GTC深度解读：三款新系统背后，英伟达正在重新定义AI基础设施的边界",
         "change_flags": []
@@ -143,7 +143,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -156,7 +156,7 @@
       "canonical_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhsavwy0499774.shtml",
       "fetch_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhsavwy0499774.shtml",
       "published_at": "2026-03-24T19:46:15+08:00",
-      "read_signal": "1350亿",
+      "read_signal": "",
       "account_positioning": "high-frequency finance readers paying to reduce selection cost",
       "topic_type": "paid daily utility",
       "hook_type": "selection and opportunity-cost reduction",
@@ -172,13 +172,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhsavwy0499774.shtml",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-1f5ea078748e4d2d",
-        "current_read_signal": "1350亿",
-        "current_read_count_estimate": 135000000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-6e4c96bbe4b19ac2",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T19:46:15+08:00",
         "current_title": "动用黄金储备！土耳其里拉保卫战升级，拟开启金汇兑换应对战争冲击",
         "change_flags": []
@@ -186,7 +186,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -199,7 +199,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5jm",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5jm",
       "published_at": "",
-      "read_signal": "3472万",
+      "read_signal": "",
       "account_positioning": "deep business storytelling with finance and operator relevance",
       "topic_type": "business consequence feature",
       "hook_type": "affected group under pressure",
@@ -215,13 +215,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5jm",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-a83b81ebe1dfe1f8",
-        "current_read_signal": "3472万",
-        "current_read_count_estimate": 34720000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-9273a13ebdd2f97f",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "永雄集团遭银行及创始人追债超五千万，称无力偿还",
         "change_flags": []
@@ -229,7 +229,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -242,7 +242,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb00101f5is",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb00101f5is",
       "published_at": "",
-      "read_signal": "100亿",
+      "read_signal": "",
       "account_positioning": "deep business storytelling with finance and operator relevance",
       "topic_type": "business consequence feature",
       "hook_type": "affected group under pressure",
@@ -258,13 +258,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb00101f5is",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-1b9945069d5f44ff",
-        "current_read_signal": "100亿",
-        "current_read_count_estimate": 10000000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-fbcf74295bc6f249",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "赤峰黄金“改嫁”，内蒙女首富套现100亿，当亿万富婆不当家！",
         "change_flags": []
@@ -272,7 +272,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -285,7 +285,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5hs",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5hs",
       "published_at": "",
-      "read_signal": "100亿",
+      "read_signal": "",
       "account_positioning": "deep business storytelling with finance and operator relevance",
       "topic_type": "business consequence feature",
       "hook_type": "affected group under pressure",
@@ -301,13 +301,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
-        "last_fetch_status": "error",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5hs",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-dd259e8800c4dd2e",
-        "current_read_signal": "100亿",
-        "current_read_count_estimate": 10000000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-15b5c3fec2056a81",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "美计划4月9日结束对伊战争",
         "change_flags": []
@@ -315,7 +315,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -328,7 +328,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5gw",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5gw",
       "published_at": "",
-      "read_signal": "5万",
+      "read_signal": "",
       "account_positioning": "deep business storytelling with finance and operator relevance",
       "topic_type": "business consequence feature",
       "hook_type": "affected group under pressure",
@@ -344,13 +344,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5gw",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-8cc89aa02b8a7712",
-        "current_read_signal": "5万",
-        "current_read_count_estimate": 50000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-91b624eb6b5087f3",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "男大学生患桃花癫一周消费5万，春季高发需警惕",
         "change_flags": []
@@ -358,7 +358,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -371,7 +371,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2ms",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2ms",
       "published_at": "",
-      "read_signal": "4000万",
+      "read_signal": "",
       "account_positioning": "professional and high-net-worth investing audience",
       "topic_type": "deep company and capital-market analysis",
       "hook_type": "forensic company reading",
@@ -387,13 +387,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2ms",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-692a0755d3814627",
-        "current_read_signal": "4000万",
-        "current_read_count_estimate": 40000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-16cfc75de63963b3",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "激光雷达“一哥”交卷！禾赛ADAS主雷达市占率超40%，全年GAAP盈利创行业先河",
         "change_flags": []
@@ -401,7 +401,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -414,7 +414,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2mw",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2mw",
       "published_at": "",
-      "read_signal": "6亿",
+      "read_signal": "",
       "account_positioning": "professional and high-net-worth investing audience",
       "topic_type": "deep company and capital-market analysis",
       "hook_type": "forensic company reading",
@@ -430,13 +430,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2mw",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-04f7f3b08e709428",
-        "current_read_signal": "6亿",
-        "current_read_count_estimate": 600000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-46264be82de90e6f",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "一图看懂 | 原油航运概念股",
         "change_flags": []
@@ -444,7 +444,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -457,7 +457,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2mu",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2mu",
       "published_at": "",
-      "read_signal": "66.3亿",
+      "read_signal": "",
       "account_positioning": "professional and high-net-worth investing audience",
       "topic_type": "deep company and capital-market analysis",
       "hook_type": "forensic company reading",
@@ -473,13 +473,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2mu",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-656a7d46b416f2d5",
-        "current_read_signal": "66.3亿",
-        "current_read_count_estimate": 6630000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-ead5fe42feae9f63",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "最大回撤仅-3.5%！一条平滑向上的净值曲线是如何炼成的？|1分钟了解一只吾股好基",
         "change_flags": []
@@ -487,7 +487,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -500,7 +500,7 @@
       "canonical_url": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaeq1627809.shtml",
       "fetch_url": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaeq1627809.shtml",
       "published_at": "2026-03-24T22:17:35+08:00",
-      "read_signal": "12 w",
+      "read_signal": "",
       "account_positioning": "professional and high-net-worth investing audience",
       "topic_type": "deep company and capital-market analysis",
       "hook_type": "forensic company reading",
@@ -516,13 +516,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaeq1627809.shtml",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-b9c4b44412138c9b",
-        "current_read_signal": "12 w",
-        "current_read_count_estimate": 120000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-743e31101d06d800",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T22:17:35+08:00",
         "current_title": "端侧AI！机顶盒龙头奔向下一站",
         "change_flags": []
@@ -530,7 +530,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -543,7 +543,7 @@
       "canonical_url": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaes7375404.shtml",
       "fetch_url": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaes7375404.shtml",
       "published_at": "2026-03-24T20:49:25+08:00",
-      "read_signal": "10万",
+      "read_signal": "",
       "account_positioning": "high-frequency finance readers paying to reduce selection cost",
       "topic_type": "paid daily utility",
       "hook_type": "selection and opportunity-cost reduction",
@@ -559,13 +559,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaes7375404.shtml",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-4836c52ee835d9aa",
-        "current_read_signal": "10万",
-        "current_read_count_estimate": 100000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-fdc7bc6741990b7a",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T20:49:25+08:00",
         "current_title": "黄仁勋深度访谈：“Token经济”爆发，AI计算占GDP比重将翻百倍，英伟达10万亿是必然",
         "change_flags": []
@@ -573,7 +573,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -586,7 +586,7 @@
       "canonical_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhsavwy0473497.shtml",
       "fetch_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhsavwy0473497.shtml",
       "published_at": "2026-03-24T19:20:22+08:00",
-      "read_signal": "38.22亿",
+      "read_signal": "",
       "account_positioning": "high-frequency finance readers paying to reduce selection cost",
       "topic_type": "paid daily utility",
       "hook_type": "selection and opportunity-cost reduction",
@@ -602,13 +602,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhsavwy0473497.shtml",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-b053431f7c94cf35",
-        "current_read_signal": "38.22亿",
-        "current_read_count_estimate": 3822000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-e03ca084bd60da0e",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T19:20:22+08:00",
         "current_title": "沪电股份：2025年净利润38.22亿元，同比增长47.74%，拟10派5元",
         "change_flags": []
@@ -616,7 +616,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -629,7 +629,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5g8",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5g8",
       "published_at": "",
-      "read_signal": "100亿",
+      "read_signal": "",
       "account_positioning": "deep business storytelling with finance and operator relevance",
       "topic_type": "business consequence feature",
       "hook_type": "affected group under pressure",
@@ -645,13 +645,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5g8",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-c3961fa11043765f",
-        "current_read_signal": "100亿",
-        "current_read_count_estimate": 10000000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-67d477b7f2298afa",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "傅盛朋友圈发文向周鸿祎致歉，称亿元债务控诉系酒后冲动",
         "change_flags": []
@@ -659,7 +659,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -672,7 +672,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5c2",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5c2",
       "published_at": "",
-      "read_signal": "100亿",
+      "read_signal": "",
       "account_positioning": "deep business storytelling with finance and operator relevance",
       "topic_type": "business consequence feature",
       "hook_type": "affected group under pressure",
@@ -688,13 +688,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5c2",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-298014bbb5089648",
-        "current_read_signal": "100亿",
-        "current_read_count_estimate": 10000000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-c95df04331bb9910",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "Insta360 CEO刘靖康回应大疆起诉，称专利为自主创新将依法应诉",
         "change_flags": []
@@ -702,7 +702,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -715,7 +715,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5b4",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5b4",
       "published_at": "",
-      "read_signal": "100亿",
+      "read_signal": "",
       "account_positioning": "deep business storytelling with finance and operator relevance",
       "topic_type": "business consequence feature",
       "hook_type": "affected group under pressure",
@@ -731,13 +731,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5b4",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-a92f60638b671fc8",
-        "current_read_signal": "100亿",
-        "current_read_count_estimate": 10000000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-b599bc5ab86d5cd9",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "国家临时调控成品油价格，涨幅低于预期",
         "change_flags": []
@@ -745,7 +745,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -758,7 +758,7 @@
       "canonical_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb02701f5a0",
       "fetch_url": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb02701f5a0",
       "published_at": "",
-      "read_signal": "100万",
+      "read_signal": "",
       "account_positioning": "deep business storytelling with finance and operator relevance",
       "topic_type": "business consequence feature",
       "hook_type": "affected group under pressure",
@@ -774,13 +774,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb02701f5a0",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-8222b7d69d7f36d6",
-        "current_read_signal": "100万",
-        "current_read_count_estimate": 1000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-46b006dbeec31d49",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "",
         "current_title": "54岁瞿颖再翻红，活成打工人嘴替：火了也不卷，爱谁卷谁卷",
         "change_flags": []
@@ -788,7 +788,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -801,7 +801,7 @@
       "canonical_url": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaeu4188958.shtml",
       "fetch_url": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaeu4188958.shtml",
       "published_at": "2026-03-24T22:20:21+08:00",
-      "read_signal": "160.68亿",
+      "read_signal": "",
       "account_positioning": "professional and high-net-worth investing audience",
       "topic_type": "deep company and capital-market analysis",
       "hook_type": "forensic company reading",
@@ -817,13 +817,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaeu4188958.shtml",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-a0b56722c5fa7656",
-        "current_read_signal": "160.68亿",
-        "current_read_count_estimate": 16068000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-aef6cccd8f626492",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T22:20:21+08:00",
         "current_title": "净利率75%！东方财富：克制自己，放飞散户",
         "change_flags": []
@@ -831,7 +831,7 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
       }
     },
@@ -844,7 +844,7 @@
       "canonical_url": "http://finance.sina.com.cn/wm/2026-03-23/doc-inhrynrr7931263.shtml",
       "fetch_url": "http://finance.sina.com.cn/wm/2026-03-23/doc-inhrynrr7931263.shtml",
       "published_at": "2026-03-23T18:12:50+08:00",
-      "read_signal": "112.33亿",
+      "read_signal": "",
       "account_positioning": "professional and high-net-worth investing audience",
       "topic_type": "deep company and capital-market analysis",
       "hook_type": "forensic company reading",
@@ -860,13 +860,13 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-24T16:26:00+00:00",
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/wm/2026-03-23/doc-inhrynrr7931263.shtml",
-        "last_observation_at": "2026-03-24T16:26:00+00:00",
-        "current_observation_id": "obs-eed1244992194822",
-        "current_read_signal": "112.33亿",
-        "current_read_count_estimate": 11233000000,
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-12276365691ca25d",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
         "current_published_at": "2026-03-23T18:12:50+08:00",
         "current_title": "新乳业2025年报：营收利润双增，第四季度加速度净利超60%",
         "change_flags": []
@@ -874,16 +874,146 @@
       "human_locks": {
         "title": true,
         "published_at": true,
-        "read_signal": true,
+        "read_signal": false,
         "notes": true
+      }
+    },
+    {
+      "case_id": "wallstreetcn-sina-feed-7dab4128a8",
+      "platform": "wechat",
+      "account_name": "华尔街见闻",
+      "title": "万亿西部城商行年报解析，重庆银行的“净息差”是怎么回升的",
+      "url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0326535.shtml",
+      "canonical_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0326535.shtml",
+      "fetch_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0326535.shtml",
+      "published_at": "2026-03-25T09:08:16+08:00",
+      "read_signal": "",
+      "account_positioning": "high-frequency finance readers paying to reduce selection cost",
+      "topic_type": "paid daily utility",
+      "hook_type": "selection and opportunity-cost reduction",
+      "affected_group": "serious finance readers with repeated information overload",
+      "cta_type": "paid subscription",
+      "paid_asset_linkage": "high",
+      "notes": "Auto-discovered from the 华尔街见闻 Sina newmedia feed. Review for recurring utility fit before promotion.",
+      "curation_status": "candidate",
+      "discovery_state": {
+        "discovered_at": "2026-03-25T01:33:16+00:00",
+        "source_id": "wallstreetcn-sina-feed",
+        "source_url": "https://k.sina.cn/media_m_1621607.html",
+        "discovery_method": "auto"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": false,
+        "notes": true
+      },
+      "machine_state": {
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0326535.shtml",
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-8f939c9354e8ef15",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
+        "current_published_at": "2026-03-25T09:08:16+08:00",
+        "current_title": "万亿西部城商行年报解析，重庆银行的“净息差”是怎么回升的",
+        "change_flags": []
+      }
+    },
+    {
+      "case_id": "wallstreetcn-sina-feed-joyai-llm-flash-instruct-95b3735f8a",
+      "platform": "wechat",
+      "account_name": "华尔街见闻",
+      "title": "京东开源基础大模型JoyAI-LLM Flash的Instruct版本，适配近期火爆的“龙虾”",
+      "url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0324989.shtml",
+      "canonical_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0324989.shtml",
+      "fetch_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0324989.shtml",
+      "published_at": "2026-03-25T09:08:16+08:00",
+      "read_signal": "",
+      "account_positioning": "high-frequency finance readers paying to reduce selection cost",
+      "topic_type": "paid daily utility",
+      "hook_type": "selection and opportunity-cost reduction",
+      "affected_group": "serious finance readers with repeated information overload",
+      "cta_type": "paid subscription",
+      "paid_asset_linkage": "high",
+      "notes": "Auto-discovered from the 华尔街见闻 Sina newmedia feed. Review for recurring utility fit before promotion.",
+      "curation_status": "candidate",
+      "discovery_state": {
+        "discovered_at": "2026-03-25T01:33:16+00:00",
+        "source_id": "wallstreetcn-sina-feed",
+        "source_url": "https://k.sina.cn/media_m_1621607.html",
+        "discovery_method": "auto"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": false,
+        "notes": true
+      },
+      "machine_state": {
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0324989.shtml",
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-e8da40e20cf1c582",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
+        "current_published_at": "2026-03-25T09:08:16+08:00",
+        "current_title": "京东开源基础大模型JoyAI-LLM Flash的Instruct版本，适配近期火爆的“龙虾”",
+        "change_flags": []
+      }
+    },
+    {
+      "case_id": "wallstreetcn-sina-feed-quot-quot-quot-quot-e0f4853944",
+      "platform": "wechat",
+      "account_name": "华尔街见闻",
+      "title": "博通高管坦言：台积电产能已从&quot;近乎无限&quot;走向&quot;触及极限&quot;",
+      "url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnq7306874.shtml",
+      "canonical_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnq7306874.shtml",
+      "fetch_url": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnq7306874.shtml",
+      "published_at": "2026-03-25T09:08:16+08:00",
+      "read_signal": "",
+      "account_positioning": "high-frequency finance readers paying to reduce selection cost",
+      "topic_type": "paid daily utility",
+      "hook_type": "selection and opportunity-cost reduction",
+      "affected_group": "serious finance readers with repeated information overload",
+      "cta_type": "paid subscription",
+      "paid_asset_linkage": "high",
+      "notes": "Auto-discovered from the 华尔街见闻 Sina newmedia feed. Review for recurring utility fit before promotion.",
+      "curation_status": "candidate",
+      "discovery_state": {
+        "discovered_at": "2026-03-25T01:33:16+00:00",
+        "source_id": "wallstreetcn-sina-feed",
+        "source_url": "https://k.sina.cn/media_m_1621607.html",
+        "discovery_method": "auto"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": false,
+        "notes": true
+      },
+      "machine_state": {
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnq7306874.shtml",
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-222192ed779b33da",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
+        "current_published_at": "2026-03-25T09:08:16+08:00",
+        "current_title": "博通高管坦言：台积电产能已从&quot;近乎无限&quot;走向&quot;触及极限&quot;",
+        "change_flags": []
       }
     }
   ],
   "observation_log_path": "benchmark-case-observations.jsonl",
   "refresh_seed_path": "benchmark-refresh-seeds.json",
   "machine_refresh_summary": {
-    "candidate_cases_refreshed": 20,
+    "candidate_cases_refreshed": 23,
     "candidates_discovered": 0,
-    "candidate_case_id_repairs": 0
+    "candidate_case_id_repairs": 0,
+    "candidate_human_lock_repairs": 0
   }
 }

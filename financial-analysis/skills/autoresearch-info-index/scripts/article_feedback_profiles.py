@@ -6,7 +6,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from news_index_runtime import isoformat_or_blank, slugify
+from news_index_runtime import isoformat_or_blank, parse_datetime, slugify
+from runtime_paths import runtime_subdir
 
 
 PROFILE_REQUEST_KEYS = (
@@ -55,7 +56,7 @@ def parse_bool(value: Any, default: bool = False) -> bool:
 
 
 def default_profile_dir() -> Path:
-    return Path.cwd() / ".tmp" / "article-feedback-profiles"
+    return runtime_subdir("article-feedback-profiles")
 
 
 def resolve_profile_dir(path_value: Any) -> Path:
@@ -86,6 +87,56 @@ def topic_profile_path(profile_dir: Path, topic: str) -> Path:
     return profile_dir / f"topic-{slugify(clean_text(topic), 'topic')}.json"
 
 
+def profile_history_root(profile_dir: Path) -> Path:
+    return profile_dir / "history"
+
+
+def profile_history_dir(profile_dir: Path, scope: str, topic: str) -> Path:
+    if scope == "global":
+        return profile_history_root(profile_dir) / "global"
+    return profile_history_root(profile_dir) / f"topic-{slugify(clean_text(topic), 'topic')}"
+
+
+def list_history_snapshots(path: Path) -> list[Path]:
+    if not path.exists():
+        return []
+    return sorted(item for item in path.glob("*.json") if item.is_file())
+
+
+def history_timestamp(analysis_time: Any) -> str:
+    parsed = parse_datetime(analysis_time, fallback=None)
+    if parsed is None:
+        return "snapshot"
+    return parsed.strftime("%Y%m%dT%H%M%SZ")
+
+
+def next_history_snapshot_path(history_dir: Path, analysis_time: Any) -> Path:
+    history_dir.mkdir(parents=True, exist_ok=True)
+    stamp = history_timestamp(analysis_time)
+    candidate = history_dir / f"{stamp}.json"
+    index = 1
+    while candidate.exists():
+        candidate = history_dir / f"{stamp}-{index}.json"
+        index += 1
+    return candidate
+
+
+def backup_profile_snapshot(profile_dir: Path, path: Path, payload: dict[str, Any], *, scope: str, topic: str, analysis_time: Any) -> str:
+    if not path.exists():
+        return ""
+    history_dir = profile_history_dir(profile_dir, scope, topic)
+    snapshot_path = next_history_snapshot_path(history_dir, analysis_time)
+    snapshot_payload = {
+        "scope": scope,
+        "topic": clean_text(topic),
+        "source_path": str(path),
+        "backed_up_at": isoformat_or_blank(analysis_time),
+        "payload": deepcopy(payload),
+    }
+    write_json_file(snapshot_path, snapshot_payload)
+    return str(snapshot_path)
+
+
 def load_feedback_profiles(profile_dir: Path, topic: str) -> dict[str, Any]:
     global_path = global_profile_path(profile_dir)
     topic_path = topic_profile_path(profile_dir, topic)
@@ -99,10 +150,14 @@ def load_feedback_profiles(profile_dir: Path, topic: str) -> dict[str, Any]:
     }
 
 
-def feedback_profile_status(profile_dir: Path, topic: str) -> dict[str, Any]:
-    profiles = load_feedback_profiles(profile_dir, topic)
+def feedback_profile_status(profile_dir: Path, topic: str, *, profiles: dict[str, Any] | None = None) -> dict[str, Any]:
+    loaded_profiles = profiles if isinstance(profiles, dict) else load_feedback_profiles(profile_dir, topic)
     global_path = global_profile_path(profile_dir)
     topic_path = topic_profile_path(profile_dir, topic)
+    global_history_dir = profile_history_dir(profile_dir, "global", topic)
+    topic_history_dir = profile_history_dir(profile_dir, "topic", topic)
+    global_history_paths = list_history_snapshots(global_history_dir)
+    topic_history_paths = list_history_snapshots(topic_history_dir)
     return {
         "profile_dir": str(profile_dir),
         "topic": clean_text(topic),
@@ -110,7 +165,14 @@ def feedback_profile_status(profile_dir: Path, topic: str) -> dict[str, Any]:
         "topic_profile_path": str(topic_path),
         "global_exists": global_path.exists(),
         "topic_exists": topic_path.exists(),
-        "applied_paths": clean_string_list(profiles.get("applied_paths")),
+        "applied_paths": clean_string_list(loaded_profiles.get("applied_paths")),
+        "history_root": str(profile_history_root(profile_dir)),
+        "global_history_dir": str(global_history_dir),
+        "topic_history_dir": str(topic_history_dir),
+        "global_history_count": len(global_history_paths),
+        "topic_history_count": len(topic_history_paths),
+        "latest_global_backup_path": str(global_history_paths[-1]) if global_history_paths else "",
+        "latest_topic_backup_path": str(topic_history_paths[-1]) if topic_history_paths else "",
     }
 
 
@@ -183,16 +245,16 @@ def merge_profile_payload(existing: dict[str, Any], update: dict[str, Any], *, s
     return merged
 
 
-def save_feedback_profiles(
+def save_feedback_profiles_detailed(
     profile_dir: Path,
     topic: str,
     analysis_time: Any,
     profile_feedback: dict[str, Any],
     request_defaults: dict[str, Any] | None = None,
-) -> list[str]:
+) -> dict[str, Any]:
     update = normalize_profile_feedback(profile_feedback)
     if update.get("scope") == "none":
-        return []
+        return {"saved_paths": [], "backup_paths": []}
     merged_defaults = {}
     if update.get("use_current_request_defaults"):
         merged_defaults = request_defaults_from_request(safe_dict(request_defaults))
@@ -210,6 +272,7 @@ def save_feedback_profiles(
             merged_defaults[key] = update["defaults"][key]
     update = {**update, "defaults": merged_defaults}
     written: list[str] = []
+    backup_paths: list[str] = []
     profile_dir.mkdir(parents=True, exist_ok=True)
     targets: list[tuple[str, Path]] = []
     if update["scope"] in {"global", "both"}:
@@ -217,10 +280,32 @@ def save_feedback_profiles(
     if update["scope"] in {"topic", "both"}:
         targets.append(("topic", topic_profile_path(profile_dir, topic)))
     for scope, path in targets:
-        merged = merge_profile_payload(load_json_file(path), update, scope=scope, topic=topic, analysis_time=analysis_time)
+        existing = load_json_file(path)
+        backup_path = backup_profile_snapshot(profile_dir, path, existing, scope=scope, topic=topic, analysis_time=analysis_time)
+        if backup_path:
+            backup_paths.append(backup_path)
+        merged = merge_profile_payload(existing, update, scope=scope, topic=topic, analysis_time=analysis_time)
         write_json_file(path, merged)
         written.append(str(path))
-    return written
+    return {"saved_paths": written, "backup_paths": backup_paths}
+
+
+def save_feedback_profiles(
+    profile_dir: Path,
+    topic: str,
+    analysis_time: Any,
+    profile_feedback: dict[str, Any],
+    request_defaults: dict[str, Any] | None = None,
+) -> list[str]:
+    return clean_string_list(
+        save_feedback_profiles_detailed(
+            profile_dir,
+            topic,
+            analysis_time,
+            profile_feedback,
+            request_defaults=request_defaults,
+        ).get("saved_paths")
+    )
 
 
 __all__ = [
@@ -234,4 +319,5 @@ __all__ = [
     "request_defaults_from_request",
     "resolve_profile_dir",
     "save_feedback_profiles",
+    "save_feedback_profiles_detailed",
 ]

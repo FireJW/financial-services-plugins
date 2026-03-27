@@ -8,11 +8,11 @@ import subprocess
 import urllib.parse
 import urllib.request
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from html import unescape
 from pathlib import Path
-from shutil import which
+from shutil import copy2, which
 from typing import Any
 
 from news_index_runtime import (
@@ -24,6 +24,7 @@ from news_index_runtime import (
     slugify,
     write_json,
 )
+from runtime_paths import runtime_subdir
 
 
 SEARCH_ENDPOINT = "https://duckduckgo.com/html/?q={query}"
@@ -39,14 +40,27 @@ TWEET_TEXT_RE = re.compile(
     r'<[^>]+data-testid=["\']tweetText["\'][^>]*>(?P<content>.*?)</[^>]+>',
     re.IGNORECASE | re.DOTALL,
 )
+ROOT_AREA_QUOTE_RE = re.compile(r"RootWebArea:\s.*?：“(?P<quote>.+?)”\s*/\s*X", re.DOTALL)
 TAG_RE = re.compile(r"<[^>]+>")
 WHITESPACE_RE = re.compile(r"\s+")
-BLOCKED_MARKERS = [
+GENERIC_IMAGE_HINTS = {
+    "image",
+    "images",
+    "photo",
+    "photos",
+    "picture",
+    "pictures",
+    "media",
+    "graphic",
+    "图像",
+    "图片",
+    "照片",
+}
+BLOCKED_TEXT_MARKERS = [
     "something went wrong",
     "javascript 不可用",
     "javascript is disabled",
     "privacy related extensions may cause issues",
-    "scriptloadfailure",
 ]
 
 
@@ -60,6 +74,14 @@ class FetchArtifact:
     links_text: str
     screenshot_path: str
     error: str
+    media_items: list[dict[str, Any]] = field(default_factory=list)
+    session_used: bool = False
+    session_source: str = ""
+    session_status: str = ""
+    session_notes: list[str] = field(default_factory=list)
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def now_utc() -> datetime:
@@ -68,6 +90,14 @@ def now_utc() -> datetime:
 
 def clean_text(text: Any) -> str:
     return WHITESPACE_RE.sub(" ", unescape(str(text or "")).replace("\u200b", " ")).strip()
+
+
+def meaningful_image_hint(text: Any) -> str:
+    cleaned = clean_text(text)
+    if not cleaned:
+        return ""
+    lowered = cleaned.lower().strip(" .,:;!?")
+    return "" if lowered in GENERIC_IMAGE_HINTS else cleaned
 
 
 def canonical_status_url(url: str) -> str:
@@ -92,19 +122,19 @@ def extract_meta_contents(html: str) -> dict[str, str]:
 
 
 def looks_blocked(text: str, html: str) -> bool:
-    haystack = f"{text}\n{html}".lower()
-    return any(marker in haystack for marker in BLOCKED_MARKERS)
-
-
-# Normalize the blocked markers in case this file previously picked up a garbled
-# localized string during console edits on Windows.
-BLOCKED_MARKERS = [
-    "something went wrong",
-    "javascript 不可用",
-    "javascript is disabled",
-    "privacy related extensions may cause issues",
-    "scriptloadfailure",
-]
+    text_haystack = clean_text(text).lower()
+    html_haystack = clean_text(html).lower()
+    if any(marker in text_haystack for marker in BLOCKED_TEXT_MARKERS):
+        return True
+    if not text_haystack and any(marker in html_haystack for marker in BLOCKED_TEXT_MARKERS):
+        return True
+    # X includes a dormant ScriptLoadFailure node in healthy HTML, so the token
+    # alone is not a failure signal.
+    if "scriptloadfailure" in html_haystack and any(
+        marker in text_haystack for marker in ("something went wrong", "javascript is disabled", "javascript 不可用")
+    ):
+        return True
+    return False
 
 
 def summarize_text(text: str, limit: int = 280) -> str:
@@ -169,9 +199,16 @@ def image_relevance(post_text: str, media_text: str) -> str:
 def parse_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     analysis_time = parse_datetime(raw_payload.get("analysis_time"), fallback=now_utc()) or now_utc()
     output_dir = (
-        Path(raw_payload.get("output_dir", "")).expanduser()
+        Path(raw_payload.get("output_dir", "")).expanduser().resolve()
         if clean_text(raw_payload.get("output_dir"))
-        else Path.cwd() / ".tmp" / "x-index" / slugify(str(raw_payload.get("topic", "x-topic")), "x-topic") / analysis_time.strftime("%Y%m%dT%H%M%SZ")
+        else runtime_subdir("x-index", slugify(str(raw_payload.get("topic", "x-topic")), "x-topic"), analysis_time.strftime("%Y%m%dT%H%M%SZ"))
+    )
+    browser_session_raw = raw_payload.get("browser_session") if isinstance(raw_payload.get("browser_session"), dict) else {}
+    browser_session_strategy = clean_text(
+        browser_session_raw.get("strategy")
+        or raw_payload.get("browser_session_strategy")
+        or ("cookie_file" if clean_text(browser_session_raw.get("cookie_file") or raw_payload.get("session_cookie_file")) else "")
+        or ("remote_debugging" if clean_text(browser_session_raw.get("cdp_endpoint") or raw_payload.get("browser_debug_endpoint")) else "")
     )
     return {
         "topic": clean_text(raw_payload.get("topic") or "x-index-topic"),
@@ -191,6 +228,14 @@ def parse_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "access_mode": clean_text(raw_payload.get("access_mode") or "public_first_browser_fallback"),
         "output_dir": output_dir,
         "ocr_root_text": clean_text(raw_payload.get("ocr_root_text")),
+        "browser_session": {
+            "strategy": browser_session_strategy,
+            "cookie_file": clean_text(browser_session_raw.get("cookie_file") or raw_payload.get("session_cookie_file")),
+            "cdp_endpoint": clean_text(browser_session_raw.get("cdp_endpoint") or raw_payload.get("browser_debug_endpoint") or "http://127.0.0.1:9222"),
+            "required": bool(browser_session_raw.get("required", raw_payload.get("browser_session_required", False))),
+            "browser_name": clean_text(browser_session_raw.get("browser_name") or raw_payload.get("browser_name") or "edge"),
+            "wait_ms": int(browser_session_raw.get("wait_ms", raw_payload.get("browser_wait_ms", 8000))),
+        },
     }
 
 
@@ -206,6 +251,100 @@ def resolve_browse_command() -> str | None:
         if candidate and Path(candidate).exists():
             return candidate
     return which("browse.cmd")
+
+
+def resolve_node_command() -> str | None:
+    candidates = [
+        clean_text(os.environ.get("NODE_EXE")),
+        "D:\\nodejs\\node.exe",
+        "C:\\Program Files\\nodejs\\node.exe",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return candidate
+    return which("node")
+
+
+def resolve_cdp_fetch_script() -> Path | None:
+    candidate = SCRIPT_DIR / "browser_session_fetch.js"
+    return candidate if candidate.exists() else None
+
+
+def unique_notes(values: list[str]) -> list[str]:
+    notes: list[str] = []
+    for value in values:
+        cleaned = clean_text(value)
+        if cleaned and cleaned not in notes:
+            notes.append(cleaned)
+    return notes
+
+
+def prepare_session_context(request: dict[str, Any]) -> dict[str, Any]:
+    session_request = request.get("browser_session", {})
+    strategy = clean_text(session_request.get("strategy"))
+    context = {
+        "requested": bool(strategy),
+        "strategy": strategy,
+        "required": bool(session_request.get("required")),
+        "active": False,
+        "status": "disabled" if not strategy else "unavailable",
+        "source": "",
+        "cookie_file": "",
+        "cdp_endpoint": "",
+        "wait_ms": int(session_request.get("wait_ms", 8000)),
+        "notes": [],
+    }
+    if not strategy:
+        return context
+
+    if strategy == "cookie_file":
+        raw_path = clean_text(session_request.get("cookie_file"))
+        if not raw_path:
+            context["notes"] = ["browser_session.cookie_file was not provided"]
+            return context
+        cookie_path = Path(raw_path).expanduser()
+        if not cookie_path.exists():
+            context["notes"] = [f"cookie file not found: {cookie_path}"]
+            return context
+        safe_cookie_path = request["output_dir"] / "browser-session-cookies.json"
+        safe_cookie_path.parent.mkdir(parents=True, exist_ok=True)
+        if cookie_path.resolve() != safe_cookie_path.resolve():
+            copy2(cookie_path, safe_cookie_path)
+        context.update(
+            {
+                "active": True,
+                "status": "ready",
+                "source": "cookie_file",
+                "cookie_file": str(safe_cookie_path),
+                "notes": [f"using cookie file copy at {safe_cookie_path}"],
+            }
+        )
+        return context
+
+    if strategy == "remote_debugging":
+        node_cmd = resolve_node_command()
+        script_path = resolve_cdp_fetch_script()
+        endpoint = clean_text(session_request.get("cdp_endpoint") or "http://127.0.0.1:9222")
+        notes: list[str] = []
+        if not node_cmd:
+            notes.append("node runtime not found for remote debugging helper")
+        if not script_path:
+            notes.append("browser_session_fetch.js helper is missing")
+        if not endpoint:
+            notes.append("browser_session.cdp_endpoint was not provided")
+        context.update(
+            {
+                "active": bool(node_cmd and script_path and endpoint),
+                "status": "ready" if node_cmd and script_path and endpoint else "unavailable",
+                "source": "remote_debugging",
+                "cdp_endpoint": endpoint,
+                "notes": notes or [f"will attach to {endpoint}"],
+            }
+        )
+        return context
+
+    context["notes"] = [f"unsupported browser session strategy: {strategy}"]
+    return context
 
 
 def parse_chain_output(output: str) -> dict[str, str]:
@@ -239,9 +378,11 @@ def run_chain(commands: list[list[str]]) -> tuple[dict[str, str], str]:
     return parsed, ""
 
 
-def fetch_page(url: str, screenshot_path: Path) -> FetchArtifact:
-    screenshot_path.parent.mkdir(parents=True, exist_ok=True)
-    parsed, error = run_chain(
+def build_chain_commands(url: str, screenshot_path: Path, session_context: dict[str, Any] | None = None) -> list[list[str]]:
+    commands: list[list[str]] = []
+    if session_context and session_context.get("strategy") == "cookie_file" and session_context.get("active"):
+        commands.append(["cookie-import", str(session_context.get("cookie_file", ""))])
+    commands.extend(
         [
             ["goto", url],
             ["url"],
@@ -252,6 +393,116 @@ def fetch_page(url: str, screenshot_path: Path) -> FetchArtifact:
             ["screenshot", "--viewport", str(screenshot_path)],
         ]
     )
+    return commands
+
+
+def fetch_page_via_remote_debugging(url: str, screenshot_path: Path, session_context: dict[str, Any]) -> FetchArtifact:
+    node_cmd = resolve_node_command()
+    script_path = resolve_cdp_fetch_script()
+    if not node_cmd or not script_path:
+        return FetchArtifact(
+            url=url,
+            final_url=url,
+            html="",
+            visible_text="",
+            accessibility_text="",
+            links_text="",
+            screenshot_path="",
+            error="remote debugging helper is unavailable",
+            media_items=[],
+            session_used=False,
+            session_source="remote_debugging",
+            session_status="unavailable",
+            session_notes=unique_notes(session_context.get("notes", [])),
+        )
+
+    process = subprocess.run(
+        [
+            node_cmd,
+            str(script_path),
+            "--endpoint",
+            str(session_context.get("cdp_endpoint", "")),
+            "--url",
+            url,
+            "--screenshot",
+            str(screenshot_path),
+            "--wait-ms",
+            str(session_context.get("wait_ms", 8000)),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+        timeout=180,
+    )
+    stdout = clean_text(process.stdout)
+    stderr = clean_text(process.stderr)
+    if process.returncode != 0:
+        return FetchArtifact(
+            url=url,
+            final_url=url,
+            html="",
+            visible_text="",
+            accessibility_text="",
+            links_text="",
+            screenshot_path="",
+            error=stderr or stdout or "remote debugging fetch failed",
+            media_items=[],
+            session_used=False,
+            session_source="remote_debugging",
+            session_status="failed",
+            session_notes=unique_notes([*session_context.get("notes", []), stderr or stdout]),
+        )
+    try:
+        payload = json.loads(process.stdout or "{}")
+    except json.JSONDecodeError:
+        return FetchArtifact(
+            url=url,
+            final_url=url,
+            html="",
+            visible_text="",
+            accessibility_text="",
+            links_text="",
+            screenshot_path="",
+            error=stdout or "remote debugging helper returned invalid JSON",
+            media_items=[],
+            session_used=False,
+            session_source="remote_debugging",
+            session_status="failed",
+            session_notes=unique_notes([*session_context.get("notes", []), stdout]),
+        )
+
+    return FetchArtifact(
+        url=url,
+        final_url=clean_text(payload.get("final_url")) or url,
+        html=str(payload.get("html", "")),
+        visible_text=str(payload.get("visible_text", "")),
+        accessibility_text=str(payload.get("accessibility_text", "")),
+        links_text=str(payload.get("links_text", "")),
+        screenshot_path=clean_text(payload.get("screenshot_path")),
+        error=clean_text(payload.get("error")),
+        media_items=deepcopy(payload.get("media_items", [])) if isinstance(payload.get("media_items"), list) else [],
+        session_used=True,
+        session_source="remote_debugging",
+        session_status="ready",
+        session_notes=unique_notes([*session_context.get("notes", []), clean_text(payload.get("session_note"))]),
+    )
+
+
+def fetch_page(url: str, screenshot_path: Path, session_context: dict[str, Any] | None = None) -> FetchArtifact:
+    screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+    if session_context and session_context.get("strategy") == "remote_debugging" and session_context.get("active"):
+        remote_artifact = fetch_page_via_remote_debugging(url, screenshot_path, session_context)
+        if not remote_artifact.error or session_context.get("required"):
+            return remote_artifact
+        fallback_artifact = fetch_page(url, screenshot_path, None)
+        fallback_artifact.error = clean_text(f"remote debugging failed; fell back to public browse: {remote_artifact.error}")
+        fallback_artifact.session_notes = unique_notes([*remote_artifact.session_notes, fallback_artifact.error])
+        fallback_artifact.session_source = "remote_debugging"
+        fallback_artifact.session_status = "fallback_public"
+        return fallback_artifact
+
+    parsed, error = run_chain(build_chain_commands(url, screenshot_path, session_context))
     goto_output = clean_text(parsed.get("goto", ""))
     if not error and "error" in goto_output.lower():
         error = goto_output
@@ -264,6 +515,16 @@ def fetch_page(url: str, screenshot_path: Path) -> FetchArtifact:
         links_text=parsed.get("links", ""),
         screenshot_path=str(screenshot_path) if screenshot_path.exists() else "",
         error=error,
+        media_items=[],
+        session_used=bool(session_context and session_context.get("strategy") == "cookie_file" and session_context.get("active")),
+        session_source=clean_text(session_context.get("source")) if session_context else "",
+        session_status=clean_text(session_context.get("status")) if session_context else "",
+        session_notes=unique_notes(
+            [
+                *(session_context.get("notes", []) if session_context else []),
+                clean_text(parsed.get("cookie-import", "")),
+            ]
+        ),
     )
 
 
@@ -306,6 +567,11 @@ def discover_search_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def extract_post_text(html: str, visible_text: str, accessibility_text: str, ocr_fallback: str) -> tuple[str, str, float]:
+    accessibility_quote_match = ROOT_AREA_QUOTE_RE.search(accessibility_text or "")
+    accessibility_quote = clean_text(accessibility_quote_match.group("quote")) if accessibility_quote_match else ""
+    if accessibility_quote.startswith("@") and not looks_blocked(accessibility_quote, html):
+        return accessibility_quote, "accessibility_root", 0.93
+
     meta = extract_meta_contents(html)
     for key in ("og:description", "twitter:description", "description"):
         value = clean_text(meta.get(key))
@@ -441,6 +707,69 @@ def normalize_engagement(payload: dict[str, Any]) -> dict[str, int | None]:
     return result
 
 
+def canonical_media_source_url(url: str) -> str:
+    source_url = clean_text(url)
+    if not source_url:
+        return ""
+    parsed = urllib.parse.urlparse(source_url)
+    host = (parsed.netloc or "").lower()
+    path = clean_text(parsed.path)
+    if host == "pbs.twimg.com" and path.startswith("/media/"):
+        return f"https://{host}{path}"
+    return source_url
+
+
+def merge_media_source_items(source_items: list[dict[str, Any]], discovered_urls: list[str]) -> list[dict[str, Any]]:
+    merged_by_key: dict[str, dict[str, Any]] = {}
+    ordered_keys: list[str] = []
+
+    def merged_text(current: Any, incoming: Any) -> str:
+        current_text = clean_text(current)
+        incoming_text = clean_text(incoming)
+        if len(incoming_text) > len(current_text):
+            return incoming_text
+        return current_text
+
+    def absorb(item: dict[str, Any]) -> None:
+        source_url = clean_text(item.get("source_url"))
+        local_path = clean_text(item.get("local_artifact_path"))
+        key = canonical_media_source_url(source_url) or local_path
+        if not key:
+            return
+        if key not in merged_by_key:
+            merged_by_key[key] = {}
+            ordered_keys.append(key)
+        target = merged_by_key[key]
+        if source_url and len(source_url) >= len(clean_text(target.get("source_url"))):
+            target["source_url"] = source_url
+        if local_path:
+            target["local_artifact_path"] = local_path
+        for field in ("media_type", "ocr_source", "image_relevance_to_post", "alt_text", "capture_method"):
+            incoming_value = clean_text(item.get(field))
+            if incoming_value and not clean_text(target.get(field)):
+                target[field] = incoming_value
+        for field in ("ocr_text_raw", "ocr_summary"):
+            merged_value = merged_text(target.get(field), item.get(field))
+            if merged_value:
+                target[field] = merged_value
+        for field in ("ocr_confidence", "display_width", "display_height", "natural_width", "natural_height", "x", "y"):
+            incoming_value = item.get(field)
+            if incoming_value not in ("", None):
+                try:
+                    if float(incoming_value) >= float(target.get(field, 0) or 0):
+                        target[field] = incoming_value
+                except (TypeError, ValueError):
+                    if field not in target:
+                        target[field] = incoming_value
+
+    for item in source_items:
+        if isinstance(item, dict):
+            absorb(item)
+    for url in discovered_urls:
+        absorb({"source_url": url})
+    return [merged_by_key[key] for key in ordered_keys]
+
+
 def normalize_media_items(
     html: str,
     source_items: list[dict[str, Any]],
@@ -451,12 +780,7 @@ def normalize_media_items(
     media_items: list[dict[str, Any]] = []
     artifact_manifest: list[dict[str, Any]] = []
     discovered_urls = extract_media_urls(html)
-
-    merged_sources: list[dict[str, Any]] = [item for item in source_items if isinstance(item, dict)]
-    for url in discovered_urls:
-        if any(clean_text(item.get("source_url")) == url for item in merged_sources):
-            continue
-        merged_sources.append({"source_url": url})
+    merged_sources = merge_media_source_items(source_items, discovered_urls)
 
     for index, item in enumerate(merged_sources, start=1):
         source_url = clean_text(item.get("source_url"))
@@ -466,15 +790,18 @@ def normalize_media_items(
             local_path = maybe_download_image(source_url, output_dir / f"{post_slug}-media-{index}{suffix}")
 
         ocr_text_raw = clean_text(item.get("ocr_text_raw"))
-        ocr_source = clean_text(item.get("ocr_source")) or ("image" if source_url else "")
+        ocr_source = clean_text(item.get("ocr_source"))
         if not ocr_text_raw and local_path:
             ocr_text_raw = maybe_run_tesseract(local_path)
-            if ocr_text_raw:
+            if ocr_text_raw and not ocr_source:
                 ocr_source = "image"
+        elif ocr_text_raw and not ocr_source:
+            ocr_source = "image" if source_url else ""
 
-        ocr_summary = clean_text(item.get("ocr_summary")) or summarize_text(ocr_text_raw, limit=180)
+        alt_text = meaningful_image_hint(item.get("alt_text"))
+        ocr_summary = clean_text(item.get("ocr_summary")) or summarize_text(ocr_text_raw, limit=180) or summarize_text(alt_text, limit=180)
         confidence = float(item.get("ocr_confidence", 0.0)) if clean_text(item.get("ocr_confidence")) else (0.7 if ocr_text_raw else 0.0)
-        relevance = clean_text(item.get("image_relevance_to_post")) or image_relevance(post_text, ocr_text_raw or ocr_summary)
+        relevance = clean_text(item.get("image_relevance_to_post")) or image_relevance(post_text, " ".join(part for part in (ocr_text_raw, ocr_summary, alt_text) if part))
         media_item = {
             "media_type": clean_text(item.get("media_type")) or "image",
             "source_url": source_url,
@@ -484,6 +811,8 @@ def normalize_media_items(
             "ocr_source": ocr_source or ("image" if ocr_text_raw else ""),
             "ocr_confidence": round(confidence, 2),
             "image_relevance_to_post": relevance,
+            "alt_text": alt_text,
+            "capture_method": clean_text(item.get("capture_method")),
             "ocr_status": "done" if ocr_text_raw else "unavailable",
         }
         media_items.append(media_item)
@@ -541,6 +870,7 @@ def fetch_thread_posts(
     request: dict[str, Any],
     output_dir: Path,
     visited: set[str],
+    session_context: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     if not request.get("include_threads"):
         return []
@@ -559,7 +889,7 @@ def fetch_thread_posts(
     thread_posts: list[dict[str, Any]] = []
     for index, url in enumerate(same_author_links[: request.get("max_thread_posts", 10)], start=1):
         visited.add(url)
-        artifact = fetch_page(url, output_dir / f"{slugify(handle or 'thread', 'thread')}-thread-{index}.png")
+        artifact = fetch_page(url, output_dir / f"{slugify(handle or 'thread', 'thread')}-thread-{index}.png", session_context)
         post_text_raw, source, confidence = extract_post_text(artifact.html, artifact.visible_text, artifact.accessibility_text, "")
         thread_posts.append(
             {
@@ -574,7 +904,12 @@ def fetch_thread_posts(
     return thread_posts
 
 
-def build_x_post_record(candidate: dict[str, Any], request: dict[str, Any], ordinal: int) -> dict[str, Any]:
+def build_x_post_record(
+    candidate: dict[str, Any],
+    request: dict[str, Any],
+    ordinal: int,
+    session_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     collected_at = request["analysis_time"]
     post_url = canonical_status_url(clean_text(candidate.get("post_url") or candidate.get("url")))
     post_slug = slugify(f"x-{ordinal}-{post_url}", f"x-post-{ordinal}")
@@ -591,9 +926,14 @@ def build_x_post_record(candidate: dict[str, Any], request: dict[str, Any], ordi
             links_text=str(candidate.get("links_text", "")),
             screenshot_path=clean_text(candidate.get("root_post_screenshot_path")),
             error="",
+            media_items=deepcopy(candidate.get("media_items", [])) if isinstance(candidate.get("media_items"), list) else [],
+            session_used=bool(candidate.get("used_browser_session")),
+            session_source=clean_text(candidate.get("session_source")),
+            session_status=clean_text(candidate.get("session_status")),
+            session_notes=unique_notes(candidate.get("session_notes", []) if isinstance(candidate.get("session_notes"), list) else [clean_text(candidate.get("session_note"))]),
         )
     else:
-        artifact = fetch_page(post_url, output_dir / f"{post_slug}-root.png")
+        artifact = fetch_page(post_url, output_dir / f"{post_slug}-root.png", session_context)
 
     author_handle = clean_text(candidate.get("author_handle")) or extract_author_handle(post_url, artifact.html)
     posted_at = isoformat_or_blank(parse_datetime(candidate.get("posted_at")) or parse_datetime(extract_posted_at(artifact.html, "")))
@@ -617,11 +957,15 @@ def build_x_post_record(candidate: dict[str, Any], request: dict[str, Any], ordi
             request,
             output_dir,
             visited,
+            session_context,
         )
 
     media_items, media_artifacts = normalize_media_items(
         artifact.html,
-        [item for item in candidate.get("media_items", []) if isinstance(item, dict)],
+        [
+            *(item for item in artifact.media_items if isinstance(item, dict)),
+            *(item for item in candidate.get("media_items", []) if isinstance(item, dict)),
+        ],
         output_dir,
         post_slug,
         post_text_raw,
@@ -650,10 +994,26 @@ def build_x_post_record(candidate: dict[str, Any], request: dict[str, Any], ordi
         combined_summary_parts.append(f"Conflict note: {conflict_note}")
 
     blocked = looks_blocked(artifact.visible_text, artifact.html) and not post_text_raw
-    access_mode = "blocked" if blocked else ("browser_session" if candidate.get("used_browser_session") else "public")
+    session_used = bool(candidate.get("used_browser_session")) or artifact.session_used
+    access_mode = "blocked" if blocked else ("browser_session" if session_used else "public")
+    session_requested = session_used or bool(session_context and session_context.get("requested")) or bool(candidate.get("session_source"))
+    session_status = clean_text(candidate.get("session_status")) or artifact.session_status
+    session_health = ""
+    if session_requested:
+        if access_mode == "browser_session" and any([post_text_raw, thread_posts, media_items, artifact.screenshot_path]):
+            session_health = "effective"
+        elif session_status in {"failed", "fallback_public", "unavailable"} or blocked:
+            session_health = "degraded"
+        else:
+            session_health = "attached"
     crawl_notes = [
         item
-        for item in [clean_text(candidate.get("crawl_notes")), clean_text(artifact.error), clean_text(candidate.get("blocked_reason"))]
+        for item in [
+            clean_text(candidate.get("crawl_notes")),
+            clean_text(artifact.error),
+            clean_text(candidate.get("blocked_reason")),
+            *artifact.session_notes,
+        ]
         if item
     ]
     if blocked and not crawl_notes:
@@ -681,6 +1041,15 @@ def build_x_post_record(candidate: dict[str, Any], request: dict[str, Any], ordi
         "discovery_reason": clean_text(candidate.get("discovery_reason")) or "manual_url",
         "access_mode": access_mode,
         "crawl_notes": crawl_notes,
+        "session_source": clean_text(candidate.get("session_source")) or artifact.session_source,
+        "session_status": session_status,
+        "session_health": session_health,
+        "session_notes": unique_notes(
+            [
+                *(candidate.get("session_notes", []) if isinstance(candidate.get("session_notes"), list) else []),
+                *artifact.session_notes,
+            ]
+        ),
         "artifact_manifest": artifact_manifest,
     }
 
@@ -773,6 +1142,10 @@ def build_retrieval_request(request: dict[str, Any], x_posts: list[dict[str, Any
                 "combined_summary": post.get("combined_summary", ""),
                 "discovery_reason": post.get("discovery_reason", ""),
                 "crawl_notes": deepcopy(post.get("crawl_notes", [])),
+                "session_source": post.get("session_source", ""),
+                "session_status": post.get("session_status", ""),
+                "session_health": post.get("session_health", ""),
+                "session_notes": deepcopy(post.get("session_notes", [])),
             }
         )
 
@@ -794,13 +1167,35 @@ def build_retrieval_request(request: dict[str, Any], x_posts: list[dict[str, Any
 def build_markdown_report(result: dict[str, Any]) -> str:
     request = result.get("request", {})
     x_posts = result.get("x_posts", [])
+    session_bootstrap = result.get("session_bootstrap", {})
     lines = [
         f"# X Index Report: {request.get('topic', 'x-index-topic')}",
         "",
         f"Analysis time: {request.get('analysis_time', '')}",
+    ]
+    if session_bootstrap:
+        lines.extend(
+            [
+                "",
+                "## Session Bootstrap",
+                f"- Strategy: {session_bootstrap.get('strategy', '') or 'disabled'}",
+                f"- Status: {session_bootstrap.get('status', '') or 'disabled'}",
+            ]
+        )
+        if session_bootstrap.get("source"):
+            lines.append(f"- Source: {session_bootstrap.get('source', '')}")
+        if session_bootstrap.get("cdp_endpoint"):
+            lines.append(f"- Endpoint: {session_bootstrap.get('cdp_endpoint', '')}")
+        if session_bootstrap.get("cookie_file"):
+            lines.append(f"- Cookie file: {session_bootstrap.get('cookie_file', '')}")
+        for note in session_bootstrap.get("notes", []):
+            lines.append(f"- Note: {note}")
+    lines.extend(
+        [
         "",
         "## X Posts",
-    ]
+        ]
+    )
     if not x_posts:
         lines.append("- None")
     for post in x_posts:
@@ -814,6 +1209,12 @@ def build_markdown_report(result: dict[str, Any]) -> str:
                 f"  Screenshot: {post.get('root_post_screenshot_path', '') or 'none'}",
             ]
         )
+        if post.get("session_source") or post.get("session_status"):
+            lines.append(
+                f"  Session: {post.get('session_source', '') or 'none'} | {post.get('session_status', '') or 'unknown'}"
+            )
+        if post.get("session_health"):
+            lines.append(f"  Session health: {post.get('session_health', '')}")
         if post.get("conflict_note"):
             lines.append(f"  Conflict note: {post.get('conflict_note', '')}")
     if result.get("retrieval_result", {}).get("report_markdown"):
@@ -823,6 +1224,7 @@ def build_markdown_report(result: dict[str, Any]) -> str:
 
 def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = parse_request(raw_payload)
+    session_context = prepare_session_context(request)
     collected_candidates = collect_candidates(request)
     x_posts = []
     blocked_candidates = []
@@ -830,7 +1232,7 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
         if not clean_text(candidate.get("post_url")):
             blocked_candidates.append(candidate)
             continue
-        post = build_x_post_record(candidate, request, index)
+        post = build_x_post_record(candidate, request, index, session_context)
         post["social_rank"] = score_post(post, request)
         x_posts.append(post)
 
@@ -850,6 +1252,15 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "analysis_time": isoformat_or_blank(request["analysis_time"]),
             "output_dir": str(request["output_dir"]),
         },
+        "session_bootstrap": {
+            "strategy": session_context.get("strategy", ""),
+            "status": session_context.get("status", ""),
+            "source": session_context.get("source", ""),
+            "cookie_file": session_context.get("cookie_file", ""),
+            "cdp_endpoint": session_context.get("cdp_endpoint", ""),
+            "required": bool(session_context.get("required")),
+            "notes": deepcopy(session_context.get("notes", [])),
+        },
         "x_posts": kept_posts,
         "discovery_summary": {
             "attempted_candidates": len(collected_candidates),
@@ -860,13 +1271,22 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "retrieval_request": retrieval_request,
         "retrieval_result": retrieval_result,
     }
+    if session_context.get("requested"):
+        health_values = [clean_text(item.get("session_health")) for item in kept_posts if clean_text(item.get("session_health"))]
+        result["session_bootstrap"]["health"] = (
+            "effective"
+            if "effective" in health_values
+            else ("degraded" if "degraded" in health_values else ("attached" if health_values else "unverified"))
+        )
     result["report_markdown"] = build_markdown_report(result)
     return result
 
 
 __all__ = [
     "build_markdown_report",
+    "build_chain_commands",
     "load_json",
+    "prepare_session_context",
     "run_x_index",
     "write_json",
 ]

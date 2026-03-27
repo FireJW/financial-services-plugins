@@ -28,6 +28,19 @@ Default behavior:
 If the topic is geopolitical, military, sanctions, negotiations, or energy
 shock related, prefer `mode=crisis`.
 
+Preset option:
+
+- `preset=energy-war`
+  - automatically runs through the `crisis` path
+  - adds an energy-war watchlist for `Brent`, `WTI`, `TTF`, `JKM-style LNG`,
+    `Henry Hub`, tanker rates, prompt spreads, reserve releases, OPEC spare
+    capacity, Qatar LNG flows, and Hormuz flows
+  - expands the default watch items toward physical disruption vs risk premium
+  - keeps the existing ranking logic; it does not bypass evidence checks
+  - preserves user-supplied `benchmark_watchlist`, `preset_watch_items`, and
+    `market_relevance` when you provide them, and only backfills defaults when
+    they are missing
+
 The structured result currently carries:
 
 - `request`
@@ -37,6 +50,11 @@ The structured result currently carries:
 - `retrieval_run_report`
 - `retrieval_quality`
 - `report_markdown`
+
+With `preset=energy-war`, the result also carries:
+
+- `verdict_output.energy_war_preset`
+- `retrieval_run_report.benchmark_watchlist`
 
 Local helper:
 
