@@ -71,3 +71,20 @@ session can be used.
 - For manual staging or CLI-assisted staging, prefer `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-stage-safe.ps1 <path>...` so blocked runtime artifacts are scrubbed from the index immediately after `git add`.
 - If another tool stages files directly, run `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-scrub-staged-runtime-artifacts.ps1` before doing anything else. Treat any staged `.tmp` content as a stop condition.
 - If a runtime artifact needs to be kept for tests or examples, move it under a stable non-temp path such as `examples/` or `tests/fixtures/` instead of `.tmp/`.
+
+## Codex Workflow
+
+Repository-level Codex workflow guidance now lives in:
+
+- `CODEX_DEVELOPMENT_FLOW.md`
+- `.context/prefs/coding-style.md`
+- `.context/prefs/workflow.md`
+- `.context/prefs/review-checklist.md`
+
+Logging helpers:
+
+- `scripts/codex-context-log.ps1`
+- `scripts/codex-context-show.ps1`
+
+Keep runtime output in `.tmp/` and durable workflow knowledge in `.context/`.
+When a task changes process, architecture, or handoff expectations, log the decision instead of relying on chat memory alone.
