@@ -38,6 +38,7 @@ Instead, we keep the reusable parts here in lightweight form.
 | Durable repo-wide rules | `.context/prefs/` |
 | Durable commit history | `.context/history/` |
 | Task-specific plans | `.claude/plan/` |
+| Task-specific handoffs | `.claude/handoff/` |
 | User-facing handoff docs | project root or task root |
 
 ## PowerShell Quickstart
@@ -54,13 +55,37 @@ Get-Content .\.context\prefs\workflow.md
 ### Log A Decision
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-context-log.ps1 -Summary "Selected approach" -Decision "Use native skill first" -Reason "Matches repo routing rules"
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-context-log.ps1 -Summary "Selected approach" -Decision "Use native skill first" -Reason "Matches repo routing rules"
+```
+
+### Start A Plan File
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-plan-init.ps1 -Name "example-task"
 ```
 
 ### Show The Current Branch Notes
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-context-show.ps1
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-context-show.ps1
+```
+
+### Start A Review Report
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-review-init.ps1 -Name "example-task"
+```
+
+### Start A Handoff File
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-init.ps1 -Name "example-task"
+```
+
+### Refresh A Handoff File
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path .\.claude\handoff\example-task.md
 ```
 
 ## Repo-Specific Defaults
@@ -86,4 +111,7 @@ If you are extending this system later, do it in this order:
 1. keep `.context/prefs/*` current
 2. use the logging helpers during meaningful decisions
 3. add task plans to `.claude/plan/` for multi-step work
-4. only then consider more automation, such as commit summarizers or review helpers
+4. leave a `.claude/handoff/` note when another CLI session needs to resume work
+5. refresh the handoff before pausing if the git snapshot or next steps changed
+6. use structured review reports when a change needs explicit sign-off
+7. only then consider more automation, such as commit summarizers

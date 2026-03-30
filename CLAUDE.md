@@ -68,8 +68,8 @@ session can be used.
 - Large staged diffs can make Codex unstable on startup because the app inspects staged changes when opening the workspace. Treat unexpectedly large staging areas as a failure condition, not a cleanup task for later.
 - Before any commit or broad `git add`, inspect `git status --short` and `git diff --cached --stat`. If the staged scope is wider than intended, stop and clean the index first.
 - Prefer targeted `git add <path>` over `git add .` or `git add -A` in this repository.
-- For manual staging or CLI-assisted staging, prefer `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-stage-safe.ps1 <path>...` so blocked runtime artifacts are scrubbed from the index immediately after `git add`.
-- If another tool stages files directly, run `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-scrub-staged-runtime-artifacts.ps1` before doing anything else. Treat any staged `.tmp` content as a stop condition.
+- For manual staging or CLI-assisted staging, prefer `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\git-stage-safe.ps1 <path>...` so blocked runtime artifacts are scrubbed from the index immediately after `git add`.
+- If another tool stages files directly, run `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\git-scrub-staged-runtime-artifacts.ps1` before doing anything else. Treat any staged `.tmp` content as a stop condition.
 - If a runtime artifact needs to be kept for tests or examples, move it under a stable non-temp path such as `examples/` or `tests/fixtures/` instead of `.tmp/`.
 
 ## Codex Workflow
@@ -85,6 +85,13 @@ Logging helpers:
 
 - `scripts/codex-context-log.ps1`
 - `scripts/codex-context-show.ps1`
+- `scripts/codex-plan-init.ps1`
+- `scripts/codex-review-init.ps1`
+- `scripts/codex-handoff-init.ps1`
+- `scripts/codex-handoff-refresh.ps1`
 
 Keep runtime output in `.tmp/` and durable workflow knowledge in `.context/`.
 When a task changes process, architecture, or handoff expectations, log the decision instead of relying on chat memory alone.
+For Windows CLI continuation, use explicit commands like
+`C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-plan-init.ps1 -Name "task-name"`
+instead of assuming `pwsh` is available.

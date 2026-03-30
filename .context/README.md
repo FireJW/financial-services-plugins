@@ -23,10 +23,15 @@ PowerShell CLI session, or another coding environment.
 |-- README.md
 |-- prefs/
 |   |-- coding-style.md
-|   `-- workflow.md
+|   |-- workflow.md
+|   `-- review-checklist.md
+|-- templates/
+|   |-- review-report-template.md
+|   `-- handoff-template.md
 |-- current/
-|   `-- branches/
-|       `-- .gitkeep
+|   |-- branches/
+|   |   `-- .gitkeep
+|   `-- reviews/
 `-- history/
     |-- commits.jsonl
     |-- commits.md
@@ -38,10 +43,12 @@ PowerShell CLI session, or another coding environment.
 
 1. Read `prefs/coding-style.md` and `prefs/workflow.md` before broad changes.
 2. Use `prefs/review-checklist.md` for self-review and handoff review.
-3. Use `../CODEX_WORKFLOW.md` as the repository-level operator guide.
+3. Use `../CODEX_DEVELOPMENT_FLOW.md` as the repository-level operator guide.
 4. Keep branch-local notes in `current/branches/<branch>/session.log`.
-5. Preserve durable decisions in `history/`.
-6. Treat this directory as repository infrastructure, not task output.
+5. Use `templates/review-report-template.md` for structured review notes.
+6. Use `templates/handoff-template.md` when another CLI session needs to resume.
+7. Preserve durable decisions in `history/`.
+8. Treat this directory as repository infrastructure, not task output.
 
 ## Commit Boundaries
 
@@ -54,11 +61,17 @@ This folder complements, not replaces:
 
 - `AGENTS.md`
 - `CLAUDE.md`
-- `CODEX_WORKFLOW.md`
+- `CODEX_DEVELOPMENT_FLOW.md`
 - `README.md`
+- `.claude/plan/`
+- `.claude/handoff/`
 - `.githooks/`
 - `scripts/codex-context-log.ps1`
 - `scripts/codex-context-show.ps1`
+- `scripts/codex-plan-init.ps1`
+- `scripts/codex-review-init.ps1`
+- `scripts/codex-handoff-init.ps1`
+- `scripts/codex-handoff-refresh.ps1`
 - `scripts/git-stage-safe.ps1`
 
 If rules conflict, prefer the more specific repository safety rule.

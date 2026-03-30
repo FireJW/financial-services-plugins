@@ -154,6 +154,7 @@ As your team builds and shares plugins, Claude becomes a cross-functional expert
 - Local runtime artifacts belong in `.tmp/`, `.tmp-*`, or root-level `tmp-*` paths and should stay out of git history.
 - This repo includes a versioned pre-commit guard under `.githooks/` that blocks staged temp artifacts, browser profile data, caches, and unusually large staged diffs.
 - For staging, prefer `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-stage-safe.ps1 <path>...` so accidental `.tmp` additions are scrubbed immediately instead of surviving until commit time.
+- For committing on Windows, if the shell-based hook launcher is flaky, prefer `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-commit-safe.ps1 -Message "<subject>" [-Body "<body>"]`. It runs the same PowerShell guard first, then commits with `--no-verify` to avoid the broken shell wrapper rather than skipping validation.
 - If an external tool already staged files, run `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-scrub-staged-runtime-artifacts.ps1` to clean the index before continuing.
 - Enable the guard in each clone with `git config core.hooksPath .githooks`.
 - If a generated artifact needs to live in the repo, move it to a stable non-temp location such as `examples/` or `tests/fixtures/`.

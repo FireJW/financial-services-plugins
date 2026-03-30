@@ -53,6 +53,7 @@ If verification cannot run, record why.
 ## Review Gate
 
 - Before handoff or commit-ready status, walk through `.context/prefs/review-checklist.md`.
+- For non-trivial changes, prefer a written review artifact under `.context/current/reviews/`.
 - If process or operator behavior changed, verify docs and handoff artifacts match reality.
 
 ## Decision Logging
@@ -80,13 +81,17 @@ Risk: may need follow-up if requirement expands
 
 PowerShell helpers:
 
-- `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/codex-context-log.ps1 ...`
-- `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/codex-context-show.ps1`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-context-log.ps1 ...`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-context-show.ps1`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-plan-init.ps1 -Name "task-name"`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-review-init.ps1 -Name "task-name"`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-init.ps1 -Name "task-name"`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path ".\.claude\handoff\task-name.md"`
 
 ## Staging And Commit Safety
 
 - Prefer targeted staging over broad `git add`.
-- Use `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-stage-safe.ps1 <path>...`
+- Use `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\git-stage-safe.ps1 <path>...`
   when staging manually.
 - Treat staged `.tmp` content as a stop condition.
 - Before commit, inspect:

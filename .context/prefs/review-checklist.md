@@ -25,6 +25,7 @@ Use this checklist for Codex reviews, self-review, and handoff review.
 - Is the workflow understandable to the next session without re-discovery?
 - Did we document non-obvious assumptions?
 - Did we prefer lightweight helpers over one-off opaque commands?
+- If another CLI session may continue the work, did we leave exact resume commands or a handoff file?
 
 ## Verification
 
