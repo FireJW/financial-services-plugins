@@ -60,6 +60,37 @@ Recommended smoke command:
 scripts\run_last30days_bridge_demo.cmd
 ```
 
+## WeChat Article Publishing
+
+- `wechat-article-publish-demo-request.json`
+- `wechat-article-push-live-request.template.json`
+
+These fixtures cover the repo-native hot-topic-to-article publishing path.
+
+Use the demo request when you want a deterministic export that stops before any
+real WeChat API side effect:
+
+```text
+scripts\run_article_publish_demo.cmd
+```
+
+Use the live template when you want to wire a real official-account push:
+
+1. replace the account placeholders
+2. replace the cover image URL or pass `--cover-image-path`
+3. confirm human review and set `human_review_approved=true`
+4. set `WECHAT_APP_ID` and `WECHAT_APP_SECRET`, or pass the matching CLI flags
+5. run `scripts\run_article_publish.cmd "<request.json>" --push-to-wechat`
+
+The generated `publish-package.json` now includes:
+
+- `draftbox_payload_template`
+- `push_readiness`
+- `next_push_command`
+
+That means phase 1 can stop at export time without losing the exact package
+shape required for the later `draft/add` step.
+
 ## Generated Scaffold Outputs
 
 - `batch-news-index-results/`

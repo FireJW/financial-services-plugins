@@ -54,6 +54,24 @@ Routing order:
 For platform-specific requests, do not start with public-page scraping if the
 repo already contains a signed-session or authenticated workflow.
 
+## Classic Case Routing
+
+When a request matches a recurring case pattern, do not improvise the workflow
+from scratch. Read the case router first:
+
+- `financial-analysis/skills/classic-case-router/SKILL.md`
+
+Then pick the nearest case file and follow its native route:
+
+- latest event verification
+- X post evidence extraction
+- macro shock chain mapping
+- evidence to article
+- workflow improvement loop
+
+Use the case router before broad tool selection when the user is effectively
+asking for a repeated workflow we have already handled.
+
 ### X / Twitter Routing
 
 For X post and thread collection, prefer:

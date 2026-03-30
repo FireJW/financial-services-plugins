@@ -63,6 +63,8 @@ In preliminary mode:
 - For Trump-policy retreat risk, TACO-style pivot probability, and political
   pressure composites, read
   [references/policy-pressure-and-pivot-risk.md](references/policy-pressure-and-pivot-risk.md).
+- For repeated war, oil, LNG, and A-share beneficiary mapping tasks, read
+  [references/cases/war-energy-chain.md](references/cases/war-energy-chain.md).
 
 ## Core Workflow
 

@@ -208,6 +208,20 @@ report sections tuned for:
 Do not present exact military truth. Use wording such as `last public location`
 or `last public indication`.
 
+## Casebook References
+
+Read the matching case file when the request clearly fits one of these repeated
+patterns:
+
+- X long post, thread, or image-first collection:
+  [references/cases/x-post-first-response.md](references/cases/x-post-first-response.md)
+- fast-moving negotiation, war, or military status verification:
+  [references/cases/fast-moving-crisis-index.md](references/cases/fast-moving-crisis-index.md)
+- turning indexed evidence into an article or publish-ready draft:
+  [references/cases/index-to-article.md](references/cases/index-to-article.md)
+- improving the indexing or article workflow itself with CE plus gstack:
+  [references/cases/workflow-upgrade-with-ce-gstack.md](references/cases/workflow-upgrade-with-ce-gstack.md)
+
 ## Local Helper Scripts
 
 - [scripts/python-local.cmd](scripts/python-local.cmd) runs the local D-drive Python runtime
@@ -242,6 +256,16 @@ or `last public indication`.
 - [scripts/article_auto_queue_runtime.py](scripts/article_auto_queue_runtime.py) ranks candidate topics by article readiness and pushes the top ones into the batch workflow
 - [scripts/article_auto_queue.py](scripts/article_auto_queue.py) runs the automatic ranking entry
 - [scripts/run_article_auto_queue.cmd](scripts/run_article_auto_queue.cmd) runs the automatic ranking entry through the local Python wrapper
+- [scripts/hot_topic_discovery_runtime.py](scripts/hot_topic_discovery_runtime.py) fetches and ranks live hot-topic candidates before article drafting
+- [scripts/hot_topic_discovery.py](scripts/hot_topic_discovery.py) runs the standalone hot-topic discovery entry
+- [scripts/run_hot_topic_discovery.cmd](scripts/run_hot_topic_discovery.cmd) runs hot-topic discovery through the local Python wrapper
+- [scripts/article_publish_runtime.py](scripts/article_publish_runtime.py) bridges topic discovery plus article workflow into a WeChat-ready draft package
+- [scripts/article_publish.py](scripts/article_publish.py) runs the full publish entry
+- [scripts/run_article_publish.cmd](scripts/run_article_publish.cmd) runs the publish flow through the local Python wrapper
+- [scripts/run_article_publish_demo.cmd](scripts/run_article_publish_demo.cmd) runs the deterministic publish demo fixture end to end
+- [scripts/wechat_draftbox_runtime.py](scripts/wechat_draftbox_runtime.py) uploads images and pushes a publish-package into the WeChat draft box
+- [scripts/wechat_push_draft.py](scripts/wechat_push_draft.py) runs the standalone WeChat draft push entry
+- [scripts/run_wechat_push_draft.cmd](scripts/run_wechat_push_draft.cmd) runs the WeChat draft push flow through the local Python wrapper
 - [scripts/article_revise_flow_runtime.py](scripts/article_revise_flow_runtime.py) rebuilds a prior article draft from stored context while preserving citations and image attachments
 - [scripts/article_revise_runtime.py](scripts/article_revise_runtime.py) is a compatibility wrapper that forwards older imports to the article revise flow runtime
 - [scripts/article_revise.py](scripts/article_revise.py) runs one article revision pass from structured feedback
