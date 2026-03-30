@@ -108,6 +108,74 @@ class NewsIndexTests(unittest.TestCase):
         self.assertIn("VesselFinder", latest_sources)
         self.assertGreaterEqual(len(refreshed["source_observations"]), len(first["source_observations"]))
 
+    @patch("news_index_runtime.urllib.request.urlopen")
+    def test_public_news_candidate_extracts_open_graph_image_artifact(self, mock_urlopen) -> None:
+        class FakeResponse:
+            def __init__(self, html: str, final_url: str) -> None:
+                self._html = html.encode("utf-8")
+                self._final_url = final_url
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def read(self, limit: int = -1) -> bytes:
+                return self._html if limit < 0 else self._html[:limit]
+
+            def geturl(self) -> str:
+                return self._final_url
+
+        mock_urlopen.return_value = FakeResponse(
+            """
+                <html>
+                  <head>
+                    <title>Example funding story</title>
+                    <meta property="og:image" content="/images/hero.png">
+                    <meta property="og:image:alt" content="Hero chart from the funding story">
+                  </head>
+                  <body>
+                    <p>Funding story paragraph used for the public excerpt.</p>
+                  </body>
+                </html>
+            """,
+            "https://example.com/story",
+        )
+
+        result = run_news_index(
+            {
+                "topic": "Funding story with image",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-1",
+                        "claim_text": "The funding story is real and has a reusable hero image.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "news-1",
+                        "source_name": "Example News",
+                        "source_type": "major_news",
+                        "published_at": "2026-03-24T11:30:00+00:00",
+                        "observed_at": "2026-03-24T11:35:00+00:00",
+                        "url": "https://example.com/story",
+                        "summary": "Funding story summary from discovery.",
+                        "claim_ids": ["claim-1"],
+                        "claim_states": {"claim-1": "support"},
+                    }
+                ],
+            }
+        )
+
+        first_observation = result["source_observations"][0]
+        self.assertTrue(first_observation["artifact_manifest"])
+        self.assertEqual(first_observation["artifact_manifest"][0]["role"], "post_media")
+        self.assertEqual(first_observation["artifact_manifest"][0]["source_url"], "https://example.com/images/hero.png")
+        self.assertIn("Hero chart", first_observation["media_summary"])
+        self.assertTrue(result["verdict_output"]["source_artifacts"][0]["artifact_manifest"])
+
     def test_tier_two_sources_can_promote_to_core_without_changing_rank_ordering(self) -> None:
         request = {
             "topic": "Tier two promotion",

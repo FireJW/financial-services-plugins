@@ -96,6 +96,85 @@ class ArticleEvidenceBundleTests(unittest.TestCase):
             bundle["image_candidates"],
         )
 
+    @patch("news_index_runtime.urllib.request.urlopen")
+    def test_public_news_og_image_becomes_real_image_candidate_not_page_url(self, mock_urlopen) -> None:
+        class FakeResponse:
+            def __init__(self, html: str, final_url: str) -> None:
+                self._html = html.encode("utf-8")
+                self._final_url = final_url
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def read(self, limit: int = -1) -> bytes:
+                return self._html if limit < 0 else self._html[:limit]
+
+            def geturl(self) -> str:
+                return self._final_url
+
+        mock_urlopen.return_value = FakeResponse(
+            """
+                <html>
+                  <head>
+                    <title>Example funding story</title>
+                    <meta property="og:image" content="/images/hero.png">
+                    <meta property="og:image:alt" content="Funding story hero chart">
+                  </head>
+                  <body>
+                    <p>Funding story body text.</p>
+                  </body>
+                </html>
+            """,
+            "https://example.com/story",
+        )
+
+        source_result = run_news_index(
+            {
+                "topic": "Funding story with OG image",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-1",
+                        "claim_text": "The funding story has a reusable hero image.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "news-1",
+                        "source_name": "Example News",
+                        "source_type": "major_news",
+                        "published_at": "2026-03-24T11:30:00+00:00",
+                        "observed_at": "2026-03-24T11:35:00+00:00",
+                        "url": "https://example.com/story",
+                        "summary": "Funding story summary from discovery.",
+                        "claim_ids": ["claim-1"],
+                        "claim_states": {"claim-1": "support"},
+                    }
+                ],
+            }
+        )
+        brief = build_analysis_brief({"source_result": source_result})
+        draft = draft_runtime.build_article_draft(
+            {
+                "source_result": source_result,
+                "analysis_brief": brief["analysis_brief"],
+                "evidence_bundle": brief["evidence_bundle"],
+                "draft_mode": "image_first",
+                "image_strategy": "prefer_images",
+                "max_images": 2,
+            }
+        )
+
+        image_candidates = draft["draft_context"]["image_candidates"]
+        self.assertTrue(any(item["role"] == "post_media" for item in image_candidates))
+        self.assertTrue(any("https://example.com/images/hero.png" == item["source_url"] for item in image_candidates))
+        self.assertFalse(
+            any(item["role"] == "root_post_screenshot" and item["source_url"] == "https://example.com/story" for item in image_candidates)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

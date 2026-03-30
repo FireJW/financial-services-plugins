@@ -11,7 +11,7 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from article_publish_runtime import run_article_publish
+from article_publish_runtime import build_publish_package, run_article_publish
 from hot_topic_discovery_runtime import run_hot_topic_discovery
 
 
@@ -69,6 +69,45 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
                 ],
             },
         ]
+
+    def build_publish_request(self) -> dict:
+        return {
+            "account_name": "Test Account",
+            "author": "Codex",
+            "digest_max_chars": 120,
+            "need_open_comment": 0,
+            "only_fans_can_comment": 0,
+        }
+
+    def build_publish_workflow_result(
+        self,
+        *,
+        selected_images: list[dict],
+        draft_image_candidates: list[dict],
+    ) -> dict:
+        article_package = {
+            "title": "Agent hiring reset",
+            "subtitle": "A concise subtitle",
+            "lede": "This is the opening paragraph.",
+            "sections": [
+                {
+                    "heading": "What changed",
+                    "paragraph": "The market is re-pricing the story, but the evidence still matters.",
+                }
+            ],
+            "draft_thesis": "The rebound is real enough to matter, but still needs verification.",
+            "article_markdown": "# Agent hiring reset\n\nThe market is re-pricing the story.",
+            "selected_images": selected_images,
+            "citations": [],
+        }
+        return {
+            "review_result": {"article_package": article_package},
+            "draft_result": {
+                "draft_context": {
+                    "image_candidates": draft_image_candidates,
+                }
+            },
+        }
 
     def test_hot_topic_discovery_ranks_business_candidate_first(self) -> None:
         result = run_hot_topic_discovery(
@@ -138,6 +177,101 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertEqual(readiness["status"], "ready_for_api_push")
         self.assertEqual(readiness["cover_source"], "request_override")
         self.assertEqual(result["review_gate"]["status"], "awaiting_human_review")
+
+    def test_build_publish_package_prefers_dedicated_cover_candidate_before_body_fallback(self) -> None:
+        body_image = self.temp_dir / "body-screenshot.png"
+        dedicated_cover = self.temp_dir / "dedicated-cover.png"
+        body_image.write_bytes(b"body-screenshot")
+        dedicated_cover.write_bytes(b"dedicated-cover")
+
+        workflow_result = self.build_publish_workflow_result(
+            selected_images=[
+                {
+                    "asset_id": "IMG-01",
+                    "image_id": "IMG-01",
+                    "role": "root_post_screenshot",
+                    "path": str(body_image),
+                    "source_url": "",
+                    "caption": "Body screenshot",
+                    "source_name": "fixture",
+                    "status": "local_ready",
+                    "placement": "after_lede",
+                }
+            ],
+            draft_image_candidates=[
+                {
+                    "image_id": "IMG-01",
+                    "role": "root_post_screenshot",
+                    "path": str(body_image),
+                    "source_url": "",
+                    "summary": "Body screenshot",
+                    "source_name": "fixture",
+                    "score": 88,
+                },
+                {
+                    "image_id": "IMG-02",
+                    "role": "post_media",
+                    "path": str(dedicated_cover),
+                    "source_url": "",
+                    "summary": "Dedicated cover image",
+                    "source_name": "fixture",
+                    "score": 72,
+                },
+            ],
+        )
+
+        package = build_publish_package(
+            workflow_result,
+            {"title": "AI agent hiring rebound", "keywords": ["AI", "agent", "hiring"]},
+            self.build_publish_request(),
+        )
+
+        self.assertEqual(package["cover_plan"]["selected_cover_asset_id"], "IMG-02")
+        self.assertEqual(package["cover_plan"]["selection_mode"], "dedicated_candidate")
+        self.assertEqual(package["push_readiness"]["status"], "ready_for_api_push")
+        self.assertEqual(package["push_readiness"]["cover_source"], "dedicated_cover_candidate")
+
+    def test_build_publish_package_falls_back_to_first_usable_body_image_when_no_dedicated_cover_exists(self) -> None:
+        body_image = self.temp_dir / "body-hero.png"
+        body_image.write_bytes(b"body-hero")
+
+        workflow_result = self.build_publish_workflow_result(
+            selected_images=[
+                {
+                    "asset_id": "IMG-11",
+                    "image_id": "IMG-11",
+                    "role": "root_post_screenshot",
+                    "path": str(body_image),
+                    "source_url": "",
+                    "caption": "Body hero",
+                    "source_name": "fixture",
+                    "status": "local_ready",
+                    "placement": "after_lede",
+                }
+            ],
+            draft_image_candidates=[
+                {
+                    "image_id": "IMG-11",
+                    "role": "root_post_screenshot",
+                    "path": str(body_image),
+                    "source_url": "",
+                    "summary": "Body hero",
+                    "source_name": "fixture",
+                    "score": 80,
+                }
+            ],
+        )
+
+        package = build_publish_package(
+            workflow_result,
+            {"title": "AI agent hiring rebound", "keywords": ["AI", "agent", "hiring"]},
+            self.build_publish_request(),
+        )
+
+        self.assertEqual(package["cover_plan"]["selected_cover_asset_id"], "IMG-11")
+        self.assertEqual(package["cover_plan"]["selection_mode"], "body_image_fallback")
+        self.assertEqual(package["push_readiness"]["status"], "ready_for_api_push")
+        self.assertEqual(package["push_readiness"]["cover_source"], "article_image")
 
     def test_publish_scripts_compile_cleanly(self) -> None:
         for name in [

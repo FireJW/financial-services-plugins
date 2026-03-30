@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import unittest
 from pathlib import Path
@@ -117,6 +118,7 @@ class WechatDraftPushTests(unittest.TestCase):
                 "publish_package": self.build_publish_package(),
                 "wechat_app_id": "wx-test",
                 "wechat_app_secret": "secret-test",
+                "allow_insecure_inline_credentials": True,
                 "human_review_approved": True,
                 "human_review_approved_by": "Editor",
             },
@@ -131,6 +133,97 @@ class WechatDraftPushTests(unittest.TestCase):
         self.assertNotIn("file://", result["resolved_content_html"])
         self.assertEqual(seen["draft_payload"]["articles"][0]["thumb_media_id"], "cover-123")
         self.assertIn("https://mmbiz.qpic.cn/inline/1.png", seen["draft_payload"]["articles"][0]["content"])
+
+    def test_push_publish_package_uses_dedicated_cover_reference_outside_inline_assets(self) -> None:
+        dedicated_cover = self.temp_dir / "dedicated-cover.png"
+        dedicated_cover.write_bytes(b"dedicated-cover-bytes")
+        package = self.build_publish_package()
+        package["cover_plan"] = {
+            "primary_image_asset_id": "cover-99",
+            "selected_cover_asset_id": "cover-99",
+            "selected_cover_local_path": str(dedicated_cover),
+            "selected_cover_render_src": dedicated_cover.resolve().as_uri(),
+            "selection_mode": "dedicated_candidate",
+            "thumb_media_id_placeholder": "{{WECHAT_THUMB_MEDIA_ID}}",
+        }
+        seen = {"cover_body": b""}
+
+        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
+            if "cgi-bin/token" in url:
+                return json.dumps({"access_token": "token-123", "expires_in": 7200}).encode("utf-8")
+            if "media/uploadimg" in url:
+                return json.dumps({"url": "https://mmbiz.qpic.cn/inline/1.png"}).encode("utf-8")
+            if "material/add_material" in url:
+                seen["cover_body"] = data or b""
+                return json.dumps({"media_id": "cover-999", "url": "https://mmbiz.qpic.cn/cover-999.png"}).encode("utf-8")
+            if "draft/add" in url:
+                return json.dumps({"media_id": "draft-999"}).encode("utf-8")
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        result = push_publish_package_to_wechat(
+            {
+                "publish_package": package,
+                "wechat_app_id": "wx-test",
+                "wechat_app_secret": "secret-test",
+                "allow_insecure_inline_credentials": True,
+                "human_review_approved": True,
+            },
+            request_fn=fake_request,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["uploaded_cover"]["media_id"], "cover-999")
+        self.assertIn(b"dedicated-cover.png", seen["cover_body"])
+
+    def test_push_publish_package_blocks_inline_credentials_by_default(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"WECHAT_APP_ID": "", "WECHAT_APP_SECRET": "", "WECHAT_APPID": "", "WECHAT_APPSECRET": ""},
+            clear=False,
+        ):
+            with patch("wechat_draftbox_runtime.load_local_wechat_credentials", return_value={}):
+                with self.assertRaisesRegex(ValueError, "Inline WeChat credentials are blocked by default"):
+                    push_publish_package_to_wechat(
+                        {
+                            "publish_package": self.build_publish_package(),
+                            "wechat_app_id": "wx-test-inline-blocked",
+                            "wechat_app_secret": "secret-test-inline-blocked",
+                            "human_review_approved": True,
+                        }
+                    )
+
+    def test_push_publish_package_loads_credentials_from_local_env_file(self) -> None:
+        seen: dict[str, str] = {}
+        env_file = self.temp_dir / ".env.wechat.local"
+        env_file.write_text(
+            "WECHAT_APP_ID=wx-local-test\nWECHAT_APP_SECRET=local-secret-test\n",
+            encoding="utf-8",
+        )
+
+        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
+            if "cgi-bin/token" in url:
+                seen["token_url"] = url
+                return json.dumps({"access_token": "token-xyz", "expires_in": 7200}).encode("utf-8")
+            if "media/uploadimg" in url:
+                return json.dumps({"url": "https://mmbiz.qpic.cn/inline/local.png"}).encode("utf-8")
+            if "material/add_material" in url:
+                return json.dumps({"media_id": "cover-local", "url": "https://mmbiz.qpic.cn/cover-local.png"}).encode("utf-8")
+            if "draft/add" in url:
+                return json.dumps({"media_id": "draft-local"}).encode("utf-8")
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        with patch.dict(os.environ, {"WECHAT_ENV_FILE": str(env_file)}, clear=False):
+            result = push_publish_package_to_wechat(
+                {
+                    "publish_package": self.build_publish_package(),
+                    "human_review_approved": True,
+                    "human_review_approved_by": "Editor",
+                },
+                request_fn=fake_request,
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("appid=wx-local-test", seen["token_url"])
 
     def test_push_publish_package_requires_human_review_approval(self) -> None:
         result = push_publish_package_to_wechat(
@@ -165,6 +258,7 @@ class WechatDraftPushTests(unittest.TestCase):
                     "human_review_approved_by": "Editor",
                     "wechat_app_id": "wx-test",
                     "wechat_app_secret": "secret-test",
+                    "allow_insecure_inline_credentials": True,
                     "cover_image_path": str(self.image_path),
                 }
             )
@@ -213,6 +307,7 @@ class WechatDraftPushTests(unittest.TestCase):
                     "human_review_approved_by": "Editor",
                     "wechat_app_id": "wx-test",
                     "wechat_app_secret": "secret-test",
+                    "allow_insecure_inline_credentials": True,
                 }
             )
         push_mock.assert_not_called()
@@ -235,6 +330,7 @@ class WechatDraftPushTests(unittest.TestCase):
                     "human_review_approved": True,
                     "wechat_app_id": "wx-test",
                     "wechat_app_secret": "secret-test",
+                    "allow_insecure_inline_credentials": True,
                     "cover_image_path": str(self.image_path),
                 }
             )

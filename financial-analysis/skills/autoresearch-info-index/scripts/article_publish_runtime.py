@@ -102,6 +102,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "push_to_wechat": parse_bool(raw_payload.get("push_to_wechat"), default=False),
         "wechat_app_id": clean_text(raw_payload.get("wechat_app_id") or raw_payload.get("app_id")),
         "wechat_app_secret": clean_text(raw_payload.get("wechat_app_secret") or raw_payload.get("app_secret")),
+        "allow_insecure_inline_credentials": parse_bool(raw_payload.get("allow_insecure_inline_credentials"), default=False),
         "cover_image_path": clean_text(raw_payload.get("cover_image_path")),
         "cover_image_url": clean_text(raw_payload.get("cover_image_url")),
         "show_cover_pic": int(raw_payload.get("show_cover_pic", 1) or 1),
@@ -310,6 +311,268 @@ def build_image_plan(selected_images: list[dict[str, Any]]) -> list[dict[str, An
     return plan
 
 
+def cover_score_base(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def resolve_render_src(local_path: Any, source_url: Any, render_src: Any = "") -> str:
+    resolved_render_src = clean_text(render_src)
+    if resolved_render_src:
+        return resolved_render_src
+    resolved_source_url = clean_text(source_url)
+    if resolved_source_url.startswith(("http://", "https://")):
+        return resolved_source_url
+    resolved_local_path = clean_text(local_path)
+    if not resolved_local_path:
+        return ""
+    local_file = Path(resolved_local_path).expanduser()
+    return local_file.resolve().as_uri() if local_file.exists() else resolved_local_path
+
+
+def normalize_cover_candidate(
+    raw_item: dict[str, Any],
+    *,
+    selected_for_body: bool,
+    body_order: int,
+    source_kind: str,
+) -> dict[str, Any]:
+    asset_id = clean_text(raw_item.get("asset_id") or raw_item.get("image_id"))
+    local_path = clean_text(raw_item.get("local_path") or raw_item.get("path") or raw_item.get("local_artifact_path"))
+    source_url = clean_text(raw_item.get("source_url"))
+    render_src = resolve_render_src(local_path, source_url, raw_item.get("render_src"))
+    caption = clean_text(raw_item.get("caption") or raw_item.get("summary") or raw_item.get("alt_text"))
+    status = clean_text(raw_item.get("status"))
+    if not status:
+        local_exists = bool(local_path) and Path(local_path).expanduser().exists()
+        if local_exists:
+            status = "local_ready"
+        elif source_url.startswith(("http://", "https://")):
+            status = "remote_only"
+    return {
+        "asset_id": asset_id,
+        "local_path": local_path,
+        "source_url": source_url,
+        "render_src": render_src,
+        "caption": caption,
+        "summary": clean_text(raw_item.get("summary") or raw_item.get("caption")),
+        "source_name": clean_text(raw_item.get("source_name")),
+        "status": status,
+        "role": clean_text(raw_item.get("role")),
+        "access_mode": clean_text(raw_item.get("access_mode")),
+        "capture_method": clean_text(raw_item.get("capture_method")),
+        "placement": clean_text(raw_item.get("placement")),
+        "upload_required": bool(raw_item.get("upload_required")) or bool(local_path or source_url),
+        "selected_for_body": selected_for_body,
+        "body_order": body_order,
+        "source_kind": clean_text(source_kind),
+        "cover_score_base": cover_score_base(raw_item.get("score")),
+    }
+
+
+def cover_candidate_key(candidate: dict[str, Any]) -> tuple[str, ...]:
+    asset_id = clean_text(candidate.get("asset_id"))
+    if asset_id:
+        return ("asset_id", asset_id)
+    local_path = clean_text(candidate.get("local_path"))
+    if local_path:
+        return ("local_path", local_path)
+    source_url = clean_text(candidate.get("source_url"))
+    if source_url:
+        return ("source_url", source_url)
+    render_src = clean_text(candidate.get("render_src"))
+    if render_src:
+        return ("render_src", render_src)
+    return (
+        "fallback",
+        clean_text(candidate.get("source_name")),
+        clean_text(candidate.get("role")),
+        clean_text(candidate.get("caption")),
+    )
+
+
+def merge_cover_candidate(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(existing)
+    for key in (
+        "asset_id",
+        "local_path",
+        "source_url",
+        "render_src",
+        "caption",
+        "summary",
+        "source_name",
+        "status",
+        "role",
+        "access_mode",
+        "capture_method",
+        "placement",
+    ):
+        if not clean_text(merged.get(key)) and clean_text(incoming.get(key)):
+            merged[key] = incoming.get(key)
+    merged["upload_required"] = bool(merged.get("upload_required")) or bool(incoming.get("upload_required"))
+    merged["selected_for_body"] = bool(merged.get("selected_for_body")) or bool(incoming.get("selected_for_body"))
+    merged["body_order"] = min(int(merged.get("body_order", 9999) or 9999), int(incoming.get("body_order", 9999) or 9999))
+    merged["cover_score_base"] = max(
+        cover_score_base(merged.get("cover_score_base")),
+        cover_score_base(incoming.get("cover_score_base")),
+    )
+    if clean_text(incoming.get("source_kind")) == "selected_body_image":
+        merged["source_kind"] = "selected_body_image"
+    elif not clean_text(merged.get("source_kind")):
+        merged["source_kind"] = clean_text(incoming.get("source_kind"))
+    return merged
+
+
+def score_cover_candidate(candidate: dict[str, Any]) -> int:
+    score = cover_score_base(candidate.get("cover_score_base"))
+    if has_usable_upload_source(candidate):
+        score += 50
+    else:
+        score -= 200
+
+    role = clean_text(candidate.get("role"))
+    if role == "post_media":
+        score += 70
+    elif role == "root_post_screenshot":
+        score -= 12
+    elif role:
+        score += 10
+
+    status = clean_text(candidate.get("status"))
+    if status == "local_ready":
+        score += 18
+    elif clean_text(candidate.get("source_url")).startswith(("http://", "https://")):
+        score += 8
+
+    if clean_text(candidate.get("caption")):
+        score += 8
+    if clean_text(candidate.get("source_name")):
+        score += 4
+    if clean_text(candidate.get("access_mode")) == "blocked":
+        score -= 16
+    if clean_text(candidate.get("capture_method")) == "dom_clip":
+        score -= 3
+    if bool(candidate.get("selected_for_body")):
+        score += 4
+    if clean_text(candidate.get("placement")) == "after_lede":
+        score += 2
+    return score
+
+
+def cover_candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, int, int, int]:
+    body_order = int(candidate.get("body_order", 9999) or 9999)
+    return (
+        int(candidate.get("cover_score", 0) or 0),
+        1 if clean_text(candidate.get("role")) == "post_media" else 0,
+        1 if clean_text(candidate.get("status")) == "local_ready" else 0,
+        -body_order,
+    )
+
+
+def build_cover_candidates(
+    image_plan: list[dict[str, Any]],
+    draft_image_candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged_candidates: dict[tuple[str, ...], dict[str, Any]] = {}
+    selected_body_order = {
+        clean_text(item.get("asset_id")): index
+        for index, item in enumerate(image_plan)
+        if clean_text(item.get("asset_id"))
+    }
+
+    for item in draft_image_candidates:
+        if not isinstance(item, dict):
+            continue
+        asset_id = clean_text(item.get("image_id") or item.get("asset_id"))
+        candidate = normalize_cover_candidate(
+            item,
+            selected_for_body=asset_id in selected_body_order,
+            body_order=selected_body_order.get(asset_id, 9999),
+            source_kind="draft_image_candidate",
+        )
+        if not any(clean_text(candidate.get(field)) for field in ("asset_id", "local_path", "source_url", "render_src")):
+            continue
+        key = cover_candidate_key(candidate)
+        merged_candidates[key] = merge_cover_candidate(merged_candidates.get(key, {}), candidate) if key in merged_candidates else candidate
+
+    for index, item in enumerate(image_plan):
+        candidate = normalize_cover_candidate(
+            item,
+            selected_for_body=True,
+            body_order=index,
+            source_kind="selected_body_image",
+        )
+        key = cover_candidate_key(candidate)
+        merged_candidates[key] = merge_cover_candidate(merged_candidates.get(key, {}), candidate) if key in merged_candidates else candidate
+
+    candidates = list(merged_candidates.values())
+    for candidate in candidates:
+        candidate["cover_score"] = score_cover_candidate(candidate)
+        candidate["upload_ready"] = has_usable_upload_source(candidate)
+    candidates.sort(key=cover_candidate_sort_key, reverse=True)
+    return candidates
+
+
+def reduce_cover_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "asset_id": clean_text(candidate.get("asset_id")),
+        "role": clean_text(candidate.get("role")),
+        "source_kind": clean_text(candidate.get("source_kind")),
+        "selected_for_body": bool(candidate.get("selected_for_body")),
+        "body_order": int(candidate.get("body_order", 9999) or 9999),
+        "cover_score": int(candidate.get("cover_score", 0) or 0),
+        "upload_ready": bool(candidate.get("upload_ready")),
+        "caption": clean_text(candidate.get("caption")),
+        "source_name": clean_text(candidate.get("source_name")),
+        "status": clean_text(candidate.get("status")),
+        "local_path": clean_text(candidate.get("local_path")),
+        "source_url": clean_text(candidate.get("source_url")),
+        "render_src": clean_text(candidate.get("render_src")),
+    }
+
+
+def select_cover_candidate(
+    image_plan: list[dict[str, Any]],
+    draft_image_candidates: list[dict[str, Any]],
+) -> tuple[dict[str, Any], str, str, list[dict[str, Any]]]:
+    cover_candidates = build_cover_candidates(image_plan, draft_image_candidates)
+    dedicated_cover_candidates = [
+        item
+        for item in cover_candidates
+        if not bool(item.get("selected_for_body")) and bool(item.get("upload_ready"))
+    ]
+    if dedicated_cover_candidates:
+        selected_cover = safe_dict(dedicated_cover_candidates[0])
+        selection_mode = "dedicated_candidate"
+        selection_reason = (
+            f"Selected dedicated cover candidate {clean_text(selected_cover.get('asset_id')) or 'unknown'} "
+            f"from draft image discovery with score {int(selected_cover.get('cover_score', 0) or 0)}."
+        )
+        return selected_cover, selection_mode, selection_reason, cover_candidates
+
+    body_cover_candidates = sorted(
+        [item for item in cover_candidates if bool(item.get("selected_for_body")) and bool(item.get("upload_ready"))],
+        key=lambda item: int(item.get("body_order", 9999) or 9999),
+    )
+    if body_cover_candidates:
+        selected_cover = safe_dict(body_cover_candidates[0])
+        selection_mode = "body_image_fallback"
+        selection_reason = (
+            f"Falling back to body image {clean_text(selected_cover.get('asset_id')) or 'unknown'} "
+            "because no dedicated cover candidate was ready."
+        )
+        return selected_cover, selection_mode, selection_reason, cover_candidates
+
+    return (
+        {},
+        "manual_required",
+        "No usable cover candidate is ready yet. Provide cover_image_path or cover_image_url.",
+        cover_candidates,
+    )
+
+
 def render_anchor_html(anchor_text: str) -> str:
     return (
         "<section style=\"margin:20px 0;padding:12px 14px;border-left:4px solid #e3a008;"
@@ -404,8 +667,16 @@ def render_wechat_html(article_package: dict[str, Any], image_plan: list[dict[st
     return "\n".join(html_parts) + "\n"
 
 
-def build_cover_plan(selected_topic: dict[str, Any], image_plan: list[dict[str, Any]], keywords: list[str]) -> dict[str, Any]:
-    primary_image = safe_dict(image_plan[0]) if image_plan else {}
+def build_cover_plan(
+    selected_topic: dict[str, Any],
+    image_plan: list[dict[str, Any]],
+    draft_image_candidates: list[dict[str, Any]],
+    keywords: list[str],
+) -> dict[str, Any]:
+    primary_image, selection_mode, selection_reason, cover_candidates = select_cover_candidate(
+        image_plan,
+        draft_image_candidates,
+    )
     title = clean_text(selected_topic.get("title"))
     prompt = (
         f"为微信公众号文章生成 16:9 封面图。主题：{title}。关键词：{', '.join(keywords[:5]) or title}。"
@@ -415,10 +686,60 @@ def build_cover_plan(selected_topic: dict[str, Any], image_plan: list[dict[str, 
         "primary_image_asset_id": clean_text(primary_image.get("asset_id")),
         "primary_image_render_src": clean_text(primary_image.get("render_src")),
         "primary_image_upload_required": bool(primary_image.get("upload_required")),
+        "selected_cover_asset_id": clean_text(primary_image.get("asset_id")),
+        "selected_cover_role": clean_text(primary_image.get("role")),
+        "selected_cover_caption": clean_text(primary_image.get("caption")),
+        "selected_cover_source_name": clean_text(primary_image.get("source_name")),
+        "selected_cover_local_path": clean_text(primary_image.get("local_path")),
+        "selected_cover_source_url": clean_text(primary_image.get("source_url")),
+        "selected_cover_render_src": clean_text(primary_image.get("render_src")),
+        "selected_cover_upload_required": bool(primary_image.get("upload_required")),
+        "selection_mode": selection_mode,
+        "cover_selection_reason": selection_reason,
+        "cover_candidates": [reduce_cover_candidate(item) for item in cover_candidates[:6]],
         "needs_thumb_media_id": True,
         "cover_prompt": prompt,
         "thumb_media_id_placeholder": "{{WECHAT_THUMB_MEDIA_ID}}",
     }
+
+
+def has_usable_upload_source(asset: dict[str, Any]) -> bool:
+    local_path = clean_text(asset.get("local_path"))
+    if local_path and Path(local_path).expanduser().exists():
+        return True
+    remote_url = clean_text(asset.get("source_url")) or clean_text(asset.get("render_src"))
+    return remote_url.startswith(("http://", "https://"))
+
+
+def resolve_cover_asset_from_plan(cover_plan: dict[str, Any], image_plan: list[dict[str, Any]]) -> dict[str, Any]:
+    selected_cover_asset_id = clean_text(cover_plan.get("selected_cover_asset_id") or cover_plan.get("primary_image_asset_id"))
+    for item in image_plan:
+        if selected_cover_asset_id and clean_text(item.get("asset_id")) != selected_cover_asset_id:
+            continue
+        merged_item = dict(item)
+        for field, cover_field in (
+            ("local_path", "selected_cover_local_path"),
+            ("source_url", "selected_cover_source_url"),
+            ("render_src", "selected_cover_render_src"),
+        ):
+            if not clean_text(merged_item.get(field)) and clean_text(cover_plan.get(cover_field)):
+                merged_item[field] = clean_text(cover_plan.get(cover_field))
+        if selected_cover_asset_id and not clean_text(merged_item.get("asset_id")):
+            merged_item["asset_id"] = selected_cover_asset_id
+        return merged_item
+
+    local_path = clean_text(cover_plan.get("selected_cover_local_path"))
+    source_url = clean_text(cover_plan.get("selected_cover_source_url"))
+    render_src = clean_text(cover_plan.get("selected_cover_render_src")) or resolve_render_src(local_path, source_url)
+    if local_path or source_url or render_src:
+        return {
+            "asset_id": selected_cover_asset_id,
+            "local_path": local_path,
+            "source_url": source_url,
+            "render_src": render_src,
+            "upload_required": bool(local_path or source_url),
+        }
+    return {}
 
 
 def build_push_readiness(
@@ -435,6 +756,11 @@ def build_push_readiness(
         for index, item in enumerate(image_plan, start=1)
         if not clean_text(item.get("render_src"))
     ]
+    missing_upload_source_asset_ids = [
+        clean_text(item.get("asset_id")) or f"asset-{index:02d}"
+        for index, item in enumerate(image_plan, start=1)
+        if bool(item.get("upload_required")) and not has_usable_upload_source(item)
+    ]
     inline_upload_required_count = sum(1 for item in image_plan if bool(item.get("upload_required")))
 
     explicit_cover_path = clean_text(request.get("cover_image_path"))
@@ -442,12 +768,15 @@ def build_push_readiness(
     explicit_cover_path_exists = Path(explicit_cover_path).expanduser().exists() if explicit_cover_path else False
     explicit_cover_url_valid = explicit_cover_url.startswith(("http://", "https://"))
     explicit_cover_ready = explicit_cover_path_exists or explicit_cover_url_valid
+    primary_cover_asset = resolve_cover_asset_from_plan(cover_plan, image_plan)
+    primary_cover_asset_ready = bool(primary_cover_asset) and has_usable_upload_source(primary_cover_asset)
+    selection_mode = clean_text(cover_plan.get("selection_mode"))
 
     cover_source = "missing"
     if explicit_cover_ready:
         cover_source = "request_override"
-    elif clean_text(cover_plan.get("primary_image_render_src")):
-        cover_source = "article_image"
+    elif primary_cover_asset_ready:
+        cover_source = "dedicated_cover_candidate" if selection_mode == "dedicated_candidate" else "article_image"
 
     has_cover_reference = cover_source != "missing"
     if not has_content_html or not has_draft_payload_template:
@@ -456,8 +785,24 @@ def build_push_readiness(
         status = "missing_cover_image"
     elif missing_render_asset_ids:
         status = "missing_inline_preview"
+    elif missing_upload_source_asset_ids:
+        status = "missing_upload_source"
     else:
         status = "ready_for_api_push"
+
+    if status == "missing_content":
+        next_step = "Rebuild the publish package so content_html and draftbox_payload_template are both present."
+    elif status == "missing_cover_image":
+        next_step = (
+            "Provide cover_image_path/cover_image_url, or keep at least one dedicated cover candidate or body image "
+            "with a usable local file or remote URL."
+        )
+    elif status == "missing_inline_preview":
+        next_step = "Rebuild the publish package so every upload_required image has a renderable preview source."
+    elif status == "missing_upload_source":
+        next_step = "Restore the missing local image files or provide remote source_url values before pushing to WeChat."
+    else:
+        next_step = "Set WECHAT_APP_ID/WECHAT_APP_SECRET or create .env.wechat.local, then run run_wechat_push_draft.cmd after cover and review are ready."
 
     return {
         "status": status,
@@ -466,13 +811,18 @@ def build_push_readiness(
         "has_draft_payload_template": has_draft_payload_template,
         "has_cover_reference": has_cover_reference,
         "cover_source": cover_source,
+        "cover_asset_id": clean_text(primary_cover_asset.get("asset_id") or cover_plan.get("selected_cover_asset_id")),
+        "cover_selection_mode": selection_mode,
         "inline_asset_count": len(image_plan),
         "inline_upload_required_count": inline_upload_required_count,
         "missing_render_asset_ids": missing_render_asset_ids,
+        "missing_upload_source_asset_ids": missing_upload_source_asset_ids,
         "credentials_required": True,
-        "supported_request_fields": ["wechat_app_id", "wechat_app_secret"],
+        "supported_request_fields": ["allow_insecure_inline_credentials", "wechat_app_id", "wechat_app_secret"],
         "supported_env_vars": ["WECHAT_APP_ID", "WECHAT_APP_SECRET"],
-        "next_step": "Run run_wechat_push_draft.cmd with publish-package.json after credentials and cover are ready.",
+        "supported_local_secret_files": [".env.wechat.local"],
+        "inline_credentials_blocked_by_default": True,
+        "next_step": next_step,
     }
 
 
@@ -484,12 +834,14 @@ def build_publish_package(
     review_result = safe_dict(workflow_result.get("review_result"))
     article_package = safe_dict(review_result.get("article_package")) or safe_dict(safe_dict(workflow_result.get("draft_result")).get("article_package"))
     selected_images = safe_list(article_package.get("selected_images") or article_package.get("image_blocks"))
+    draft_context = safe_dict(safe_dict(workflow_result.get("draft_result")).get("draft_context"))
+    draft_image_candidates = safe_list(draft_context.get("image_candidates"))
     image_plan = build_image_plan(selected_images)
     keywords = extract_keywords(selected_topic, article_package)
     anchors = build_editor_anchors(len(safe_list(article_package.get("sections") or article_package.get("body_sections"))))
     digest = build_digest(article_package, request["digest_max_chars"])
     html = render_wechat_html(article_package, image_plan, anchors)
-    cover_plan = build_cover_plan(selected_topic, image_plan, keywords)
+    cover_plan = build_cover_plan(selected_topic, image_plan, draft_image_candidates, keywords)
     content_ready = all(clean_text(item.get("render_src")) for item in image_plan)
     push_ready = False
     title = clean_text(article_package.get("title"))
@@ -561,6 +913,8 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         f"- Package push-ready: {'yes' if publish_package.get('push_ready') else 'no'}",
         f"- Push readiness status: {push_readiness.get('status', 'unknown')}",
         f"- Cover available: {'yes' if push_readiness.get('has_cover_reference') else 'no'}",
+        f"- Cover selection mode: {safe_dict(publish_package.get('cover_plan')).get('selection_mode', '') or 'unknown'}",
+        f"- Cover asset: {safe_dict(publish_package.get('cover_plan')).get('selected_cover_asset_id', '') or 'none'}",
         f"- Inline assets needing upload: {push_readiness.get('inline_upload_required_count', 0)}",
         f"- Missing inline previews: {', '.join(push_readiness.get('missing_render_asset_ids', [])) or 'none'}",
         f"- Draft title: {publish_package.get('title', '')}",
@@ -700,6 +1054,7 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
                     "publish_package": publish_package,
                     "wechat_app_id": request["wechat_app_id"],
                     "wechat_app_secret": request["wechat_app_secret"],
+                    "allow_insecure_inline_credentials": request["allow_insecure_inline_credentials"],
                     "cover_image_path": request["cover_image_path"],
                     "cover_image_url": request["cover_image_url"],
                     "author": request["author"],

@@ -22,6 +22,7 @@ def clean_text(value: Any) -> str:
 
 RequestFn = Callable[[str, str, bytes | None, dict[str, str], int], bytes]
 DownloadFn = Callable[[str, int], bytes]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 def parse_bool(value: Any, *, default: bool = False) -> bool:
@@ -35,6 +36,173 @@ def parse_bool(value: Any, *, default: bool = False) -> bool:
     if lowered in {"0", "false", "no", "n", "off", "rejected"}:
         return False
     return default
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    try:
+        raw_text = path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return values
+    for raw_line in raw_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        clean_key = clean_text(key).lstrip("\ufeff")
+        if not clean_key:
+            continue
+        clean_value = value.strip().strip('"').strip("'")
+        values[clean_key] = clean_value
+    return values
+
+
+def load_local_wechat_credentials() -> dict[str, str]:
+    candidate_paths: list[Path] = []
+    explicit_path = clean_text(os.environ.get("WECHAT_ENV_FILE"))
+    if explicit_path:
+        candidate_paths.append(Path(explicit_path).expanduser().resolve())
+    candidate_paths.append((Path.cwd() / ".env.wechat.local").resolve())
+    candidate_paths.append((REPO_ROOT / ".env.wechat.local").resolve())
+
+    seen_paths: set[Path] = set()
+    for candidate_path in candidate_paths:
+        if candidate_path in seen_paths:
+            continue
+        seen_paths.add(candidate_path)
+        if not candidate_path.exists() or not candidate_path.is_file():
+            continue
+        values = parse_env_file(candidate_path)
+        app_id = clean_text(values.get("WECHAT_APP_ID") or values.get("WECHAT_APPID"))
+        app_secret = clean_text(values.get("WECHAT_APP_SECRET") or values.get("WECHAT_APPSECRET"))
+        if app_id and app_secret:
+            return {"app_id": app_id, "app_secret": app_secret, "source": str(candidate_path)}
+    return {}
+
+
+def mask_config_value(value: Any, *, prefix: int = 2, suffix: int = 2) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    if len(text) <= prefix + suffix:
+        return "*" * len(text)
+    return f"{text[:prefix]}{'*' * max(1, len(text) - prefix - suffix)}{text[-suffix:]}"
+
+
+def resolve_credential_state(payload: dict[str, Any]) -> dict[str, Any]:
+    env_app_id = clean_text(os.environ.get("WECHAT_APP_ID") or os.environ.get("WECHAT_APPID"))
+    env_app_secret = clean_text(os.environ.get("WECHAT_APP_SECRET") or os.environ.get("WECHAT_APPSECRET"))
+    if env_app_id and env_app_secret:
+        return {
+            "ready": True,
+            "warning": False,
+            "status": "ready",
+            "source": "environment",
+            "source_path": "",
+            "app_id": env_app_id,
+            "app_secret": env_app_secret,
+            "masked_app_id": mask_config_value(env_app_id, prefix=4, suffix=4),
+            "error_message": "",
+            "next_step": "Credentials are available from environment variables.",
+        }
+
+    file_credentials = load_local_wechat_credentials()
+    if file_credentials:
+        app_id = clean_text(file_credentials.get("app_id"))
+        app_secret = clean_text(file_credentials.get("app_secret"))
+        return {
+            "ready": True,
+            "warning": False,
+            "status": "ready",
+            "source": "env_file",
+            "source_path": clean_text(file_credentials.get("source")),
+            "app_id": app_id,
+            "app_secret": app_secret,
+            "masked_app_id": mask_config_value(app_id, prefix=4, suffix=4),
+            "error_message": "",
+            "next_step": "Credentials are available from the local env file.",
+        }
+
+    inline_app_id = clean_text(payload.get("wechat_app_id") or payload.get("app_id"))
+    inline_app_secret = clean_text(payload.get("wechat_app_secret") or payload.get("app_secret"))
+    allow_inline = parse_bool(payload.get("allow_insecure_inline_credentials"), default=False)
+    if inline_app_id or inline_app_secret:
+        if not allow_inline:
+            error_message = (
+                "Inline WeChat credentials are blocked by default. Set WECHAT_APP_ID/WECHAT_APP_SECRET "
+                "in the environment or create .env.wechat.local. Only use allow_insecure_inline_credentials=true "
+                "for isolated one-off runs you will never commit."
+            )
+            return {
+                "ready": False,
+                "warning": False,
+                "status": "blocked_inline_credentials",
+                "source": "inline",
+                "source_path": "",
+                "app_id": inline_app_id,
+                "app_secret": inline_app_secret,
+                "masked_app_id": mask_config_value(inline_app_id, prefix=4, suffix=4),
+                "error_message": error_message,
+                "next_step": "Move the credentials into WECHAT_APP_ID/WECHAT_APP_SECRET or .env.wechat.local.",
+            }
+        if not inline_app_id or not inline_app_secret:
+            return {
+                "ready": False,
+                "warning": False,
+                "status": "incomplete_inline_credentials",
+                "source": "inline",
+                "source_path": "",
+                "app_id": inline_app_id,
+                "app_secret": inline_app_secret,
+                "masked_app_id": mask_config_value(inline_app_id, prefix=4, suffix=4),
+                "error_message": "Inline WeChat credentials are incomplete. Both app_id and app_secret are required.",
+                "next_step": "Provide both WECHAT_APP_ID and WECHAT_APP_SECRET, or remove the partial inline override.",
+            }
+        return {
+            "ready": True,
+            "warning": True,
+            "status": "warning_insecure_inline",
+            "source": "inline",
+            "source_path": "",
+            "app_id": inline_app_id,
+            "app_secret": inline_app_secret,
+            "masked_app_id": mask_config_value(inline_app_id, prefix=4, suffix=4),
+            "error_message": "",
+            "next_step": "Inline credentials are usable, but move them into env vars or .env.wechat.local before normal operation.",
+        }
+
+    return {
+        "ready": False,
+        "warning": False,
+        "status": "missing_credentials",
+        "source": "none",
+        "source_path": "",
+        "app_id": "",
+        "app_secret": "",
+        "masked_app_id": "",
+        "error_message": "Missing WeChat credentials. Set WECHAT_APP_ID/WECHAT_APP_SECRET in the environment or create .env.wechat.local.",
+        "next_step": "Set WECHAT_APP_ID/WECHAT_APP_SECRET or create an untracked .env.wechat.local file.",
+    }
+
+
+def inspect_wechat_credentials(payload: dict[str, Any]) -> dict[str, Any]:
+    state = resolve_credential_state(payload)
+    return {
+        "ready": state["ready"],
+        "warning": state["warning"],
+        "status": state["status"],
+        "source": state["source"],
+        "source_path": state["source_path"],
+        "masked_app_id": state["masked_app_id"],
+        "app_secret_configured": bool(state.get("app_secret")),
+        "inline_credentials_blocked_by_default": True,
+        "error_message": state["error_message"],
+        "next_step": state["next_step"],
+    }
 
 
 def default_request_fn(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
@@ -101,16 +269,15 @@ def sanitize_filename(filename: str, fallback: str) -> str:
 
 
 def resolve_wechat_credentials(payload: dict[str, Any]) -> dict[str, str]:
-    app_id = clean_text(payload.get("wechat_app_id") or payload.get("app_id") or os.environ.get("WECHAT_APP_ID") or os.environ.get("WECHAT_APPID"))
-    app_secret = clean_text(
-        payload.get("wechat_app_secret")
-        or payload.get("app_secret")
-        or os.environ.get("WECHAT_APP_SECRET")
-        or os.environ.get("WECHAT_APPSECRET")
-    )
-    if not app_id or not app_secret:
-        raise ValueError("Missing WeChat credentials. Provide wechat_app_id/wechat_app_secret or set WECHAT_APP_ID/WECHAT_APP_SECRET.")
-    return {"app_id": app_id, "app_secret": app_secret}
+    state = resolve_credential_state(payload)
+    if not state["ready"]:
+        raise ValueError(state["error_message"])
+    return {
+        "app_id": clean_text(state.get("app_id")),
+        "app_secret": clean_text(state.get("app_secret")),
+        "source": clean_text(state.get("source")),
+        "source_path": clean_text(state.get("source_path")),
+    }
 
 
 def resolve_human_review_gate(payload: dict[str, Any]) -> dict[str, Any]:
@@ -256,7 +423,15 @@ def choose_cover_reference(payload: dict[str, Any], publish_package: dict[str, A
     if explicit_local or explicit_remote:
         return {"local_path": explicit_local, "remote_url": explicit_remote, "filename": "cover-image"}
     cover_plan = safe_dict(publish_package.get("cover_plan"))
-    asset_id = clean_text(cover_plan.get("primary_image_asset_id"))
+    asset_id = clean_text(cover_plan.get("selected_cover_asset_id") or cover_plan.get("primary_image_asset_id"))
+    selected_cover_local = clean_text(cover_plan.get("selected_cover_local_path"))
+    selected_cover_remote = clean_text(cover_plan.get("selected_cover_source_url")) or clean_text(cover_plan.get("selected_cover_render_src"))
+    if selected_cover_local or selected_cover_remote:
+        return {
+            "local_path": selected_cover_local,
+            "remote_url": selected_cover_remote,
+            "filename": asset_id or "cover-image",
+        }
     for asset in safe_list(publish_package.get("image_assets")):
         if clean_text(asset.get("asset_id")) == asset_id or not asset_id:
             return {
@@ -349,4 +524,4 @@ def push_publish_package_to_wechat(
     }
 
 
-__all__ = ["push_publish_package_to_wechat", "resolve_wechat_credentials"]
+__all__ = ["inspect_wechat_credentials", "push_publish_package_to_wechat", "resolve_wechat_credentials"]

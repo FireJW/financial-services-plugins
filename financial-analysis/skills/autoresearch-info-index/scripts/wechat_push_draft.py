@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -11,6 +10,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from article_workflow_runtime import load_json, write_json
+from cli_output import print_json
 from wechat_draftbox_runtime import push_publish_package_to_wechat
 
 
@@ -79,7 +79,7 @@ def main() -> None:
     try:
         result = push_publish_package_to_wechat(build_payload(args))
         if not args.quiet:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
+            print_json(result)
         if args.output:
             write_json(Path(args.output).resolve(), result)
         if args.markdown_output:
@@ -88,7 +88,7 @@ def main() -> None:
             output_path.write_text(build_markdown(result), encoding="utf-8")
         sys.exit(0)
     except Exception as exc:
-        print(json.dumps({"status": "ERROR", "message": str(exc)}, indent=2, ensure_ascii=False), file=sys.stderr)
+        print_json({"status": "ERROR", "message": str(exc)}, stream=sys.stderr)
         sys.exit(1)
 
 

@@ -297,6 +297,22 @@ def candidate_sort_key(item: dict[str, Any]) -> tuple[int, int, int]:
     )
 
 
+def normalize_image_reference(path: Any, source_url: Any) -> tuple[str, str]:
+    clean_path = clean_text(path)
+    clean_url = clean_text(source_url)
+    if clean_path.startswith(("http://", "https://", "file://")) and not clean_url:
+        return "", clean_path
+    return clean_path, clean_url
+
+
+def image_candidate_key(role: Any, path: Any, source_url: Any) -> tuple[str, str, str]:
+    clean_role = clean_text(role)
+    clean_path, clean_url = normalize_image_reference(path, source_url)
+    if clean_path:
+        return clean_role, "path", clean_path
+    return clean_role, "url", clean_url
+
+
 def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any]) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -313,11 +329,10 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
         alt_text: str = "",
         capture_method: str = "",
     ) -> None:
-        clean_path = clean_text(path)
-        clean_url = clean_text(source_url)
+        clean_path, clean_url = normalize_image_reference(path, source_url)
         if not clean_path and not clean_url:
             return
-        key = (clean_text(role), clean_path, clean_url)
+        key = image_candidate_key(role, clean_path, clean_url)
         if key in seen:
             return
         seen.add(key)
@@ -371,16 +386,18 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
         source_name = f"X @{clean_text(post.get('author_handle') or post.get('author_display_name') or 'post')}"
         access_mode = clean_text(post.get("access_mode")) or "public"
         post_summary = clean_text(post.get("media_summary") or post.get("post_summary") or post.get("post_text_raw"))
-        add(
-            "root_post_screenshot",
-            source_name,
-            clean_text(post.get("root_post_screenshot_path")),
-            clean_text(post.get("post_url")),
-            post_summary,
-            access_mode,
-            "medium",
-            3,
-        )
+        root_post_screenshot_path = clean_text(post.get("root_post_screenshot_path"))
+        if root_post_screenshot_path:
+            add(
+                "root_post_screenshot",
+                source_name,
+                root_post_screenshot_path,
+                "",
+                post_summary,
+                access_mode,
+                "medium",
+                3,
+            )
         for media in safe_list(post.get("media_items")):
             if not isinstance(media, dict):
                 continue
@@ -401,16 +418,34 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
     for item in safe_list(verdict.get("source_artifacts")):
         if not isinstance(item, dict):
             continue
-        add(
-            "root_post_screenshot",
-            clean_text(item.get("source_name")) or "Artifact source",
-            clean_text(item.get("root_post_screenshot_path")),
-            clean_text(item.get("url")),
-            clean_text(item.get("media_summary") or item.get("post_summary") or item.get("combined_summary") or item.get("post_text_raw")),
-            clean_text(item.get("access_mode")) or "public",
-            "medium",
-            int(item.get("source_tier", 3)),
-        )
+        root_post_screenshot_path = clean_text(item.get("root_post_screenshot_path"))
+        if root_post_screenshot_path:
+            add(
+                "root_post_screenshot",
+                clean_text(item.get("source_name")) or "Artifact source",
+                root_post_screenshot_path,
+                "",
+                clean_text(item.get("media_summary") or item.get("post_summary") or item.get("combined_summary") or item.get("post_text_raw")),
+                clean_text(item.get("access_mode")) or "public",
+                "medium",
+                int(item.get("source_tier", 3)),
+            )
+        for artifact in safe_list(item.get("artifact_manifest")):
+            if not isinstance(artifact, dict):
+                continue
+            artifact_role = clean_text(artifact.get("role")) or "post_media"
+            add(
+                "post_media" if artifact_role == "post_media" else artifact_role,
+                clean_text(item.get("source_name")) or "Artifact source",
+                clean_text(artifact.get("path")),
+                clean_text(artifact.get("source_url")),
+                clean_text(artifact.get("summary") or item.get("media_summary") or item.get("post_summary") or item.get("combined_summary")),
+                clean_text(item.get("access_mode")) or "public",
+                "high" if artifact_role == "post_media" else "medium",
+                int(item.get("source_tier", 3)),
+                clean_text(artifact.get("summary")),
+                "artifact_manifest",
+            )
 
     candidates.sort(key=candidate_sort_key, reverse=True)
     return candidates

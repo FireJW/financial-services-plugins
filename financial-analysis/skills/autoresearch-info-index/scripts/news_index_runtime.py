@@ -4,12 +4,14 @@ from __future__ import annotations
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from html import unescape
 from pathlib import Path
 from typing import Any
 
@@ -289,6 +291,7 @@ def clean_artifact_manifest(value: Any) -> list[dict[str, Any]]:
                 "path": path,
                 "source_url": source_url,
                 "media_type": media_type,
+                "summary": short_excerpt(item.get("summary") or item.get("caption") or item.get("title"), limit=180),
             }
         )
     return cleaned
@@ -335,6 +338,67 @@ def fetch_public_excerpt(url: str) -> tuple[str, str]:
     with urllib.request.urlopen(request, timeout=10) as response:
         raw = response.read(4096)
     return short_excerpt(raw.decode("utf-8", errors="ignore"), limit=240), "public"
+
+
+def extract_meta_content(html: str, attribute: str, name: str) -> str:
+    patterns = [
+        rf"<meta[^>]+{attribute}=[\"']{re.escape(name)}[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>",
+        rf"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+{attribute}=[\"']{re.escape(name)}[\"'][^>]*>",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, html, flags=re.IGNORECASE)
+        if match:
+            return short_excerpt(unescape(match.group(1)), limit=500)
+    return ""
+
+
+def extract_html_title(html: str) -> str:
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
+    return short_excerpt(unescape(match.group(1)) if match else "", limit=200)
+
+
+def fetch_public_page_hints(url: str) -> dict[str, Any]:
+    request = urllib.request.Request(url, headers={"User-Agent": "Codex-NewsIndex/1.0"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        final_url = response.geturl()
+        raw = response.read(65536)
+
+    html = raw.decode("utf-8", errors="ignore")
+    visible_excerpt = short_excerpt(unescape(re.sub(r"<[^>]+>", " ", html)), limit=240)
+    title = (
+        extract_meta_content(html, "property", "og:title")
+        or extract_meta_content(html, "name", "twitter:title")
+        or extract_html_title(html)
+    )
+    image_alt = (
+        extract_meta_content(html, "property", "og:image:alt")
+        or extract_meta_content(html, "name", "twitter:image:alt")
+    )
+    image_url = (
+        extract_meta_content(html, "property", "og:image")
+        or extract_meta_content(html, "name", "twitter:image")
+    )
+    normalized_image_url = urllib.parse.urljoin(final_url, image_url) if image_url else ""
+    image_summary = short_excerpt(image_alt or title, limit=180)
+    artifact_manifest = []
+    if normalized_image_url:
+        artifact_manifest.append(
+            {
+                "role": "post_media",
+                "path": "",
+                "source_url": normalized_image_url,
+                "media_type": "image",
+                "summary": image_summary,
+            }
+        )
+
+    return {
+        "text_excerpt": visible_excerpt,
+        "access_mode": "public",
+        "post_summary": short_excerpt(title, limit=180),
+        "media_summary": image_summary,
+        "artifact_manifest": artifact_manifest,
+    }
 
 
 def access_rank(access_mode: str) -> int:
@@ -481,12 +545,28 @@ def normalize_candidate(
     text_excerpt = short_excerpt(
         candidate.get("text_excerpt") or candidate.get("summary") or candidate.get("support") or ""
     )
+    post_summary = str(candidate.get("post_summary", "")).strip()
+    media_summary = str(candidate.get("media_summary", "")).strip()
+    artifact_manifest = clean_artifact_manifest(candidate.get("artifact_manifest"))
 
     if access_mode != "blocked" and not text_excerpt and str(candidate.get("url", "")).strip():
         try:
             text_excerpt, access_mode = fetch_public_excerpt(str(candidate.get("url")).strip())
         except (TimeoutError, OSError, urllib.error.URLError):
             access_mode = "blocked"
+
+    if access_mode != "blocked" and str(candidate.get("url", "")).strip() and not artifact_manifest:
+        try:
+            page_hints = fetch_public_page_hints(str(candidate.get("url")).strip())
+            if not text_excerpt:
+                text_excerpt = short_excerpt(page_hints.get("text_excerpt"))
+            if not post_summary:
+                post_summary = str(page_hints.get("post_summary", "")).strip()
+            if not media_summary:
+                media_summary = str(page_hints.get("media_summary", "")).strip()
+            artifact_manifest = clean_artifact_manifest(page_hints.get("artifact_manifest"))
+        except (TimeoutError, OSError, urllib.error.URLError, ValueError):
+            pass
 
     claim_ids = clean_string_list(candidate.get("claim_ids"))
     raw_states = safe_dict(candidate.get("claim_states") or candidate.get("stance_by_claim"))
@@ -528,7 +608,7 @@ def normalize_candidate(
         "age_label": minutes_label(age),
         "claim_states": claim_states,
         "claim_texts": {claim_id: claim_texts.get(claim_id, "") for claim_id in claim_ids},
-        "artifact_manifest": clean_artifact_manifest(candidate.get("artifact_manifest")),
+        "artifact_manifest": artifact_manifest,
         "x_post_record": deepcopy(candidate.get("x_post_record")) if isinstance(candidate.get("x_post_record"), dict) else {},
         "post_text_raw": str(candidate.get("post_text_raw", "")).strip(),
         "post_text_source": str(candidate.get("post_text_source", "")).strip(),
@@ -536,8 +616,8 @@ def normalize_candidate(
         "root_post_screenshot_path": str(candidate.get("root_post_screenshot_path", "")).strip(),
         "thread_posts": deepcopy(candidate.get("thread_posts")) if isinstance(candidate.get("thread_posts"), list) else [],
         "media_items": deepcopy(candidate.get("media_items")) if isinstance(candidate.get("media_items"), list) else [],
-        "post_summary": str(candidate.get("post_summary", "")).strip(),
-        "media_summary": str(candidate.get("media_summary", "")).strip(),
+        "post_summary": post_summary,
+        "media_summary": media_summary,
         "combined_summary": str(candidate.get("combined_summary", "")).strip(),
         "discovery_reason": str(candidate.get("discovery_reason", "")).strip(),
         "crawl_notes": deepcopy(candidate.get("crawl_notes")) if isinstance(candidate.get("crawl_notes"), list) else [],
