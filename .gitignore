@@ -60,3 +60,8 @@ tmp-*.jpeg
 tmp-*.webp
 tmp-*.db
 tmp-*.sqlite
+**/.tmp/
+**/.tmp-*/
+**/tmp-*
+weixin_article.html
+weixin_imgs/

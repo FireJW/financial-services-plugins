@@ -8,4 +8,9 @@ if (-not (Test-Path $guardScript)) {
 }
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $guardScript -AutoFix
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $guardScript
 exit $LASTEXITCODE

@@ -21,6 +21,7 @@ function Get-EnvInt {
 $MaxStagedFiles = Get-EnvInt -Name "CODEX_MAX_STAGED_FILES" -DefaultValue 250
 $MaxStagedChurn = Get-EnvInt -Name "CODEX_MAX_STAGED_CHURN" -DefaultValue 100000
 $MaxBinaryFiles = Get-EnvInt -Name "CODEX_MAX_STAGED_BINARIES" -DefaultValue 25
+$MaxStagedFileBytes = [int64](Get-EnvInt -Name "CODEX_MAX_STAGED_FILE_BYTES" -DefaultValue 50000000)
 
 $BlockedPrefixes = @(
     ".tmp/",
@@ -111,6 +112,9 @@ function Test-BlockedPath {
 
     $parts = $lowered.Split("/", [System.StringSplitOptions]::RemoveEmptyEntries)
     foreach ($part in $parts) {
+        if ($part -eq ".tmp" -or $part.StartsWith(".tmp-") -or $part.StartsWith("tmp-")) {
+            return $true
+        }
         if ($BlockedDirNames -contains $part) {
             return $true
         }
@@ -172,6 +176,36 @@ function Get-StagedStats {
     }
 }
 
+function Get-OversizedStagedFiles {
+    param(
+        [string[]]$RepoPaths,
+        [int64]$MaxBytes
+    )
+
+    $oversized = @()
+    foreach ($repoPath in $RepoPaths) {
+        $sizeOutput = & git cat-file -s (":{0}" -f $repoPath) 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            continue
+        }
+
+        $rawSize = @($sizeOutput)[0]
+        if ($rawSize -notmatch '^\d+$') {
+            continue
+        }
+
+        $sizeBytes = [int64]$rawSize
+        if ($sizeBytes -gt $MaxBytes) {
+            $oversized += [pscustomobject]@{
+                Path = $repoPath
+                SizeBytes = $sizeBytes
+            }
+        }
+    }
+
+    return $oversized
+}
+
 function Unstage-Paths {
     param([string[]]$RepoPaths)
 
@@ -224,6 +258,43 @@ try {
         [Console]::Error.WriteLine("  git restore --staged -- .tmp")
         [Console]::Error.WriteLine("  pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-scrub-staged-runtime-artifacts.ps1")
         [Console]::Error.WriteLine("Use --no-verify only if you intentionally want these artifacts in git history.")
+        exit 1
+    }
+
+    $oversizedFiles = @(Get-OversizedStagedFiles -RepoPaths $stagedPaths -MaxBytes $MaxStagedFileBytes)
+    if ($oversizedFiles.Count -gt 0) {
+        $oversizedPaths = @($oversizedFiles | ForEach-Object { $_.Path })
+        if ($AutoFix) {
+            Unstage-Paths -RepoPaths $oversizedPaths
+            [Console]::Error.WriteLine("pre-commit guard: auto-unstaged oversized staged files from the index.")
+            foreach ($entry in $oversizedFiles | Select-Object -First 20) {
+                $sizeMb = [math]::Round($entry.SizeBytes / 1MB, 2)
+                [Console]::Error.WriteLine("  - $($entry.Path) (${sizeMb} MB)")
+            }
+            if ($oversizedFiles.Count -gt 20) {
+                [Console]::Error.WriteLine("  - ... and $($oversizedFiles.Count - 20) more")
+            }
+            [Console]::Error.WriteLine("")
+            [Console]::Error.WriteLine("Working tree files were kept. Review the remaining staged diff with:")
+            [Console]::Error.WriteLine("  git status --short")
+            [Console]::Error.WriteLine("  git diff --cached --stat")
+            exit 0
+        }
+
+        [Console]::Error.WriteLine("pre-commit guard: oversized staged files exceed the safety limit.")
+        foreach ($entry in $oversizedFiles | Select-Object -First 20) {
+            $sizeMb = [math]::Round($entry.SizeBytes / 1MB, 2)
+            $limitMb = [math]::Round($MaxStagedFileBytes / 1MB, 2)
+            [Console]::Error.WriteLine("  - $($entry.Path) (${sizeMb} MB > ${limitMb} MB)")
+        }
+        if ($oversizedFiles.Count -gt 20) {
+            [Console]::Error.WriteLine("  - ... and $($oversizedFiles.Count - 20) more")
+        }
+        [Console]::Error.WriteLine("")
+        [Console]::Error.WriteLine("Suggested commands:")
+        [Console]::Error.WriteLine("  git restore --staged <path>")
+        [Console]::Error.WriteLine("  pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-scrub-staged-runtime-artifacts.ps1")
+        [Console]::Error.WriteLine("Set CODEX_MAX_STAGED_FILE_BYTES to raise or lower the safety threshold if needed.")
         exit 1
     }
 

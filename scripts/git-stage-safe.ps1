@@ -10,6 +10,7 @@ if ($Paths.Count -eq 0) {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $scrubScript = Join-Path $PSScriptRoot "git-scrub-staged-runtime-artifacts.ps1"
+$guardScript = Join-Path $repoRoot ".githooks\check_staged_artifacts.ps1"
 
 Push-Location $repoRoot
 try {
@@ -19,6 +20,11 @@ try {
     }
 
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scrubScript
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $guardScript
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
