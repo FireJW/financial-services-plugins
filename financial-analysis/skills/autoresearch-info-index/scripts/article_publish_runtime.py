@@ -865,6 +865,12 @@ def build_publish_package(
     selected_topic: dict[str, Any],
     request: dict[str, Any],
 ) -> dict[str, Any]:
+    request = {
+        "editor_anchor_mode": "hidden",
+        "article_framework": "auto",
+        **request,
+    }
+    request["editor_anchor_mode"] = normalize_editor_anchor_mode(request.get("editor_anchor_mode"))
     review_result = safe_dict(workflow_result.get("review_result"))
     article_package = safe_dict(review_result.get("article_package")) or safe_dict(safe_dict(workflow_result.get("draft_result")).get("article_package"))
     selected_images = safe_list(article_package.get("selected_images") or article_package.get("image_blocks"))
