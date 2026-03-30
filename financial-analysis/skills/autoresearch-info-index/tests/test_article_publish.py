@@ -5,6 +5,7 @@ import shutil
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -12,6 +13,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from article_publish_runtime import build_publish_package, run_article_publish
+from article_publish import parse_args
 from hot_topic_discovery_runtime import run_hot_topic_discovery
 
 
@@ -127,6 +129,24 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         )
         self.assertIn("Hot Topic Discovery", result["report_markdown"])
 
+    def test_hot_topic_discovery_applies_operator_topic_controls(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": self.manual_topic_candidates(),
+                "audience_keywords": ["AI", "business", "investing", "industry"],
+                "preferred_topic_keywords": ["AI", "agent"],
+                "excluded_topic_keywords": ["Celebrity"],
+                "min_source_count": 2,
+                "top_n": 5,
+            }
+        )
+        self.assertEqual(len(result["ranked_topics"]), 1)
+        self.assertEqual(result["ranked_topics"][0]["title"], "AI agent hiring rebound becomes a business story")
+        self.assertEqual(result["filtered_out_topics"][0]["title"], "Celebrity airport outfit goes viral again")
+        self.assertIn("Preferred keywords: AI, agent", result["report_markdown"])
+        self.assertIn("Filtered out topics: 1", result["report_markdown"])
+
     def test_article_publish_exports_wechat_draft_package(self) -> None:
         result = run_article_publish(
             {
@@ -153,9 +173,11 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertEqual(package["push_readiness"]["status"], "missing_cover_image")
         self.assertTrue(package["push_readiness"]["credentials_required"])
         self.assertEqual(package["push_readiness"]["cover_source"], "missing")
+        self.assertEqual(package["editor_anchor_mode"], "hidden")
         self.assertEqual(payload["title"], package["title"])
         self.assertEqual(payload["content"], package["content_html"])
         self.assertEqual(payload["thumb_media_id"], "{{WECHAT_THUMB_MEDIA_ID}}")
+        self.assertNotIn(package["editor_anchors"][0]["text"], package["content_html"])
         self.assertIn("run_wechat_push_draft.cmd", result["next_push_command"])
         self.assertIn("Human Review Gate", result["report_markdown"])
         self.assertIn("Publish Readiness", result["report_markdown"])
@@ -230,6 +252,8 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertEqual(package["cover_plan"]["selection_mode"], "dedicated_candidate")
         self.assertEqual(package["push_readiness"]["status"], "ready_for_api_push")
         self.assertEqual(package["push_readiness"]["cover_source"], "dedicated_cover_candidate")
+        self.assertIn("Prefer a text-free cover", package["cover_plan"]["cover_prompt"])
+        self.assertIn("No Chinese text", package["cover_plan"]["cover_prompt"])
 
     def test_build_publish_package_falls_back_to_first_usable_body_image_when_no_dedicated_cover_exists(self) -> None:
         body_image = self.temp_dir / "body-hero.png"
@@ -272,6 +296,42 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertEqual(package["cover_plan"]["selection_mode"], "body_image_fallback")
         self.assertEqual(package["push_readiness"]["status"], "ready_for_api_push")
         self.assertEqual(package["push_readiness"]["cover_source"], "article_image")
+
+    def test_build_publish_package_can_render_editor_anchors_inline_when_requested(self) -> None:
+        workflow_result = {
+            "review_result": {
+                "article_package": {
+                    "title": "Agent hiring reset",
+                    "subtitle": "A concise subtitle",
+                    "lede": "This is the opening paragraph.",
+                    "sections": [
+                        {"heading": "What changed", "paragraph": "Paragraph one."},
+                        {"heading": "Why this matters", "paragraph": "Paragraph two."},
+                    ],
+                    "draft_thesis": "The rebound is real enough to matter.",
+                    "article_markdown": "# Agent hiring reset",
+                    "selected_images": [],
+                    "citations": [],
+                }
+            },
+            "draft_result": {"draft_context": {"image_candidates": []}},
+        }
+        request = self.build_publish_request()
+        request["editor_anchor_mode"] = "inline"
+        package = build_publish_package(
+            workflow_result,
+            {"title": "AI agent hiring rebound", "keywords": ["AI", "agent", "hiring"]},
+            request,
+        )
+
+        self.assertEqual(package["editor_anchor_mode"], "inline")
+        self.assertEqual(package["editor_anchor_visibility"], "visible_inline")
+        self.assertIn(package["editor_anchors"][0]["text"], package["content_html"])
+
+    def test_article_publish_cli_accepts_hyphenated_framework_alias(self) -> None:
+        with patch.object(sys, "argv", ["article_publish.py", "--article-framework", "hot-comment"]):
+            args = parse_args()
+        self.assertEqual(args.article_framework, "hot_comment")
 
     def test_publish_scripts_compile_cleanly(self) -> None:
         for name in [

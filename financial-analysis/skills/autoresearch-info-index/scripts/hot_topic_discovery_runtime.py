@@ -17,6 +17,13 @@ from news_index_runtime import clean_string_list, isoformat_or_blank, parse_date
 
 
 DEFAULT_DISCOVERY_SOURCES = ["weibo", "zhihu", "36kr", "google-news-world"]
+DEFAULT_TOPIC_SCORE_WEIGHTS = {
+    "timeliness": 0.25,
+    "debate": 0.20,
+    "relevance": 0.25,
+    "depth": 0.15,
+    "seo": 0.15,
+}
 FINANCE_KEYWORDS = {
     "ai",
     "agent",
@@ -89,6 +96,53 @@ def now_utc() -> datetime:
 
 def clamp(value: float, low: int = 0, high: int = 100) -> int:
     return max(low, min(high, int(round(value))))
+
+
+def normalize_topic_score_weights(value: Any) -> dict[str, float]:
+    raw_value = value
+    if isinstance(raw_value, str):
+        try:
+            raw_value = json.loads(raw_value)
+        except json.JSONDecodeError:
+            raw_value = {}
+    raw_weights = safe_dict(raw_value)
+    weights: dict[str, float] = {}
+    total = 0.0
+    for key, default in DEFAULT_TOPIC_SCORE_WEIGHTS.items():
+        try:
+            numeric = float(raw_weights.get(key, default))
+        except (TypeError, ValueError):
+            numeric = float(default)
+        numeric = max(0.0, numeric)
+        weights[key] = numeric
+        total += numeric
+    if total <= 0:
+        return dict(DEFAULT_TOPIC_SCORE_WEIGHTS)
+    return {key: round(weights[key] / total, 4) for key in DEFAULT_TOPIC_SCORE_WEIGHTS}
+
+
+def candidate_match_text(candidate: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            candidate.get("title", ""),
+            candidate.get("summary", ""),
+            " ".join(candidate.get("keywords", [])),
+            " ".join(candidate.get("source_names", [])),
+        ]
+    ).lower()
+
+
+def keyword_hit_count(text: str, keywords: list[str]) -> int:
+    return sum(1 for keyword in keywords if keyword.lower() in text)
+
+
+def matching_keywords(text: str, keywords: list[str]) -> list[str]:
+    matches: list[str] = []
+    for keyword in keywords:
+        lowered = keyword.lower()
+        if lowered in text and keyword not in matches:
+            matches.append(keyword)
+    return matches
 
 
 def fetch_text(url: str, *, timeout_seconds: int = 10) -> str:
@@ -341,6 +395,19 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "top_n": max(1, int(raw_payload.get("top_n", 5) or 5)),
         "query": query,
         "audience_keywords": clean_string_list(raw_payload.get("audience_keywords")),
+        "preferred_topic_keywords": clean_string_list(
+            raw_payload.get("preferred_topic_keywords")
+            or raw_payload.get("topic_preferences")
+            or raw_payload.get("preferred_keywords")
+        ),
+        "excluded_topic_keywords": clean_string_list(
+            raw_payload.get("excluded_topic_keywords") or raw_payload.get("exclude_keywords")
+        ),
+        "topic_score_weights": normalize_topic_score_weights(
+            raw_payload.get("topic_score_weights") or raw_payload.get("score_weights")
+        ),
+        "min_total_score": max(0, int(raw_payload.get("min_total_score", 0) or 0)),
+        "min_source_count": max(0, int(raw_payload.get("min_source_count", 0) or 0)),
         "manual_topic_candidates": manual_topic_candidates,
         "max_parallel_sources": max(1, int(raw_payload.get("max_parallel_sources", min(4, len(sources))) or 1)),
     }
@@ -372,19 +439,14 @@ def seo_score(title: str, keywords: list[str]) -> int:
     return clamp(length_score + token_score + specificity_bonus)
 
 
-def relevance_score(candidate: dict[str, Any], audience_keywords: list[str]) -> int:
-    combined = " ".join(
-        [
-            candidate.get("title", ""),
-            candidate.get("summary", ""),
-            " ".join(candidate.get("keywords", [])),
-            " ".join(candidate.get("source_names", [])),
-        ]
-    ).lower()
+def relevance_score(candidate: dict[str, Any], audience_keywords: list[str], preferred_topic_keywords: list[str]) -> int:
+    combined = candidate_match_text(candidate)
     finance_hits = len(keyword_hits(combined))
-    audience_hits = sum(1 for keyword in audience_keywords if keyword.lower() in combined)
+    audience_hits = keyword_hit_count(combined, audience_keywords)
+    preference_hits = keyword_hit_count(combined, preferred_topic_keywords)
     source_bonus = 15 if any(name in {"36kr", "google-news-world", "google-news-search"} for name in candidate.get("source_names", [])) else 0
-    return clamp(20 + finance_hits * 15 + audience_hits * 18 + source_bonus)
+    preference_bonus = min(24, preference_hits * 12)
+    return clamp(20 + finance_hits * 15 + audience_hits * 18 + source_bonus + preference_bonus)
 
 
 def timeliness_score(candidate: dict[str, Any], analysis_time: datetime) -> int:
@@ -410,7 +472,11 @@ def depth_score(candidate: dict[str, Any]) -> int:
     return clamp(base)
 
 
-def build_clustered_candidate(cluster_items: list[dict[str, Any]], analysis_time: datetime, audience_keywords: list[str], index: int) -> dict[str, Any]:
+def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict[str, Any], index: int) -> dict[str, Any]:
+    analysis_time = request["analysis_time"]
+    audience_keywords = request["audience_keywords"]
+    preferred_topic_keywords = request["preferred_topic_keywords"]
+    weights = request["topic_score_weights"]
     sorted_items = sorted(
         cluster_items,
         key=lambda item: (
@@ -451,10 +517,17 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], analysis_time
     }
     timeliness = timeliness_score(candidate, analysis_time)
     debate = discussion_score(candidate["title"], candidate["source_count"])
-    relevance = relevance_score(candidate, audience_keywords)
+    relevance = relevance_score(candidate, audience_keywords, preferred_topic_keywords)
     depth = depth_score(candidate)
     seo = seo_score(candidate["title"], candidate["keywords"])
-    total = clamp(timeliness * 0.25 + debate * 0.20 + relevance * 0.25 + depth * 0.15 + seo * 0.15)
+    total = clamp(
+        timeliness * weights["timeliness"]
+        + debate * weights["debate"]
+        + relevance * weights["relevance"]
+        + depth * weights["depth"]
+        + seo * weights["seo"]
+    )
+    preferred_matches = matching_keywords(candidate_match_text(candidate), preferred_topic_keywords)
     reasons = [
         f"新鲜度 {timeliness}",
         f"讨论空间 {debate}",
@@ -469,17 +542,24 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], analysis_time
         "depth": depth,
         "seo": seo,
         "total_score": total,
+        "weights": weights,
     }
+    if preferred_matches:
+        reasons.append(f"topic preference match {', '.join(preferred_matches[:3])}")
     candidate["score_reasons"] = reasons
+    candidate["topic_control_match"] = {
+        "preferred_keyword_hits": preferred_matches,
+        "excluded_keyword_hits": [],
+    }
     return candidate
 
 
 def normalize_manual_topic_candidate(
     candidate: dict[str, Any],
-    analysis_time: datetime,
-    audience_keywords: list[str],
+    request: dict[str, Any],
     index: int,
 ) -> dict[str, Any]:
+    analysis_time = request["analysis_time"]
     source_items = []
     for item_index, source in enumerate(safe_list(candidate.get("source_items")) or [candidate], start=1):
         if not isinstance(source, dict):
@@ -506,16 +586,44 @@ def normalize_manual_topic_candidate(
         )
     if not source_items:
         raise ValueError("Manual topic candidate requires at least one valid source_items/url entry")
-    return build_clustered_candidate(source_items, analysis_time, audience_keywords, index)
+    return build_clustered_candidate(source_items, request, index)
+
+
+def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> tuple[bool, str]:
+    match_text = candidate_match_text(candidate)
+    excluded_matches = matching_keywords(match_text, request["excluded_topic_keywords"])
+    topic_control_match = safe_dict(candidate.get("topic_control_match"))
+    topic_control_match["excluded_keyword_hits"] = excluded_matches
+    candidate["topic_control_match"] = topic_control_match
+    if excluded_matches:
+        return False, f"excluded keywords: {', '.join(excluded_matches)}"
+    if int(candidate.get("source_count", 0) or 0) < request["min_source_count"]:
+        return False, f"source_count<{request['min_source_count']}"
+    if safe_dict(candidate.get("score_breakdown")).get("total_score", 0) < request["min_total_score"]:
+        return False, f"total_score<{request['min_total_score']}"
+    return True, ""
 
 
 def build_markdown_report(result: dict[str, Any]) -> str:
+    controls = safe_dict(result.get("topic_controls"))
     lines = [
         "# Hot Topic Discovery",
         "",
         f"- Analysis time: {result.get('analysis_time', '')}",
         f"- Sources attempted: {', '.join(result.get('sources_attempted', [])) or 'manual'}",
         f"- Errors: {len(result.get('errors', []))}",
+        f"- Preferred keywords: {', '.join(controls.get('preferred_topic_keywords', [])) or 'none'}",
+        f"- Excluded keywords: {', '.join(controls.get('excluded_topic_keywords', [])) or 'none'}",
+        (
+            "- Score weights: "
+            + ", ".join(
+                f"{key}={int(round(float(value) * 100))}%"
+                for key, value in safe_dict(controls.get("topic_score_weights")).items()
+            )
+        ),
+        f"- Minimum total score: {controls.get('min_total_score', 0)}",
+        f"- Minimum source count: {controls.get('min_source_count', 0)}",
+        f"- Filtered out topics: {len(result.get('filtered_out_topics', []))}",
         "",
         "| Rank | Topic | Total | Sources | Latest | Why |",
         "|---:|---|---:|---:|---|---|",
@@ -531,6 +639,10 @@ def build_markdown_report(result: dict[str, Any]) -> str:
         lines.extend(["", "## Errors"])
         for item in result["errors"]:
             lines.append(f"- {item.get('source', '')}: {item.get('message', '')}")
+    if result.get("filtered_out_topics"):
+        lines.extend(["", "## Filtered Out"])
+        for item in result["filtered_out_topics"]:
+            lines.append(f"- {item.get('title', '')}: {item.get('filter_reason', '')}")
     return "\n".join(lines).strip() + "\n"
 
 
@@ -542,7 +654,7 @@ def run_hot_topic_discovery(raw_payload: dict[str, Any]) -> dict[str, Any]:
 
     if request["manual_topic_candidates"]:
         for index, candidate in enumerate(request["manual_topic_candidates"], start=1):
-            clustered_topics.append(normalize_manual_topic_candidate(candidate, analysis_time, request["audience_keywords"], index))
+            clustered_topics.append(normalize_manual_topic_candidate(candidate, request, index))
     else:
         raw_items: list[dict[str, Any]] = []
         sources = request["sources"]
@@ -570,7 +682,7 @@ def run_hot_topic_discovery(raw_payload: dict[str, Any]) -> dict[str, Any]:
                 continue
             grouped.setdefault(key, []).append(item)
         for index, cluster_items in enumerate(grouped.values(), start=1):
-            clustered_topics.append(build_clustered_candidate(cluster_items, analysis_time, request["audience_keywords"], index))
+            clustered_topics.append(build_clustered_candidate(cluster_items, request, index))
 
     ranked_topics = sorted(
         clustered_topics,
@@ -581,13 +693,35 @@ def run_hot_topic_discovery(raw_payload: dict[str, Any]) -> dict[str, Any]:
         ),
         reverse=True,
     )
+    kept_topics: list[dict[str, Any]] = []
+    filtered_out_topics: list[dict[str, Any]] = []
+    for topic in ranked_topics:
+        keep, reason = apply_topic_controls(topic, request)
+        if keep:
+            kept_topics.append(topic)
+            continue
+        filtered_out_topics.append(
+            {
+                "title": clean_text(topic.get("title")),
+                "filter_reason": reason,
+                "total_score": safe_dict(topic.get("score_breakdown")).get("total_score", 0),
+            }
+        )
     result = {
         "status": "ok",
         "workflow_kind": "hot_topic_discovery",
         "analysis_time": isoformat_or_blank(analysis_time),
         "sources_attempted": request["sources"],
         "errors": errors,
-        "ranked_topics": ranked_topics[: request["top_n"]],
+        "ranked_topics": kept_topics[: request["top_n"]],
+        "filtered_out_topics": filtered_out_topics,
+        "topic_controls": {
+            "preferred_topic_keywords": request["preferred_topic_keywords"],
+            "excluded_topic_keywords": request["excluded_topic_keywords"],
+            "topic_score_weights": request["topic_score_weights"],
+            "min_total_score": request["min_total_score"],
+            "min_source_count": request["min_source_count"],
+        },
     }
     result["report_markdown"] = build_markdown_report(result)
     return result

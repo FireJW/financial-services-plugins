@@ -18,6 +18,13 @@ def clean_text(value: Any) -> str:
     return " ".join(str(value or "").split()).strip()
 
 
+def normalize_editor_anchor_mode(value: Any) -> str:
+    mode = clean_text(value).lower().replace("-", "_")
+    if mode in {"inline", "hidden"}:
+        return mode
+    return "hidden"
+
+
 def parse_bool(value: Any, *, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
@@ -84,6 +91,17 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "selected_topic_index": max(1, int(raw_payload.get("selected_topic_index", 1) or 1)),
         "audience_keywords": clean_string_list(raw_payload.get("audience_keywords"))
         or ["投资", "商业", "产业", "AI", "科技", "公众号"],
+        "preferred_topic_keywords": clean_string_list(
+            raw_payload.get("preferred_topic_keywords")
+            or raw_payload.get("topic_preferences")
+            or raw_payload.get("preferred_keywords")
+        ),
+        "excluded_topic_keywords": clean_string_list(
+            raw_payload.get("excluded_topic_keywords") or raw_payload.get("exclude_keywords")
+        ),
+        "topic_score_weights": raw_payload.get("topic_score_weights") or raw_payload.get("score_weights") or {},
+        "min_total_score": max(0, int(raw_payload.get("min_total_score", 0) or 0)),
+        "min_source_count": max(0, int(raw_payload.get("min_source_count", 0) or 0)),
         "title_hint": clean_text(raw_payload.get("title_hint")),
         "subtitle_hint": clean_text(raw_payload.get("subtitle_hint")),
         "angle": clean_text(raw_payload.get("angle")),
@@ -93,6 +111,8 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "image_strategy": clean_text(raw_payload.get("image_strategy")) or "mixed",
         "draft_mode": clean_text(raw_payload.get("draft_mode")) or "balanced",
         "language_mode": clean_text(raw_payload.get("language_mode")) or "zh",
+        "article_framework": clean_text(raw_payload.get("article_framework")) or "auto",
+        "editor_anchor_mode": normalize_editor_anchor_mode(raw_payload.get("editor_anchor_mode")),
         "account_name": clean_text(raw_payload.get("account_name")),
         "author": clean_text(raw_payload.get("author")),
         "digest_max_chars": max(60, int(raw_payload.get("digest_max_chars", 120) or 120)),
@@ -119,6 +139,11 @@ def resolve_discovery_request(request: dict[str, Any]) -> dict[str, Any]:
         "limit": request["discovery_limit"],
         "top_n": request["discovery_top_n"],
         "audience_keywords": request["audience_keywords"],
+        "preferred_topic_keywords": request["preferred_topic_keywords"],
+        "excluded_topic_keywords": request["excluded_topic_keywords"],
+        "topic_score_weights": request["topic_score_weights"],
+        "min_total_score": request["min_total_score"],
+        "min_source_count": request["min_source_count"],
         "manual_topic_candidates": request["manual_topic_candidates"],
         "max_parallel_sources": request["max_parallel_sources"],
     }
@@ -585,18 +610,22 @@ def render_anchor_html(anchor_text: str) -> str:
 def render_image_html(image_item: dict[str, Any]) -> str:
     src = clean_text(image_item.get("render_src"))
     caption = clean_text(image_item.get("caption"))
-    source_name = clean_text(image_item.get("source_name"))
-    caption_text = " | ".join(bit for bit in [caption, f"来源：{source_name}" if source_name else ""] if bit)
     return (
         "<section style=\"margin:18px 0;text-align:center;\">"
-        f"<img src=\"{escape(src)}\" alt=\"{escape(caption or source_name or 'image')}\" "
+        f"<img src=\"{escape(src)}\" alt=\"{escape(caption or 'image')}\" "
         "style=\"max-width:100%;border-radius:8px;display:block;margin:0 auto;\" />"
-        f"{f'<p style=\"margin:8px 0 0;color:#666;font-size:13px;line-height:1.6;\">{escape(caption_text)}</p>' if caption_text else ''}"
+        f"{f'<p style=\"margin:8px 0 0;color:#666;font-size:13px;line-height:1.6;\">{escape(caption)}</p>' if caption else ''}"
         "</section>"
     )
 
 
-def render_wechat_html(article_package: dict[str, Any], image_plan: list[dict[str, Any]], anchors: list[dict[str, str]]) -> str:
+def render_wechat_html(
+    article_package: dict[str, Any],
+    image_plan: list[dict[str, Any]],
+    anchors: list[dict[str, str]],
+    *,
+    editor_anchor_mode: str = "hidden",
+) -> str:
     title = clean_text(article_package.get("title"))
     subtitle = clean_text(article_package.get("subtitle"))
     lede = clean_text(article_package.get("lede"))
@@ -629,8 +658,9 @@ def render_wechat_html(article_package: dict[str, Any], image_plan: list[dict[st
 
     for item in images_by_placement.get("after_lede", []):
         html_parts.append(render_image_html(item))
-    for item in anchors_by_placement.get("after_lede", []):
-        html_parts.append(render_anchor_html(item.get("text", "")))
+    if editor_anchor_mode == "inline":
+        for item in anchors_by_placement.get("after_lede", []):
+            html_parts.append(render_anchor_html(item.get("text", "")))
 
     for index, section in enumerate(sections, start=1):
         heading = clean_text(section.get("heading")) or f"部分 {index}"
@@ -643,8 +673,9 @@ def render_wechat_html(article_package: dict[str, Any], image_plan: list[dict[st
         html_parts.append("</section>")
         for item in images_by_placement.get(f"after_section_{index}", []):
             html_parts.append(render_image_html(item))
-        for item in anchors_by_placement.get(f"after_section_{index}", []):
-            html_parts.append(render_anchor_html(item.get("text", "")))
+        if editor_anchor_mode == "inline":
+            for item in anchors_by_placement.get(f"after_section_{index}", []):
+                html_parts.append(render_anchor_html(item.get("text", "")))
 
     for item in images_by_placement.get("appendix", []):
         html_parts.append(render_image_html(item))
@@ -679,8 +710,11 @@ def build_cover_plan(
     )
     title = clean_text(selected_topic.get("title"))
     prompt = (
-        f"为微信公众号文章生成 16:9 封面图。主题：{title}。关键词：{', '.join(keywords[:5]) or title}。"
-        "风格：商业媒体封面，信息密度高，克制专业，避免夸张赛博风。"
+        f"Create a 16:9 WeChat article cover for: {title}. "
+        f"Keywords: {', '.join(keywords[:5]) or title}. "
+        "Style: calm editorial illustration, clean composition, realistic lighting, premium but restrained. "
+        "Prefer a text-free cover. No Chinese text, no logo, no watermark, no UI chrome. "
+        "If text is unavoidable, use short clear English only."
     )
     return {
         "primary_image_asset_id": clean_text(primary_image.get("asset_id")),
@@ -840,7 +874,12 @@ def build_publish_package(
     keywords = extract_keywords(selected_topic, article_package)
     anchors = build_editor_anchors(len(safe_list(article_package.get("sections") or article_package.get("body_sections"))))
     digest = build_digest(article_package, request["digest_max_chars"])
-    html = render_wechat_html(article_package, image_plan, anchors)
+    html = render_wechat_html(
+        article_package,
+        image_plan,
+        anchors,
+        editor_anchor_mode=request["editor_anchor_mode"],
+    )
     cover_plan = build_cover_plan(selected_topic, image_plan, draft_image_candidates, keywords)
     content_ready = all(clean_text(item.get("render_src")) for item in image_plan)
     push_ready = False
@@ -871,6 +910,9 @@ def build_publish_package(
         "keywords": keywords,
         "content_markdown": article_package.get("article_markdown", ""),
         "content_html": html,
+        "article_framework": clean_text(article_package.get("article_framework") or request.get("article_framework")),
+        "editor_anchor_mode": request["editor_anchor_mode"],
+        "editor_anchor_visibility": "visible_inline" if request["editor_anchor_mode"] == "inline" else "review_only",
         "editor_anchors": anchors,
         "image_assets": image_plan,
         "cover_plan": cover_plan,
@@ -984,6 +1026,7 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "image_strategy": request["image_strategy"],
         "draft_mode": request["draft_mode"],
         "language_mode": request["language_mode"],
+        "article_framework": request["article_framework"],
     }
     workflow_result = run_article_workflow(workflow_payload)
     publish_package = build_publish_package(workflow_result, selected_topic, request)

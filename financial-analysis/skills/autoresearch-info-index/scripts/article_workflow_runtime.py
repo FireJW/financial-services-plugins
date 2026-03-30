@@ -79,6 +79,7 @@ def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "max_images": payload.get("max_images"),
         "image_strategy": clean_text(payload.get("image_strategy")),
         "draft_mode": clean_text(payload.get("draft_mode")),
+        "article_framework": clean_text(payload.get("article_framework")),
         "language_mode": clean_text(payload.get("language_mode") or payload.get("output_language")),
         "feedback_profile_dir": clean_text(payload.get("feedback_profile_dir")),
         "cleanup_enabled": bool(payload.get("cleanup_enabled") or payload.get("cleanup_days") or payload.get("cleanup_root_dir")),
@@ -105,6 +106,7 @@ def build_draft_payload(request: dict[str, Any], source_result: dict[str, Any]) 
         "target_length_chars",
         "max_images",
         "language_mode",
+        "article_framework",
         "feedback_profile_dir",
     ):
         if request.get(key) not in (None, ""):

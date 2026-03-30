@@ -14,6 +14,10 @@ from cli_output import print_json
 from article_publish_runtime import run_article_publish
 
 
+def normalize_article_framework_arg(value: str) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Discover a hot topic or use a provided topic, run the article workflow, and export a WeChat-ready draft package."
@@ -27,6 +31,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--discovery-top-n", type=int, help="Optional ranked topic count to keep")
     parser.add_argument("--selected-topic-index", type=int, help="Optional 1-based ranked topic index to publish")
     parser.add_argument("--audience-keywords", nargs="*", help="Optional audience keyword overrides")
+    parser.add_argument("--preferred-topic-keywords", nargs="*", help="Optional topic preference keywords")
+    parser.add_argument("--excluded-topic-keywords", nargs="*", help="Optional topic exclusion keywords")
+    parser.add_argument("--min-total-score", type=int, help="Optional minimum topic score to keep")
+    parser.add_argument("--min-source-count", type=int, help="Optional minimum source count to keep")
     parser.add_argument("--output-dir", help="Optional output directory for staged files")
     parser.add_argument("--title-hint", help="Optional title hint passed into article workflow")
     parser.add_argument("--subtitle-hint", help="Optional subtitle hint passed into article workflow")
@@ -34,6 +42,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tone", help="Optional tone override")
     parser.add_argument("--target-length-chars", type=int, help="Optional article target length in Chinese characters")
     parser.add_argument("--draft-mode", choices=["balanced", "image_first", "image_only"], help="Draft mode")
+    parser.add_argument(
+        "--article-framework",
+        type=normalize_article_framework_arg,
+        choices=["auto", "hot_comment", "deep_analysis", "tutorial", "story", "list", "opinion"],
+        help="Optional public article framework override",
+    )
+    parser.add_argument(
+        "--editor-anchor-mode",
+        choices=["hidden", "inline"],
+        help="Whether editor anchors should stay review-only or render inline in HTML",
+    )
     parser.add_argument("--image-strategy", choices=["mixed", "prefer_images", "screenshots_only"], help="Image strategy")
     parser.add_argument("--max-images", type=int, help="Max images to keep")
     parser.add_argument("--account-name", help="Optional public account name for the publish package")
@@ -73,6 +92,14 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["selected_topic_index"] = args.selected_topic_index
     if args.audience_keywords is not None:
         payload["audience_keywords"] = args.audience_keywords
+    if args.preferred_topic_keywords is not None:
+        payload["preferred_topic_keywords"] = args.preferred_topic_keywords
+    if args.excluded_topic_keywords is not None:
+        payload["excluded_topic_keywords"] = args.excluded_topic_keywords
+    if args.min_total_score is not None:
+        payload["min_total_score"] = args.min_total_score
+    if args.min_source_count is not None:
+        payload["min_source_count"] = args.min_source_count
     if args.output_dir:
         payload["output_dir"] = args.output_dir
     if args.title_hint:
@@ -87,6 +114,10 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["target_length_chars"] = args.target_length_chars
     if args.draft_mode:
         payload["draft_mode"] = args.draft_mode
+    if args.article_framework:
+        payload["article_framework"] = args.article_framework
+    if args.editor_anchor_mode:
+        payload["editor_anchor_mode"] = args.editor_anchor_mode
     if args.image_strategy:
         payload["image_strategy"] = args.image_strategy
     if args.max_images is not None:

@@ -304,7 +304,9 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertEqual(draft["source_summary"]["source_kind"], "x_index")
         self.assertGreaterEqual(package["draft_metrics"]["image_count"], 1)
         self.assertGreaterEqual(package["draft_metrics"]["citation_count"], 1)
-        self.assertIn("Images And Screenshots", package["body_markdown"])
+        self.assertIn("What Changed", package["body_markdown"])
+        self.assertIn("What To Watch Next", package["body_markdown"])
+        self.assertNotIn("Images And Screenshots", package["body_markdown"])
         self.assertIn(f"![{package['selected_images'][0]['image_id']}](", package["article_markdown"])
         self.assertTrue(any(item["status"] == "local_ready" for item in package["selected_images"]))
         self.assertTrue(any(item["role"] == "post_media" and item["status"] == "local_ready" for item in package["selected_images"]))
@@ -351,11 +353,25 @@ class ArticleWorkflowTests(unittest.TestCase):
         draft = build_article_draft({"source_result": run_news_index(self.news_request), "target_length_chars": 800})
         self.assertEqual(draft["source_summary"]["source_kind"], "news_index")
         self.assertGreaterEqual(draft["article_package"]["draft_metrics"]["citation_count"], 1)
-        self.assertIn("Bottom Line", draft["article_package"]["body_markdown"])
+        self.assertIn("What Changed", draft["article_package"]["body_markdown"])
         self.assertIn("Why This Matters", draft["article_package"]["body_markdown"])
+        self.assertIn("What To Watch Next", draft["article_package"]["body_markdown"])
         self.assertIn("Sources", draft["article_package"]["article_markdown"])
         self.assertNotIn("core claim(s)", draft["article_package"]["body_markdown"])
+        self.assertNotIn("current indexed result", draft["article_package"]["article_markdown"].lower())
         self.assertIn("<html>", draft["preview_html"])
+
+    def test_article_draft_title_strips_source_branding_and_keeps_publishable_copy(self) -> None:
+        draft = build_article_draft(
+            {
+                "source_result": run_news_index(self.news_request),
+                "topic": "微元合成获3亿元A+轮融资，联合发布AI生物计算开放合作平台 | 36氪首发",
+            }
+        )
+        package = draft["article_package"]
+        self.assertNotIn("36氪", package["title"])
+        self.assertNotIn("首发", package["title"])
+        self.assertTrue(package["publishability_checks"]["passed"])
 
     def test_macro_note_workflow_runs_and_writes_stage_outputs(self) -> None:
         output_dir = self.case_dir("macro-note-workflow")
@@ -414,7 +430,7 @@ class ArticleWorkflowTests(unittest.TestCase):
             None,
         )
         headings = [section["heading"] for section in sections]
-        self.assertIn("Story Angles", headings)
+        self.assertIn("What Changed", headings)
         self.assertIn("Why This Matters", headings)
 
     def test_article_draft_bilingual_mode_emits_zh_and_en_sections(self) -> None:
@@ -427,8 +443,9 @@ class ArticleWorkflowTests(unittest.TestCase):
                 "angle_zh": "区分已确认信息和市场想象",
             }
         )
-        self.assertIn("核心判断 | Bottom Line", draft["article_package"]["body_markdown"])
-        self.assertIn("截至", draft["article_package"]["body_markdown"])
+        self.assertIn("What Changed", draft["article_package"]["body_markdown"])
+        self.assertIn("为什么这事值得关注", draft["article_package"]["body_markdown"])
+        self.assertNotIn("Bottom Line", draft["article_package"]["body_markdown"])
         self.assertIn("English title", draft["article_package"]["article_markdown"])
 
     def test_draft_claim_map_uses_fallback_citations_for_derived_thesis(self) -> None:
