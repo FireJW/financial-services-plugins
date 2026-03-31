@@ -6,6 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from agent_reach_bridge_runtime import run_agent_reach_bridge
 from article_batch_workflow_runtime import run_article_batch_workflow
 from article_workflow_runtime import load_json, write_json
 from news_index_runtime import parse_datetime, slugify, run_news_index
@@ -82,13 +83,72 @@ def candidate_label(candidate: dict[str, Any], payload: dict[str, Any], index: i
     )
 
 
-def resolve_source_payload(candidate: dict[str, Any], payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+def agent_reach_enabled(payload: dict[str, Any]) -> bool:
+    agent_reach_config = safe_dict(payload.get("agent_reach"))
+    return bool(payload.get("use_agent_reach") or agent_reach_config.get("enabled") or agent_reach_config)
+
+
+def build_agent_reach_bridge_payload(payload: dict[str, Any], analysis_time: Any) -> dict[str, Any]:
+    agent_reach_config = safe_dict(payload.get("agent_reach"))
+    resolved_analysis_time = parse_datetime(payload.get("analysis_time"), fallback=analysis_time)
+    bridge_payload: dict[str, Any] = {
+        "topic": clean_text(payload.get("topic")),
+        "analysis_time": resolved_analysis_time.isoformat() if resolved_analysis_time else "",
+        "questions": deepcopy(safe_list(payload.get("questions"))),
+        "use_case": clean_text(payload.get("use_case")) or "article-auto-queue-agent-reach",
+        "source_preferences": deepcopy(safe_list(payload.get("source_preferences"))),
+        "mode": clean_text(payload.get("mode")) or "generic",
+        "windows": deepcopy(safe_list(payload.get("windows"))),
+        "claims": deepcopy(safe_list(payload.get("claims"))),
+        "market_relevance": deepcopy(safe_list(payload.get("market_relevance"))),
+        "expected_source_families": deepcopy(safe_list(payload.get("expected_source_families"))),
+    }
+    for key in (
+        "pseudo_home",
+        "channels",
+        "timeout_per_channel",
+        "max_results_per_channel",
+        "dedupe_window_hours",
+        "dedupe_store_path",
+        "rss_feeds",
+        "channel_payloads",
+        "channel_result_paths",
+        "channel_commands",
+    ):
+        value = agent_reach_config.get(key)
+        if value not in (None, "", [], {}):
+            bridge_payload[key] = deepcopy(value)
+    return bridge_payload
+
+
+def merge_news_payload_with_agent_reach_candidates(payload: dict[str, Any], bridge_result: dict[str, Any]) -> dict[str, Any]:
+    merged_payload = deepcopy(payload)
+    imported_candidates = [
+        deepcopy(item)
+        for item in safe_list(safe_dict(bridge_result.get("retrieval_request")).get("candidates"))
+        if isinstance(item, dict)
+    ]
+    existing_candidates = [
+        deepcopy(item)
+        for item in safe_list(merged_payload.get("candidates") or merged_payload.get("source_candidates"))
+        if isinstance(item, dict)
+    ]
+    merged_payload["candidates"] = existing_candidates + imported_candidates
+    return merged_payload
+
+
+def resolve_source_payload(candidate: dict[str, Any], payload: dict[str, Any], analysis_time: Any) -> tuple[dict[str, Any], str]:
     kind = detect_payload_kind(payload)
     if kind == "indexed_result":
         source_payload = payload
     elif kind == "x_request":
         source_payload = run_x_index(payload)
     else:
+        if agent_reach_enabled(payload):
+            bridge_result = run_agent_reach_bridge(build_agent_reach_bridge_payload(payload, analysis_time))
+            source_payload = run_news_index(merge_news_payload_with_agent_reach_candidates(payload, bridge_result))
+            source_kind = "news_index_agent_reach"
+            return source_payload, source_kind
         source_payload = run_news_index(payload)
     source_kind = "x_index" if safe_list(source_payload.get("x_posts")) or safe_dict(source_payload.get("evidence_pack")) else "news_index"
     return source_payload, source_kind
@@ -214,7 +274,7 @@ def choose_defaults(candidate: dict[str, Any], metrics: dict[str, Any], batch_re
 def rank_single_candidate(request: dict[str, Any], candidate: dict[str, Any], index: int, sources_dir: Path) -> tuple[int, dict[str, Any]]:
     payload = load_candidate_payload(candidate)
     label = candidate_label(candidate, payload, index)
-    source_payload, source_kind = resolve_source_payload(candidate, payload)
+    source_payload, source_kind = resolve_source_payload(candidate, payload, request["analysis_time"])
     metrics = priority_metrics(source_payload, source_kind, request["prefer_visuals"])
     draft_mode, image_strategy = choose_defaults(candidate, metrics, request)
     source_result_path = clean_text(candidate.get("request_path") or candidate.get("source_result_path") or candidate.get("input_path"))

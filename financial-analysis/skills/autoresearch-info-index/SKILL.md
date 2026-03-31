@@ -240,6 +240,12 @@ patterns:
 - [scripts/last30days_deploy_check_runtime.py](scripts/last30days_deploy_check_runtime.py) inspects whether a separate `last30days` deployment exists and which runtime/config gaps remain
 - [scripts/last30days_deploy_check.py](scripts/last30days_deploy_check.py) runs the separate deployment check entry
 - [scripts/run_last30days_deploy_check.cmd](scripts/run_last30days_deploy_check.cmd) runs the deployment check through the local Python wrapper
+- [scripts/agent_reach_bridge_runtime.py](scripts/agent_reach_bridge_runtime.py) imports a separate Agent Reach payload or per-channel fetch result and bridges selected findings into `news-index` as shadow observations
+- [scripts/agent_reach_bridge.py](scripts/agent_reach_bridge.py) runs the one-shot Agent Reach bridge entry
+- [scripts/run_agent_reach_bridge.cmd](scripts/run_agent_reach_bridge.cmd) runs the Agent Reach bridge through the local Python wrapper
+- [scripts/agent_reach_deploy_check_runtime.py](scripts/agent_reach_deploy_check_runtime.py) inspects whether a separate Agent Reach deployment exists, whether the core channels are actively verified, and which runtime/config gaps remain
+- [scripts/agent_reach_deploy_check.py](scripts/agent_reach_deploy_check.py) runs the separate Agent Reach deployment check entry
+- [scripts/run_agent_reach_deploy_check.cmd](scripts/run_agent_reach_deploy_check.cmd) runs the Agent Reach deployment check through the local Python wrapper
 - [scripts/article_draft_flow_runtime.py](scripts/article_draft_flow_runtime.py) turns an x-index or news-index result into an article-ready package with citations and selected images
 - [scripts/article_draft_runtime.py](scripts/article_draft_runtime.py) is a compatibility wrapper that forwards older imports to the article draft flow runtime
 - [scripts/article_draft.py](scripts/article_draft.py) builds a one-shot article draft package
