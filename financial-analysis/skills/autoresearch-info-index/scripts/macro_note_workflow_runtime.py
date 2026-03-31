@@ -64,13 +64,21 @@ def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "payload_kind": payload_kind,
         "topic": topic,
         "analysis_time": analysis_time,
-        "agent_reach_enabled": bool(payload.get("use_agent_reach") or agent_reach_config.get("enabled") or agent_reach_config),
+        "agent_reach_enabled": resolve_agent_reach_enabled(payload, agent_reach_config),
         "agent_reach_config": agent_reach_config,
         "source_result": source_payload,
         "source_result_path": source_result_path,
         "payload": payload,
         "output_dir": output_dir,
     }
+
+
+def resolve_agent_reach_enabled(payload: dict[str, Any], agent_reach_config: dict[str, Any]) -> bool:
+    if "use_agent_reach" in payload:
+        return bool(payload.get("use_agent_reach"))
+    if "enabled" in agent_reach_config:
+        return bool(agent_reach_config.get("enabled"))
+    return bool(agent_reach_config)
 
 
 def build_agent_reach_bridge_payload(request: dict[str, Any]) -> dict[str, Any]:

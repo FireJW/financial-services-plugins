@@ -480,6 +480,40 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(any(item.get("origin") == "agent_reach" for item in result["source_result"]["observations"]))
         self.assertIn("Agent Reach Augmentation", result["report_markdown"])
 
+    def test_macro_note_workflow_respects_agent_reach_enabled_false(self) -> None:
+        output_dir = self.case_dir("macro-note-workflow-agent-reach-disabled")
+        request = {
+            "topic": "Hormuz energy shock",
+            "analysis_time": "2026-03-24T12:00:00+00:00",
+            "claims": [
+                {
+                    "claim_id": "claim-energy",
+                    "claim_text": "Hormuz disruption remains a primary transmission channel for oil and LNG stress.",
+                }
+            ],
+            "candidates": [
+                {
+                    "source_id": "wire-1",
+                    "source_name": "Reuters",
+                    "source_type": "wire",
+                    "published_at": "2026-03-24T11:30:00+00:00",
+                    "observed_at": "2026-03-24T11:31:00+00:00",
+                    "url": "https://example.com/reuters-energy",
+                    "text_excerpt": "Hormuz disruption remains a primary transmission channel for oil and LNG stress.",
+                    "claim_ids": ["claim-energy"],
+                    "claim_states": {"claim-energy": "support"},
+                }
+            ],
+            "agent_reach": {"enabled": False, "channels": ["youtube"]},
+            "output_dir": str(output_dir),
+        }
+        with patch("macro_note_workflow_runtime.run_agent_reach_bridge") as bridge_mock:
+            result = run_macro_note_workflow(request)
+
+        bridge_mock.assert_not_called()
+        self.assertEqual(result["source_stage"]["source_kind"], "news_index")
+        self.assertEqual(result["source_stage"].get("agent_reach_stage") or {}, {})
+
     def test_build_sections_without_analysis_brief_uses_derived_brief_path(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request), "target_length_chars": 800})
         sections = build_sections(
@@ -1449,6 +1483,40 @@ Make the article easier to trust.
         self.assertTrue(any(item.get("origin") == "agent_reach" for item in result["source_result"]["observations"]))
         self.assertIn("Agent Reach Augmentation", result["report_markdown"])
         self.assertIn("agent-reach-bridge-result.json", result["report_markdown"])
+
+    def test_article_workflow_respects_agent_reach_enabled_false(self) -> None:
+        workflow_dir = self.case_dir("workflow-agent-reach-disabled")
+        request = {
+            "topic": "Indirect talks and energy shock",
+            "analysis_time": "2026-03-24T12:00:00+00:00",
+            "claims": [
+                {
+                    "claim_id": "claim-core",
+                    "claim_text": "Indirect talks continue through intermediaries.",
+                }
+            ],
+            "candidates": [
+                {
+                    "source_id": "gov-1",
+                    "source_name": "Oman Foreign Ministry",
+                    "source_type": "government",
+                    "published_at": "2026-03-24T11:20:00+00:00",
+                    "observed_at": "2026-03-24T11:25:00+00:00",
+                    "url": "https://example.com/oman-talks",
+                    "text_excerpt": "Indirect talks continue through intermediaries.",
+                    "claim_ids": ["claim-core"],
+                    "claim_states": {"claim-core": "support"},
+                }
+            ],
+            "agent_reach": {"enabled": False, "channels": ["youtube"]},
+            "output_dir": str(workflow_dir / "out"),
+        }
+        with patch("article_workflow_runtime.run_agent_reach_bridge") as bridge_mock:
+            result = run_article_workflow(request)
+
+        bridge_mock.assert_not_called()
+        self.assertEqual(result["source_stage"]["source_kind"], "news_index")
+        self.assertEqual(result["source_stage"].get("agent_reach_stage") or {}, {})
 
     def test_article_cleanup_runtime_removes_old_dirs_and_keeps_recent(self) -> None:
         cleanup_root = self.case_dir("cleanup-runtime")
