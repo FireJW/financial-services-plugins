@@ -23,6 +23,10 @@ def clean_text(value: Any) -> str:
 RequestFn = Callable[[str, str, bytes | None, dict[str, str], int], bytes]
 DownloadFn = Callable[[str, int], bytes]
 REPO_ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_LOCAL_SECRET_FILES = [
+    ".env.wechat.local",
+    ".tmp/wechat-phase2-dev/.env.wechat.local",
+]
 
 
 def parse_bool(value: Any, *, default: bool = False) -> bool:
@@ -61,13 +65,30 @@ def parse_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def load_local_wechat_credentials() -> dict[str, str]:
+def iter_wechat_env_candidate_paths(payload: dict[str, Any] | None = None) -> list[Path]:
     candidate_paths: list[Path] = []
-    explicit_path = clean_text(os.environ.get("WECHAT_ENV_FILE"))
-    if explicit_path:
-        candidate_paths.append(Path(explicit_path).expanduser().resolve())
-    candidate_paths.append((Path.cwd() / ".env.wechat.local").resolve())
-    candidate_paths.append((REPO_ROOT / ".env.wechat.local").resolve())
+    raw_payload = payload or {}
+
+    explicit_paths = [
+        clean_text(os.environ.get("WECHAT_ENV_FILE")),
+        clean_text(os.environ.get("WECHAT_ENV_PATH")),
+        clean_text(raw_payload.get("wechat_env_file")),
+        clean_text(raw_payload.get("wechat_env_path")),
+        clean_text(raw_payload.get("env_file_path")),
+    ]
+    for explicit_path in explicit_paths:
+        if explicit_path:
+            candidate_paths.append(Path(explicit_path).expanduser().resolve())
+
+    cwd = Path.cwd().resolve()
+    candidate_paths.append((cwd / ".env.wechat.local").resolve())
+    for relative_path in DEFAULT_LOCAL_SECRET_FILES:
+        candidate_paths.append((REPO_ROOT / relative_path).resolve())
+    return candidate_paths
+
+
+def load_local_wechat_credentials(payload: dict[str, Any] | None = None) -> dict[str, str]:
+    candidate_paths = iter_wechat_env_candidate_paths(payload)
 
     seen_paths: set[Path] = set()
     for candidate_path in candidate_paths:
@@ -110,7 +131,7 @@ def resolve_credential_state(payload: dict[str, Any]) -> dict[str, Any]:
             "next_step": "Credentials are available from environment variables.",
         }
 
-    file_credentials = load_local_wechat_credentials()
+    file_credentials = load_local_wechat_credentials(payload)
     if file_credentials:
         app_id = clean_text(file_credentials.get("app_id"))
         app_secret = clean_text(file_credentials.get("app_secret"))
@@ -134,7 +155,8 @@ def resolve_credential_state(payload: dict[str, Any]) -> dict[str, Any]:
         if not allow_inline:
             error_message = (
                 "Inline WeChat credentials are blocked by default. Set WECHAT_APP_ID/WECHAT_APP_SECRET "
-                "in the environment or create .env.wechat.local. Only use allow_insecure_inline_credentials=true "
+                "in the environment, point WECHAT_ENV_FILE to a local secret file, or create .env.wechat.local. "
+                "Only use allow_insecure_inline_credentials=true "
                 "for isolated one-off runs you will never commit."
             )
             return {
@@ -147,7 +169,7 @@ def resolve_credential_state(payload: dict[str, Any]) -> dict[str, Any]:
                 "app_secret": inline_app_secret,
                 "masked_app_id": mask_config_value(inline_app_id, prefix=4, suffix=4),
                 "error_message": error_message,
-                "next_step": "Move the credentials into WECHAT_APP_ID/WECHAT_APP_SECRET or .env.wechat.local.",
+                "next_step": "Move the credentials into WECHAT_APP_ID/WECHAT_APP_SECRET, WECHAT_ENV_FILE, or .env.wechat.local.",
             }
         if not inline_app_id or not inline_app_secret:
             return {
@@ -184,8 +206,11 @@ def resolve_credential_state(payload: dict[str, Any]) -> dict[str, Any]:
         "app_id": "",
         "app_secret": "",
         "masked_app_id": "",
-        "error_message": "Missing WeChat credentials. Set WECHAT_APP_ID/WECHAT_APP_SECRET in the environment or create .env.wechat.local.",
-        "next_step": "Set WECHAT_APP_ID/WECHAT_APP_SECRET or create an untracked .env.wechat.local file.",
+        "error_message": (
+            "Missing WeChat credentials. Set WECHAT_APP_ID/WECHAT_APP_SECRET in the environment, "
+            "point WECHAT_ENV_FILE to a local secret file, or create .env.wechat.local."
+        ),
+        "next_step": "Set WECHAT_APP_ID/WECHAT_APP_SECRET, WECHAT_ENV_FILE, or create an untracked .env.wechat.local file.",
     }
 
 

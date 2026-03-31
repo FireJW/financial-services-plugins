@@ -22,7 +22,7 @@ from article_draft_flow_runtime import build_article_draft, build_draft_claim_ma
 from article_feedback_markdown import parse_feedback_markdown
 from article_feedback_profiles import feedback_profile_status as real_feedback_profile_status
 from article_revise import build_payload as build_article_revise_payload
-from article_revise_flow_runtime import build_article_revision, build_red_team_review
+from article_revise_flow_runtime import build_article_revision, build_red_team_review, rewrite_request_after_attack
 from article_batch_workflow_runtime import run_article_batch_workflow
 from article_auto_queue_runtime import run_article_auto_queue
 from article_workflow_runtime import build_revision_template, run_article_workflow
@@ -44,6 +44,11 @@ class ArticleWorkflowTests(unittest.TestCase):
         path = self.temp_root / name
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    def empty_profile_dir(self, name: str) -> str:
+        path = self.case_dir(name)
+        path.mkdir(parents=True, exist_ok=True)
+        return str(path)
 
     def build_seed_x_index_result(self, tmpdir: Path) -> dict:
         screenshot_path = tmpdir / "root.png"
@@ -293,13 +298,319 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(analysis_brief["benchmark_map"]["primary_benchmarks"])
         self.assertIn("## Macro Note Fields", brief["report_markdown"])
 
+    def test_article_brief_preserves_market_relevance_zh_from_news_index_request(self) -> None:
+        source_result = run_news_index(
+            {
+                "topic": "AI Agent hiring rebound becomes a business story",
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-core",
+                        "claim_text": "AI Agent hiring is becoming a business signal rather than a pure hiring headline.",
+                        "claim_text_zh": "AI Agent 招聘回暖，正在从岗位新闻变成经营信号。",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "major-1",
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "published_at": "2026-03-29T10:00:00+00:00",
+                        "observed_at": "2026-03-29T10:10:00+00:00",
+                        "url": "https://example.com/36kr-agent-hiring",
+                        "text_excerpt": "36kr reports selected AI agent startups are hiring again.",
+                        "claim_ids": ["claim-core"],
+                        "claim_states": {"claim-core": "support"},
+                    }
+                ],
+                "market_relevance": [
+                    "Chinese business and investing readers still need a clean explanation of the event background, the transmission path, and what matters next."
+                ],
+                "market_relevance_zh": [
+                    "中文商业与投资读者需要看清这件事的背景、传导路径，以及它接下来会影响什么。"
+                ],
+            }
+        )
+
+        brief = build_analysis_brief({"source_result": source_result})
+        self.assertEqual(
+            brief["source_summary"]["market_relevance_zh"],
+            ["中文商业与投资读者需要看清这件事的背景、传导路径，以及它接下来会影响什么。"],
+        )
+        self.assertEqual(
+            brief["analysis_brief"]["market_or_reader_relevance_zh"],
+            ["中文商业与投资读者需要看清这件事的背景、传导路径，以及它接下来会影响什么。"],
+        )
+        self.assertTrue(all("Chinese business and investing readers" not in item for item in brief["analysis_brief"]["open_questions_zh"]))
+
+    def test_article_brief_recommended_thesis_zh_avoids_operator_prompt_phrasing(self) -> None:
+        brief = build_analysis_brief({"source_result": self.build_clean_core_news_result()})
+        thesis_zh = brief["analysis_brief"]["recommended_thesis_zh"]
+        self.assertTrue(thesis_zh)
+        self.assertTrue(any("\u4e00" <= ch <= "\u9fff" for ch in thesis_zh))
+        self.assertNotIn("\u6700\u7a33\u59a5", thesis_zh)
+        self.assertNotIn("\u5199\u6cd5", thesis_zh)
+        self.assertNotIn("\u89d2\u5ea6", thesis_zh)
+
     def test_article_brief_report_surfaces_image_keep_reasons(self) -> None:
         brief = build_analysis_brief({"source_result": self.build_seed_x_index_result(self.case_dir("brief-x-seed"))})
         self.assertTrue(brief["analysis_brief"]["image_keep_reasons"])
         self.assertIn("## Image Keep Reasons", brief["report_markdown"])
 
+    def test_build_sections_localizes_chinese_brief_snippets_and_joiners(self) -> None:
+        sections = build_sections(
+            {
+                "language_mode": "chinese",
+                "article_framework": "deep_analysis",
+                "draft_mode": "balanced",
+            },
+            {
+                "topic": "美伊战争对中国的战略影响",
+                "source_kind": "news_index",
+            },
+            {},
+            [],
+            [],
+            {
+                "canonical_facts": [
+                    {"claim_text": "中方已启动撤侨"},
+                    {"claim_text": "霍尔木兹仍是关键油气通道"},
+                ],
+                "not_proven": [
+                    {"claim_text": "中国会直接在中东军事护航"},
+                ],
+                "trend_lines": [
+                    {"detail": "5 tracked claim(s) are still denied, unclear, or inference-only."},
+                ],
+                "market_or_reader_relevance": [
+                    "中国能源安全与输入性通胀",
+                    "航运、保险与供应链成本",
+                    "中国外交回旋空间与中东布局",
+                ],
+                "open_questions": [
+                    "下一轮官方表态是否升级",
+                    "油运保险费率会不会继续上跳",
+                ],
+            },
+        )
+
+        self.assertEqual(sections[0]["heading"], "先看变化本身")
+        self.assertIn("中方已启动撤侨", sections[0]["paragraph"])
+        self.assertNotIn("tracked claim(s)", sections[1]["paragraph"])
+        self.assertIn("目前仍有5条关键判断处在未证实、被否认或仅能推演的状态", sections[1]["paragraph"])
+        self.assertIn("先看中国能源安全与输入性通胀，再看航运、保险和供应链成本，最后看中国外交回旋空间与中东布局", sections[2]["paragraph"])
+        self.assertIn("第一，下一轮官方表态是否升级", sections[3]["paragraph"])
+        self.assertIn("第二，油运保险费率会不会继续上跳", sections[3]["paragraph"])
+
+    def test_build_sections_preliminary_chinese_draft_avoids_meta_public_record_copy(self) -> None:
+        sections = build_sections(
+            {
+                "language_mode": "chinese",
+                "article_framework": "deep_analysis",
+                "draft_mode": "balanced",
+                "human_signal_ratio": 80,
+                "personal_phrase_bank": ["先说结论", "更关键的是", "最后盯三件事"],
+            },
+            {
+                "topic": "美伊战争对中国的战略影响",
+                "source_kind": "news_index",
+            },
+            {},
+            [],
+            [],
+            {
+                "canonical_facts": [],
+                "not_proven": [
+                    {"claim_text": "中国会因为这场冲突直接在中东选边站队并进行军事护航。"},
+                ],
+                "trend_lines": [
+                    {"detail": "5 tracked claim(s) are still denied, unclear, or inference-only."},
+                ],
+                "market_or_reader_relevance": [
+                    "中国能源安全与输入性通胀",
+                    "航运、保险与供应链成本",
+                    "中国外交回旋空间与中东布局",
+                ],
+                "open_questions": [
+                    "中国商船和油轮穿越霍尔木兹的活动会不会继续收缩",
+                    "国内成品油和输入性成本会不会继续上行",
+                ],
+            },
+        )
+
+        self.assertNotIn("更多公开信息来补全", sections[0]["paragraph"])
+        self.assertIn("先别把", sections[0]["paragraph"])
+        self.assertIn("传导", sections[0]["paragraph"])
+        self.assertIn("航运、保险和供应链成本", sections[3]["paragraph"])
+
+    def test_article_draft_applies_human_signal_ratio_and_personal_phrase_bank(self) -> None:
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "language_mode": "chinese",
+                "human_signal_ratio": 82,
+                "personal_phrase_bank": ["先说结论", "更关键的是"],
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-human-signal"),
+            }
+        )
+        effective_request = draft["article_package"]["style_profile_applied"]["effective_request"]
+        self.assertEqual(effective_request["human_signal_ratio"], 82)
+        self.assertEqual(effective_request["personal_phrase_bank"], ["先说结论", "更关键的是"])
+        self.assertTrue(draft["article_package"]["lede"].startswith("先说结论"))
+
+    def test_article_draft_applies_style_memory_from_feedback_profile(self) -> None:
+        profile_dir = self.case_dir("feedback-profiles-style-memory")
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        (profile_dir / "global.json").write_text(
+            json.dumps(
+                {
+                    "scope": "global",
+                    "topic": "global",
+                    "request_defaults": {
+                        "language_mode": "chinese",
+                        "human_signal_ratio": 76,
+                    },
+                    "style_memory": {
+                        "target_band": "3.4",
+                        "voice_summary": "结论先行，判断明确，但别写成模板审稿口吻。",
+                        "preferred_transitions": ["先说结论", "更关键的是"],
+                        "must_land": ["把影响路径写在前面", "优先回答读者真正关心的变量"],
+                        "avoid_patterns": ["当前最稳妥的写法是"],
+                        "slot_lines": {
+                            "subtitle": ["先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。"],
+                            "impact": ["真正该盯的，是这件事会不会继续改写预算、预期和定价。"],
+                            "watch": ["接下来别忙着站队，先盯那几个会把叙事坐实的硬信号。"],
+                        },
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "feedback_profile_dir": str(profile_dir),
+            }
+        )
+
+        self.assertEqual(draft["request"]["style_memory"]["target_band"], "3.4")
+        self.assertIn("先说结论", draft["request"]["personal_phrase_bank"])
+        self.assertIn("把影响路径写在前面", draft["request"]["must_include"])
+        self.assertIn("当前最稳妥的写法是", draft["request"]["must_avoid"])
+        self.assertEqual(
+            draft["article_package"]["subtitle"],
+            "先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。",
+        )
+        self.assertEqual(draft["article_package"]["style_profile_applied"]["style_memory"]["target_band"], "3.4")
+
+    def test_article_draft_style_memory_slot_lines_influence_sections(self) -> None:
+        style_memory = {
+            "target_band": "3.4",
+            "preferred_transitions": ["先说结论", "更关键的是", "最后盯三件事"],
+            "slot_lines": {
+                "subtitle": ["先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。"],
+                "impact": ["真正该盯的，是这件事会不会继续改写预算、预期和定价。"],
+                "watch": ["接下来别忙着站队，先盯那几个会把叙事坐实的硬信号。"],
+            },
+        }
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "language_mode": "chinese",
+                "human_signal_ratio": 78,
+                "style_memory": style_memory,
+            }
+        )
+
+        self.assertEqual(
+            draft["article_package"]["subtitle"],
+            "先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。",
+        )
+        self.assertTrue(draft["article_package"]["lede"].startswith("先说结论"))
+        self.assertIn("真正该盯的，是这件事会不会继续改写预算、预期和定价。", draft["article_package"]["sections"][2]["paragraph"])
+        self.assertIn("接下来别忙着站队，先盯那几个会把叙事坐实的硬信号。", draft["article_package"]["sections"][3]["paragraph"])
+
+    def test_chinese_draft_localizes_english_topic_title_and_avoids_story_framework_false_positive(self) -> None:
+        source_result = run_news_index(
+            {
+                "topic": "AI Agent hiring rebound becomes a business story",
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-core",
+                        "claim_text": "Selected AI Agent startups are hiring again across engineering and delivery roles.",
+                        "claim_text_zh": "AI Agent 创业公司重新开始招聘，岗位集中在工程和交付。",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "major-1",
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "published_at": "2026-03-29T10:00:00+00:00",
+                        "observed_at": "2026-03-29T10:10:00+00:00",
+                        "url": "https://example.com/36kr-agent-hiring",
+                        "text_excerpt": "Selected AI Agent startups are hiring again across engineering and delivery roles.",
+                        "claim_ids": ["claim-core"],
+                        "claim_states": {"claim-core": "support"},
+                    }
+                ],
+                "market_relevance_zh": [
+                    "融资意愿、订单能见度和预算投放",
+                    "招聘节奏、组织扩张和行业景气度",
+                ],
+            }
+        )
+
+        draft = build_article_draft({"source_result": source_result, "language_mode": "chinese"})
+        package = draft["article_package"]
+
+        self.assertEqual(package["article_framework"], "deep_analysis")
+        self.assertEqual(package["sections"][0]["heading"], "先看变化本身")
+        self.assertIn("AI Agent", package["title"])
+        self.assertNotEqual(package["title"], "AI Agent hiring rebound becomes a business story")
+        self.assertIn("## 来源", package["article_markdown"])
+        self.assertNotIn("## Sources", package["article_markdown"])
+
+    def test_article_draft_strips_source_branding_and_factcheck_suffix_from_title(self) -> None:
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "language_mode": "chinese",
+                "topic": "「微元合成」获3亿元A+轮融资，联合发布AI生物计算开放合作平台 | 36氪首发：哪些已经确认，哪些仍未确认",
+            }
+        )
+        title = draft["article_package"]["title"]
+        self.assertNotIn("36氪", title)
+        self.assertNotIn("首发", title)
+        self.assertNotIn("哪些已经确认", title)
+
+    def test_article_draft_chinese_mode_avoids_instructional_focus_sentence_leakage(self) -> None:
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "language_mode": "chinese",
+                "must_include": [
+                    "separate facts from inference",
+                    "keep transmission path practical for business readers",
+                ],
+            }
+        )
+        markdown = draft["article_package"]["article_markdown"]
+        self.assertNotIn("\u8fd9\u4e00\u6b65\u6700\u6015", markdown)
+        self.assertNotIn("\u5f53\u524d\u6700\u7a33\u59a5\u7684\u5199\u6cd5\u662f", markdown)
+
     def test_article_draft_from_x_index_selects_images_and_citations(self) -> None:
-        draft = build_article_draft({"source_result": self.build_seed_x_index_result(self.case_dir("x-seed")), "max_images": 2})
+        draft = build_article_draft(
+            {
+                "source_result": self.build_seed_x_index_result(self.case_dir("x-seed")),
+                "max_images": 2,
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-x-seed"),
+            }
+        )
         package = draft["article_package"]
         self.assertEqual(draft["source_summary"]["source_kind"], "x_index")
         self.assertGreaterEqual(package["draft_metrics"]["image_count"], 1)
@@ -337,6 +648,7 @@ class ArticleWorkflowTests(unittest.TestCase):
                 "source_result": self.build_blocked_x_index_result(self.case_dir("x-blocked")),
                 "image_strategy": "screenshots_only",
                 "draft_mode": "image_only",
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-x-blocked"),
             }
         )
         package = draft["article_package"]
@@ -350,7 +662,13 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("What The Images Show", package["body_markdown"])
 
     def test_article_draft_from_news_index_result_builds_without_x_posts(self) -> None:
-        draft = build_article_draft({"source_result": run_news_index(self.news_request), "target_length_chars": 800})
+        draft = build_article_draft(
+            {
+                "source_result": run_news_index(self.news_request),
+                "target_length_chars": 800,
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-news-index"),
+            }
+        )
         self.assertEqual(draft["source_summary"]["source_kind"], "news_index")
         self.assertGreaterEqual(draft["article_package"]["draft_metrics"]["citation_count"], 1)
         self.assertIn("What Changed", draft["article_package"]["body_markdown"])
@@ -515,7 +833,13 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertEqual(result["source_stage"].get("agent_reach_stage") or {}, {})
 
     def test_build_sections_without_analysis_brief_uses_derived_brief_path(self) -> None:
-        draft = build_article_draft({"source_result": run_news_index(self.news_request), "target_length_chars": 800})
+        draft = build_article_draft(
+            {
+                "source_result": run_news_index(self.news_request),
+                "target_length_chars": 800,
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-sections"),
+            }
+        )
         sections = build_sections(
             draft["request"],
             draft["source_summary"],
@@ -961,6 +1285,54 @@ Make the article easier to trust.
         self.assertIn("non-core-promoted-claims", attack_ids)
         self.assertEqual(review["quality_gate"], "revise")
 
+    def test_rewrite_request_after_attack_localizes_chinese_guidance(self) -> None:
+        rewritten = rewrite_request_after_attack(
+            {
+                "language_mode": "chinese",
+                "must_include": ["保留已有判断"],
+                "must_avoid": [],
+                "tone": "professional-calm",
+            },
+            {
+                "not_proven": [{"claim_text": "某项升级动作已经板上钉钉"}],
+                "story_angles": [{"angle": "Lead with the strongest confirmed development first."}],
+            },
+            {
+                "quality_gate": "revise",
+                "attacks": [
+                    {"attack_id": "non-core-promoted-claims"},
+                    {"attack_id": "blocked-sources-hidden"},
+                ],
+            },
+        )
+
+        self.assertIn("先写已确认的事实，再写情景判断和影响传导", rewritten["must_include"])
+        self.assertIn("这条内容仍属未证实，不要写成已落地事实：某项升级动作已经板上钉钉", rewritten["must_include"])
+        self.assertIn("低置信度或非核心信号只能作为补充，不能放进已确认事实段落", rewritten["must_include"])
+        self.assertNotIn("Lead with the strongest confirmed development first.", rewritten["must_include"])
+        self.assertEqual(rewritten["angle_zh"], "先把已确认事实说清，再解释影响路径和仍待确认的边界")
+
+    def test_article_revision_preserves_style_memory_from_prior_request(self) -> None:
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "language_mode": "chinese",
+                "style_memory": {
+                    "target_band": "3.4",
+                    "slot_lines": {
+                        "subtitle": ["先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。"],
+                    },
+                },
+            }
+        )
+        revised = build_article_revision({"draft_result": draft, "title_hint": "改一个标题但保留风格记忆"})
+        self.assertEqual(revised["request"]["style_memory"]["target_band"], "3.4")
+        self.assertEqual(revised["article_package"]["style_profile_applied"]["style_memory"]["target_band"], "3.4")
+        self.assertEqual(
+            revised["article_package"]["subtitle"],
+            "先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。",
+        )
+
     def test_article_revision_preserves_manual_override_and_skips_auto_rewrite(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request)})
         manual_text = "# Manual draft\n\nThis version makes the point directly and never states what is still unconfirmed.\n"
@@ -1009,7 +1381,12 @@ Make the article easier to trust.
         )
 
     def test_article_revision_manual_opt_in_without_manual_text_is_noop(self) -> None:
-        draft = build_article_draft({"source_result": run_news_index(self.news_request)})
+        draft = build_article_draft(
+            {
+                "source_result": run_news_index(self.news_request),
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-manual-opt-in"),
+            }
+        )
         revised = build_article_revision({"draft_result": draft, "allow_auto_rewrite_after_manual": True})
         self.assertEqual(revised["review_rewrite_package"]["rewrite_mode"], "no_rewrite_needed")
         self.assertFalse(revised["revision_history"][-1]["manual_override"])
@@ -1368,9 +1745,14 @@ Make the article easier to trust.
         self.assertIn("reason_tags", revision_template["edit_reason_feedback"]["help"])
         self.assertIn("preference_keys", revision_template["edit_reason_feedback"]["help"])
         self.assertEqual(revision_template["allow_auto_rewrite_after_manual"], False)
+        self.assertIn("human_signal_ratio", revision_template)
+        self.assertIn("personal_phrase_bank", revision_template)
+        self.assertIn("human_signal_ratio", revision_template["persist_feedback"]["defaults"])
+        self.assertIn("personal_phrase_bank", revision_template["persist_feedback"]["defaults"])
         self.assertIn("decision_trace", result)
         self.assertIn("recommended_thesis", result["decision_trace"]["brief"])
         self.assertIn("style_effective_request", result["decision_trace"]["draft"])
+        self.assertIn("human_signal_ratio", result["decision_trace"]["draft"]["style_effective_request"])
         self.assertIn("quality_gate", result["decision_trace"]["review"])
         self.assertIn("## Why This Draft Looks This Way", result["report_markdown"])
         self.assertIn("## Claim Support Map", result["report_markdown"])

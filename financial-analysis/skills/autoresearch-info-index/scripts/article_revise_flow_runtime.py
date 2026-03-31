@@ -50,6 +50,8 @@ ARTICLE_REBUILD_KEYS = (
     "tone",
     "target_length_chars",
     "max_images",
+    "human_signal_ratio",
+    "personal_phrase_bank",
     "image_strategy",
     "draft_mode",
     "language_mode",
@@ -188,6 +190,9 @@ def normalize_revision_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
             raw_payload.get("target_length_chars", raw_payload.get("target_length", prior_request.get("target_length_chars", 1000)))
         ),
         "max_images": max(0, min(int(raw_payload.get("max_images", prior_request.get("max_images", 3))), 8)),
+        "human_signal_ratio": raw_payload.get("human_signal_ratio", prior_request.get("human_signal_ratio")),
+        "personal_phrase_bank": raw_payload.get("personal_phrase_bank", prior_request.get("personal_phrase_bank")),
+        "style_memory": deepcopy(safe_dict(raw_payload.get("style_memory")) or safe_dict(prior_request.get("style_memory"))),
         "image_strategy": clean_text(raw_payload.get("image_strategy") or prior_request.get("image_strategy") or "mixed"),
         "draft_mode": sanitize_draft_mode(raw_payload.get("draft_mode") or prior_request.get("draft_mode")),
         "language_mode": clean_text(raw_payload.get("language_mode") or prior_request.get("language_mode") or "english"),
@@ -246,7 +251,7 @@ def preserve_localized_image_assets(
 
 
 def normalize_rebuild_value(key: str, value: Any) -> Any:
-    if key in {"must_include", "must_avoid"}:
+    if key in {"must_include", "must_avoid", "personal_phrase_bank"}:
         return clean_string_list(value)
     if key in {"target_length_chars", "max_images"}:
         try:
@@ -491,30 +496,59 @@ def build_red_team_review(
     }
 
 
-def rewrite_request_after_attack(request: dict[str, Any], analysis_brief: dict[str, Any], review: dict[str, Any]) -> dict[str, Any]:
-    rewritten = deepcopy(request)
-    existing_include = clean_string_list(rewritten.get("must_include"))
-    existing_avoid = clean_string_list(rewritten.get("must_avoid"))
-    voice_constraints = clean_string_list(analysis_brief.get("voice_constraints"))
-    not_proven = safe_list(analysis_brief.get("not_proven"))
-    attack_ids = {clean_text(item.get("attack_id")) for item in safe_list(review.get("attacks"))}
+def rewrite_language_mode(request: dict[str, Any]) -> str:
+    return clean_text(request.get("language_mode")).lower() or "english"
 
-    include_updates = [
+
+def localized_rewrite_instructions(
+    language_mode: str,
+    not_proven: list[dict[str, Any]],
+    attack_ids: set[str],
+) -> list[str]:
+    if language_mode == "chinese":
+        instructions = [
+            "先写已确认的事实，再写情景判断和影响传导",
+            "把最容易被误读的未证实部分单独点明",
+        ]
+        if not_proven:
+            instructions.append(f"这条内容仍属未证实，不要写成已落地事实：{clean_text(not_proven[0].get('claim_text'))}")
+        if "non-core-promoted-claims" in attack_ids:
+            instructions.append("低置信度或非核心信号只能作为补充，不能放进已确认事实段落")
+        if "blocked-sources-hidden" in attack_ids:
+            instructions.append("有重要来源无法完整访问时，要在文中明确提示信息边界")
+        return instructions
+
+    instructions = [
         "state the strongest confirmed fact before any scenario",
         "name the main unsupported leap explicitly",
     ]
     if not_proven:
-        include_updates.append(f"treat this as not proven unless upgraded: {clean_text(not_proven[0].get('claim_text'))}")
-    if voice_constraints:
-        include_updates.extend(voice_constraints[:2])
+        instructions.append(f"treat this as not proven unless upgraded: {clean_text(not_proven[0].get('claim_text'))}")
     if "non-core-promoted-claims" in attack_ids:
-        include_updates.append("keep non-core signals out of the confirmed-facts lane unless stronger sourcing appears")
+        instructions.append("keep non-core signals out of the confirmed-facts lane unless stronger sourcing appears")
     if "blocked-sources-hidden" in attack_ids:
-        include_updates.append("say clearly when important sources were blocked or inaccessible")
+        instructions.append("say clearly when important sources were blocked or inaccessible")
+    return instructions
+
+
+def rewrite_request_after_attack(request: dict[str, Any], analysis_brief: dict[str, Any], review: dict[str, Any]) -> dict[str, Any]:
+    rewritten = deepcopy(request)
+    existing_include = clean_string_list(rewritten.get("must_include"))
+    existing_avoid = clean_string_list(rewritten.get("must_avoid"))
+    not_proven = safe_list(analysis_brief.get("not_proven"))
+    attack_ids = {clean_text(item.get("attack_id")) for item in safe_list(review.get("attacks"))}
+    language_mode = rewrite_language_mode(rewritten)
+
+    include_updates = localized_rewrite_instructions(language_mode, not_proven, attack_ids)
     rewritten["must_include"] = clean_string_list(existing_include + include_updates)
-    rewritten["must_avoid"] = clean_string_list(existing_avoid + ["actual position", "confirmed position", "live position"])
+    rewritten["must_avoid"] = clean_string_list(
+        existing_avoid
+        + ["actual position", "confirmed position", "live position", "实时位置", "已经到位", "确认位置"]
+    )
     rewritten["tone"] = clean_text(rewritten.get("tone") or "neutral-cautious") or "neutral-cautious"
-    if safe_list(analysis_brief.get("story_angles")):
+    if language_mode == "chinese":
+        rewritten["angle_zh"] = clean_text(rewritten.get("angle_zh")) or "先把已确认事实说清，再解释影响路径和仍待确认的边界"
+    elif safe_list(analysis_brief.get("story_angles")):
         rewritten["angle"] = clean_text(safe_dict(safe_list(analysis_brief.get("story_angles"))[0]).get("angle")) or rewritten.get("angle")
     rewritten["red_team_applied"] = True
     rewritten["red_team_quality_gate"] = clean_text(review.get("quality_gate"))
@@ -881,6 +915,9 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "tone": request.get("tone"),
         "target_length_chars": request.get("target_length_chars"),
         "max_images": request.get("max_images"),
+        "human_signal_ratio": request.get("human_signal_ratio"),
+        "personal_phrase_bank": request.get("personal_phrase_bank"),
+        "style_memory": deepcopy(safe_dict(request.get("style_memory"))),
         "image_strategy": request.get("image_strategy"),
         "draft_mode": request.get("draft_mode"),
         "language_mode": request.get("language_mode"),

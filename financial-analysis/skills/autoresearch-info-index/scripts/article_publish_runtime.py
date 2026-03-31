@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
+import re
 from typing import Any
 
 from article_workflow_runtime import run_article_workflow, write_json
@@ -40,6 +41,267 @@ def parse_bool(value: Any, *, default: bool = False) -> bool:
 
 def now_utc() -> datetime:
     return datetime.now(UTC)
+
+
+def clean_public_topic_title(value: Any) -> str:
+    cleaned = clean_text(value)
+    if not cleaned:
+        return ""
+    separator_split = [part for part in re.split(r"\s*[|\uFF5C\u4E28]\s*", cleaned) if clean_text(part)]
+    if separator_split:
+        cleaned = separator_split[0]
+    cleaned = re.sub(
+        r"\s*[-\u2013\u2014]\s*(36kr|36\u6c2a|weibo|\u5fae\u535a|zhihu|\u77e5\u4e4e|reuters|\u8def\u900f|bloomberg|\u5f6d\u535a|techcrunch|the information|\u9996\u53d1|\u72ec\u5bb6).*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"[\:\uFF1A]\s*(?:\u54ea\u4e9b\u5df2\u7ecf\u786e\u8ba4.*|\u54ea\u4e9b\u4ecd\u672a\u786e\u8ba4.*|what is confirmed.*|what remains unconfirmed.*)$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\s*(?:\u54ea\u4e9b\u5df2\u7ecf\u786e\u8ba4.*|\u54ea\u4e9b\u4ecd\u672a\u786e\u8ba4.*|what is confirmed.*|what remains unconfirmed.*)$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\s*(36kr|36\u6c2a|\u9996\u53d1|\u72ec\u5bb6)\s*$", "", cleaned, flags=re.IGNORECASE)
+    return clean_text(cleaned.strip(" -\u2013\u2014|\uFF5C\u4E28:\uFF1A\"'\u201c\u201d\u2018\u2019"))
+
+
+SOURCE_PRIORITY = {
+    "government": 0,
+    "official": 0,
+    "regulator": 0,
+    "wire": 1,
+    "major_news": 1,
+    "specialist": 2,
+    "analysis": 2,
+    "research_note": 2,
+    "social": 3,
+    "community": 3,
+}
+
+
+def has_cjk(text: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in clean_text(text))
+
+
+def compact_sentence(text: Any) -> str:
+    cleaned = clean_text(text)
+    if not cleaned:
+        return ""
+    first = re.split(r"(?<=[。！？!?])\s+|(?<=\.)\s+(?=[A-Z])", cleaned, maxsplit=1)[0]
+    return clean_text(first.strip(" .。；;，,"))
+
+
+def strip_source_lead(text: str) -> str:
+    cleaned = compact_sentence(text)
+    if not cleaned:
+        return ""
+    cleaned = re.sub(
+        r"^(36kr|36氪|reuters|bloomberg|the information|google-news-search|google news|zhihu users?|weibo users?|overseas reporting)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(reports?|reportedly|says?|said|argues?|noted?|shows?|announced?|claims?)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"^(?:reports?|says?|argues?)\s+that\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(?:according to|amid)\s+", "", cleaned, flags=re.IGNORECASE)
+    return clean_text(cleaned.strip(" .。"))
+
+
+def topic_title_fragments(title: str) -> list[str]:
+    fragments: list[str] = []
+    cleaned = clean_public_topic_title(title)
+    for fragment in re.split(r"[，,；;、/]\s*", cleaned):
+        text = clean_text(fragment.strip(" -:："))
+        if not text or len(text) < 4 or text in fragments:
+            continue
+        if not has_cjk(text):
+            continue
+        if re.search(r"(首发|独家|哪些已经确认|哪些仍未确认|what is confirmed|what remains unconfirmed)", text, re.IGNORECASE):
+            continue
+        fragments.append(text)
+    return fragments[:3]
+
+
+def sorted_source_items_for_claims(selected_topic: dict[str, Any]) -> list[dict[str, Any]]:
+    items = [item for item in safe_list(selected_topic.get("source_items")) if isinstance(item, dict)]
+    return sorted(
+        items,
+        key=lambda item: (
+            int(SOURCE_PRIORITY.get(clean_text(item.get("source_type")).lower(), 9)),
+            clean_text(item.get("published_at")) or "9999",
+        ),
+    )
+
+
+def english_summary_to_chinese(summary: str) -> str:
+    cleaned = strip_source_lead(summary)
+    if not cleaned:
+        return ""
+    if has_cjk(cleaned):
+        return cleaned
+    lowered = cleaned.lower()
+    explicit_patterns = [
+        (
+            r"selected ai agent startups are hiring again across engineering and delivery roles",
+            "部分 AI Agent 创业公司重新开始招聘，岗位集中在工程和交付。",
+        ),
+        (
+            r"debate whether the rebound reflects durable demand or another narrative spike",
+            "围绕这轮回暖到底是持续需求回来了，还是又一轮短期叙事冲高，市场争论还在继续。",
+        ),
+        (
+            r"users debate whether the rebound reflects durable demand or another narrative spike",
+            "围绕这轮回暖到底是持续需求回来了，还是又一轮短期叙事冲高，市场争论还在继续。",
+        ),
+        (
+            r"the scarce resource is no longer hype, but engineers who can ship real agent outcomes",
+            "真正稀缺的不再是概念，而是能把 Agent 做成交付结果的工程与交付人才。",
+        ),
+    ]
+    for pattern, replacement in explicit_patterns:
+        if re.search(pattern, lowered):
+            return replacement
+
+    replacements = [
+        ("selected ai agent startups", "部分 AI Agent 创业公司"),
+        ("ai agent startups", "AI Agent 创业公司"),
+        ("ai agent", "AI Agent"),
+        ("hiring again", "重新开始招聘"),
+        ("hire again", "重新开始招聘"),
+        ("engineering and delivery roles", "工程和交付岗位"),
+        ("durable demand", "持续需求"),
+        ("narrative spike", "短期叙事冲高"),
+        ("short-lived wave", "短期热潮"),
+        ("funding appetite", "融资意愿"),
+        ("order visibility", "订单能见度"),
+        ("real budgets", "真实预算"),
+        ("budgets", "预算"),
+        ("orders", "订单"),
+        ("platform", "平台"),
+        ("launch", "发布"),
+        ("release", "发布"),
+        ("funding round", "融资"),
+        ("financing round", "融资"),
+        ("partnership", "合作"),
+        ("layoffs", "裁员"),
+        ("delivery", "交付"),
+        ("engineers", "工程人才"),
+        ("outcomes", "结果"),
+        ("outcome", "结果"),
+    ]
+    translated = cleaned
+    for source, target in replacements:
+        translated = re.sub(source, target, translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\b(users debate whether|debate whether)\b", "市场仍在争论", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\boverseas reporting says\b", "海外报道提到", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\breports?\b", "", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bis no longer\b", "不再是", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bare\b", "", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bis\b", "", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bthe\b", "", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\s+", " ", translated).strip(" .")
+    if translated and not translated.endswith(("。", "！", "？")):
+        translated += "。"
+    return clean_text(translated)
+
+
+def source_summary_claims(selected_topic: dict[str, Any]) -> list[dict[str, str]]:
+    claims: list[dict[str, str]] = []
+    for item in sorted_source_items_for_claims(selected_topic):
+        summary = strip_source_lead(clean_text(item.get("summary") or item.get("title")))
+        if not summary:
+            continue
+        zh = summary if has_cjk(summary) else english_summary_to_chinese(summary)
+        claims.append({"en": summary.rstrip(".") + ".", "zh": zh})
+    deduped: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in claims:
+        key = clean_text(item.get("zh") or item.get("en")).lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped[:4]
+
+
+def derive_relevance_claims(selected_topic: dict[str, Any], title: str) -> dict[str, str]:
+    text = topic_keyword_text(selected_topic)
+    if any(keyword in text for keyword in ["招聘", "hiring", "recruit", "招人"]):
+        return {
+            "en": "The real question is whether hiring is moving from narrative heat into delivery demand and budget recovery.",
+            "zh": "真正值得写的，不是招聘热度本身，而是它会不会从叙事回暖走到真实交付需求和预算恢复。",
+        }
+    if any(keyword in text for keyword in ["融资", "funding", "raise", "series", "ipo", "上市"]):
+        return {
+            "en": "The bigger business signal is whether capital, product release, and commercialization progress are starting to reconnect.",
+            "zh": "更大的商业信号在于，资本、产品发布和商业化进度是不是开始重新接上了。",
+        }
+    if any(keyword in text for keyword in ["平台", "platform", "发布", "launch", "release"]):
+        return {
+            "en": "The key read-through is whether the new platform can quickly turn into customers, usage, and partner adoption.",
+            "zh": "关键不只是在于平台发布，而是在于它会不会很快转成客户、使用量和合作落地。",
+        }
+    if any(keyword in text for keyword in ["战争", "油", "天然气", "lng", "航运", "政策", "关税"]):
+        return {
+            "en": "What matters next is how the headline keeps transmitting into prices, policy room, and company decisions.",
+            "zh": "接下来真正重要的，是这条 headline 会怎样继续传到价格、政策空间和企业决策里。",
+        }
+    return {
+        "en": f'The story around "{title}" is starting to matter because the discussion is moving into real business and market decisions.',
+        "zh": f"围绕“{title}”的讨论开始变得重要，不只是因为热度高，而是因为它正在往真实的经营和市场判断里传导。",
+    }
+
+
+def derive_open_claim(selected_topic: dict[str, Any], title: str) -> dict[str, str]:
+    text = topic_keyword_text(selected_topic)
+    social_summary = ""
+    for item in sorted_source_items_for_claims(selected_topic):
+        if clean_text(item.get("source_type")).lower() == "social":
+            social_summary = strip_source_lead(clean_text(item.get("summary") or item.get("title")))
+            break
+    if social_summary:
+        zh = social_summary if has_cjk(social_summary) else english_summary_to_chinese(social_summary)
+        return {
+            "en": social_summary.rstrip(".") + ".",
+            "zh": zh,
+        }
+    if any(keyword in text for keyword in ["招聘", "hiring", "recruit", "招人"]):
+        return {
+            "en": "The market is still debating whether this hiring rebound reflects durable demand or another short-lived narrative cycle.",
+            "zh": "眼下最大的争论，不是有没有热度，而是这轮招聘回暖到底是持续需求回来了，还是又一轮短期叙事冲高。",
+        }
+    if any(keyword in text for keyword in ["融资", "funding", "raise", "series", "ipo", "上市", "平台", "platform"]):
+        return {
+            "en": "The unresolved question is how fast the financing or platform launch turns into real customers, orders, and execution milestones.",
+            "zh": "真正还没走到答案的，是这笔融资或这次平台发布，多久能转成真实客户、订单和落地节奏。",
+        }
+    return {
+        "en": f'Important details around "{title}" still need verification before the article turns them into settled facts.',
+        "zh": f"围绕“{title}”仍有关键细节、影响路径或真假边界需要继续核实。",
+    }
+
+
+def topic_keyword_text(selected_topic: dict[str, Any]) -> str:
+    parts = clean_string_list(selected_topic.get("keywords"))
+    parts.extend(
+        [
+            clean_public_topic_title(selected_topic.get("title")),
+            clean_text(selected_topic.get("summary")),
+        ]
+    )
+    return " ".join(part.lower() for part in parts if clean_text(part))
 
 
 def build_manual_review_state(
@@ -108,6 +370,8 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "tone": clean_text(raw_payload.get("tone")) or "professional-calm",
         "target_length_chars": int(raw_payload.get("target_length_chars", raw_payload.get("target_length", 1600)) or 1600),
         "max_images": int(raw_payload.get("max_images", 3) or 3),
+        "human_signal_ratio": raw_payload.get("human_signal_ratio"),
+        "personal_phrase_bank": raw_payload.get("personal_phrase_bank"),
         "image_strategy": clean_text(raw_payload.get("image_strategy")) or "mixed",
         "draft_mode": clean_text(raw_payload.get("draft_mode")) or "balanced",
         "language_mode": clean_text(raw_payload.get("language_mode")) or "zh",
@@ -122,6 +386,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "push_to_wechat": parse_bool(raw_payload.get("push_to_wechat"), default=False),
         "wechat_app_id": clean_text(raw_payload.get("wechat_app_id") or raw_payload.get("app_id")),
         "wechat_app_secret": clean_text(raw_payload.get("wechat_app_secret") or raw_payload.get("app_secret")),
+        "wechat_env_file": clean_text(raw_payload.get("wechat_env_file") or raw_payload.get("env_file_path")),
         "allow_insecure_inline_credentials": parse_bool(raw_payload.get("allow_insecure_inline_credentials"), default=False),
         "cover_image_path": clean_text(raw_payload.get("cover_image_path")),
         "cover_image_url": clean_text(raw_payload.get("cover_image_url")),
@@ -698,6 +963,257 @@ def render_wechat_html(
     return "\n".join(html_parts) + "\n"
 
 
+def build_claims(selected_topic: dict[str, Any]) -> list[dict[str, str]]:
+    title = clean_public_topic_title(selected_topic.get("title")) or "当前热点"
+    title_fragments = topic_title_fragments(title)
+    source_claim_candidates = source_summary_claims(selected_topic)
+    relevance_claim = derive_relevance_claims(selected_topic, title)
+    open_claim = derive_open_claim(selected_topic, title)
+
+    if title_fragments:
+        core_claim_zh = title_fragments[0]
+        core_claim_en = source_claim_candidates[0]["en"] if source_claim_candidates else f'The main confirmed development is: {title_fragments[0]}.'
+    elif source_claim_candidates:
+        core_claim_zh = clean_text(source_claim_candidates[0].get("zh"))
+        core_claim_en = clean_text(source_claim_candidates[0].get("en"))
+    else:
+        core_claim_zh = f"“{title}”对应的是一个已经进入公开讨论的真实事件、趋势或争议。"
+        core_claim_en = f'The topic "{title}" reflects a real event, trend, or public dispute that is already drawing multi-source attention.'
+
+    if len(title_fragments) >= 2:
+        relevance_claim_zh = title_fragments[1]
+        relevance_claim_en = source_claim_candidates[1]["en"] if len(source_claim_candidates) >= 2 else clean_text(relevance_claim.get("en"))
+    elif len(source_claim_candidates) >= 2:
+        relevance_claim_zh = clean_text(source_claim_candidates[1].get("zh"))
+        relevance_claim_en = clean_text(source_claim_candidates[1].get("en"))
+    else:
+        relevance_claim_zh = clean_text(relevance_claim.get("zh"))
+        relevance_claim_en = clean_text(relevance_claim.get("en"))
+
+    return [
+        {
+            "claim_id": "claim-core",
+            "claim_text": core_claim_en,
+            "claim_text_zh": core_claim_zh,
+        },
+        {
+            "claim_id": "claim-relevance",
+            "claim_text": relevance_claim_en,
+            "claim_text_zh": relevance_claim_zh,
+        },
+        {
+            "claim_id": "claim-open",
+            "claim_text": clean_text(open_claim.get("en")),
+            "claim_text_zh": clean_text(open_claim.get("zh")),
+        },
+    ]
+
+
+def build_market_relevance(selected_topic: dict[str, Any]) -> list[str]:
+    text = topic_keyword_text(selected_topic)
+    rows = ["event background, transmission path, and downstream impact"]
+    if any(keyword in text for keyword in ["ai", "agent", "openai", "claude", "芯片", "半导体", "算力"]):
+        rows.append("funding appetite, order visibility, and budget conversion")
+    if any(keyword in text for keyword in ["招聘", "hiring", "recruit", "招人"]):
+        rows.append("hiring pace, organization expansion, and sector sentiment")
+    if any(keyword in text for keyword in ["油", "油气", "天然气", "lng", "航运", "军工", "战争", "关税", "政策"]):
+        rows.append("commodity prices, policy room, and risk appetite transmission")
+    if any(keyword in text for keyword in ["裁员", "融资", "ipo", "上市", "银行", "证券"]):
+        rows.append("corporate operations, capital markets, and financing conditions")
+    return rows[:3]
+
+
+def build_market_relevance_zh(selected_topic: dict[str, Any]) -> list[str]:
+    text = topic_keyword_text(selected_topic)
+    rows = ["事件背景、传导路径和后续影响"]
+    if any(keyword in text for keyword in ["ai", "agent", "openai", "claude", "芯片", "半导体", "算力"]):
+        rows.append("融资意愿、订单能见度和预算投放")
+    if any(keyword in text for keyword in ["招聘", "hiring", "recruit", "招人"]):
+        rows.append("招聘节奏、组织扩张和行业景气度")
+    if any(keyword in text for keyword in ["油", "油气", "天然气", "lng", "航运", "军工", "战争", "关税", "政策"]):
+        rows.append("商品价格、政策空间和风险偏好传导")
+    if any(keyword in text for keyword in ["裁员", "融资", "ipo", "上市", "银行", "证券"]):
+        rows.append("企业经营、资本市场和融资环境")
+    return rows[:3]
+
+
+def build_news_request_from_topic(selected_topic: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
+    analysis_time = request["analysis_time"]
+    title = clean_public_topic_title(selected_topic.get("title")) or clean_public_topic_title(request["topic"]) or "hot-topic"
+    summary = clean_text(selected_topic.get("summary")) or title
+    claims = build_claims(selected_topic)
+    market_relevance = build_market_relevance(selected_topic)
+    market_relevance_zh = build_market_relevance_zh(selected_topic)
+    source_candidates = []
+    expected_source_families = []
+    for index, source_item in enumerate(safe_list(selected_topic.get("source_items")), start=1):
+        source_name = clean_text(source_item.get("source_name")) or f"source-{index:02d}"
+        source_type = clean_text(source_item.get("source_type")) or "major_news"
+        family = source_type
+        if family not in expected_source_families:
+            expected_source_families.append(family)
+        source_candidates.append(
+            {
+                "source_id": f"{slugify(title, 'topic')}-{index:02d}",
+                "source_name": source_name,
+                "source_type": source_type,
+                "published_at": clean_text(source_item.get("published_at")) or isoformat_or_blank(analysis_time),
+                "observed_at": clean_text(source_item.get("observed_at")) or isoformat_or_blank(analysis_time),
+                "url": clean_text(source_item.get("url")),
+                "text_excerpt": clean_text(source_item.get("summary") or source_item.get("title") or summary),
+                "claim_ids": ["claim-core", "claim-relevance", "claim-open"],
+                "claim_states": build_source_candidate_states(selected_topic, source_item),
+                "artifact_manifest": deepcopy(safe_list(source_item.get("artifact_manifest"))),
+                "root_post_screenshot_path": clean_text(source_item.get("root_post_screenshot_path")),
+                "media_items": deepcopy(safe_list(source_item.get("media_items"))),
+                "post_summary": clean_text(source_item.get("post_summary")),
+                "media_summary": clean_text(source_item.get("media_summary")),
+            }
+        )
+    if not source_candidates:
+        raise ValueError("Selected topic has no source_items, so it cannot be turned into a news-index request.")
+    return {
+        "topic": title,
+        "analysis_time": isoformat_or_blank(analysis_time),
+        "questions": [
+            f"围绕“{title}”，现在到底发生了什么，哪些事实已经能被多源确认？",
+            f"这件事为什么会热起来，它对商业、产业或投资读者真正意味着什么？",
+            "目前还有哪些关键事实没有确认，文章里必须明确标出来而不能写成既成事实？",
+        ],
+        "use_case": "wechat-article-publishing",
+        "source_preferences": ["public-first", "evidence-first"],
+        "mode": "generic",
+        "windows": ["1h", "6h", "24h"],
+        "claims": claims,
+        "candidates": source_candidates,
+        "market_relevance": market_relevance,
+        "market_relevance_zh": market_relevance_zh,
+        "expected_source_families": expected_source_families,
+        "max_parallel_candidates": min(4, max(1, len(source_candidates))),
+    }
+
+
+def truncate_text(text: str, max_chars: int) -> str:
+    stripped = clean_text(text)
+    if len(stripped) <= max_chars:
+        return stripped
+    return stripped[: max(0, max_chars - 1)].rstrip() + "…"
+
+
+def extract_keywords(selected_topic: dict[str, Any], article_package: dict[str, Any]) -> list[str]:
+    keywords = clean_string_list(selected_topic.get("keywords"))
+    for source_text in (clean_text(article_package.get("title")), clean_text(article_package.get("draft_thesis"))):
+        for token in (
+            source_text.replace("，", " ")
+            .replace(",", " ")
+            .replace("：", " ")
+            .replace(":", " ")
+            .replace("|", " ")
+            .split()
+        ):
+            token = token.strip()
+            if len(token) >= 2 and token not in keywords:
+                keywords.append(token)
+    return keywords[:8]
+
+
+def build_editor_anchors(section_count: int) -> list[dict[str, str]]:
+    anchors = [{"placement": "after_lede", "text": "这里补一个你自己的判断升级条件，或者一句反直觉结论。"}]
+    if section_count >= 2:
+        anchors.append({"placement": "after_section_2", "text": "这里加入你亲身见过的案例、行业对话或一次踩坑经历。"})
+    if section_count >= 4:
+        anchors.append({"placement": "after_section_4", "text": "这里补一个只属于你自己的结论收口，不要只重复公开信息。"})
+    return anchors
+
+
+def render_anchor_html(anchor_text: str) -> str:
+    return (
+        "<section style=\"margin:20px 0;padding:12px 14px;border-left:4px solid #e3a008;"
+        "background:#fff8e7;border-radius:6px;\">"
+        f"<p style=\"margin:0;color:#8a5a00;font-size:14px;line-height:1.7;\">"
+        f"✏️ 编辑锚点：{escape(anchor_text)}</p></section>"
+    )
+
+
+def render_wechat_html(
+    article_package: dict[str, Any],
+    image_plan: list[dict[str, Any]],
+    anchors: list[dict[str, str]],
+    *,
+    editor_anchor_mode: str = "hidden",
+) -> str:
+    title = clean_text(article_package.get("title"))
+    subtitle = clean_text(article_package.get("subtitle"))
+    lede = clean_text(article_package.get("lede"))
+    sections = safe_list(article_package.get("sections") or article_package.get("body_sections"))
+    citations = safe_list(article_package.get("citations"))
+    images_by_placement: dict[str, list[dict[str, Any]]] = {}
+    for item in image_plan:
+        images_by_placement.setdefault(clean_text(item.get("placement")) or "appendix", []).append(item)
+    anchors_by_placement: dict[str, list[dict[str, str]]] = {}
+    for item in anchors:
+        anchors_by_placement.setdefault(clean_text(item.get("placement")), []).append(item)
+
+    html_parts = [
+        "<article style=\"font-family:'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#1f2329;"
+        "font-size:16px;line-height:1.9;\">",
+        "<section style=\"margin-bottom:22px;\">",
+        f"<h1 style=\"font-size:28px;line-height:1.35;margin:0 0 12px;color:#111827;\">{escape(title)}</h1>",
+    ]
+    if subtitle:
+        html_parts.append(
+            f"<p style=\"margin:0 0 14px;color:#4b5563;font-size:15px;line-height:1.8;\">{escape(subtitle)}</p>"
+        )
+    if lede:
+        html_parts.append(
+            "<blockquote style=\"margin:0;padding:14px 16px;border-left:4px solid #0f766e;"
+            "background:#f0fdfa;border-radius:6px;color:#134e4a;\">"
+            f"{escape(lede)}</blockquote>"
+        )
+    html_parts.append("</section>")
+
+    for item in images_by_placement.get("after_lede", []):
+        html_parts.append(render_image_html(item))
+    if editor_anchor_mode == "inline":
+        for item in anchors_by_placement.get("after_lede", []):
+            html_parts.append(render_anchor_html(item.get("text", "")))
+
+    for index, section in enumerate(sections, start=1):
+        heading = clean_text(section.get("heading")) or f"第 {index} 部分"
+        html_parts.append("<section style=\"margin:18px 0;\">")
+        html_parts.append(
+            f"<h2 style=\"font-size:22px;line-height:1.45;margin:0 0 10px;color:#111827;\">{escape(heading)}</h2>"
+        )
+        for paragraph in paragraph_blocks(section.get("paragraph")):
+            html_parts.append(f"<p style=\"margin:0 0 14px;\">{escape(paragraph)}</p>")
+        html_parts.append("</section>")
+        for item in images_by_placement.get(f"after_section_{index}", []):
+            html_parts.append(render_image_html(item))
+        if editor_anchor_mode == "inline":
+            for item in anchors_by_placement.get(f"after_section_{index}", []):
+                html_parts.append(render_anchor_html(item.get("text", "")))
+
+    for item in images_by_placement.get("appendix", []):
+        html_parts.append(render_image_html(item))
+
+    if citations:
+        html_parts.append("<section style=\"margin-top:28px;\">")
+        html_parts.append("<h2 style=\"font-size:20px;line-height:1.45;margin:0 0 10px;color:#111827;\">来源</h2>")
+        html_parts.append("<ol style=\"padding-left:20px;margin:0;\">")
+        for citation in citations:
+            source_name = clean_text(citation.get("source_name"))
+            url = clean_text(citation.get("url"))
+            html_parts.append(
+                "<li style=\"margin:0 0 8px;color:#4b5563;font-size:14px;line-height:1.8;\">"
+                f"{escape(source_name or citation.get('citation_id', 'source'))}"
+                f"{f'：<a href=\"{escape(url)}\" style=\"color:#0f766e;text-decoration:none;\">{escape(url)}</a>' if url else ''}"
+                "</li>"
+            )
+        html_parts.append("</ol></section>")
+    html_parts.append("</article>")
+    return "\n".join(html_parts) + "\n"
+
+
 def build_cover_plan(
     selected_topic: dict[str, Any],
     image_plan: list[dict[str, Any]],
@@ -708,7 +1224,7 @@ def build_cover_plan(
         image_plan,
         draft_image_candidates,
     )
-    title = clean_text(selected_topic.get("title"))
+    title = clean_public_topic_title(selected_topic.get("title")) or clean_text(selected_topic.get("title"))
     prompt = (
         f"Create a 16:9 WeChat article cover for: {title}. "
         f"Keywords: {', '.join(keywords[:5]) or title}. "
@@ -836,7 +1352,10 @@ def build_push_readiness(
     elif status == "missing_upload_source":
         next_step = "Restore the missing local image files or provide remote source_url values before pushing to WeChat."
     else:
-        next_step = "Set WECHAT_APP_ID/WECHAT_APP_SECRET or create .env.wechat.local, then run run_wechat_push_draft.cmd after cover and review are ready."
+        next_step = (
+            "Set WECHAT_APP_ID/WECHAT_APP_SECRET, point WECHAT_ENV_FILE to a local secret file, "
+            "or create .env.wechat.local, then run run_wechat_push_draft.cmd after cover and review are ready."
+        )
 
     return {
         "status": status,
@@ -852,9 +1371,15 @@ def build_push_readiness(
         "missing_render_asset_ids": missing_render_asset_ids,
         "missing_upload_source_asset_ids": missing_upload_source_asset_ids,
         "credentials_required": True,
-        "supported_request_fields": ["allow_insecure_inline_credentials", "wechat_app_id", "wechat_app_secret"],
-        "supported_env_vars": ["WECHAT_APP_ID", "WECHAT_APP_SECRET"],
-        "supported_local_secret_files": [".env.wechat.local"],
+        "supported_request_fields": [
+            "allow_insecure_inline_credentials",
+            "wechat_app_id",
+            "wechat_app_secret",
+            "wechat_env_file",
+            "env_file_path",
+        ],
+        "supported_env_vars": ["WECHAT_APP_ID", "WECHAT_APP_SECRET", "WECHAT_ENV_FILE"],
+        "supported_local_secret_files": [".env.wechat.local", ".tmp/wechat-phase2-dev/.env.wechat.local"],
         "inline_credentials_blocked_by_default": True,
         "next_step": next_step,
     }
@@ -1029,6 +1554,8 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "tone": request["tone"],
         "target_length_chars": request["target_length_chars"],
         "max_images": request["max_images"],
+        "human_signal_ratio": request["human_signal_ratio"],
+        "personal_phrase_bank": request["personal_phrase_bank"],
         "image_strategy": request["image_strategy"],
         "draft_mode": request["draft_mode"],
         "language_mode": request["language_mode"],
@@ -1103,6 +1630,7 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
                     "publish_package": publish_package,
                     "wechat_app_id": request["wechat_app_id"],
                     "wechat_app_secret": request["wechat_app_secret"],
+                    "wechat_env_file": request["wechat_env_file"],
                     "allow_insecure_inline_credentials": request["allow_insecure_inline_credentials"],
                     "cover_image_path": request["cover_image_path"],
                     "cover_image_url": request["cover_image_url"],

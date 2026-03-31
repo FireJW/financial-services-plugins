@@ -26,6 +26,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tone", help="Optional tone")
     parser.add_argument("--target-length", type=int, help="Target article length in characters")
     parser.add_argument("--max-images", type=int, help="Maximum number of images to keep")
+    parser.add_argument("--human-signal-ratio", type=int, help="How strong the human-written voice should feel on a 0-100 scale")
+    parser.add_argument("--personal-phrase", action="append", default=[], help="Reusable personal phrase to weave into the article voice")
     parser.add_argument("--image-strategy", choices=["mixed", "prefer_images", "screenshots_only"], help="Image priority mode")
     parser.add_argument("--draft-mode", choices=["balanced", "image_first", "image_only"], help="Composition mode")
     parser.add_argument("--output-dir", help="Directory for staged workflow outputs")
@@ -49,6 +51,10 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["target_length_chars"] = args.target_length
     if args.max_images is not None:
         payload["max_images"] = args.max_images
+    if getattr(args, "human_signal_ratio", None) is not None:
+        payload["human_signal_ratio"] = args.human_signal_ratio
+    if getattr(args, "personal_phrase", None):
+        payload["personal_phrase_bank"] = args.personal_phrase
     if args.image_strategy:
         payload["image_strategy"] = args.image_strategy
     if args.draft_mode:

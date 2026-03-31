@@ -477,6 +477,7 @@ def upgrade_legacy_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "claims": claims,
         "candidates": candidates,
         "market_relevance": payload.get("market_relevance") or [],
+        "market_relevance_zh": payload.get("market_relevance_zh") or [],
         "expected_source_families": payload.get("expected_source_families") or [],
     }
 
@@ -492,6 +493,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
             if family not in expected_source_families:
                 expected_source_families.append(family)
     market_relevance = clean_string_list(payload.get("market_relevance"))
+    market_relevance_zh = clean_string_list(payload.get("market_relevance_zh"))
     benchmark_watchlist = clean_string_list(payload.get("benchmark_watchlist"))
     preset_watch_items = clean_string_list(payload.get("preset_watch_items"))
     if preset == "energy-war":
@@ -518,6 +520,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
             if isinstance(item, dict)
         ],
         "market_relevance": market_relevance,
+        "market_relevance_zh": market_relevance_zh,
         "expected_source_families": expected_source_families,
         "crisis_defaults": safe_dict(payload.get("crisis_defaults")),
         "preset": preset,
@@ -1406,6 +1409,7 @@ def merge_refresh(existing_result: dict[str, Any], refresh_payload: dict[str, An
         "questions": refresh_request.get("questions") or base_request.get("questions"),
         "claims": refresh_request.get("claims") or base_request.get("claims"),
         "market_relevance": refresh_request.get("market_relevance") or base_request.get("market_relevance"),
+        "market_relevance_zh": refresh_request.get("market_relevance_zh") or base_request.get("market_relevance_zh"),
         "expected_source_families": refresh_request.get("expected_source_families") or base_request.get("expected_source_families"),
         "mode": "crisis" if refresh_mode == "crisis" else base_request.get("mode"),
         "preset": refresh_request.get("preset") or base_request.get("preset"),
