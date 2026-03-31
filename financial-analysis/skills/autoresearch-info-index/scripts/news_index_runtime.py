@@ -539,7 +539,8 @@ def normalize_candidate(
     source_name = str(candidate.get("source_name") or candidate.get("name") or f"source-{index:02d}").strip()
     source_type = normalize_source_type(candidate.get("source_type") or candidate.get("type"))
     source_id = str(candidate.get("source_id") or slugify(source_name, f"source-{index:02d}")).strip()
-    published_at = parse_datetime(candidate.get("published_at"), fallback=analysis_time)
+    published_raw = candidate.get("published_at")
+    published_at = parse_datetime(published_raw, fallback=analysis_time if published_raw is None else None)
     observed_at = parse_datetime(candidate.get("observed_at"), fallback=published_at or analysis_time)
     access_mode = str(candidate.get("access_mode", "public")).strip() or "public"
     text_excerpt = short_excerpt(
@@ -591,6 +592,7 @@ def normalize_candidate(
         "source_type": source_type,
         "source_tier": source_tier,
         "origin": str(candidate.get("origin", "")).strip(),
+        "agent_reach_channel": str(candidate.get("agent_reach_channel", "")).strip(),
         "channel": channel,
         "published_at": isoformat_or_blank(published_at),
         "observed_at": isoformat_or_blank(observed_at),
@@ -608,7 +610,8 @@ def normalize_candidate(
         "age_label": minutes_label(age),
         "claim_states": claim_states,
         "claim_texts": {claim_id: claim_texts.get(claim_id, "") for claim_id in claim_ids},
-        "artifact_manifest": artifact_manifest,
+        "raw_metadata": deepcopy(candidate.get("raw_metadata")) if isinstance(candidate.get("raw_metadata"), dict) else {},
+        "artifact_manifest": clean_artifact_manifest(candidate.get("artifact_manifest")),
         "x_post_record": deepcopy(candidate.get("x_post_record")) if isinstance(candidate.get("x_post_record"), dict) else {},
         "post_text_raw": str(candidate.get("post_text_raw", "")).strip(),
         "post_text_source": str(candidate.get("post_text_source", "")).strip(),
@@ -652,6 +655,7 @@ def error_observation(
         "source_type": normalize_source_type(candidate.get("source_type") or candidate.get("type") or "social"),
         "source_tier": 3,
         "origin": str(candidate.get("origin", "")).strip(),
+        "agent_reach_channel": str(candidate.get("agent_reach_channel", "")).strip(),
         "channel": "background",
         "published_at": isoformat_or_blank(published_at),
         "observed_at": isoformat_or_blank(observed_at),
@@ -669,6 +673,7 @@ def error_observation(
         "age_label": minutes_label(age),
         "claim_states": claim_states,
         "claim_texts": {claim_id: claim_texts.get(claim_id, "") for claim_id in claim_ids},
+        "raw_metadata": deepcopy(candidate.get("raw_metadata")) if isinstance(candidate.get("raw_metadata"), dict) else {},
         "artifact_manifest": clean_artifact_manifest(candidate.get("artifact_manifest")),
         "x_post_record": {},
         "post_text_raw": "",
@@ -708,8 +713,12 @@ def dedupe_observations(observations: list[dict[str, Any]]) -> list[dict[str, An
             existing["access_mode"] = observation.get("access_mode", "")
         if observation.get("origin") and not existing.get("origin"):
             existing["origin"] = observation.get("origin", "")
+        if observation.get("agent_reach_channel") and not existing.get("agent_reach_channel"):
+            existing["agent_reach_channel"] = observation.get("agent_reach_channel", "")
         if len(observation.get("text_excerpt", "")) > len(existing.get("text_excerpt", "")):
             existing["text_excerpt"] = observation.get("text_excerpt", "")
+        if observation.get("raw_metadata") and not existing.get("raw_metadata"):
+            existing["raw_metadata"] = deepcopy(observation.get("raw_metadata", {}))
         if len(observation.get("post_text_raw", "")) > len(existing.get("post_text_raw", "")):
             existing["post_text_raw"] = observation.get("post_text_raw", "")
             existing["post_text_source"] = observation.get("post_text_source", "")
@@ -1189,6 +1198,7 @@ def build_retrieval_run_report(request: dict[str, Any], observations: list[dict[
             "source_name": item.get("source_name", ""),
             "source_type": item.get("source_type", ""),
             "origin": item.get("origin", ""),
+            "agent_reach_channel": item.get("agent_reach_channel", ""),
             "access_mode": item.get("access_mode", ""),
         }
         for item in observations
@@ -1361,6 +1371,7 @@ def merge_refresh(existing_result: dict[str, Any], refresh_payload: dict[str, An
                 "source_name": observation.get("source_name", ""),
                 "source_type": observation.get("source_type", ""),
                 "origin": observation.get("origin", ""),
+                "agent_reach_channel": observation.get("agent_reach_channel", ""),
                 "published_at": observation.get("published_at", ""),
                 "observed_at": observation.get("observed_at", ""),
                 "url": observation.get("url", ""),
@@ -1372,6 +1383,7 @@ def merge_refresh(existing_result: dict[str, Any], refresh_payload: dict[str, An
                 "geo_hint": observation.get("geo_hint"),
                 "access_mode": observation.get("access_mode", "public"),
                 "claim_states": observation.get("claim_states", {}),
+                "raw_metadata": observation.get("raw_metadata", {}),
                 "artifact_manifest": observation.get("artifact_manifest", []),
                 "post_text_raw": observation.get("post_text_raw", ""),
                 "post_text_source": observation.get("post_text_source", ""),

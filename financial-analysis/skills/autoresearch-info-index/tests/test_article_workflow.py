@@ -419,6 +419,101 @@ class ArticleWorkflowTests(unittest.TestCase):
         x_output_dir = result["source_result"]["request"]["output_dir"]
         self.assertTrue(x_output_dir.startswith(str((output_dir / "source-stage").resolve())))
 
+    def test_macro_note_workflow_news_request_can_augment_with_agent_reach(self) -> None:
+        output_dir = self.case_dir("macro-note-workflow-agent-reach")
+        base_request = {
+            "topic": "Hormuz energy shock",
+            "analysis_time": "2026-03-24T12:00:00+00:00",
+            "claims": [
+                {
+                    "claim_id": "claim-energy",
+                    "claim_text": "Hormuz disruption remains a primary transmission channel for oil and LNG stress.",
+                }
+            ],
+            "candidates": [
+                {
+                    "source_id": "wire-1",
+                    "source_name": "Reuters",
+                    "source_type": "wire",
+                    "published_at": "2026-03-24T11:30:00+00:00",
+                    "observed_at": "2026-03-24T11:31:00+00:00",
+                    "url": "https://example.com/reuters-energy",
+                    "text_excerpt": "Hormuz disruption remains a primary transmission channel for oil and LNG stress.",
+                    "claim_ids": ["claim-energy"],
+                    "claim_states": {"claim-energy": "support"},
+                }
+            ],
+            "agent_reach": {"enabled": True, "channels": ["youtube"]},
+            "output_dir": str(output_dir),
+        }
+        fake_bridge = {
+            "channels_attempted": ["youtube"],
+            "channels_succeeded": ["youtube"],
+            "channels_failed": [],
+            "observations_imported": 1,
+            "report_markdown": "# Agent Reach Bridge Report",
+            "retrieval_request": {
+                "candidates": [
+                    {
+                        "source_id": "agent-youtube-1",
+                        "source_name": "YouTube CBS News",
+                        "source_type": "social",
+                        "origin": "agent_reach",
+                        "agent_reach_channel": "youtube",
+                        "published_at": "2026-03-24T11:40:00+00:00",
+                        "observed_at": "2026-03-24T11:45:00+00:00",
+                        "url": "https://www.youtube.com/watch?v=test",
+                        "claim_ids": ["claim-energy"],
+                        "claim_states": {"claim-energy": "support"},
+                        "text_excerpt": "Video recap of Hormuz disruption risk.",
+                        "channel": "shadow",
+                        "access_mode": "public",
+                    }
+                ]
+            },
+        }
+        with patch("macro_note_workflow_runtime.run_agent_reach_bridge", return_value=fake_bridge):
+            result = run_macro_note_workflow(base_request)
+
+        self.assertEqual(result["source_stage"]["source_kind"], "news_index_agent_reach")
+        self.assertTrue(Path(result["source_stage"]["agent_reach_stage"]["result_path"]).exists())
+        self.assertTrue(any(item.get("origin") == "agent_reach" for item in result["source_result"]["observations"]))
+        self.assertIn("Agent Reach Augmentation", result["report_markdown"])
+
+    def test_macro_note_workflow_respects_agent_reach_enabled_false(self) -> None:
+        output_dir = self.case_dir("macro-note-workflow-agent-reach-disabled")
+        request = {
+            "topic": "Hormuz energy shock",
+            "analysis_time": "2026-03-24T12:00:00+00:00",
+            "claims": [
+                {
+                    "claim_id": "claim-energy",
+                    "claim_text": "Hormuz disruption remains a primary transmission channel for oil and LNG stress.",
+                }
+            ],
+            "candidates": [
+                {
+                    "source_id": "wire-1",
+                    "source_name": "Reuters",
+                    "source_type": "wire",
+                    "published_at": "2026-03-24T11:30:00+00:00",
+                    "observed_at": "2026-03-24T11:31:00+00:00",
+                    "url": "https://example.com/reuters-energy",
+                    "text_excerpt": "Hormuz disruption remains a primary transmission channel for oil and LNG stress.",
+                    "claim_ids": ["claim-energy"],
+                    "claim_states": {"claim-energy": "support"},
+                }
+            ],
+            "agent_reach": {"enabled": False, "channels": ["youtube"]},
+            "output_dir": str(output_dir),
+        }
+        with patch("macro_note_workflow_runtime.run_agent_reach_bridge") as bridge_mock:
+            result = run_macro_note_workflow(request)
+
+        bridge_mock.assert_not_called()
+        self.assertEqual(result["source_stage"]["source_kind"], "news_index")
+        self.assertEqual(result["source_stage"].get("agent_reach_stage") or {}, {})
+
     def test_build_sections_without_analysis_brief_uses_derived_brief_path(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request), "target_length_chars": 800})
         sections = build_sections(
@@ -1327,6 +1422,102 @@ Make the article easier to trust.
         self.assertIn("Rewrite mode", result["report_markdown"])
         self.assertIn("Red Team Summary", result["report_markdown"])
 
+    def test_article_workflow_news_request_can_augment_with_agent_reach(self) -> None:
+        workflow_dir = self.case_dir("workflow-agent-reach-run")
+        request = {
+            "topic": "Indirect talks and energy shock",
+            "analysis_time": "2026-03-24T12:00:00+00:00",
+            "claims": [
+                {
+                    "claim_id": "claim-core",
+                    "claim_text": "Indirect talks continue through intermediaries.",
+                }
+            ],
+            "candidates": [
+                {
+                    "source_id": "gov-1",
+                    "source_name": "Oman Foreign Ministry",
+                    "source_type": "government",
+                    "published_at": "2026-03-24T11:20:00+00:00",
+                    "observed_at": "2026-03-24T11:25:00+00:00",
+                    "url": "https://example.com/oman-talks",
+                    "text_excerpt": "Indirect talks continue through intermediaries.",
+                    "claim_ids": ["claim-core"],
+                    "claim_states": {"claim-core": "support"},
+                }
+            ],
+            "agent_reach": {"enabled": True, "channels": ["youtube"]},
+            "output_dir": str(workflow_dir / "out"),
+        }
+        fake_bridge = {
+            "channels_attempted": ["youtube"],
+            "channels_succeeded": ["youtube"],
+            "channels_failed": [],
+            "observations_imported": 1,
+            "report_markdown": "# Agent Reach Bridge Report",
+            "retrieval_request": {
+                "candidates": [
+                    {
+                        "source_id": "agent-youtube-1",
+                        "source_name": "YouTube CBS News",
+                        "source_type": "social",
+                        "origin": "agent_reach",
+                        "agent_reach_channel": "youtube",
+                        "published_at": "2026-03-24T11:40:00+00:00",
+                        "observed_at": "2026-03-24T11:45:00+00:00",
+                        "url": "https://www.youtube.com/watch?v=test",
+                        "claim_ids": ["claim-core"],
+                        "claim_states": {"claim-core": "support"},
+                        "text_excerpt": "Video recap of talks and energy disruption.",
+                        "channel": "shadow",
+                        "access_mode": "public",
+                    }
+                ]
+            },
+        }
+        with patch("article_workflow_runtime.run_agent_reach_bridge", return_value=fake_bridge):
+            result = run_article_workflow(request)
+
+        self.assertEqual(result["source_stage"]["source_kind"], "news_index_agent_reach")
+        self.assertTrue(Path(result["source_stage"]["agent_reach_stage"]["result_path"]).exists())
+        self.assertTrue(any(item.get("origin") == "agent_reach" for item in result["source_result"]["observations"]))
+        self.assertIn("Agent Reach Augmentation", result["report_markdown"])
+        self.assertIn("agent-reach-bridge-result.json", result["report_markdown"])
+
+    def test_article_workflow_respects_agent_reach_enabled_false(self) -> None:
+        workflow_dir = self.case_dir("workflow-agent-reach-disabled")
+        request = {
+            "topic": "Indirect talks and energy shock",
+            "analysis_time": "2026-03-24T12:00:00+00:00",
+            "claims": [
+                {
+                    "claim_id": "claim-core",
+                    "claim_text": "Indirect talks continue through intermediaries.",
+                }
+            ],
+            "candidates": [
+                {
+                    "source_id": "gov-1",
+                    "source_name": "Oman Foreign Ministry",
+                    "source_type": "government",
+                    "published_at": "2026-03-24T11:20:00+00:00",
+                    "observed_at": "2026-03-24T11:25:00+00:00",
+                    "url": "https://example.com/oman-talks",
+                    "text_excerpt": "Indirect talks continue through intermediaries.",
+                    "claim_ids": ["claim-core"],
+                    "claim_states": {"claim-core": "support"},
+                }
+            ],
+            "agent_reach": {"enabled": False, "channels": ["youtube"]},
+            "output_dir": str(workflow_dir / "out"),
+        }
+        with patch("article_workflow_runtime.run_agent_reach_bridge") as bridge_mock:
+            result = run_article_workflow(request)
+
+        bridge_mock.assert_not_called()
+        self.assertEqual(result["source_stage"]["source_kind"], "news_index")
+        self.assertEqual(result["source_stage"].get("agent_reach_stage") or {}, {})
+
     def test_article_cleanup_runtime_removes_old_dirs_and_keeps_recent(self) -> None:
         cleanup_root = self.case_dir("cleanup-runtime")
         old_dir = cleanup_root / "article-workflow-old"
@@ -1483,6 +1674,75 @@ Make the article easier to trust.
         batch_result = read_json(Path(result["batch_result"]["result_path"]))
         workflow_result = read_json(Path(batch_result["items"][0]["workflow_result_path"]))
         self.assertEqual(workflow_result["draft_result"]["request"]["language_mode"], "bilingual")
+
+    def test_article_auto_queue_can_rank_news_candidate_with_agent_reach_augmentation(self) -> None:
+        auto_dir = self.case_dir("auto-agent-reach")
+        request = {
+            "analysis_time": "2026-03-24T12:00:00+00:00",
+            "output_dir": str(auto_dir / "out"),
+            "top_n": 1,
+            "candidates": [
+                {
+                    "label": "agent-reach-news-candidate",
+                    "payload": {
+                        "topic": "Indirect talks and energy shock",
+                        "analysis_time": "2026-03-24T12:00:00+00:00",
+                        "claims": [
+                            {
+                                "claim_id": "claim-core",
+                                "claim_text": "Indirect talks continue through intermediaries.",
+                            }
+                        ],
+                        "candidates": [
+                            {
+                                "source_id": "gov-1",
+                                "source_name": "Oman Foreign Ministry",
+                                "source_type": "government",
+                                "published_at": "2026-03-24T11:20:00+00:00",
+                                "observed_at": "2026-03-24T11:25:00+00:00",
+                                "url": "https://example.com/oman-talks",
+                                "text_excerpt": "Indirect talks continue through intermediaries.",
+                                "claim_ids": ["claim-core"],
+                                "claim_states": {"claim-core": "support"},
+                            }
+                        ],
+                        "agent_reach": {"enabled": True, "channels": ["youtube"]},
+                    },
+                }
+            ],
+        }
+        fake_bridge = {
+            "channels_attempted": ["youtube"],
+            "channels_succeeded": ["youtube"],
+            "channels_failed": [],
+            "observations_imported": 1,
+            "retrieval_request": {
+                "candidates": [
+                    {
+                        "source_id": "agent-youtube-1",
+                        "source_name": "YouTube CBS News",
+                        "source_type": "social",
+                        "origin": "agent_reach",
+                        "agent_reach_channel": "youtube",
+                        "published_at": "2026-03-24T11:40:00+00:00",
+                        "observed_at": "2026-03-24T11:45:00+00:00",
+                        "url": "https://www.youtube.com/watch?v=test",
+                        "claim_ids": ["claim-core"],
+                        "claim_states": {"claim-core": "support"},
+                        "text_excerpt": "Video recap of talks and energy disruption.",
+                        "channel": "shadow",
+                        "access_mode": "public",
+                    }
+                ]
+            },
+        }
+        with patch("article_auto_queue_runtime.run_agent_reach_bridge", return_value=fake_bridge):
+            result = run_article_auto_queue(request)
+
+        self.assertEqual(result["ranked_candidates"][0]["source_kind"], "news_index_agent_reach")
+        batch_result = read_json(Path(result["batch_result"]["result_path"]))
+        workflow_result = read_json(Path(batch_result["items"][0]["workflow_result_path"]))
+        self.assertTrue(any(item.get("origin") == "agent_reach" for item in workflow_result["source_result"]["observations"]))
 
     def test_article_auto_queue_survives_parallel_candidate_failure(self) -> None:
         auto_dir = self.case_dir("auto-partial")

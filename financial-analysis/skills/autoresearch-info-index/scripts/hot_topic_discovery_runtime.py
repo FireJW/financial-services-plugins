@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import urllib.error
 import urllib.parse
@@ -13,6 +14,7 @@ from email.utils import parsedate_to_datetime
 from html import unescape
 from typing import Any
 
+from agent_reach_bridge_runtime import fetch_agent_reach_channels
 from news_index_runtime import clean_string_list, isoformat_or_blank, parse_datetime, safe_dict, safe_list, slugify
 
 
@@ -24,6 +26,7 @@ DEFAULT_TOPIC_SCORE_WEIGHTS = {
     "depth": 0.15,
     "seo": 0.15,
 }
+AGENT_REACH_ENV_VAR = "AGENT_REACH_PROVIDERS"
 FINANCE_KEYWORDS = {
     "ai",
     "agent",
@@ -196,7 +199,7 @@ def normalize_discovered_item(item: dict[str, Any], analysis_time: datetime, ind
     summary = clean_text(item.get("summary") or item.get("snippet") or title)
     published_at = parse_pub_date(item.get("published_at"), analysis_time)
     observed_at = parse_pub_date(item.get("observed_at") or analysis_time.isoformat(), analysis_time)
-    return {
+    normalized = {
         "title": title,
         "summary": summary,
         "url": url,
@@ -207,6 +210,13 @@ def normalize_discovered_item(item: dict[str, Any], analysis_time: datetime, ind
         "heat_score": extract_numeric_heat(item.get("heat_score") or item.get("heat") or item.get("engagement")),
         "tags": clean_string_list(item.get("tags")),
     }
+    provider = clean_text(item.get("provider"))
+    if provider:
+        normalized["provider"] = provider
+    score_float = item.get("score_float")
+    if isinstance(score_float, (int, float)):
+        normalized["score_float"] = max(0.0, min(1.0, float(score_float)))
+    return normalized
 
 
 def normalize_title_for_cluster(title: str) -> str:
@@ -357,6 +367,86 @@ def fetch_google_news_search(query: str, limit: int, analysis_time: datetime) ->
     return parse_rss_items(xml_text, "google-news-search", "major_news", limit, analysis_time)
 
 
+def clamp_score_float(value: Any, default: float = 0.5) -> float:
+    if isinstance(value, (int, float)):
+        return max(0.0, min(1.0, float(value)))
+    return default
+
+
+def normalize_agent_reach_items(source_name: str, request: dict[str, Any]) -> list[dict[str, Any]]:
+    family = source_name.split(":", 1)[1]
+    query = clean_text(request.get("query") or request.get("topic"))
+    if not query:
+        raise ValueError(f"{source_name} requires query or topic")
+    fetch_result = fetch_agent_reach_channels(
+        {
+            "topic": query,
+            "analysis_time": request["analysis_time"].isoformat(),
+            "channels": [family],
+            "pseudo_home": request.get("agent_reach_pseudo_home"),
+            "timeout_per_channel": request.get("agent_reach_timeout_per_channel", 30),
+            "max_results_per_channel": request.get("agent_reach_max_results_per_channel", request.get("limit", 10)),
+            "channel_payloads": safe_dict(request.get("agent_reach_channel_payloads")),
+            "channel_result_paths": safe_dict(request.get("agent_reach_channel_result_paths")),
+            "channel_commands": safe_dict(request.get("agent_reach_channel_commands")),
+            "rss_feeds": safe_list(request.get("agent_reach_rss_feeds")),
+            "dedupe_store_path": request.get("agent_reach_dedupe_store_path"),
+        }
+    )
+    if fetch_result.get("channels_failed"):
+        reason = clean_text(safe_list(fetch_result["channels_failed"])[0].get("reason"))
+        raise ValueError(f"{source_name} fetch failed: {reason or 'unknown error'}")
+    channel_result = safe_dict(fetch_result.get("results_by_channel", {}).get(family))
+    items = [item for item in safe_list(channel_result.get("items")) if isinstance(item, dict)]
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(items[: request["limit"]], start=1):
+        title = clean_text(
+            item.get("title")
+            or item.get("name")
+            or item.get("full_name")
+            or item.get("fullName")
+            or item.get("nameWithOwner")
+            or item.get("headline")
+            or item.get("text")
+        )
+        url = clean_text(item.get("url") or item.get("html_url") or item.get("webpage_url") or item.get("link") or item.get("permalink"))
+        if family == "youtube" and not url and clean_text(item.get("id")):
+            url = f"https://www.youtube.com/watch?v={clean_text(item.get('id'))}"
+        if family == "x" and title:
+            title = title[:120]
+        if family == "github" and title and clean_text(item.get("description")):
+            title = f"{title} - {clean_text(item.get('description'))}"[:160]
+        if not title or not url:
+            continue
+        score_float = 0.5
+        tags: list[str] = []
+        if family == "github":
+            score_float = clamp_score_float((item.get("stargazersCount") or item.get("stars") or 0) / 10000 if isinstance(item.get("stargazersCount") or item.get("stars"), (int, float)) else 0.5)
+        elif family == "youtube":
+            tags = ["video"]
+        elif family == "semantic":
+            score_float = clamp_score_float(item.get("similarity_score"), default=0.5)
+        normalized.append(
+            normalize_discovered_item(
+                {
+                    "title": title,
+                    "summary": clean_text(item.get("summary") or item.get("snippet") or item.get("description") or title),
+                    "url": url,
+                    "source_name": source_name,
+                    "source_type": "social" if family in {"youtube", "x", "wechat"} else "community" if family == "github" else "major_news",
+                    "published_at": item.get("published_at") or item.get("updatedAt") or item.get("created_at") or item.get("pubDate") or request["analysis_time"].isoformat(),
+                    "heat_score": int(round(score_float * 100)),
+                    "tags": tags + [f"provider:{source_name}"],
+                    "provider": source_name,
+                    "score_float": score_float,
+                },
+                request["analysis_time"],
+                index,
+            )
+        )
+    return normalized
+
+
 def fetch_source_items(source_name: str, request: dict[str, Any]) -> list[dict[str, Any]]:
     limit = int(request.get("limit", 10) or 10)
     analysis_time = request["analysis_time"]
@@ -373,21 +463,38 @@ def fetch_source_items(source_name: str, request: dict[str, Any]) -> list[dict[s
         if not query:
             raise ValueError("google-news-search requires query or topic")
         return fetch_google_news_search(query, limit, analysis_time)
+    if source_name.startswith("agent-reach:"):
+        return normalize_agent_reach_items(source_name, request)
     if source_name.startswith("rss:"):
         url = source_name[4:]
         return parse_rss_items(fetch_text(url), "rss", "major_news", limit, analysis_time)
     raise ValueError(f"Unsupported discovery source: {source_name}")
 
 
+def normalize_agent_reach_sources(raw_payload: dict[str, Any]) -> list[str]:
+    explicit = [f"agent-reach:{normalize_channel}" for normalize_channel in [clean_text(item).lower() for item in safe_list(raw_payload.get("agent_reach_families"))] if normalize_channel]
+    env_value = clean_text(os.environ.get(AGENT_REACH_ENV_VAR))
+    env_sources = [f"agent-reach:{clean_text(item).lower()}" for item in env_value.split(",") if clean_text(item)]
+    seen: list[str] = []
+    for source in explicit + env_sources:
+        if source not in seen:
+            seen.append(source)
+    return seen
+
+
 def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     analysis_time = parse_datetime(raw_payload.get("analysis_time"), fallback=now_utc()) or now_utc()
     sources = clean_string_list(raw_payload.get("sources")) or list(DEFAULT_DISCOVERY_SOURCES)
+    agent_reach_sources = normalize_agent_reach_sources(raw_payload)
     manual_topic_candidates = [
         item for item in safe_list(raw_payload.get("manual_topic_candidates") or raw_payload.get("topics")) if isinstance(item, dict)
     ]
     query = clean_text(raw_payload.get("query") or raw_payload.get("topic"))
     if query and not manual_topic_candidates and not clean_string_list(raw_payload.get("sources")):
         sources = ["google-news-search"]
+    for source in agent_reach_sources:
+        if source not in sources:
+            sources.append(source)
     return {
         "analysis_time": analysis_time,
         "sources": sources,
@@ -410,6 +517,14 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "min_source_count": max(0, int(raw_payload.get("min_source_count", 0) or 0)),
         "manual_topic_candidates": manual_topic_candidates,
         "max_parallel_sources": max(1, int(raw_payload.get("max_parallel_sources", min(4, len(sources))) or 1)),
+        "agent_reach_timeout_per_channel": max(1, int(raw_payload.get("agent_reach_timeout_per_channel", 30) or 1)),
+        "agent_reach_max_results_per_channel": max(1, int(raw_payload.get("agent_reach_max_results_per_channel", raw_payload.get("limit", 10)) or 1)),
+        "agent_reach_pseudo_home": clean_text(raw_payload.get("agent_reach_pseudo_home")),
+        "agent_reach_channel_payloads": safe_dict(raw_payload.get("agent_reach_channel_payloads")),
+        "agent_reach_channel_result_paths": safe_dict(raw_payload.get("agent_reach_channel_result_paths")),
+        "agent_reach_channel_commands": safe_dict(raw_payload.get("agent_reach_channel_commands")),
+        "agent_reach_rss_feeds": safe_list(raw_payload.get("agent_reach_rss_feeds")),
+        "agent_reach_dedupe_store_path": raw_payload.get("agent_reach_dedupe_store_path"),
     }
 
 

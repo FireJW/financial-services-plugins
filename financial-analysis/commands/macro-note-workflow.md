@@ -29,6 +29,15 @@ Accepted inputs:
 - an `x-index` request JSON
 - a `news-index` request JSON
 
+Optional discovery augmentation on fresh `news-index` requests:
+
+- add `agent_reach.enabled=true` to let the source stage pull extra upstream
+  discovery before the macro brief is built
+- imported Agent Reach findings stay `shadow` and are merged back into
+  `news-index`, which remains the fact firewall
+- current stable live defaults are `github + youtube`, with `rss` and `x`
+  only joining when explicitly configured or credentials are already present
+
 Recommended use:
 
 - use this instead of `article-workflow` when the end product is a macro note,

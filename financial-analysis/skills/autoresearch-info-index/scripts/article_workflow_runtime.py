@@ -10,6 +10,7 @@ from article_cleanup_runtime import cleanup_article_temp_dirs
 from article_feedback_markdown import build_feedback_markdown
 from article_feedback_profiles import feedback_profile_status, resolve_profile_dir
 from article_draft_flow_runtime import build_article_draft, clean_text, load_json, safe_dict, safe_list, write_json
+from agent_reach_bridge_runtime import run_agent_reach_bridge
 from article_revise_flow_runtime import build_article_revision
 from news_index_runtime import isoformat_or_blank, parse_datetime, run_news_index, slugify
 from runtime_paths import runtime_subdir
@@ -64,6 +65,7 @@ def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         if clean_text(payload.get("output_dir"))
         else runtime_subdir("article-workflow", slugify(topic, "article-topic"), analysis_time.strftime("%Y%m%dT%H%M%SZ"))
     )
+    agent_reach_config = safe_dict(payload.get("agent_reach"))
     return {
         "payload_kind": payload_kind,
         "topic": topic,
@@ -85,11 +87,96 @@ def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "cleanup_enabled": bool(payload.get("cleanup_enabled") or payload.get("cleanup_days") or payload.get("cleanup_root_dir")),
         "cleanup_days": int(payload.get("cleanup_days", 4) or 4),
         "cleanup_root_dir": clean_text(payload.get("cleanup_root_dir")),
+        "agent_reach_enabled": resolve_agent_reach_enabled(payload, agent_reach_config),
+        "agent_reach_config": agent_reach_config,
         "source_result": source_payload,
         "source_result_path": source_result_path,
         "payload": payload,
         "output_dir": output_dir,
     }
+
+
+def resolve_agent_reach_enabled(payload: dict[str, Any], agent_reach_config: dict[str, Any]) -> bool:
+    if "use_agent_reach" in payload:
+        return bool(payload.get("use_agent_reach"))
+    if "enabled" in agent_reach_config:
+        return bool(agent_reach_config.get("enabled"))
+    return bool(agent_reach_config)
+
+
+def build_agent_reach_bridge_payload(request: dict[str, Any]) -> dict[str, Any]:
+    payload = safe_dict(request.get("payload"))
+    agent_reach_config = safe_dict(request.get("agent_reach_config"))
+    bridge_payload: dict[str, Any] = {
+        "topic": request["topic"],
+        "analysis_time": isoformat_or_blank(request["analysis_time"]),
+        "questions": deepcopy(safe_list(payload.get("questions"))),
+        "use_case": clean_text(payload.get("use_case")) or "article-workflow-agent-reach",
+        "source_preferences": deepcopy(safe_list(payload.get("source_preferences"))),
+        "mode": clean_text(payload.get("mode")) or "generic",
+        "windows": deepcopy(safe_list(payload.get("windows"))),
+        "claims": deepcopy(safe_list(payload.get("claims"))),
+        "market_relevance": deepcopy(safe_list(payload.get("market_relevance"))),
+        "expected_source_families": deepcopy(safe_list(payload.get("expected_source_families"))),
+    }
+    for key in (
+        "pseudo_home",
+        "channels",
+        "timeout_per_channel",
+        "max_results_per_channel",
+        "dedupe_window_hours",
+        "dedupe_store_path",
+        "rss_feeds",
+        "channel_payloads",
+        "channel_result_paths",
+        "channel_commands",
+    ):
+        value = agent_reach_config.get(key)
+        if value not in (None, "", [], {}):
+            bridge_payload[key] = deepcopy(value)
+    return bridge_payload
+
+
+def merge_news_payload_with_agent_reach_candidates(payload: dict[str, Any], bridge_result: dict[str, Any]) -> dict[str, Any]:
+    merged_payload = deepcopy(payload)
+    imported_candidates = [
+        deepcopy(item)
+        for item in safe_list(safe_dict(bridge_result.get("retrieval_request")).get("candidates"))
+        if isinstance(item, dict)
+    ]
+    existing_candidates = [
+        deepcopy(item)
+        for item in safe_list(merged_payload.get("candidates") or merged_payload.get("source_candidates"))
+        if isinstance(item, dict)
+    ]
+    merged_payload["candidates"] = existing_candidates + imported_candidates
+    return merged_payload
+
+
+def prepare_source_payload(request: dict[str, Any]) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    payload_kind = request["payload_kind"]
+    source_payload = request["source_result"]
+    agent_reach_stage: dict[str, Any] = {}
+    if payload_kind == "x_request":
+        return run_x_index(request["payload"]), "x_index", agent_reach_stage
+    if payload_kind == "news_request":
+        if request.get("agent_reach_enabled"):
+            bridge_result = run_agent_reach_bridge(build_agent_reach_bridge_payload(request))
+            source_payload = run_news_index(merge_news_payload_with_agent_reach_candidates(request["payload"], bridge_result))
+            agent_reach_stage = {
+                "enabled": True,
+                "bridge_result": bridge_result,
+                "channels_attempted": deepcopy(bridge_result.get("channels_attempted", [])),
+                "channels_succeeded": deepcopy(bridge_result.get("channels_succeeded", [])),
+                "channels_failed": deepcopy(bridge_result.get("channels_failed", [])),
+                "imported_candidate_count": int(bridge_result.get("observations_imported", 0) or 0),
+            }
+            return source_payload, "news_index_agent_reach", agent_reach_stage
+        return run_news_index(request["payload"]), "news_index", agent_reach_stage
+    if source_payload:
+        source_kind = "x_index" if safe_list(source_payload.get("x_posts")) or safe_dict(source_payload.get("evidence_pack")) else "news_index"
+        return source_payload, source_kind, agent_reach_stage
+    raise ValueError("article-workflow could not resolve a source payload")
 
 
 def build_draft_payload(request: dict[str, Any], source_result: dict[str, Any]) -> dict[str, Any]:
@@ -475,6 +562,7 @@ def build_decision_trace(brief_result: dict[str, Any], draft_result: dict[str, A
 
 def build_report_markdown(result: dict[str, Any]) -> str:
     source_stage = safe_dict(result.get("source_stage"))
+    agent_reach_stage = safe_dict(source_stage.get("agent_reach_stage"))
     brief_stage = safe_dict(result.get("brief_stage"))
     draft_stage = safe_dict(result.get("draft_stage"))
     review_stage = safe_dict(result.get("review_stage"))
@@ -503,6 +591,8 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         "",
         f"- Source result: {clean_text(source_stage.get('result_path')) or 'not written'}",
         f"- Source report: {clean_text(source_stage.get('report_path')) or 'not written'}",
+        f"- Agent Reach bridge result: {clean_text(agent_reach_stage.get('result_path')) or 'not used'}",
+        f"- Agent Reach bridge report: {clean_text(agent_reach_stage.get('report_path')) or 'not used'}",
         f"- Brief result: {clean_text(brief_stage.get('result_path')) or 'not written'}",
         f"- Brief report: {clean_text(brief_stage.get('report_path')) or 'not written'}",
         f"- Draft result: {clean_text(draft_stage.get('result_path')) or 'not written'}",
@@ -519,6 +609,19 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         "",
         "Use the final article result as the current best version, then edit the feedback markdown file for the next revision pass.",
     ]
+    if agent_reach_stage:
+        lines.extend(
+            [
+                "",
+                "## Agent Reach Augmentation",
+                "",
+                f"- Channels attempted: {', '.join(safe_list(agent_reach_stage.get('channels_attempted'))) or 'none'}",
+                f"- Channels succeeded: {', '.join(safe_list(agent_reach_stage.get('channels_succeeded'))) or 'none'}",
+                f"- Imported shadow candidates: {int(agent_reach_stage.get('imported_candidate_count', 0) or 0)}",
+            ]
+        )
+        for item in safe_list(agent_reach_stage.get("channels_failed")):
+            lines.append(f"- Channel failure: {clean_text(item.get('channel'))} | {clean_text(item.get('reason'))}")
     lines.extend(
         [
             "",
@@ -643,20 +746,18 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
         )
     request["output_dir"].mkdir(parents=True, exist_ok=True)
 
-    payload_kind = request["payload_kind"]
-    source_payload = request["source_result"]
-    if payload_kind == "x_request":
-        source_payload = run_x_index(request["payload"])
-    elif payload_kind == "news_request":
-        source_payload = run_news_index(request["payload"])
-    elif not source_payload:
-        raise ValueError("article-workflow could not resolve a source payload")
-
-    source_kind = "x_index" if safe_list(source_payload.get("x_posts")) or safe_dict(source_payload.get("evidence_pack")) else "news_index"
+    source_payload, source_kind, agent_reach_stage = prepare_source_payload(request)
     source_result_path = request["output_dir"] / "source-result.json"
     source_report_path = request["output_dir"] / "source-report.md"
     write_json(source_result_path, source_payload)
     source_report_path.write_text(source_payload.get("report_markdown", ""), encoding="utf-8-sig")
+    if agent_reach_stage:
+        agent_reach_result_path = request["output_dir"] / "agent-reach-bridge-result.json"
+        agent_reach_report_path = request["output_dir"] / "agent-reach-bridge-report.md"
+        write_json(agent_reach_result_path, safe_dict(agent_reach_stage.get("bridge_result")))
+        agent_reach_report_path.write_text(safe_dict(agent_reach_stage.get("bridge_result")).get("report_markdown", ""), encoding="utf-8-sig")
+        agent_reach_stage["result_path"] = str(agent_reach_result_path)
+        agent_reach_stage["report_path"] = str(agent_reach_report_path)
 
     brief_payload = build_brief_payload(request, source_payload)
     brief_result = build_analysis_brief(brief_payload)
@@ -718,6 +819,7 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "source_kind": source_kind,
             "result_path": str(source_result_path),
             "report_path": str(source_report_path),
+            "agent_reach_stage": agent_reach_stage,
         },
         "brief_stage": {
             "result_path": str(brief_result_path),

@@ -34,6 +34,16 @@ Accepted inputs:
 - an `x-index` request JSON
 - a `news-index` request JSON
 
+Optional discovery augmentation on fresh `news-index` requests:
+
+- add `agent_reach.enabled=true` to let the source stage run an upstream
+  Agent Reach discovery pass first
+- imported Agent Reach findings stay `shadow` and are merged back into the
+  downstream `news-index` request
+- this does not replace the repository-native `x-index` path for X collection
+- current stable live defaults are `github + youtube`, with `rss` and `x`
+  only joining when explicitly configured or credentials are already present
+
 Useful modes:
 
 - `draft_mode=balanced`
