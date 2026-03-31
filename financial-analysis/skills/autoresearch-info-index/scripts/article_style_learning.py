@@ -6,8 +6,8 @@ from difflib import SequenceMatcher
 from typing import Any
 
 
-STYLE_REQUEST_KEYS = ("language_mode", "tone", "draft_mode", "image_strategy", "max_images")
-GUIDANCE_REQUEST_KEYS = ("must_include", "must_avoid")
+STYLE_REQUEST_KEYS = ("language_mode", "tone", "draft_mode", "image_strategy", "max_images", "human_signal_ratio")
+GUIDANCE_REQUEST_KEYS = ("must_include", "must_avoid", "personal_phrase_bank")
 FRAMING_REQUEST_KEYS = ("title_hint", "title_hint_zh", "subtitle_hint", "subtitle_hint_zh", "angle", "angle_zh")
 REQUEST_DIFF_KEYS = STYLE_REQUEST_KEYS + GUIDANCE_REQUEST_KEYS + FRAMING_REQUEST_KEYS + ("allow_auto_rewrite_after_manual",)
 EDIT_REASON_TAGS = {

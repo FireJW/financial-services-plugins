@@ -225,6 +225,46 @@ class WechatDraftPushTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("appid=wx-local-test", seen["token_url"])
 
+    def test_push_publish_package_loads_credentials_from_default_phase2_env_file(self) -> None:
+        seen: dict[str, str] = {}
+        phase2_dir = self.temp_dir / ".tmp" / "wechat-phase2-dev"
+        phase2_dir.mkdir(parents=True, exist_ok=True)
+        env_file = phase2_dir / ".env.wechat.local"
+        env_file.write_text(
+            "WECHAT_APP_ID=wx-phase2-test\nWECHAT_APP_SECRET=phase2-secret-test\n",
+            encoding="utf-8",
+        )
+
+        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
+            if "cgi-bin/token" in url:
+                seen["token_url"] = url
+                return json.dumps({"access_token": "token-phase2", "expires_in": 7200}).encode("utf-8")
+            if "media/uploadimg" in url:
+                return json.dumps({"url": "https://mmbiz.qpic.cn/inline/phase2.png"}).encode("utf-8")
+            if "material/add_material" in url:
+                return json.dumps({"media_id": "cover-phase2", "url": "https://mmbiz.qpic.cn/cover-phase2.png"}).encode("utf-8")
+            if "draft/add" in url:
+                return json.dumps({"media_id": "draft-phase2"}).encode("utf-8")
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        with patch.dict(
+            os.environ,
+            {"WECHAT_ENV_FILE": "", "WECHAT_ENV_PATH": "", "WECHAT_APP_ID": "", "WECHAT_APP_SECRET": ""},
+            clear=False,
+        ):
+            with patch("wechat_draftbox_runtime.REPO_ROOT", self.temp_dir):
+                result = push_publish_package_to_wechat(
+                    {
+                        "publish_package": self.build_publish_package(),
+                        "human_review_approved": True,
+                        "human_review_approved_by": "Editor",
+                    },
+                    request_fn=fake_request,
+                )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("appid=wx-phase2-test", seen["token_url"])
+
     def test_push_publish_package_requires_human_review_approval(self) -> None:
         result = push_publish_package_to_wechat(
             {

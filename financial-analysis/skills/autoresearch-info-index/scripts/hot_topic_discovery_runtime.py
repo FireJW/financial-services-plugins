@@ -719,6 +719,159 @@ def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> 
     return True, ""
 
 
+FINANCE_KEYWORDS = {
+    "ai",
+    "agent",
+    "openai",
+    "claude",
+    "芯片",
+    "半导体",
+    "算力",
+    "大模型",
+    "模型",
+    "融资",
+    "上市",
+    "ipo",
+    "并购",
+    "裁员",
+    "出海",
+    "消费",
+    "制造",
+    "新能源",
+    "汽车",
+    "机器人",
+    "军工",
+    "油",
+    "油气",
+    "天然气",
+    "关税",
+    "政策",
+    "a股",
+    "港股",
+    "美股",
+    "经济",
+    "宏观",
+    "基金",
+    "银行",
+    "证券",
+    "地产",
+    "黄金",
+    "铜",
+    "铝",
+}
+
+DEBATE_KEYWORDS = {
+    "为什么",
+    "争议",
+    "意味着",
+    "冲击",
+    "暴涨",
+    "暴跌",
+    "裁员",
+    "封杀",
+    "暂停",
+    "限制",
+    "崩盘",
+    "利空",
+    "利好",
+    "冲突",
+    "战争",
+    "谈判",
+    "断供",
+    "禁令",
+}
+
+
+def discussion_score(title: str, source_count: int) -> int:
+    text = clean_text(title).lower()
+    keyword_bonus = 25 if any(keyword in text for keyword in DEBATE_KEYWORDS) else 0
+    punctuation_bonus = 10 if "？" in title or "?" in title or "！" in title or "!" in title else 0
+    source_bonus = min(45, source_count * 15)
+    return clamp(20 + keyword_bonus + punctuation_bonus + source_bonus)
+
+
+def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict[str, Any], index: int) -> dict[str, Any]:
+    analysis_time = request["analysis_time"]
+    audience_keywords = request["audience_keywords"]
+    preferred_topic_keywords = request["preferred_topic_keywords"]
+    weights = request["topic_score_weights"]
+    sorted_items = sorted(
+        cluster_items,
+        key=lambda item: (
+            int(item.get("heat_score", 0) or 0),
+            item.get("published_at", ""),
+            len(clean_text(item.get("summary"))),
+        ),
+        reverse=True,
+    )
+    canonical = sorted_items[0]
+    latest_published_at = max((item.get("published_at", "") for item in sorted_items), default=isoformat_or_blank(analysis_time))
+    source_names = []
+    domains = []
+    combined_tags = []
+    for item in sorted_items:
+        source_name = clean_text(item.get("source_name"))
+        if source_name and source_name not in source_names:
+            source_names.append(source_name)
+        domain = domain_from_url(item.get("url", ""))
+        if domain and domain not in domains:
+            domains.append(domain)
+        for tag in clean_string_list(item.get("tags")):
+            if tag not in combined_tags:
+                combined_tags.append(tag)
+    keywords = clean_string_list(keyword_hits(canonical.get("title", ""), canonical.get("summary", ""), " ".join(combined_tags)))
+    keywords = clean_string_list(keywords + tokenize_title(canonical.get("title", "")))[:8]
+    candidate = {
+        "topic_id": slugify(canonical.get("title", ""), f"topic-{index:02d}"),
+        "title": canonical.get("title", ""),
+        "summary": canonical.get("summary", "") or canonical.get("title", ""),
+        "latest_published_at": latest_published_at,
+        "source_count": len(sorted_items),
+        "source_names": source_names,
+        "domains": domains,
+        "keywords": keywords,
+        "max_heat_score": max((int(item.get("heat_score", 0) or 0) for item in sorted_items), default=0),
+        "source_items": sorted_items,
+    }
+    timeliness = timeliness_score(candidate, analysis_time)
+    debate = discussion_score(candidate["title"], candidate["source_count"])
+    relevance = relevance_score(candidate, audience_keywords, preferred_topic_keywords)
+    depth = depth_score(candidate)
+    seo = seo_score(candidate["title"], candidate["keywords"])
+    total = clamp(
+        timeliness * weights["timeliness"]
+        + debate * weights["debate"]
+        + relevance * weights["relevance"]
+        + depth * weights["depth"]
+        + seo * weights["seo"]
+    )
+    preferred_matches = matching_keywords(candidate_match_text(candidate), preferred_topic_keywords)
+    reasons = [
+        f"新鲜度 {timeliness}",
+        f"讨论空间 {debate}",
+        f"受众相关性 {relevance}",
+        f"延展深度 {depth}",
+        f"SEO 价值 {seo}",
+    ]
+    candidate["score_breakdown"] = {
+        "timeliness": timeliness,
+        "debate": debate,
+        "relevance": relevance,
+        "depth": depth,
+        "seo": seo,
+        "total_score": total,
+        "weights": weights,
+    }
+    if preferred_matches:
+        reasons.append(f"topic preference match {', '.join(preferred_matches[:3])}")
+    candidate["score_reasons"] = reasons
+    candidate["topic_control_match"] = {
+        "preferred_keyword_hits": preferred_matches,
+        "excluded_keyword_hits": [],
+    }
+    return candidate
+
+
 def build_markdown_report(result: dict[str, Any]) -> str:
     controls = safe_dict(result.get("topic_controls"))
     lines = [

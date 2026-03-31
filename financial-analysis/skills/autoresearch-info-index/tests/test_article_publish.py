@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import py_compile
 import shutil
 import sys
@@ -12,7 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from article_publish_runtime import build_publish_package, run_article_publish
+from article_publish_runtime import build_news_request_from_topic, build_publish_package, run_article_publish
 from article_publish import parse_args
 from hot_topic_discovery_runtime import run_hot_topic_discovery
 
@@ -127,6 +128,7 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             result["ranked_topics"][0]["score_breakdown"]["total_score"],
             result["ranked_topics"][1]["score_breakdown"]["total_score"],
         )
+        self.assertTrue(result["ranked_topics"][0]["score_reasons"][0].startswith("新鲜度 "))
         self.assertIn("Hot Topic Discovery", result["report_markdown"])
 
     def test_hot_topic_discovery_applies_operator_topic_controls(self) -> None:
@@ -181,6 +183,104 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertIn("run_wechat_push_draft.cmd", result["next_push_command"])
         self.assertIn("Human Review Gate", result["report_markdown"])
         self.assertIn("Publish Readiness", result["report_markdown"])
+        self.assertNotIn("Chinese business and investing readers", package["content_markdown"])
+        self.assertNotIn("AI and technology readers will care", package["content_markdown"])
+        self.assertNotIn("真实事件、趋势或争议", package["content_markdown"])
+        self.assertNotIn("有解释价值，不只是情绪型热度", package["content_markdown"])
+        self.assertNotIn("google-news-search, 36kr", package["content_markdown"])
+        self.assertNotIn("现在最直接的观察对象是", package["content_markdown"])
+        self.assertIn("最先能确认的变化其实很具体", package["content_markdown"])
+        self.assertIn("这轮讨论没有很快掉下去", package["content_markdown"])
+        self.assertIn("接下来最该盯的", package["content_markdown"])
+        self.assertIn("更实", package["content_markdown"])
+
+    def test_article_publish_chinese_mode_localizes_sources_and_title(self) -> None:
+        request = {
+            "analysis_time": "2026-03-29T10:30:00+00:00",
+            "manual_topic_candidates": self.manual_topic_candidates(),
+            "audience_keywords": ["AI", "business", "investing", "industry"],
+            "account_name": "Test Account",
+            "author": "Codex",
+            "output_dir": str(self.temp_dir / "zh-article"),
+            "draft_mode": "balanced",
+            "language_mode": "chinese",
+            "max_images": 2,
+        }
+        result = run_article_publish(request)
+        package = result["publish_package"]
+
+        self.assertEqual(package["article_framework"], "deep_analysis")
+        self.assertTrue(any("\u4e00" <= ch <= "\u9fff" for ch in package["title"]))
+        self.assertIn("## 来源", package["content_markdown"])
+        self.assertNotEqual(package["article_framework"], "story")
+        self.assertIn("接下来最该盯的", package["content_markdown"])
+        self.assertIn("更实", package["content_markdown"])
+
+    def test_article_publish_chinese_mode_strips_noisy_source_branding_title_copy(self) -> None:
+        noisy_candidates = [
+            {
+                "title": "MicroYuan completes A+ round financing | 36kr first release: what is confirmed, what is not",
+                "summary": "A biotech AI startup announced financing and a new collaboration platform.",
+                "source_items": [
+                    {
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "url": "https://example.com/36kr-weiyuan",
+                        "published_at": "2026-03-29T10:00:00+00:00",
+                        "summary": "36kr reports the financing round and platform release.",
+                    }
+                ],
+            }
+        ]
+        result = run_article_publish(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": noisy_candidates,
+                "audience_keywords": ["AI", "business", "investing", "industry"],
+                "account_name": "Test Account",
+                "author": "Codex",
+                "output_dir": str(self.temp_dir / "zh-noisy-title"),
+                "language_mode": "chinese",
+            }
+        )
+        package = result["publish_package"]
+        self.assertNotIn("36kr", package["title"].lower())
+        self.assertNotIn("first release", package["title"].lower())
+        self.assertNotIn("what is confirmed", package["title"].lower())
+        self.assertIn("## \u6765\u6e90", package["content_markdown"])
+
+    def test_build_news_request_from_topic_adds_clean_public_title_and_bilingual_fields(self) -> None:
+        selected_topic = {
+            "title": "微元合成获3亿元A+轮融资，联合发布AI生物计算开放合作平台 | 36氪首发：哪些已经确认，哪些仍未确认",
+            "summary": "一家 AI 生物计算公司完成融资并发布平台。",
+            "keywords": ["AI", "融资", "平台"],
+            "score_breakdown": {"relevance": 70, "debate": 55},
+            "source_count": 2,
+            "source_items": [
+                {
+                    "source_name": "36kr",
+                    "source_type": "major_news",
+                    "url": "https://example.com/36kr-weiyuan",
+                    "published_at": "2026-03-29T10:00:00+00:00",
+                    "summary": "36kr reports the financing round and platform release.",
+                }
+            ],
+        }
+        request = build_news_request_from_topic(
+            selected_topic,
+            {
+                "analysis_time": datetime(2026, 3, 29, 10, 30, tzinfo=UTC),
+                "topic": "",
+            },
+        )
+
+        self.assertEqual(request["topic"], "微元合成获3亿元A+轮融资，联合发布AI生物计算开放合作平台")
+        self.assertTrue(all(item.get("claim_text_zh") for item in request["claims"]))
+        self.assertTrue(request["market_relevance_zh"])
+        self.assertIn("哪些事实已经能被多源确认", request["questions"][0])
+        self.assertEqual(request["claims"][0]["claim_text_zh"], "微元合成获3亿元A+轮融资")
+        self.assertEqual(request["claims"][1]["claim_text_zh"], "联合发布AI生物计算开放合作平台")
+        self.assertNotIn("真实事件、趋势或争议", request["claims"][0]["claim_text_zh"])
 
     def test_article_publish_can_be_push_ready_with_explicit_cover_override(self) -> None:
         cover_path = self.temp_dir / "cover.png"
@@ -192,6 +292,9 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
                 "audience_keywords": ["AI", "business", "investing", "industry"],
                 "output_dir": str(self.temp_dir / "with-cover"),
                 "cover_image_path": str(cover_path),
+                "wechat_app_id": "wx-test",
+                "wechat_app_secret": "secret",
+                "allow_insecure_inline_credentials": True,
             }
         )
         readiness = result["publish_package"]["push_readiness"]
@@ -327,6 +430,7 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertEqual(package["editor_anchor_mode"], "inline")
         self.assertEqual(package["editor_anchor_visibility"], "visible_inline")
         self.assertIn(package["editor_anchors"][0]["text"], package["content_html"])
+        self.assertIn("编辑锚点", package["content_html"])
 
     def test_article_publish_cli_accepts_hyphenated_framework_alias(self) -> None:
         with patch.object(sys, "argv", ["article_publish.py", "--article-framework", "hot-comment"]):

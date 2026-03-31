@@ -26,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--human-review-approved", action="store_true", help="Mark the article as human-reviewed so a real WeChat push is allowed")
     parser.add_argument("--human-review-approved-by", help="Optional reviewer name recorded for the push gate")
     parser.add_argument("--human-review-note", help="Optional review note recorded for the push gate")
+    parser.add_argument("--wechat-env-file", help="Optional path to a local .env.wechat.local file")
     parser.add_argument("--wechat-app-id", help="Optional WeChat app id override")
     parser.add_argument("--wechat-app-secret", help="Optional WeChat app secret override")
     parser.add_argument("--timeout-seconds", type=int, help="Optional WeChat API timeout override")
@@ -53,6 +54,8 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["human_review_approved_by"] = args.human_review_approved_by
     if args.human_review_note:
         payload["human_review_note"] = args.human_review_note
+    if args.wechat_env_file:
+        payload["wechat_env_file"] = args.wechat_env_file
     if args.wechat_app_id:
         payload["wechat_app_id"] = args.wechat_app_id
     if args.wechat_app_secret:

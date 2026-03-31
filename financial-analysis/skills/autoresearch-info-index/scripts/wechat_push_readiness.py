@@ -24,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--human-review-approved", action="store_true", help="Treat the package as human-reviewed during the audit")
     parser.add_argument("--human-review-approved-by", help="Optional reviewer name recorded in the audit")
     parser.add_argument("--human-review-note", help="Optional review note recorded in the audit")
+    parser.add_argument("--wechat-env-file", help="Optional path to a local .env.wechat.local file")
     parser.add_argument("--validate-live-auth", action="store_true", help="Fetch a real access token to verify the current WeChat credentials")
     parser.add_argument("--wechat-app-id", help="Optional unsafe inline AppID override for the audit")
     parser.add_argument("--wechat-app-secret", help="Optional unsafe inline AppSecret override for the audit")
@@ -52,6 +53,8 @@ def build_payload(args: argparse.Namespace) -> dict[str, object]:
         payload["human_review_approved_by"] = args.human_review_approved_by
     if args.human_review_note:
         payload["human_review_note"] = args.human_review_note
+    if args.wechat_env_file:
+        payload["wechat_env_file"] = args.wechat_env_file
     if args.validate_live_auth:
         payload["validate_live_auth"] = True
     if args.wechat_app_id:

@@ -15,6 +15,10 @@ def clean_text(value: Any) -> str:
     return " ".join(str(value or "").replace("\u200b", " ").split()).strip()
 
 
+def strip_terminal_punctuation(value: Any) -> str:
+    return clean_text(value).rstrip("。！？!?；;：:,.，、 ")
+
+
 def safe_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -386,28 +390,28 @@ def build_story_angles(
     angles: list[dict[str, Any]] = []
     lead_fact = safe_dict(canonical_facts[0]) if canonical_facts else {}
     lead_risk = safe_dict(not_proven[0]) if not_proven else {}
+    lead_fact_text = strip_terminal_punctuation(clean_text(lead_fact.get("claim_text")))
+    lead_risk_text = strip_terminal_punctuation(clean_text(lead_risk.get("claim_text")))
+    topic_label = clean_text(topic) or "the story"
     if canonical_facts and not_proven:
         angles.append(
             {
-                "angle": (
-                    f"For {topic}, lead with '{clean_text(lead_fact.get('claim_text'))}', then explain why "
-                    f"'{clean_text(lead_risk.get('claim_text'))}' is still not proven."
-                ),
-                "risk": "If written too aggressively, the article can smuggle in an unsupported conclusion.",
+                "angle": f"{lead_fact_text} is already supported, and the real debate is whether {lead_risk_text} can actually follow through.",
+                "risk": "The piece breaks if it upgrades that debate into a settled outcome too early.",
             }
         )
     elif canonical_facts:
         angles.append(
             {
-                "angle": f"For {topic}, lead with the strongest confirmed development and keep the rest as conditional scenarios.",
-                "risk": "Can become too flat if the piece does not explain what still matters on the live tape.",
+                "angle": f"{lead_fact_text or topic_label} is already firm enough to anchor the piece; the rest should follow the downstream implications instead of replaying the headline.",
+                "risk": "Can become too flat if the article never shows why the change matters next.",
             }
         )
     else:
         angles.append(
             {
-                "angle": f"For {topic}, explain why the public record is still too thin for a hard call.",
-                "risk": "Can feel unsatisfying if the piece never identifies the specific confirmation gap.",
+                "angle": f"The public record around {topic_label} is still thin, so the strongest angle is to map what is known and what still needs confirmation.",
+                "risk": "Can feel unsatisfying if the draft never names the missing confirmation clearly.",
             }
         )
     if image_keep_reasons:
@@ -425,8 +429,7 @@ def build_story_angles(
         angles.append(
             {
                 "angle": (
-                    f"Stress-test the dramatic claim '{clean_text(lead_risk.get('claim_text'))}' and show why it still "
-                    "fails the current evidence threshold."
+                    f"Stress-test the dramatic claim '{lead_risk_text}' and show why it still falls short of the current evidence bar."
                 ),
                 "risk": "Can become too reactive if the piece spends more time on rumor than on the stable record.",
             }
@@ -525,14 +528,23 @@ def build_misread_risks(not_proven: list[dict[str, Any]], observations: list[dic
 
 
 def build_recommended_thesis(topic: str, canonical_facts: list[dict[str, Any]], not_proven: list[dict[str, Any]], observations: list[dict[str, Any]]) -> str:
-    if canonical_facts and not_proven:
-        return f"The safest evidence-backed angle on {topic} is to separate the strongest confirmed development from the more aggressive claim that is still not proven."
-    if canonical_facts:
-        return f"The cleanest way to write {topic} is to lead with the strongest confirmed change and keep the rest as contingent scenarios."
+    lead_fact = strip_terminal_punctuation(
+        safe_nth_dict(canonical_facts, 0).get("claim_text")
+        or safe_nth_dict(canonical_facts, 0).get("claim_text_zh")
+    )
+    lead_risk = strip_terminal_punctuation(
+        safe_nth_dict(not_proven, 0).get("claim_text")
+        or safe_nth_dict(not_proven, 0).get("claim_text_zh")
+    )
+    topic_label = clean_text(topic) or "the story"
+    if lead_fact and lead_risk:
+        return f"{lead_fact} is already supported, but {lead_risk} still should not be treated as a settled conclusion."
+    if lead_fact:
+        return f"The confirmed part of {topic_label} is straightforward: {lead_fact}."
     fresh_shadow = [item for item in observations if clean_text(item.get("channel")) == "shadow" and clean_text(item.get("recency_bucket")) != ">24h"]
     if fresh_shadow:
-        return f"For {topic}, the live tape is active but the confirmed record is still too thin for a hard call."
-    return f"For {topic}, the public evidence is still too sparse for a narrow or highly confident thesis."
+        return f"{topic_label} is active in the live tape, but the confirmed public record is still too thin for a hard call."
+    return f"The public evidence around {topic_label} is still too thin for a narrow or highly confident thesis."
 
 
 def topic_supports_policy_pressure(topic: str, canonical_facts: list[dict[str, Any]], not_proven: list[dict[str, Any]]) -> bool:
@@ -901,6 +913,230 @@ def build_analysis_brief_payload(request: dict[str, Any]) -> dict[str, Any]:
         "misread_risks": build_misread_risks(not_proven, observations),
         "recommended_thesis": build_recommended_thesis(request["topic"], canonical_facts, not_proven, observations),
         "recommended_thesis_zh": "",
+    }
+    macro_note_fields = build_macro_note_fields(
+        request["topic"],
+        isoformat_or_blank(request["analysis_time"]),
+        source_summary,
+        source_request,
+        canonical_facts,
+        not_proven,
+        open_questions,
+        scenario_matrix,
+        market_relevance,
+    )
+    analysis_brief.update(macro_note_fields)
+    analysis_brief["macro_note_fields"] = macro_note_fields
+    if topic_supports_policy_pressure(request["topic"], canonical_facts, not_proven):
+        analysis_brief["policy_pressure_overlay"] = build_policy_pressure_overlay(request["topic"])
+    return {
+        "request": {
+            "topic": request["topic"],
+            "analysis_time": isoformat_or_blank(request["analysis_time"]),
+            "source_result_path": request["source_result_path"],
+        },
+        "source_summary": source_summary,
+        "analysis_brief": analysis_brief,
+        "supporting_citations": citations,
+        "evidence_bundle": evidence_bundle,
+    }
+
+
+def translate_brief_line_to_zh(text: str) -> str:
+    cleaned = clean_text(text)
+    if not cleaned:
+        return ""
+    tracked_claims = cleaned.removesuffix(".")
+    if tracked_claims.endswith("tracked claim(s) are still denied, unclear, or inference-only"):
+        count = tracked_claims.split(" ", 1)[0]
+        if count.isdigit():
+            return f"目前仍有{count}条关键判断处在未证实、被否认或仅能推演的状态。"
+    if cleaned.startswith("Recent core sources are concentrated in "):
+        return "最近较高置信度的信息主要集中在" + cleaned.removeprefix("Recent core sources are concentrated in ").rstrip(".") + "。"
+    if cleaned.startswith("The live tape is still being pushed by lower-confidence recent signals such as "):
+        return "眼下的舆论节奏仍在被低置信度的新信号推动，比如" + cleaned.removeprefix(
+            "The live tape is still being pushed by lower-confidence recent signals such as "
+        ).rstrip(".") + "。"
+    replacements = {
+        "Fresh higher-tier evidence is present.": "更高等级的确认信号已经出现。",
+        "The live tape is moving faster than the confirmed record.": "眼下的舆论节奏跑得比已确认记录更快。",
+        "Important claims remain unresolved.": "关键判断仍然没有完全坐实。",
+        "The current picture is still sparse.": "眼下公开信息仍然偏少。",
+        "There is not enough clean public evidence yet to support a narrow or aggressive story line.": "目前还没有足够干净的公开证据，支撑一个过窄或过猛的结论。",
+        "The main risk is false precision rather than missing nuance.": "眼下最大的风险不是不够细，而是把话说得太满。",
+    }
+    return replacements.get(cleaned, cleaned)
+
+
+def build_source_summary(request: dict[str, Any], runtime: dict[str, Any]) -> dict[str, Any]:
+    observations = safe_list(runtime.get("observations"))
+    verdict = safe_dict(runtime.get("verdict_output"))
+    source_request = (
+        safe_dict(request["source_result"].get("request"))
+        or safe_dict(request["source_result"].get("retrieval_request"))
+        or safe_dict(runtime.get("request"))
+    )
+    return {
+        "source_kind": "x_index" if safe_list(request["source_result"].get("x_posts")) or safe_dict(request["source_result"].get("evidence_pack")) else "news_index",
+        "topic": request["topic"],
+        "analysis_time": isoformat_or_blank(request["analysis_time"]),
+        "observation_count": len(observations),
+        "blocked_source_count": sum(1 for item in observations if clean_text(item.get("access_mode")) == "blocked"),
+        "core_source_count": sum(1 for item in observations if clean_text(item.get("channel")) == "core"),
+        "shadow_source_count": sum(1 for item in observations if clean_text(item.get("channel")) == "shadow"),
+        "confidence_interval": safe_list(verdict.get("confidence_interval")) or [0, 0],
+        "confidence_gate": clean_text(verdict.get("confidence_gate")),
+        "core_verdict": clean_text(verdict.get("core_verdict")),
+        "market_relevance": clean_string_list(verdict.get("market_relevance")),
+        "market_relevance_zh": clean_string_list(source_request.get("market_relevance_zh")),
+    }
+
+
+def build_open_questions_zh(
+    topic: str,
+    market_relevance_zh: list[str],
+    canonical_facts: list[dict[str, Any]],
+    not_proven: list[dict[str, Any]],
+) -> list[str]:
+    questions: list[str] = []
+    for item in market_relevance_zh:
+        text = clean_text(item)
+        if not text:
+            continue
+        if "融资意愿" in text or "订单能见度" in text:
+            questions.append("融资意愿和订单能见度会不会继续改善，还是只是短期叙事回潮？")
+        elif "背景" in text or "传导路径" in text:
+            questions.append("这波讨论会不会从热度题，真正转成经营和投资判断题？")
+        elif "商品价格" in text or "风险偏好" in text or "传导" in text:
+            questions.append("相关传导链会不会继续往成本、行业和企业决策层面压下来？")
+        else:
+            questions.append(text.rstrip("。") + "接下来会怎么继续传导？")
+    if not questions and canonical_facts:
+        questions.append("下一轮更高等级来源会不会继续确认当前主线，而不是只放大情绪？")
+    if not questions and not_proven:
+        questions.append(f"围绕“{clean_text(not_proven[0].get('claim_text_zh') or not_proven[0].get('claim_text'))}”的市场想象会不会继续跑在事实前面？")
+    return questions[:4]
+
+
+def build_story_angles_zh(topic: str, canonical_facts: list[dict[str, Any]], not_proven: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    angles: list[dict[str, Any]] = []
+    lead_fact = strip_terminal_punctuation(
+        safe_nth_dict(canonical_facts, 0).get("claim_text_zh") or safe_nth_dict(canonical_facts, 0).get("claim_text")
+    )
+    lead_risk = strip_terminal_punctuation(
+        safe_nth_dict(not_proven, 0).get("claim_text_zh") or safe_nth_dict(not_proven, 0).get("claim_text")
+    )
+    topic_label = clean_text(topic) or "这件事"
+    if lead_fact and lead_risk:
+        angles.append(
+            {
+                "angle": f"{lead_fact}已经能站住，真正值得往下拆的分歧，在于{lead_risk}会不会继续兑现。",
+                "risk": "如果把分歧提前写成定论，整篇会显得过猛。",
+            }
+        )
+    elif lead_fact:
+        angles.append(
+            {
+                "angle": f"“{lead_fact}”这件事已经够硬，后面更值得写的是它会不会继续往更实的经营变量上传导。",
+                "risk": "如果只复述消息面，不往下拆影响，文章会显得像搬运。",
+            }
+        )
+    else:
+        angles.append(
+            {
+                "angle": f"围绕{topic_label}，眼下更适合先交代已经公开的变化，再看哪些关键变量还在待确认。",
+                "risk": "如果缺口写不清，文章会只剩情绪和态度。",
+            }
+        )
+    return angles[:3]
+
+
+def build_recommended_thesis_zh(
+    topic: str,
+    canonical_facts: list[dict[str, Any]],
+    not_proven: list[dict[str, Any]],
+    observations: list[dict[str, Any]],
+) -> str:
+    lead_fact = strip_terminal_punctuation(
+        safe_nth_dict(canonical_facts, 0).get("claim_text_zh") or safe_nth_dict(canonical_facts, 0).get("claim_text")
+    )
+    lead_risk = strip_terminal_punctuation(
+        safe_nth_dict(not_proven, 0).get("claim_text_zh") or safe_nth_dict(not_proven, 0).get("claim_text")
+    )
+    topic_label = clean_text(topic) or "这件事"
+    if lead_fact and lead_risk:
+        return f"{lead_fact}已经能确认，但{lead_risk}现在还不能提前写成定论。"
+    if lead_fact:
+        return f"{lead_fact}，这说明话题已经开始碰到更实的变化。"
+    fresh_shadow = [item for item in observations if clean_text(item.get("channel")) == "shadow" and clean_text(item.get("recency_bucket")) != ">24h"]
+    if fresh_shadow:
+        return f"{topic_label}讨论很热，但公开证据还不够硬，现阶段更适合写变化和边界，不适合下重结论。"
+    return f"{topic_label}目前公开证据偏薄，更适合先写已知变化和待验证变量。"
+
+
+def build_analysis_brief_payload(request: dict[str, Any]) -> dict[str, Any]:
+    evidence_bundle = build_shared_evidence_bundle(request["source_result"], request)
+    runtime = extract_runtime_result(request["source_result"])
+    source_request = (
+        safe_dict(request["source_result"].get("request"))
+        or safe_dict(request["source_result"].get("retrieval_request"))
+        or safe_dict(runtime.get("request"))
+    )
+    claim_text_zh_map = {
+        clean_text(item.get("claim_id")): clean_text(item.get("claim_text_zh"))
+        for item in safe_list(source_request.get("claims"))
+        if isinstance(item, dict) and clean_text(item.get("claim_id")) and clean_text(item.get("claim_text_zh"))
+    }
+    observations = safe_list(evidence_bundle.get("observations"))
+    claim_ledger = safe_list(evidence_bundle.get("claim_ledger")) or safe_list(runtime.get("claim_ledger") or request["source_result"].get("claim_ledger"))
+    verdict = safe_dict(runtime.get("verdict_output") or request["source_result"].get("verdict_output"))
+    source_summary = safe_dict(evidence_bundle.get("source_summary")) or build_source_summary(request, runtime)
+    source_names = source_name_map(observations)
+    citations = safe_list(evidence_bundle.get("citations"))
+    citation_by_source_id = {
+        clean_text(source_id): clean_text(citation_id)
+        for source_id, citation_id in safe_dict(evidence_bundle.get("citation_by_source_id")).items()
+        if clean_text(source_id) and clean_text(citation_id)
+    }
+    if not citations or not citation_by_source_id:
+        citation_by_source_id, citations = citation_map(observations)
+
+    canonical_facts = build_canonical_facts(claim_ledger, source_names, citation_by_source_id)
+    for item in canonical_facts:
+        claim_id = clean_text(item.get("claim_id"))
+        item["claim_text_zh"] = clean_text(claim_text_zh_map.get(claim_id) or item.get("claim_text"))
+
+    not_proven = build_not_proven(claim_ledger, source_names, citation_by_source_id)
+    for item in not_proven:
+        claim_id = clean_text(item.get("claim_id"))
+        item["claim_text_zh"] = clean_text(claim_text_zh_map.get(claim_id) or item.get("claim_text"))
+
+    image_keep_reasons = build_image_keep_reasons(request["source_result"], verdict)
+    open_questions = build_open_questions(verdict)
+    scenario_matrix = build_scenario_matrix(verdict, source_summary)
+    market_relevance = clean_string_list(verdict.get("market_relevance")) or clean_string_list(source_summary.get("market_relevance"))
+    market_relevance_zh = clean_string_list(source_request.get("market_relevance_zh")) or market_relevance
+    trend_lines = build_trend_lines(observations, claim_ledger)
+    for item in trend_lines:
+        item["trend_zh"] = translate_brief_line_to_zh(clean_text(item.get("trend")))
+        item["detail_zh"] = translate_brief_line_to_zh(clean_text(item.get("detail")))
+
+    analysis_brief = {
+        "canonical_facts": canonical_facts,
+        "not_proven": not_proven,
+        "open_questions": open_questions,
+        "open_questions_zh": build_open_questions_zh(request["topic"], market_relevance_zh, canonical_facts, not_proven),
+        "trend_lines": trend_lines,
+        "scenario_matrix": scenario_matrix,
+        "market_or_reader_relevance": market_relevance,
+        "market_or_reader_relevance_zh": market_relevance_zh,
+        "story_angles": build_story_angles(request["topic"], canonical_facts, not_proven, image_keep_reasons),
+        "story_angles_zh": build_story_angles_zh(request["topic"], canonical_facts, not_proven),
+        "image_keep_reasons": image_keep_reasons,
+        "voice_constraints": build_voice_constraints(source_summary, not_proven),
+        "misread_risks": build_misread_risks(not_proven, observations),
+        "recommended_thesis": build_recommended_thesis(request["topic"], canonical_facts, not_proven, observations),
+        "recommended_thesis_zh": build_recommended_thesis_zh(request["topic"], canonical_facts, not_proven, observations),
     }
     macro_note_fields = build_macro_note_fields(
         request["topic"],
