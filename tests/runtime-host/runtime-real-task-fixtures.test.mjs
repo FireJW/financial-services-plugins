@@ -55,6 +55,17 @@ const fixtureSpecs = [
     promptPattern: /source-faithful|X post|post itself/,
     evidencePattern: /main post text|thread text|image evidence/,
   },
+  {
+    name: "Evidence to article",
+    fixtureRoot: path.join(
+      "tests",
+      "fixtures",
+      "runtime-real-tasks",
+      "evidence-to-article",
+    ),
+    promptPattern: /reviewable|article package|final draft/,
+    evidencePattern: /source result|analysis brief|image references/,
+  },
 ];
 
 for (const fixture of fixtureSpecs) {

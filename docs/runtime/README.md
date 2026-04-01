@@ -72,7 +72,7 @@ the recovered runtime until the wrapper layer proves out.
     entrypoints, structured verifier mode, prompt budget guardrails, attempt
     ledger, multilingual intent/session-state handling, and real-task fixtures
     for feedback-workflow, macro-shock chain-map, latest-event verification,
-    and X-post evidence tasks
+    X-post evidence, and evidence-to-article tasks
 
 ## Recommended Workflow
 
