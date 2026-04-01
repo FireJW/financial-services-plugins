@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const workerScript = path.join(repoRoot, "scripts", "runtime", "run-worker-task.mjs");
 const verifierScript = path.join(repoRoot, "scripts", "runtime", "run-verifier-task.mjs");
+
 const fixtureSpecs = [
   {
     name: "Jenny feedback workflow",
@@ -29,8 +30,19 @@ const fixtureSpecs = [
       "runtime-real-tasks",
       "a-share-macro-shock-chain-map",
     ),
-    promptPattern: /A-share|中国海油/,
+    promptPattern: /A-share|China Oil|中国海油/u,
     evidencePattern: /physical disruption|risk premium/,
+  },
+  {
+    name: "Latest event verification",
+    fixtureRoot: path.join(
+      "tests",
+      "fixtures",
+      "runtime-real-tasks",
+      "latest-event-verification",
+    ),
+    promptPattern: /latest claim|mediation meeting|already scheduled/,
+    evidencePattern: /confirmed|not confirmed|inference only/,
   },
 ];
 

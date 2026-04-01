@@ -71,7 +71,8 @@ the recovered runtime until the wrapper layer proves out.
   - runs the curated runtime host regression subset that covers worker/verifier
     entrypoints, structured verifier mode, prompt budget guardrails, attempt
     ledger, multilingual intent/session-state handling, and real-task fixtures
-    for both feedback-workflow and macro-shock chain-map tasks
+    for feedback-workflow, macro-shock chain-map, and latest-event verification
+    tasks
 
 ## Recommended Workflow
 
