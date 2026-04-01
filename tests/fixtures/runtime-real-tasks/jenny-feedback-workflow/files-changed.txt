@@ -1,0 +1,3 @@
+financial-analysis/commands/feedback-workflow.md
+financial-analysis/skills/feedback-iteration-workflow/SKILL.md
+docs/runtime/OPERATOR-MANUAL.md

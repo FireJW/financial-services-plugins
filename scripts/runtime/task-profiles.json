@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "baseCliArgs": [
+    "--bare",
+    "--strict-mcp-config"
+  ],
+  "profiles": {
+    "explore": {
+      "name": "explore",
+      "description": "Low-risk search, inventory, and repository discovery tasks.",
+      "purpose": "Use for cheap reconnaissance before deeper worker execution.",
+      "modelTier": "economy",
+      "modelEnv": "CLAUDE_CODE_EXPLORE_MODEL",
+      "thinkingBudget": "low",
+      "maxTurns": 1,
+      "requiresContract": false,
+      "verificationOnly": false,
+      "defaultCliArgs": [
+        "--max-turns",
+        "1"
+      ],
+      "allowedTaskShapes": [
+        "search",
+        "inventory",
+        "path-finding"
+      ],
+      "notes": [
+        "Prefer cheaper model tiers and shallow search depth.",
+        "Do not use for final conclusions or verification verdicts."
+      ]
+    },
+    "worker": {
+      "name": "worker",
+      "description": "Primary task execution with required structured output.",
+      "purpose": "Use for implementation, analysis, or synthesis that must end in the worker contract.",
+      "modelTier": "standard",
+      "modelEnv": "CLAUDE_CODE_WORKER_MODEL",
+      "thinkingBudget": "medium",
+      "maxTurns": 4,
+      "requiresContract": true,
+      "contractPath": "docs/runtime/sub-agent-contract.md",
+      "appendSystemPromptFile": "docs/runtime/sub-agent-contract.md",
+      "verificationOnly": false,
+      "defaultCliArgs": [
+        "--max-turns",
+        "4"
+      ],
+      "notes": [
+        "Worker output must keep Conclusion, Confirmed, Unconfirmed, Risks, and Next Step.",
+        "Do not collapse unresolved facts into confirmed conclusions."
+      ]
+    },
+    "verifier": {
+      "name": "verifier",
+      "description": "Independent verification pass over worker output.",
+      "purpose": "Use after worker completion to re-check claims, risks, and gaps with a stricter checklist.",
+      "modelTier": "standard",
+      "modelEnv": "CLAUDE_CODE_VERIFIER_MODEL",
+      "thinkingBudget": "medium",
+      "maxTurns": 4,
+      "requiresContract": true,
+      "checklistPath": "docs/runtime/verification-checklist.md",
+      "appendSystemPromptFile": "docs/runtime/verification-checklist.md",
+      "verificationOnly": true,
+      "defaultCliArgs": [
+        "--max-turns",
+        "4"
+      ],
+      "notes": [
+        "Fail closed if worker output omits evidence or drifts out of scope.",
+        "Verification is for independent review, not self-certification."
+      ]
+    }
+  }
+}
