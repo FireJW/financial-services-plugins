@@ -25,6 +25,8 @@ test("runtime host reliability suite preview includes the expected regression fi
 
   assert.equal(preview.suiteName, "runtime-host-reliability");
   assert.equal(preview.testCount, RUNTIME_HOST_RELIABILITY_TESTS.length);
+  assert.ok(preview.realTaskFixtureCount >= 6, JSON.stringify(preview, null, 2));
+  assert.equal(preview.coveredClassicCaseCount, preview.classicCaseCount);
   assert.ok(
     preview.testFiles.includes(
       path.join("tests", "runtime-host", "intent-preservation.test.mjs"),
@@ -62,6 +64,8 @@ test("runtime host reliability suite entrypoint supports dry-run json output", (
 
   assert.equal(payload.suiteName, "runtime-host-reliability");
   assert.equal(payload.testCount, RUNTIME_HOST_RELIABILITY_TESTS.length);
+  assert.ok(payload.realTaskFixtureCount >= 6, result.stdout);
+  assert.equal(payload.coveredClassicCaseCount, payload.classicCaseCount);
   assert.match(payload.invocation.displayCommand, /node --test/);
   assert.ok(payload.invocation.args.includes("--test-name-pattern"), result.stdout);
   assert.ok(

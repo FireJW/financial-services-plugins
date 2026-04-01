@@ -73,6 +73,9 @@ the recovered runtime until the wrapper layer proves out.
     ledger, multilingual intent/session-state handling, and real-task fixtures
     for feedback-workflow, macro-shock chain-map, latest-event verification,
     X-post evidence, evidence-to-article, and workflow-improvement-loop tasks
+- `scripts/runtime/report-runtime-fixture-coverage.mjs`
+  - reports which real-task fixture packs currently exist and whether the core
+    classic-case routes are all covered
 
 ## Recommended Workflow
 
@@ -261,6 +264,12 @@ To rerun the current curated runtime host reliability suite:
 
 ```powershell
 node scripts/runtime/run-runtime-host-reliability-suite.mjs
+```
+
+To inspect fixture coverage before preparing a merge to `main`:
+
+```powershell
+node scripts/runtime/report-runtime-fixture-coverage.mjs --json --check
 ```
 
 ## State Files

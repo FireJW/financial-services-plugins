@@ -462,6 +462,13 @@ The reliability suite is the fastest high-signal check. It currently covers:
 - worker/verifier entrypoints
 - structured verifier contract and entrypoints
 - verification pass validation
+
+Use the fixture coverage report before landing to `main` when you want a quick
+answer to "which core real-task cases are currently represented?":
+
+```powershell
+node scripts/runtime/report-runtime-fixture-coverage.mjs --json --check
+```
 - multilingual intent preservation and session-state rendering
 
 Use narrower tests when touching a single behavior:
