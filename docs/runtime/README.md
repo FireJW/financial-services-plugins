@@ -24,6 +24,8 @@ the recovered runtime until the wrapper layer proves out.
   - one-command real-task wrapper that materializes a run pack, routes the
     request, generates `INTENT` and `NOW`, runs worker, runs verifier
     preflight, runs the final verifier, and writes a per-run ledger/scorecard
+  - writes a deterministic shaping plan before execution so oversized evidence
+    packs can be trimmed or split before the first worker pass
   - defaults to structured verifier mode, treats the JSON artifact as
     authoritative, and only reports success when the final verifier verdict is
     `PASS`
@@ -86,6 +88,8 @@ the recovered runtime until the wrapper layer proves out.
   - exits non-zero on semantic probe drift or runtime probe failure
   - treats an unbuilt recovered runtime as a skipped local state by default
   - add `--require-built-runtime` when you want skipped runs to fail closed
+  - legacy alias: `scripts/runtime/run-runtime-compat-suite.mjs` now delegates
+    to this canonical entrypoint and returns the same report schema
 - `scripts/runtime/run-runtime-host-reliability-suite.mjs`
   - runs the curated runtime host regression subset that covers worker/verifier
     entrypoints, structured verifier mode, prompt budget guardrails, attempt
@@ -116,8 +120,17 @@ This runner:
 
 - writes a self-contained run directory
 - records `INTENT.md`, `INTENT-COMPACT.md`, `NOW.md`, and route guidance
+- records `shaping-plan.json` and `shaping-plan.md` before model execution
 - persists worker and verifier artifacts plus an attempt ledger scorecard
 - fails closed unless the final verifier verdict is `PASS`
+
+If you want the runner to refuse dangerously oversized worker prompts, add:
+
+```powershell
+node scripts/runtime/run-real-task.mjs `
+  ... `
+  --fail-on-danger-budget
+```
 
 ### Manual Path: Step By Step
 

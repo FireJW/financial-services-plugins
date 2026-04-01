@@ -109,6 +109,7 @@ This high-level runner:
 
 - routes the request first and writes route guidance into the run pack
 - derives `INTENT.md`, `INTENT-COMPACT.md`, and `NOW.md`
+- writes `shaping-plan.json` and `shaping-plan.md` before any model call
 - runs worker, verifier preflight, and final verifier in sequence
 - writes a per-run `runtime-attempts.ndjson` plus scorecard files
 - defaults to structured verifier mode
@@ -134,6 +135,10 @@ node scripts/runtime/run-verifier-task.mjs `
   --output runtime-state/real-task-runs/<task>/verifier-output.md `
   --structured-output-file runtime-state/real-task-runs/<task>/verifier-output.json
 ```
+
+If the shaping plan marks the worker pass as `danger` risk and you want to
+block execution until the evidence pack is trimmed or split, add
+`--fail-on-danger-budget` to `run-real-task.mjs`.
 
 ### Step 1: Write the raw request
 

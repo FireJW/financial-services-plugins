@@ -88,13 +88,14 @@ test("runtime compatibility suite executes the probe set when the recovered runt
     return;
   }
 
-  const result = spawnSync("node", [suiteScript, "--json"], {
+  const result = spawnSync("node", [suiteScript, "--json", "--timeout-ms", "10000"], {
     cwd: repoRoot,
     encoding: "utf8",
-    timeout: 90_000,
+    timeout: 60_000,
     maxBuffer: 16 * 1024 * 1024,
   });
 
+  assert.notEqual(result.status, null, result.stderr || "runtime compatibility suite timed out");
   const payload = JSON.parse(result.stdout);
   const expectedExitCode = payload.summary.checkPassed ? 0 : 1;
 

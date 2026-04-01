@@ -60,6 +60,7 @@ const previewOptions = {
     readFlagValue(args, "--verifier-timeout-ms"),
     "--verifier-timeout-ms",
   ),
+  failOnDangerBudget: args.includes("--fail-on-danger-budget"),
   forwardedArgs,
 };
 
@@ -204,7 +205,7 @@ function printUsageAndExit(exitCode, message) {
   }
 
   process.stderr.write(
-    "Usage: node scripts/runtime/run-real-task.mjs [--request <text> | --input-file <path> | trailing text] [--session-file <path>] [--context-file <path>] [--approach <text> | --approach-file <path>] [--files-changed-file <path>] [--route <id>] [--classic-case <id>] [--plugin-dir <path>] [--task-id <id>] [--output-dir <path>] [--no-structured-verifier] [--worker-max-attempts <n>] [--verifier-max-attempts <n>] [--worker-timeout-ms <n>] [--verifier-timeout-ms <n>] [--no-auto-route] [--dry-run] [--json] [-- <runtime args...>]\n",
+    "Usage: node scripts/runtime/run-real-task.mjs [--request <text> | --input-file <path> | trailing text] [--session-file <path>] [--context-file <path>] [--approach <text> | --approach-file <path>] [--files-changed-file <path>] [--route <id>] [--classic-case <id>] [--plugin-dir <path>] [--task-id <id>] [--output-dir <path>] [--no-structured-verifier] [--worker-max-attempts <n>] [--verifier-max-attempts <n>] [--worker-timeout-ms <n>] [--verifier-timeout-ms <n>] [--fail-on-danger-budget] [--no-auto-route] [--dry-run] [--json] [-- <runtime args...>]\n",
   );
   process.exit(exitCode);
 }

@@ -7,6 +7,7 @@ export const RUNTIME_HOST_RELIABILITY_SUITE_NAME = "runtime-host-reliability";
 
 export const RUNTIME_HOST_RELIABILITY_TESTS = Object.freeze([
   path.join("tests", "runtime-host", "runtime-real-task-fixtures.test.mjs"),
+  path.join("tests", "runtime-host", "real-task-shaping-lib.test.mjs"),
   path.join("tests", "runtime-host", "real-task-runner-lib.test.mjs"),
   path.join("tests", "runtime-host", "real-task-runner-entrypoint.test.mjs"),
   path.join("tests", "runtime-host", "runtime-prompt-budget.test.mjs"),

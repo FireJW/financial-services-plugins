@@ -22,6 +22,10 @@ import {
   loadRuntimeAttemptLedger,
   renderRuntimeAttemptScorecardText,
 } from "./runtime-attempt-ledger-lib.mjs";
+import {
+  buildRealTaskShapingPlan,
+  renderRealTaskShapingPlan,
+} from "./real-task-shaping-lib.mjs";
 
 export const REAL_TASK_RUNNER_SCHEMA_VERSION = "real-task-runner-v1";
 export const DEFAULT_REAL_TASK_OUTPUT_ROOT = path.join(
@@ -78,13 +82,25 @@ export function buildRealTaskRunnerPreview(options = {}) {
       label: "Context: Route guidance",
       sourcePath: null,
       materializedPath: artifacts.routeGuidancePath,
+      content: routeGuidanceMarkdown,
     },
     ...artifacts.contextFiles.map((contextFile) => ({
       label: contextFile.label,
       sourcePath: contextFile.sourcePath,
       materializedPath: contextFile.materializedPath,
+      content: readFileSync(contextFile.sourcePath, "utf8"),
     })),
   ];
+  const shapingPlan = buildRealTaskShapingPlan({
+    routePlan,
+    task: requestText,
+    intentMarkdown: intentPayload.intentMarkdown,
+    nowMarkdown: nowPayload.markdown,
+    contextItems: copiedContexts.map((item) => ({
+      label: item.label,
+      content: item.content,
+    })),
+  });
 
   const workerCommand = buildWorkerCommand({
     taskId,
@@ -131,6 +147,7 @@ export function buildRealTaskRunnerPreview(options = {}) {
     routePlan,
     structuredVerifier: options.structuredVerifier !== false,
     outputDir,
+    shapingPlan,
     generatedState: {
       intentMarkdown: intentPayload.intentMarkdown,
       intentCompactMarkdown: intentPayload.compactSummary,
@@ -168,6 +185,11 @@ export function materializeRealTaskRunnerInputs(preview) {
     `${preview.generatedState.intentCompactMarkdown.trim()}\n`,
   );
   writeUtf8File(preview.artifacts.nowPath, `${preview.generatedState.nowMarkdown.trim()}\n`);
+  writeJsonFile(preview.artifacts.shapingPlanJsonPath, preview.shapingPlan);
+  writeUtf8File(
+    preview.artifacts.shapingPlanMarkdownPath,
+    renderRealTaskShapingPlan(preview.shapingPlan),
+  );
   writeJsonFile(preview.artifacts.runPlanPath, preview);
 
   if (preview.sessionSourcePath) {
@@ -212,6 +234,24 @@ export function executeRealTaskRunner(options = {}) {
   };
 
   writeSummary(summary);
+
+  if (options.failOnDangerBudget && preview.shapingPlan.workerPromptBudgetReport.riskLevel === "danger") {
+    summary.stage = "blocked_by_budget";
+    summary.results.worker = {
+      command: preview.commands.worker.displayCommand,
+      exitCode: null,
+      signal: null,
+      ok: false,
+      stdoutPreview: null,
+      stderrPreview: "Refused to run because worker prompt budget risk is danger.",
+    };
+    finalizeSummary(summary);
+    return {
+      ok: false,
+      exitCode: 2,
+      summary,
+    };
+  }
 
   const workerResult = runNodeCommand(preview.commands.worker);
   summary.results.worker = summarizeCommandResult(preview.commands.worker, workerResult);
@@ -286,6 +326,8 @@ export function renderRealTaskRunnerPreview(preview) {
   }
   lines.push(`Structured verifier: ${preview.structuredVerifier}`);
   lines.push(`Output dir: ${preview.outputDir}`);
+  lines.push(`Shaping strategy: ${preview.shapingPlan.strategy}`);
+  lines.push(`Budget risk: ${preview.shapingPlan.workerPromptBudgetReport.riskLevel}`);
   lines.push("Plugin dirs:");
   for (const pluginDir of preview.routePlan.pluginDirs) {
     lines.push(`- ${pluginDir}`);
@@ -294,6 +336,8 @@ export function renderRealTaskRunnerPreview(preview) {
   lines.push(`- task: ${preview.artifacts.taskPath}`);
   lines.push(`- intent: ${preview.artifacts.intentPath}`);
   lines.push(`- now: ${preview.artifacts.nowPath}`);
+  lines.push(`- shaping_plan_json: ${preview.artifacts.shapingPlanJsonPath}`);
+  lines.push(`- shaping_plan_md: ${preview.artifacts.shapingPlanMarkdownPath}`);
   lines.push(`- worker_output: ${preview.artifacts.workerOutputPath}`);
   lines.push(`- verifier_output: ${preview.artifacts.verifierOutputPath}`);
   if (preview.artifacts.verifierStructuredOutputPath) {
@@ -318,6 +362,8 @@ export function renderRealTaskRunnerSummary(summary) {
   lines.push(`Stage: ${summary.stage}`);
   lines.push(`Route: ${summary.routePlan.routeId}`);
   lines.push(`Output dir: ${summary.outputDir}`);
+  lines.push(`Shaping strategy: ${summary.shapingPlan.strategy}`);
+  lines.push(`Budget risk: ${summary.shapingPlan.workerPromptBudgetReport.riskLevel}`);
   lines.push(`Worker output: ${summary.artifacts.workerOutputPath}`);
   lines.push(`Verifier output: ${summary.artifacts.verifierOutputPath}`);
   lines.push(`Attempt ledger: ${summary.artifacts.attemptLedgerPath}`);
@@ -368,6 +414,8 @@ function buildArtifactManifest(outputDir, options) {
     verifierStructuredOutputPath: options.structuredVerifier
       ? path.join(outputDir, "verifier-output.json")
       : null,
+    shapingPlanJsonPath: path.join(outputDir, "shaping-plan.json"),
+    shapingPlanMarkdownPath: path.join(outputDir, "shaping-plan.md"),
     attemptLedgerPath: path.join(outputDir, "runtime-attempts.ndjson"),
     attemptScorecardJsonPath: path.join(outputDir, "runtime-attempt-scorecard.json"),
     attemptScorecardTextPath: path.join(outputDir, "runtime-attempt-scorecard.txt"),
