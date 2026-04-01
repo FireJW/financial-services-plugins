@@ -9,7 +9,7 @@ from article_brief_runtime import build_analysis_brief
 from article_cleanup_runtime import cleanup_article_temp_dirs
 from article_feedback_markdown import build_feedback_markdown
 from article_feedback_profiles import feedback_profile_status, resolve_profile_dir
-from article_draft_flow_runtime import build_article_draft, clean_text, load_json, safe_dict, safe_list, write_json
+from article_draft_flow_runtime import build_article_draft, clean_string_list, clean_text, load_json, safe_dict, safe_list, write_json
 from agent_reach_bridge_runtime import run_agent_reach_bridge
 from article_revise_flow_runtime import build_article_revision
 from news_index_runtime import isoformat_or_blank, parse_datetime, run_news_index, slugify
@@ -84,6 +84,10 @@ def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "image_strategy": clean_text(payload.get("image_strategy")),
         "draft_mode": clean_text(payload.get("draft_mode")),
         "article_framework": clean_text(payload.get("article_framework")),
+        "headline_hook_mode": clean_text(payload.get("headline_hook_mode") or payload.get("title_hook_mode")),
+        "headline_hook_prefixes": clean_string_list(
+            payload.get("headline_hook_prefixes") or payload.get("title_hook_prefixes") or payload.get("title_prefixes")
+        ),
         "language_mode": clean_text(payload.get("language_mode") or payload.get("output_language")),
         "feedback_profile_dir": clean_text(payload.get("feedback_profile_dir")),
         "cleanup_enabled": bool(payload.get("cleanup_enabled") or payload.get("cleanup_days") or payload.get("cleanup_root_dir")),
@@ -198,6 +202,8 @@ def build_draft_payload(request: dict[str, Any], source_result: dict[str, Any]) 
         "personal_phrase_bank",
         "language_mode",
         "article_framework",
+        "headline_hook_mode",
+        "headline_hook_prefixes",
         "feedback_profile_dir",
     ):
         if request.get(key) not in (None, ""):
@@ -260,6 +266,8 @@ def build_revision_template(draft_result: dict[str, Any]) -> dict[str, Any]:
         "tone": clean_text(request.get("tone")) or "neutral-cautious",
         "draft_mode": clean_text(request.get("draft_mode")) or "balanced",
         "image_strategy": clean_text(request.get("image_strategy")) or "mixed",
+        "headline_hook_mode": clean_text(request.get("headline_hook_mode")) or "auto",
+        "headline_hook_prefixes": safe_list(request.get("headline_hook_prefixes")),
         "max_images": request.get("max_images", 3),
         "human_signal_ratio": request.get("human_signal_ratio", 35),
         "personal_phrase_bank": safe_list(request.get("personal_phrase_bank")),
@@ -273,6 +281,8 @@ def build_revision_template(draft_result: dict[str, Any]) -> dict[str, Any]:
                 "tone": clean_text(request.get("tone")) or "neutral-cautious",
                 "draft_mode": clean_text(request.get("draft_mode")) or "balanced",
                 "image_strategy": clean_text(request.get("image_strategy")) or "mixed",
+                "headline_hook_mode": clean_text(request.get("headline_hook_mode")) or "auto",
+                "headline_hook_prefixes": safe_list(request.get("headline_hook_prefixes")),
                 "max_images": request.get("max_images", 3),
                 "human_signal_ratio": request.get("human_signal_ratio", 35),
                 "personal_phrase_bank": safe_list(request.get("personal_phrase_bank")),

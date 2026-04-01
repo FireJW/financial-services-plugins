@@ -85,7 +85,7 @@ class ArticleImageLocalizationTests(unittest.TestCase):
         self.assertNotEqual(article_package["article_markdown"], article_before)
         self.assertEqual(build_sections_mock.call_count, 0)
 
-    def test_image_first_localization_rebuilds_body_when_status_text_changes(self) -> None:
+    def test_image_first_localization_skips_body_rebuild_when_only_status_changes(self) -> None:
         case_dir = self.case_dir("image-first-refresh")
         draft_result = build_article_draft(
             {
@@ -99,7 +99,7 @@ class ArticleImageLocalizationTests(unittest.TestCase):
         )
         article_package = draft_result["article_package"]
         body_before = article_package["body_markdown"]
-        self.assertIn("[remote_only]", body_before)
+        article_before = article_package["article_markdown"]
 
         with patch("article_draft_flow_runtime.build_sections", wraps=sys.modules["article_draft_flow_runtime"].build_sections) as build_sections_mock:
             localization = localize_selected_images(
@@ -113,9 +113,9 @@ class ArticleImageLocalizationTests(unittest.TestCase):
 
         self.assertEqual(localization["downloaded_count"], 1)
         self.assertEqual(article_package["selected_images"][0]["status"], "local_ready")
-        self.assertIn("[local_ready]", article_package["body_markdown"])
-        self.assertNotEqual(article_package["body_markdown"], body_before)
-        self.assertEqual(build_sections_mock.call_count, 1)
+        self.assertEqual(article_package["body_markdown"], body_before)
+        self.assertNotEqual(article_package["article_markdown"], article_before)
+        self.assertEqual(build_sections_mock.call_count, 0)
 
     def test_draft_writes_localized_image_path_back_to_evidence_bundle(self) -> None:
         case_dir = self.case_dir("draft-bundle-localized")

@@ -13,7 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from article_publish_runtime import build_news_request_from_topic, build_publish_package, run_article_publish
+from article_publish_runtime import build_news_request_from_topic, build_publish_package, build_report_markdown, run_article_publish
 from article_publish import parse_args
 from hot_topic_discovery_runtime import run_hot_topic_discovery
 
@@ -87,6 +87,8 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         *,
         selected_images: list[dict],
         draft_image_candidates: list[dict],
+        citations: list[dict] | None = None,
+        style_profile_applied: dict | None = None,
     ) -> dict:
         article_package = {
             "title": "Agent hiring reset",
@@ -101,7 +103,8 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             "draft_thesis": "The rebound is real enough to matter, but still needs verification.",
             "article_markdown": "# Agent hiring reset\n\nThe market is re-pricing the story.",
             "selected_images": selected_images,
-            "citations": [],
+            "citations": citations or [],
+            "style_profile_applied": style_profile_applied or {},
         }
         return {
             "review_result": {"article_package": article_package},
@@ -215,6 +218,26 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertNotEqual(package["article_framework"], "story")
         self.assertIn("接下来最该盯的", package["content_markdown"])
         self.assertIn("更实", package["content_markdown"])
+
+    def test_article_publish_defaults_to_traffic_headline_hook_for_chinese_mode(self) -> None:
+        result = run_article_publish(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": self.manual_topic_candidates(),
+                "audience_keywords": ["AI", "business", "investing", "industry"],
+                "account_name": "Test Account",
+                "author": "Codex",
+                "output_dir": str(self.temp_dir / "traffic-title"),
+                "language_mode": "chinese",
+            }
+        )
+
+        package = result["publish_package"]
+        self.assertTrue(package["title"].startswith("刚刚，"))
+        self.assertEqual(
+            package["style_profile_applied"]["effective_request"]["headline_hook_mode"],
+            "traffic",
+        )
 
     def test_article_publish_chinese_mode_strips_noisy_source_branding_title_copy(self) -> None:
         noisy_candidates = [
@@ -400,6 +423,121 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertEqual(package["push_readiness"]["status"], "ready_for_api_push")
         self.assertEqual(package["push_readiness"]["cover_source"], "article_image")
 
+    def test_build_publish_package_keeps_first_body_order_when_zero_indexed(self) -> None:
+        first_body = self.temp_dir / "body-first.png"
+        second_body = self.temp_dir / "body-second.png"
+        first_body.write_bytes(b"body-first")
+        second_body.write_bytes(b"body-second")
+
+        workflow_result = self.build_publish_workflow_result(
+            selected_images=[
+                {
+                    "image_id": "IMG-31",
+                    "role": "root_post_screenshot",
+                    "path": str(first_body),
+                    "source_url": "",
+                    "caption": "First body hero",
+                    "source_name": "fixture",
+                    "status": "local_ready",
+                    "placement": "after_lede",
+                },
+                {
+                    "image_id": "IMG-32",
+                    "role": "root_post_screenshot",
+                    "path": str(second_body),
+                    "source_url": "",
+                    "caption": "Second body hero",
+                    "source_name": "fixture",
+                    "status": "local_ready",
+                    "placement": "after_section_2",
+                },
+            ],
+            draft_image_candidates=[
+                {
+                    "image_id": "IMG-31",
+                    "role": "root_post_screenshot",
+                    "path": str(first_body),
+                    "source_url": "",
+                    "summary": "First body hero",
+                    "source_name": "fixture",
+                    "score": 80,
+                },
+                {
+                    "image_id": "IMG-32",
+                    "role": "root_post_screenshot",
+                    "path": str(second_body),
+                    "source_url": "",
+                    "summary": "Second body hero",
+                    "source_name": "fixture",
+                    "score": 80,
+                },
+            ],
+        )
+
+        package = build_publish_package(
+            workflow_result,
+            {"title": "AI agent hiring rebound", "keywords": ["AI", "agent", "hiring"]},
+            self.build_publish_request(),
+        )
+
+        self.assertEqual(package["cover_plan"]["selected_cover_asset_id"], "IMG-31")
+        self.assertEqual(package["cover_plan"]["cover_candidates"][0]["body_order"], 0)
+        self.assertEqual(package["cover_plan"]["selection_mode"], "body_image_fallback")
+
+    def test_build_publish_package_can_use_dedicated_news_page_screenshot_as_cover(self) -> None:
+        body_image = self.temp_dir / "body-hero.png"
+        dedicated_screenshot = self.temp_dir / "news-page-cover.png"
+        body_image.write_bytes(b"body-hero")
+        dedicated_screenshot.write_bytes(b"news-page-cover")
+
+        workflow_result = self.build_publish_workflow_result(
+            selected_images=[
+                {
+                    "asset_id": "IMG-21",
+                    "image_id": "IMG-21",
+                    "role": "root_post_screenshot",
+                    "path": str(body_image),
+                    "source_url": "",
+                    "caption": "Body hero",
+                    "source_name": "fixture",
+                    "status": "local_ready",
+                    "placement": "after_lede",
+                }
+            ],
+            draft_image_candidates=[
+                {
+                    "image_id": "IMG-21",
+                    "role": "root_post_screenshot",
+                    "path": str(body_image),
+                    "source_url": "",
+                    "summary": "Body hero",
+                    "source_name": "fixture",
+                    "score": 80,
+                },
+                {
+                    "image_id": "IMG-22",
+                    "role": "article_page_screenshot",
+                    "path": str(dedicated_screenshot),
+                    "source_url": "",
+                    "summary": "Dedicated news page screenshot",
+                    "source_name": "Example News",
+                    "capture_method": "page_hints",
+                    "score": 82,
+                },
+            ],
+        )
+
+        package = build_publish_package(
+            workflow_result,
+            {"title": "AI agent hiring rebound", "keywords": ["AI", "agent", "hiring"]},
+            self.build_publish_request(),
+        )
+
+        self.assertEqual(package["cover_plan"]["selected_cover_asset_id"], "IMG-22")
+        self.assertEqual(package["cover_plan"]["selected_cover_role"], "article_page_screenshot")
+        self.assertEqual(package["cover_plan"]["selection_mode"], "dedicated_candidate")
+        self.assertEqual(package["push_readiness"]["cover_source"], "dedicated_cover_candidate")
+
     def test_build_publish_package_can_render_editor_anchors_inline_when_requested(self) -> None:
         workflow_result = {
             "review_result": {
@@ -432,10 +570,82 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertIn(package["editor_anchors"][0]["text"], package["content_html"])
         self.assertIn("编辑锚点", package["content_html"])
 
+    def test_build_publish_package_uses_source_titles_and_exposes_style_profile(self) -> None:
+        workflow_result = self.build_publish_workflow_result(
+            selected_images=[],
+            draft_image_candidates=[],
+            citations=[
+                {
+                    "citation_id": "S1",
+                    "source_name": "Reuters",
+                    "title": "Iran says diplomacy still needs new terms",
+                    "url": "https://example.com/reuters-story",
+                    "published_at": "2026-03-26T10:00:00+00:00",
+                }
+            ],
+            style_profile_applied={
+                "global_profile_applied": True,
+                "topic_profile_applied": False,
+                "applied_paths": [".tmp/article-feedback-profiles/global.json"],
+                "style_memory": {
+                    "target_band": "3.4",
+                    "sample_source_declared_count": 3,
+                    "sample_source_available_count": 3,
+                    "sample_source_loaded_count": 3,
+                    "sample_source_missing_count": 0,
+                    "sample_source_runtime_mode": "curated_profile_only",
+                    "corpus_derived_transitions": ["先说结论"],
+                },
+            },
+        )
+
+        package = build_publish_package(
+            workflow_result,
+            {"title": "AI agent hiring rebound", "keywords": ["AI", "agent", "hiring"]},
+            self.build_publish_request(),
+        )
+        report_markdown = build_report_markdown(
+            {
+                "selected_topic": {"title": "AI agent hiring rebound"},
+                "publish_package": package,
+                "manual_review": {"required": True, "approved": False, "status": "awaiting_human_review"},
+                "push_stage": {},
+                "discovery_stage": {},
+                "workflow_stage": {},
+                "next_push_command": "",
+            }
+        )
+
+        self.assertNotIn("<h1", package["content_html"])
+        self.assertIn("Iran says diplomacy still needs new terms", package["content_html"])
+        self.assertIn("https://example.com/reuters-story", package["content_html"])
+        self.assertEqual(package["style_profile_applied"]["style_memory"]["sample_source_loaded_count"], 3)
+        self.assertIn("Target band: 3.4", report_markdown)
+        self.assertIn("Sample source references: 3", report_markdown)
+        self.assertIn("Available sample source paths: 3", report_markdown)
+        self.assertIn("Runtime style source mode: curated_profile_only", report_markdown)
+
     def test_article_publish_cli_accepts_hyphenated_framework_alias(self) -> None:
         with patch.object(sys, "argv", ["article_publish.py", "--article-framework", "hot-comment"]):
             args = parse_args()
         self.assertEqual(args.article_framework, "hot_comment")
+
+    def test_article_publish_cli_accepts_headline_hook_options(self) -> None:
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "article_publish.py",
+                "--headline-hook-mode",
+                "traffic",
+                "--headline-hook-prefixes",
+                "刚刚，",
+                "突发！",
+            ],
+        ):
+            args = parse_args()
+        self.assertEqual(args.headline_hook_mode, "traffic")
+        self.assertEqual(args.headline_hook_prefixes, ["刚刚，", "突发！"])
 
     def test_publish_scripts_compile_cleanly(self) -> None:
         for name in [

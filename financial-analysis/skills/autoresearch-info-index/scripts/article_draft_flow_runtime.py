@@ -12,7 +12,12 @@ from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
 from article_brief_runtime import build_analysis_brief
-from article_evidence_bundle import CONTRACT_VERSION as EVIDENCE_BUNDLE_CONTRACT_VERSION, build_shared_evidence_bundle
+from article_evidence_bundle import (
+    CONTRACT_VERSION as EVIDENCE_BUNDLE_CONTRACT_VERSION,
+    build_citations as shared_build_citations,
+    build_image_candidates as shared_build_image_candidates,
+    build_shared_evidence_bundle,
+)
 from article_feedback_profiles import feedback_profile_status, load_feedback_profiles, merge_request_with_profiles, resolve_profile_dir
 from news_index_runtime import isoformat_or_blank, load_json, parse_datetime, short_excerpt, write_json
 
@@ -137,6 +142,10 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "draft_mode": clean_text(payload.get("draft_mode") or payload.get("composition_mode")),
         "language_mode": clean_text(payload.get("language_mode") or payload.get("output_language")),
         "article_framework": clean_text(payload.get("article_framework")),
+        "headline_hook_mode": clean_text(payload.get("headline_hook_mode") or payload.get("title_hook_mode")),
+        "headline_hook_prefixes": clean_string_list(
+            payload.get("headline_hook_prefixes") or payload.get("title_hook_prefixes") or payload.get("title_prefixes")
+        ),
         "must_include": clean_string_list(payload.get("must_include") or payload.get("focus_points")),
         "must_avoid": clean_string_list(payload.get("must_avoid")),
         "asset_output_dir": clean_text(payload.get("asset_output_dir")),
@@ -163,6 +172,8 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request["draft_mode"] = sanitize_draft_mode(request.get("draft_mode"))
     request["language_mode"] = sanitize_language_mode(request.get("language_mode"))
     request["article_framework"] = sanitize_article_framework(request.get("article_framework"))
+    request["headline_hook_mode"] = normalize_headline_hook_mode(request.get("headline_hook_mode"))
+    request["headline_hook_prefixes"] = clean_string_list(request.get("headline_hook_prefixes"))
     request["feedback_profile_dir"] = str(profile_dir)
     request["feedback_profile_status"] = feedback_profile_status(
         profile_dir,
@@ -277,36 +288,7 @@ def build_source_summary(source_result: dict[str, Any], request: dict[str, Any])
 
 
 def build_citations(source_result: dict[str, Any]) -> list[dict[str, Any]]:
-    runtime = extract_runtime_result(source_result)
-    citations: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    for observation in safe_list(runtime.get("observations")):
-        if not isinstance(observation, dict):
-            continue
-        key = (clean_text(observation.get("source_id") or observation.get("source_name")), clean_text(observation.get("url")))
-        if key in seen:
-            continue
-        seen.add(key)
-        excerpt = clean_text(
-            observation.get("combined_summary")
-            or observation.get("post_summary")
-            or observation.get("media_summary")
-            or observation.get("post_text_raw")
-            or observation.get("text_excerpt")
-        )
-        citations.append(
-            {
-                "citation_id": f"S{len(citations) + 1}",
-                "source_id": clean_text(observation.get("source_id")),
-                "source_name": clean_text(observation.get("source_name")) or "Unknown source",
-                "url": clean_text(observation.get("url")),
-                "source_tier": int(observation.get("source_tier", 3)),
-                "channel": clean_text(observation.get("channel")),
-                "access_mode": clean_text(observation.get("access_mode")),
-                "excerpt": short_excerpt(excerpt, limit=180),
-            }
-        )
-    return citations
+    return shared_build_citations(source_result)
 
 
 def candidate_sort_key(item: dict[str, Any]) -> tuple[int, int, int]:
@@ -333,142 +315,13 @@ def image_candidate_key(role: Any, path: Any, source_url: Any) -> tuple[str, str
     return clean_role, "url", clean_url
 
 
+def is_screenshot_role(role: Any) -> bool:
+    clean_role = clean_text(role).lower()
+    return bool(clean_role) and (clean_role == "screenshot" or clean_role.endswith("_screenshot") or "screenshot" in clean_role)
+
+
 def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any]) -> list[dict[str, Any]]:
-    candidates: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
-
-    def add(
-        role: str,
-        source_name: str,
-        path: str,
-        source_url: str,
-        summary: str,
-        access_mode: str,
-        relevance: str,
-        source_tier: int,
-        alt_text: str = "",
-        capture_method: str = "",
-    ) -> None:
-        clean_path, clean_url = normalize_image_reference(path, source_url)
-        if not clean_path and not clean_url:
-            return
-        key = image_candidate_key(role, clean_path, clean_url)
-        if key in seen:
-            return
-        seen.add(key)
-
-        if request.get("image_strategy") == "screenshots_only" and role != "root_post_screenshot":
-            return
-
-        score = 0
-        if role == "post_media":
-            score += 40
-        elif role == "root_post_screenshot":
-            score += 24
-        score += {"high": 20, "medium": 10, "low": 2}.get(clean_text(relevance), 5)
-        score += {0: 12, 1: 10, 2: 6, 3: 0}.get(int(source_tier), 0)
-        if clean_text(summary):
-            score += 14
-        if clean_path:
-            score += 12
-            if path_exists(clean_path):
-                score += 10
-        elif clean_url:
-            score += 4
-        if clean_text(access_mode) == "blocked" and role == "root_post_screenshot":
-            score += 12
-        if request.get("image_strategy") == "prefer_images":
-            score += 10 if role == "post_media" else 4
-        if request.get("draft_mode") in {"image_first", "image_only"}:
-            score += 10
-
-        candidates.append(
-            {
-                "image_id": f"IMG-{len(candidates) + 1:02d}",
-                "role": role,
-                "source_name": clean_text(source_name),
-                "path": clean_path,
-                "source_url": clean_url,
-                "summary": clean_text(summary),
-                "caption": clean_text(summary),
-                "access_mode": clean_text(access_mode) or "unknown",
-                "relevance": clean_text(relevance) or "medium",
-                "source_tier": int(source_tier),
-                "alt_text": clean_text(alt_text),
-                "capture_method": clean_text(capture_method),
-                "score": score,
-            }
-        )
-
-    for post in safe_list(source_result.get("x_posts")):
-        if not isinstance(post, dict):
-            continue
-        source_name = f"X @{clean_text(post.get('author_handle') or post.get('author_display_name') or 'post')}"
-        access_mode = clean_text(post.get("access_mode")) or "public"
-        post_summary = clean_text(post.get("media_summary") or post.get("post_summary") or post.get("post_text_raw"))
-        root_post_screenshot_path = clean_text(post.get("root_post_screenshot_path"))
-        if root_post_screenshot_path:
-            add(
-                "root_post_screenshot",
-                source_name,
-                root_post_screenshot_path,
-                "",
-                post_summary,
-                access_mode,
-                "medium",
-                3,
-            )
-        for media in safe_list(post.get("media_items")):
-            if not isinstance(media, dict):
-                continue
-            add(
-                "post_media",
-                source_name,
-                clean_text(media.get("local_artifact_path")),
-                clean_text(media.get("source_url")),
-                clean_text(media.get("ocr_summary") or media.get("ocr_text_raw") or meaningful_image_hint(media.get("alt_text"))),
-                access_mode,
-                clean_text(media.get("image_relevance_to_post")) or "medium",
-                3,
-                meaningful_image_hint(media.get("alt_text")),
-                clean_text(media.get("capture_method")),
-            )
-
-    verdict = safe_dict(extract_runtime_result(source_result).get("verdict_output"))
-    for item in safe_list(verdict.get("source_artifacts")):
-        if not isinstance(item, dict):
-            continue
-        root_post_screenshot_path = clean_text(item.get("root_post_screenshot_path"))
-        if root_post_screenshot_path:
-            add(
-                "root_post_screenshot",
-                clean_text(item.get("source_name")) or "Artifact source",
-                root_post_screenshot_path,
-                "",
-                clean_text(item.get("media_summary") or item.get("post_summary") or item.get("combined_summary") or item.get("post_text_raw")),
-                clean_text(item.get("access_mode")) or "public",
-                "medium",
-                int(item.get("source_tier", 3)),
-            )
-        for artifact in safe_list(item.get("artifact_manifest")):
-            if not isinstance(artifact, dict):
-                continue
-            artifact_role = clean_text(artifact.get("role")) or "post_media"
-            add(
-                "post_media" if artifact_role == "post_media" else artifact_role,
-                clean_text(item.get("source_name")) or "Artifact source",
-                clean_text(artifact.get("path")),
-                clean_text(artifact.get("source_url")),
-                clean_text(artifact.get("summary") or item.get("media_summary") or item.get("post_summary") or item.get("combined_summary")),
-                clean_text(item.get("access_mode")) or "public",
-                "high" if artifact_role == "post_media" else "medium",
-                int(item.get("source_tier", 3)),
-                clean_text(artifact.get("summary")),
-                "artifact_manifest",
-            )
-
-    candidates.sort(key=candidate_sort_key, reverse=True)
-    return candidates
+    return shared_build_image_candidates(source_result, request)
 
 
 def build_selected_images(image_candidates: list[dict[str, Any]], request: dict[str, Any]) -> list[dict[str, Any]]:
@@ -484,12 +337,12 @@ def build_selected_images(image_candidates: list[dict[str, Any]], request: dict[
             caption = summary
         elif alt_text:
             caption = alt_text
-        elif item.get("role") == "root_post_screenshot" and access_mode == "blocked":
-            caption = "Root post screenshot from a blocked page. Keep it as visual evidence only."
+        elif is_screenshot_role(item.get("role")) and access_mode == "blocked":
+            caption = "Source screenshot from a blocked page. Keep it as visual evidence only."
         elif item.get("role") == "post_media" and capture_method == "dom_clip":
             caption = "Browser-captured image from the original X post."
-        elif item.get("role") == "root_post_screenshot":
-            caption = "Root post screenshot."
+        elif is_screenshot_role(item.get("role")):
+            caption = "Source page screenshot."
         else:
             caption = "Key source image."
         render_target = normalize_local_path(path_text) or source_url
@@ -1261,6 +1114,145 @@ def framework_headings(framework: str) -> list[tuple[str, str]]:
     return heading_map.get(framework, heading_map["hot_comment"])
 
 
+LEGACY_HEADLINE_HOOK_URGENT_TOKENS = (
+    "泄露",
+    "曝光",
+    "突发",
+    "重磅",
+    "官宣",
+    "发布",
+    "起诉",
+    "停火",
+    "空袭",
+    "回应",
+    "裁员",
+    "并购",
+)
+
+
+def legacy_headline_hook_prefixes(request: dict[str, Any], *, mode: str) -> list[str]:
+    custom_prefixes = clean_string_list(request.get("headline_hook_prefixes"))
+    if custom_prefixes:
+        return custom_prefixes
+    if mode == "aggressive":
+        return ["突发！", "重磅！", "刚刚，"]
+    if mode == "traffic":
+        return ["刚刚，", "突发！", "最新，"]
+    return []
+
+
+def legacy_title_has_headline_hook(title: Any) -> bool:
+    cleaned = clean_text(title)
+    if not cleaned:
+        return False
+    for prefix in ("突发！", "刚刚，", "刚刚", "最新，", "最新：", "重磅！"):
+        if cleaned.startswith(prefix):
+            return True
+    return False
+
+
+def legacy_resolve_headline_hook_mode(request: dict[str, Any], source_summary: dict[str, Any]) -> str:
+    del source_summary
+    configured_mode = normalize_headline_hook_mode(request.get("headline_hook_mode"))
+    if configured_mode != "auto":
+        return configured_mode
+    return "neutral"
+
+
+def legacy_choose_headline_hook_prefix(title: str, request: dict[str, Any], source_summary: dict[str, Any], *, mode: str) -> str:
+    prefixes = legacy_headline_hook_prefixes(request, mode=mode)
+    if not prefixes:
+        return ""
+    if mode == "aggressive":
+        return prefixes[0]
+    urgency_seed = " ".join(
+        clean_text(item)
+        for item in (title, clean_text(source_summary.get("topic")), public_topic_text(request, clean_text(source_summary.get("topic")) or ""))
+        if clean_text(item)
+    )
+    if any(token in urgency_seed for token in LEGACY_HEADLINE_HOOK_URGENT_TOKENS):
+        return next((prefix for prefix in prefixes if "！" in prefix), prefixes[0])
+    return prefixes[0]
+
+
+def legacy_apply_headline_hook(title: str, request: dict[str, Any], source_summary: dict[str, Any]) -> str:
+    if clean_text(request.get("language_mode")) != "chinese":
+        return title
+    compact_title = compact_chinese_title(title, limit=30) or title
+    if legacy_title_has_headline_hook(compact_title):
+        return compact_title
+    hook_mode = legacy_resolve_headline_hook_mode(request, source_summary)
+    if hook_mode == "neutral":
+        return compact_title
+    prefix = legacy_choose_headline_hook_prefix(compact_title, request, source_summary, mode=hook_mode)
+    if not prefix:
+        return compact_title
+    hooked_title = compact_chinese_title(compact_title, limit=max(12, 30 - len(prefix))) or compact_title
+    return f"{prefix}{hooked_title}"
+
+
+def legacy_style_memory_summary(request: dict[str, Any]) -> dict[str, Any]:
+    memory = request_style_memory(request)
+    if not memory:
+        return {}
+    all_sample_sources = deepcopy(safe_list(memory.get("sample_sources")))
+    sample_sources = all_sample_sources[:5]
+    sample_source_declared_count = len(all_sample_sources)
+    sample_source_path_count = sum(1 for item in all_sample_sources if clean_text(safe_dict(item).get("path")))
+    sample_source_loaded_count = sum(1 for item in all_sample_sources if path_exists(safe_dict(item).get("path")))
+    slot_lines: dict[str, list[str]] = {}
+    slot_guidance: dict[str, list[str]] = {}
+    for slot in ("title", "subtitle", "lede", "facts", "spread", "impact", "watch"):
+        lines = style_memory_slot_lines(request, slot)
+        guidance = style_memory_slot_guidance(request, slot)
+        if lines:
+            slot_lines[slot] = lines[:2]
+        if guidance:
+            slot_guidance[slot] = guidance[:2]
+    summary = {
+        "target_band": clean_text(memory.get("target_band")),
+        "voice_summary": clean_text(memory.get("voice_summary")),
+        "preferred_transitions": clean_string_list(memory.get("preferred_transitions")),
+        "must_land": clean_string_list(memory.get("must_land")),
+        "avoid_patterns": clean_string_list(memory.get("avoid_patterns")),
+        "corpus_notes": clean_string_list(memory.get("corpus_notes"))[:3],
+        "slot_lines": slot_lines,
+        "slot_guidance": slot_guidance,
+        "sample_sources": sample_sources,
+        "sample_source_declared_count": sample_source_declared_count,
+        "sample_source_available_count": sample_source_loaded_count,
+        "sample_source_loaded_count": sample_source_loaded_count,
+        "sample_source_missing_count": max(0, sample_source_path_count - sample_source_loaded_count),
+        "sample_source_runtime_mode": "curated_profile_only",
+        "raw_sample_text_loaded": False,
+        "corpus_derived_transitions": clean_string_list(memory.get("preferred_transitions"))[:3],
+    }
+    return {key: value for key, value in summary.items() if value not in ("", [], {}, None)}
+
+
+def legacy_finalize_article_title(
+    title: str,
+    request: dict[str, Any],
+    analysis_brief: dict[str, Any],
+    source_summary: dict[str, Any],
+) -> str:
+    if clean_text(request.get("language_mode")) != "chinese":
+        return title
+    explicit_hint = clean_text(request.get("title_hint_zh")) or clean_text(request.get("title_hint"))
+    if explicit_hint:
+        return compact_chinese_title(explicit_hint, limit=30) or title
+    custom_titles = style_memory_slot_lines(request, "title")
+    if custom_titles:
+        base_title = compact_chinese_title(custom_titles[0], limit=30) or title
+        return legacy_apply_headline_hook(base_title, request, source_summary)
+    public_topic = public_topic_text(request, clean_text(source_summary.get("topic")) or "")
+    if has_cjk(public_topic):
+        base_title = compact_chinese_title(public_topic, limit=30) or title
+        return legacy_apply_headline_hook(base_title, request, source_summary)
+    derived = derive_chinese_title(request, analysis_brief, source_summary)
+    return legacy_apply_headline_hook(derived or title, request, source_summary)
+
+
 def build_public_lede(
     request: dict[str, Any],
     source_summary: dict[str, Any],
@@ -1805,6 +1797,9 @@ def build_public_lede(
     lead_fact = item_texts(canonical_facts, limit=1)
     topic = public_topic_text(request, clean_text(source_summary.get("topic")) or "the story")
     voice_prefix = pick_voice_prefix(request, "lede")
+    longform_mode = requested_target_length_chars(request) >= 1800
+    longform_mode = requested_target_length_chars(request) >= 1800
+    longform_mode = requested_target_length_chars(request) >= 1800
     if lead_fact:
         zh_relevance = strip_terminal_punctuation(market_relevance[0]) if market_relevance else "\u5b83\u5f00\u59cb\u5f71\u54cd\u540e\u9762\u7684\u5224\u65ad\u548c\u52a8\u4f5c"
         zh = f"{lead_fact[0]}\u3002\u771f\u6b63\u503c\u5f97\u5f80\u4e0b\u5199\u7684\uff0c\u4e0d\u53ea\u662f\u70ed\u5ea6\uff0c\u800c\u662f{zh_relevance}\u8fd9\u6761\u7ebf\u4f1a\u600e\u4e48\u7ee7\u7eed\u4f20\u5bfc\u3002"
@@ -2490,6 +2485,8 @@ def build_style_profile_applied(request: dict[str, Any]) -> dict[str, Any]:
             "max_images": int(request.get("max_images", 0) or 0),
             "human_signal_ratio": int(request.get("human_signal_ratio", 0) or 0),
             "humanization_level": clean_text(request.get("humanization_level")),
+            "headline_hook_mode": normalize_headline_hook_mode(request.get("headline_hook_mode")),
+            "headline_hook_prefixes": clean_string_list(request.get("headline_hook_prefixes")),
             "personal_phrase_bank": constraints["personal_phrase_bank"],
             "must_include": constraints["must_include"],
             "must_avoid": constraints["must_avoid"],
@@ -2522,7 +2519,12 @@ def build_article_markdown(
     citations: list[dict[str, Any]],
     language_mode: str = "english",
 ) -> str:
-    lines = [f"# {title}", "", subtitle, "", f"> {lede}", ""]
+    del title
+    lines: list[str] = []
+    if clean_text(subtitle):
+        lines.extend([subtitle, ""])
+    if clean_text(lede):
+        lines.extend([f"> {lede}", ""])
     images_by_placement: dict[str, list[dict[str, Any]]] = {}
     for item in images:
         images_by_placement.setdefault(clean_text(item.get("placement")) or "appendix", []).append(item)
@@ -2551,9 +2553,30 @@ def build_article_markdown(
             f"- {item.get('citation_id', '')} | {item.get('source_name', '')} | "
             f"{item.get('url', '') or 'no url'}"
         )
+    if citations:
+        lines[-len(citations) :] = [render_citation_markdown(item) for item in citations]
     if not citations:
         lines.append("- None")
     return "\n".join(lines).strip() + "\n"
+
+
+def citation_short_date(value: Any) -> str:
+    parsed = parse_datetime(value, fallback=None)
+    if parsed is not None:
+        return parsed.date().isoformat()
+    return clean_text(value)
+
+
+def render_citation_markdown(citation: dict[str, Any]) -> str:
+    title = clean_text(citation.get("title") or citation.get("excerpt") or citation.get("source_name") or citation.get("citation_id"))
+    source_name = clean_text(citation.get("source_name"))
+    published_at = citation_short_date(citation.get("published_at") or citation.get("observed_at"))
+    url = clean_text(citation.get("url"))
+    meta = " | ".join(item for item in (source_name, published_at) if item)
+    line = f"- [{title}]({url})" if url else f"- {title}"
+    if meta:
+        line += f" | {meta}"
+    return line
 
 
 def append_source_limit_note(article_markdown: str, source_summary: dict[str, Any], language_mode: str = "english") -> str:
@@ -2575,7 +2598,7 @@ def append_source_limit_note(article_markdown: str, source_summary: dict[str, An
 
 def body_refresh_signature(images: list[dict[str, Any]], draft_mode: str) -> list[tuple[str, str, str, str]]:
     signature: list[tuple[str, str, str, str]] = []
-    include_status = draft_mode in {"image_first", "image_only"}
+    include_status = draft_mode == "image_only"
     for item in images[:3]:
         signature.append(
             (
@@ -3681,10 +3704,77 @@ def style_memory_slot_guidance(request: dict[str, Any], slot: str) -> list[str]:
     return clean_string_list(safe_dict(request_style_memory(request).get("slot_guidance")).get(slot))
 
 
+def normalize_headline_hook_mode(value: Any) -> str:
+    mode = clean_text(value).lower().replace("-", "_").replace(" ", "_")
+    if mode in {"", "auto", "default"}:
+        return "auto"
+    if mode in {"off", "none", "neutral"}:
+        return "neutral"
+    if mode in {"traffic", "click", "high_ctr"}:
+        return "traffic"
+    if mode in {"aggressive", "breaking", "urgent"}:
+        return "aggressive"
+    return "auto"
+
+
+def headline_hook_prefixes(request: dict[str, Any], *, mode: str) -> list[str]:
+    custom_prefixes = clean_string_list(request.get("headline_hook_prefixes"))
+    if custom_prefixes:
+        return custom_prefixes
+    if mode == "aggressive":
+        return ["突发！", "刚刚，", "最新，"]
+    if mode == "traffic":
+        return ["刚刚，", "突发！", "最新，"]
+    return []
+
+
+def title_has_headline_hook(title: Any) -> bool:
+    cleaned = clean_text(title)
+    if not cleaned:
+        return False
+    for prefix in ("突发！", "刚刚，", "刚刚：", "刚刚", "最新，", "最新：", "重磅！", "重磅，"):
+        if cleaned.startswith(prefix):
+            return True
+    return False
+
+
+def resolve_headline_hook_mode(request: dict[str, Any], source_summary: dict[str, Any]) -> str:
+    configured_mode = normalize_headline_hook_mode(request.get("headline_hook_mode"))
+    if configured_mode != "auto":
+        return configured_mode
+    if clean_text(request.get("language_mode")) != "chinese":
+        return "neutral"
+    if resolve_article_framework(request, source_summary) in {"hot_comment", "deep_analysis", "story", "list", "opinion"}:
+        return "traffic"
+    return "neutral"
+
+
+def apply_headline_hook(title: str, request: dict[str, Any], source_summary: dict[str, Any]) -> str:
+    if clean_text(request.get("language_mode")) != "chinese":
+        return title
+    compact_title = compact_chinese_title(title, limit=30) or title
+    if title_has_headline_hook(compact_title):
+        return compact_title
+    hook_mode = resolve_headline_hook_mode(request, source_summary)
+    if hook_mode == "neutral":
+        return compact_title
+    prefixes = headline_hook_prefixes(request, mode=hook_mode)
+    if not prefixes:
+        return compact_title
+    prefix = prefixes[0]
+    hooked_title = compact_chinese_title(compact_title, limit=max(12, 30 - len(prefix))) or compact_title
+    return f"{prefix}{hooked_title}"
+
+
 def style_memory_summary(request: dict[str, Any]) -> dict[str, Any]:
     memory = request_style_memory(request)
     if not memory:
         return {}
+    sample_sources_all = safe_list(memory.get("sample_sources"))
+    sample_sources = deepcopy(sample_sources_all[:5])
+    sample_source_declared_count = len(sample_sources_all)
+    sample_source_path_count = sum(1 for item in sample_sources_all if clean_text(safe_dict(item).get("path")))
+    sample_source_loaded_count = sum(1 for item in sample_sources_all if path_exists(safe_dict(item).get("path")))
     slot_lines: dict[str, list[str]] = {}
     slot_guidance: dict[str, list[str]] = {}
     for slot in ("title", "subtitle", "lede", "facts", "spread", "impact", "watch"):
@@ -3702,7 +3792,14 @@ def style_memory_summary(request: dict[str, Any]) -> dict[str, Any]:
         "avoid_patterns": clean_string_list(memory.get("avoid_patterns")),
         "slot_lines": slot_lines,
         "slot_guidance": slot_guidance,
-        "sample_sources": deepcopy(safe_list(memory.get("sample_sources"))[:5]),
+        "sample_sources": sample_sources,
+        "sample_source_declared_count": sample_source_declared_count,
+        "sample_source_loaded_count": sample_source_loaded_count,
+        "sample_source_available_count": sample_source_loaded_count,
+        "sample_source_missing_count": max(0, sample_source_path_count - sample_source_loaded_count),
+        "sample_source_runtime_mode": "curated_profile_only",
+        "raw_sample_text_loaded": False,
+        "corpus_derived_transitions": clean_string_list(memory.get("preferred_transitions"))[:3],
     }
     return {key: value for key, value in summary.items() if value not in ("", [], {}, None)}
 
@@ -3776,13 +3873,159 @@ def requested_focus_sentences(request: dict[str, Any], slot: str, *, mode: str) 
     return clean_string_list(sentences)
 
 
-def apply_slot_memory(sentences: list[str], request: dict[str, Any], slot: str, *, mode: str) -> list[str]:
+STYLE_ALIGNMENT_STOP_TERMS_ZH = {
+    "这件",
+    "件事",
+    "这波",
+    "事情",
+    "真正",
+    "接下",
+    "下来",
+    "继续",
+    "变化",
+    "影响",
+    "传导",
+    "结论",
+    "信号",
+    "叙事",
+    "热度",
+    "判断",
+    "市场",
+    "后面",
+    "前面",
+    "现在",
+    "眼下",
+    "问题",
+    "变量",
+    "路径",
+    "层面",
+    "开始",
+    "不是",
+    "只是",
+    "已经",
+    "会不",
+    "不会",
+    "改写",
+    "坐实",
+}
+
+STYLE_ALIGNMENT_STOP_TERMS_EN = {
+    "story",
+    "topic",
+    "angle",
+    "signal",
+    "signals",
+    "watch",
+    "next",
+    "really",
+    "matters",
+    "matter",
+    "change",
+    "changes",
+    "impact",
+    "impacts",
+    "market",
+    "markets",
+}
+
+
+def requested_target_length_chars(request: dict[str, Any], *, default: int = 1000) -> int:
+    value = request.get("target_length_chars", request.get("target_length", default))
+    try:
+        numeric = int(value or default)
+    except (TypeError, ValueError):
+        numeric = default
+    return max(0, numeric)
+
+
+def style_alignment_terms(text: Any, *, mode: str) -> set[str]:
+    cleaned = clean_text(text)
+    if not cleaned:
+        return set()
+    terms: set[str] = set()
+    latin_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_-]{1,}", cleaned)
+    for token in latin_tokens:
+        lowered = token.lower()
+        if lowered not in STYLE_ALIGNMENT_STOP_TERMS_EN:
+            terms.add(lowered)
+    if mode != "chinese":
+        word_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", cleaned.lower())
+        return {token for token in word_tokens if token not in STYLE_ALIGNMENT_STOP_TERMS_EN} | terms
+    cjk_only = re.sub(r"[^\u4e00-\u9fff]+", "", cleaned)
+    for size in (2, 3, 4):
+        for index in range(max(0, len(cjk_only) - size + 1)):
+            token = cjk_only[index : index + size]
+            if token in STYLE_ALIGNMENT_STOP_TERMS_ZH:
+                continue
+            terms.add(token)
+    return terms
+
+
+def style_line_is_topic_aligned(
+    line: str,
+    request: dict[str, Any],
+    context_lines: list[str] | None = None,
+    *,
+    mode: str,
+) -> bool:
+    line_terms = style_alignment_terms(line, mode=mode)
+    if not line_terms:
+        return False
+    anchors = [public_topic_text(request), *clean_string_list(request.get("must_include")), *(context_lines or [])]
+    anchor_terms: set[str] = set()
+    for item in anchors:
+        anchor_terms.update(style_alignment_terms(item, mode=mode))
+    if not anchor_terms:
+        return False
+    shared = line_terms & anchor_terms
+    if not shared:
+        return False
+    if any(len(item) >= 4 or re.search(r"[A-Za-z0-9]", item) for item in shared):
+        return True
+    return len(shared) >= 2
+
+
+def target_section_count(
+    request: dict[str, Any],
+    framework: str,
+    *,
+    canonical_count: int,
+    not_proven_count: int,
+    trend_count: int,
+    relevance_count: int,
+    question_count: int,
+) -> int:
+    target_length = requested_target_length_chars(request)
+    section_count = 4
+    if framework == "deep_analysis":
+        if target_length >= 2600:
+            section_count = 6
+        elif target_length >= 1800:
+            section_count = 5
+        evidence_points = canonical_count + not_proven_count + trend_count + relevance_count + question_count
+        if target_length >= 2200 and evidence_points >= 7:
+            section_count = max(section_count, 6)
+    elif framework in {"story", "opinion", "hot_comment"} and target_length >= 2200:
+        section_count = 5
+    return min(6, max(4, section_count))
+
+
+def apply_slot_memory(
+    sentences: list[str],
+    request: dict[str, Any],
+    slot: str,
+    *,
+    mode: str,
+    context_lines: list[str] | None = None,
+) -> list[str]:
     updated = list(sentences)
     custom_lines = style_memory_slot_lines(request, slot)[:1]
     for item in custom_lines:
+        if sentence_is_redundant(item, updated):
+            continue
+        if not style_line_is_topic_aligned(item, request, context_lines or updated, mode=mode):
+            continue
         updated = append_unique_sentence(updated, item)
-    if custom_lines:
-        return updated
     if mode == "chinese" and slot in {"lede", "facts", "watch"} and len(updated) >= 3:
         return updated
     for item in requested_focus_sentences(request, slot, mode=mode)[:1]:
@@ -3842,13 +4085,18 @@ def finalize_article_title(
     if clean_text(request.get("language_mode")) != "chinese":
         return title
     explicit_hint = clean_text(request.get("title_hint_zh")) or clean_text(request.get("title_hint"))
+    custom_titles = style_memory_slot_lines(request, "title")
     if explicit_hint:
         return compact_chinese_title(explicit_hint, limit=30) or title
+    if custom_titles:
+        base_title = compact_chinese_title(custom_titles[0], limit=30) or title
+        return apply_headline_hook(base_title, request, source_summary)
     public_topic = public_topic_text(request, clean_text(source_summary.get("topic")) or "")
     if has_cjk(public_topic):
-        return compact_chinese_title(public_topic, limit=30) or title
+        base_title = compact_chinese_title(public_topic, limit=30) or title
+        return apply_headline_hook(base_title, request, source_summary)
     derived = derive_chinese_title(request, analysis_brief, source_summary)
-    return derived or title
+    return apply_headline_hook(derived or title, request, source_summary)
 
 
 def build_public_lede(
@@ -3867,6 +4115,7 @@ def build_public_lede(
     fact_texts = article_ready_fact_texts(canonical_facts, mode=language_mode, limit=3)
     topic = public_topic_text(request, clean_text(source_summary.get("topic")) or "the story")
     voice_prefix = pick_voice_prefix(request, "lede")
+    longform_mode = requested_target_length_chars(request) >= 1800
 
     if language_mode == "chinese":
         primary_fact, debate_fact, implication_fact = split_fact_roles(fact_texts)
@@ -3884,7 +4133,22 @@ def build_public_lede(
                 sentences.append(f"这事之所以值得继续写，不在于它又上了热度，而在于{implication_fact}")
             if debate_fact:
                 sentences.append(f"但眼下还不能把结论写死，{debate_fact}")
-            sentences = apply_slot_memory(sentences, request, "lede", mode="chinese")
+            if not debate_fact and boundary_claims:
+                sentences.append(f"但像“{boundary_claims[0]}”这样的判断，现阶段还不能直接写成结论。")
+            if longform_mode:
+                if concrete_focus:
+                    sentences.append(
+                        f"现在更该分清的，不是立场，而是{chinese_focus_cluster(concrete_focus[:2], fallback='后续传导变量')}里哪一条已经开始从讨论层往下走。"
+                    )
+                else:
+                    sentences.append("写深这类题材的关键，是先把已经落地的变化、仍待验证的判断和后续传导变量分开。")
+            sentences = apply_slot_memory(
+                sentences,
+                request,
+                "lede",
+                mode="chinese",
+                context_lines=[primary_fact, debate_fact, implication_fact, *concrete_focus, *boundary_claims],
+            )
             return bilingual_text(
                 prepend_voice_prefix(voice_prefix, join_chinese_sentences(sentences), mode="chinese"),
                 prepend_voice_prefix(
@@ -3900,7 +4164,17 @@ def build_public_lede(
             sentences.append(f"更重要的是，它已经开始碰到{chinese_focus_cluster(concrete_focus[:3])}")
             if boundary_claims:
                 sentences.append(f"不过像“{boundary_claims[0]}”这样的判断，现阶段还不能写成定论")
-            sentences = apply_slot_memory(sentences, request, "lede", mode="chinese")
+            if longform_mode:
+                sentences.append(
+                    f"写深这件事的关键，不是继续堆热度，而是看{chinese_focus_cluster(concrete_focus[:3])}里哪一条会先出现连续验证。"
+                )
+            sentences = apply_slot_memory(
+                sentences,
+                request,
+                "lede",
+                mode="chinese",
+                context_lines=[*concrete_focus, *boundary_claims, *fact_texts],
+            )
             return bilingual_text(
                 prepend_voice_prefix(voice_prefix, join_chinese_sentences(sentences), mode="chinese"),
                 prepend_voice_prefix(
@@ -3931,7 +4205,15 @@ def build_public_lede(
             if boundary_claim
             else [f"{topic}现在更值得先看的，是它会不会继续往真实决策上传导"]
         )
-        sentences = apply_slot_memory(sentences, request, "lede", mode="chinese")
+        if longform_mode and not boundary_claim:
+            sentences.append("这类题材真正拉开差距的，不是喊出更大的结论，而是先看哪条传导路径已经有了第一手验证。")
+        sentences = apply_slot_memory(
+            sentences,
+            request,
+            "lede",
+            mode="chinese",
+            context_lines=[boundary_claim, *market_relevance, *fact_texts],
+        )
         return bilingual_text(
             prepend_voice_prefix(voice_prefix, join_chinese_sentences(sentences), mode="chinese"),
             prepend_voice_prefix(
@@ -3993,6 +4275,17 @@ def build_sections_from_brief(
         watch_list = unique_texts(watch_items)[:3]
         core_source_count = int(source_summary.get("core_source_count", 0) or 0)
         shadow_source_count = int(source_summary.get("shadow_source_count", 0) or 0)
+        section_count = target_section_count(
+            request,
+            framework,
+            canonical_count=len(canonical_facts),
+            not_proven_count=len(not_proven),
+            trend_count=len(trend_lines),
+            relevance_count=len(market_relevance_raw),
+            question_count=len(open_questions),
+        )
+        longform_mode = section_count >= 5
+        max_longform_mode = section_count >= 6
 
         fact_sentences: list[str] = []
         if primary_fact:
@@ -4015,7 +4308,15 @@ def build_sections_from_brief(
                 fact_sentences.append(f"真正该往下看的，是{chinese_focus_cluster(concrete_focus[:3])}")
             else:
                 fact_sentences.append(f"眼下更该盯的，是{chinese_focus_cluster(concrete_focus[:3])}这几条传导线")
-        fact_sentences = apply_slot_memory(fact_sentences, request, "facts", mode="chinese")
+        if longform_mode:
+            fact_sentences.append("这一步最重要的，不是把所有判断一次写满，而是先把已经落地的变化和还在路上的推演拆开。")
+        fact_sentences = apply_slot_memory(
+            fact_sentences,
+            request,
+            "facts",
+            mode="chinese",
+            context_lines=[primary_fact, debate_fact, implication_fact, *not_proven_texts, *market_relevance_raw, *open_questions],
+        )
         fact_zh = join_chinese_sentences(fact_sentences)
         fact_en = (
             "Start with the points that can already stand on the record: "
@@ -4035,7 +4336,15 @@ def build_sections_from_brief(
         spread_sentences.append(
             f"所以你现在看到的，不只是一个标题在回潮，而是在看它会不会继续落到{chinese_focus_cluster(focus_for_progression[:2], fallback='更实的经营变量')}"
         )
-        spread_sentences = apply_slot_memory(spread_sentences, request, "spread", mode="chinese")
+        if longform_mode:
+            spread_sentences.append("换句话说，这里不是情绪在原地打转，而是不同来源在争夺哪条传导链会先被坐实。")
+        spread_sentences = apply_slot_memory(
+            spread_sentences,
+            request,
+            "spread",
+            mode="chinese",
+            context_lines=[*trend_texts, *fact_texts, *market_relevance_raw],
+        )
         spread_zh = join_chinese_sentences(spread_sentences)
         spread_en = (
             "The discussion keeps moving not because the headline sounds louder, but because "
@@ -4051,7 +4360,17 @@ def build_sections_from_brief(
             impact_sentences.append("真正值得盯的，不是表面热度，而是它会不会开始改变真实决策")
         if implication_fact and not sentence_is_redundant(implication_fact, fact_sentences):
             impact_sentences.append(implication_fact)
-        impact_sentences = apply_slot_memory(impact_sentences, request, "impact", mode="chinese")
+        if longform_mode and focus_for_progression:
+            impact_sentences.append(
+                f"先看{chinese_focus_cluster(focus_for_progression[:2], fallback='这条传导链')}有没有从单点信号变成连续验证，再谈更大的结论才更稳。"
+            )
+        impact_sentences = apply_slot_memory(
+            impact_sentences,
+            request,
+            "impact",
+            mode="chinese",
+            context_lines=[*market_relevance_raw, *trend_texts, implication_fact, *watch_list],
+        )
         impact_zh = join_chinese_sentences(impact_sentences)
         impact_en = (
             "The thing worth tracking is not the headline heat itself, but who it reaches and which decisions it changes next. The clearest read-through now is "
@@ -4072,7 +4391,13 @@ def build_sections_from_brief(
                 watch_sentences.append(watch_close)
         else:
             watch_sentences.append("接下来先盯新的公开确认、后续动作和市场会不会继续加码")
-        watch_sentences = apply_slot_memory(watch_sentences, request, "watch", mode="chinese")
+        watch_sentences = apply_slot_memory(
+            watch_sentences,
+            request,
+            "watch",
+            mode="chinese",
+            context_lines=[*watch_list, *not_proven_texts, *open_questions],
+        )
         watch_zh = join_chinese_sentences(watch_sentences)
         watch_en = (
             "The next useful checkpoints are "
@@ -4092,6 +4417,39 @@ def build_sections_from_brief(
             "The easiest place to overstate the story is "
             + join_with_semicolons(not_proven_texts, "turning a moving inference into a settled fact")
             + ". At this stage, restraint is part of the quality bar."
+        )
+        verification_sentences: list[str] = []
+        if primary_fact:
+            verification_sentences.append(f"第一层已经能写进记录的，是{primary_fact}")
+        elif meta_fact_texts:
+            verification_sentences.append(f"目前最稳的，还是{meta_fact_texts[0]}")
+        if not_proven_texts:
+            verification_sentences.append(f"第二层必须留边界的，是{join_with_semicolons(not_proven_texts, '那些还没落地的判断')}")
+        else:
+            verification_sentences.append("现在最需要克制的，不是回避判断，而是别把仍在路上的推演写成既成事实。")
+        if trend_texts:
+            verification_sentences.append(f"第三层正在把讨论往前推的，是{trend_texts[0]}")
+        elif watch_list:
+            verification_sentences.append(f"真正会把这件事往前推的，不会是口号本身，而是{watch_list[0]}")
+        verification_zh = join_chinese_sentences(unique_texts(verification_sentences))
+        verification_en = (
+            "Separate the layers before making the judgment: what is already on the record; what still needs boundary language; "
+            "and which signal is actually moving the discussion forward."
+        )
+        judgment_sentences: list[str] = []
+        if focus_for_progression:
+            judgment_sentences.append(
+                f"把这件事再往前推一步看，真正的分水岭在于{chinese_focus_cluster(focus_for_progression[:3], fallback='后续传导变量')}里哪一条先出现连续信号。"
+            )
+        if watch_list:
+            judgment_sentences.append(f"一旦{watch_list[0]}开始被连续验证，讨论就会从围观转向更强判断。")
+        if implication_fact and not sentence_is_redundant(implication_fact, judgment_sentences):
+            judgment_sentences.append(f"反过来看，{implication_fact}")
+        elif not_proven_texts:
+            judgment_sentences.append(f"如果后面只剩“{not_proven_texts[0]}”这类大结论，却没有新的公开验证，这轮热度反而更容易回头。")
+        judgment_zh = join_chinese_sentences(unique_texts(judgment_sentences))
+        judgment_en = (
+            "The real divide is not between louder and quieter takes, but between signals that have started compounding and claims still waiting for proof."
         )
 
         fact_paragraph = bilingual_text(
@@ -4115,6 +4473,8 @@ def build_sections_from_brief(
             language_mode,
         )
         caution_paragraph = bilingual_text(caution_zh, caution_en, language_mode)
+        verification_paragraph = bilingual_text(verification_zh, verification_en, language_mode)
+        judgment_paragraph = bilingual_text(judgment_zh, judgment_en, language_mode)
         image_paragraph = bilingual_text(
             "图像素材能帮你把现场感补回来，但它更适合做补充，不适合替代判断。当前值得保留的视觉线索是：" + image_sentence(images),
             "Images can restore a sense of scene, but they should support the story instead of replacing the judgment. The strongest visual thread here is: "
@@ -4141,6 +4501,48 @@ def build_sections_from_brief(
                     "paragraph": watch_paragraph,
                 },
             ]
+
+        if framework == "deep_analysis" and section_count > 4:
+            sections = [
+                {
+                    "heading": bilingual_heading("先看变化本身", "What Changed", language_mode),
+                    "paragraph": fact_paragraph,
+                },
+                {
+                    "heading": bilingual_heading("哪些已经确认，哪些还不能写死", "What Is Confirmed vs Still Open", language_mode),
+                    "paragraph": verification_paragraph,
+                },
+                {
+                    "heading": bilingual_heading("这轮讨论为什么没有退潮", "Why The Discussion Is Still Spreading", language_mode),
+                    "paragraph": spread_paragraph,
+                },
+                {
+                    "heading": bilingual_heading("真正的传导链条", "The Transmission Path", language_mode),
+                    "paragraph": impact_paragraph,
+                },
+            ]
+            if max_longform_mode:
+                sections.append(
+                    {
+                        "heading": bilingual_heading("这件事的分水岭在哪", "Where The Real Divide Sits", language_mode),
+                        "paragraph": judgment_paragraph,
+                    }
+                )
+            sections.append(
+                {
+                    "heading": bilingual_heading("接下来盯什么", "What To Watch Next", language_mode),
+                    "paragraph": watch_paragraph,
+                }
+            )
+            if request.get("draft_mode") == "image_first" and images:
+                sections.insert(
+                    1,
+                    {
+                        "heading": bilingual_heading("图里能补什么", "What The Images Add", language_mode),
+                        "paragraph": image_paragraph,
+                    },
+                )
+            return sections
 
         headings = framework_headings(framework)
         paragraphs = [fact_paragraph, spread_paragraph, impact_paragraph, watch_paragraph]

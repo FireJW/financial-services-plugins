@@ -30,6 +30,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--personal-phrase", action="append", default=[], help="Reusable personal phrase to weave into the article voice")
     parser.add_argument("--image-strategy", choices=["mixed", "prefer_images", "screenshots_only"], help="Image priority mode")
     parser.add_argument("--draft-mode", choices=["balanced", "image_first", "image_only"], help="Composition mode")
+    parser.add_argument(
+        "--headline-hook-mode",
+        choices=["auto", "neutral", "traffic", "aggressive"],
+        help="Optional Chinese headline prefix strategy for generated titles",
+    )
+    parser.add_argument(
+        "--headline-hook-prefixes",
+        nargs="+",
+        help="Optional ordered Chinese headline prefixes, e.g. 刚刚， 突发！",
+    )
     parser.add_argument("--output-dir", help="Directory for staged workflow outputs")
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON output")
     return parser.parse_args()
@@ -59,6 +69,10 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["image_strategy"] = args.image_strategy
     if args.draft_mode:
         payload["draft_mode"] = args.draft_mode
+    if args.headline_hook_mode:
+        payload["headline_hook_mode"] = args.headline_hook_mode
+    if args.headline_hook_prefixes is not None:
+        payload["headline_hook_prefixes"] = args.headline_hook_prefixes
     if args.output_dir:
         payload["output_dir"] = args.output_dir
     return payload

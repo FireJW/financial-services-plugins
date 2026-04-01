@@ -53,8 +53,19 @@ def parse_args() -> argparse.Namespace:
         choices=["hidden", "inline"],
         help="Whether editor anchors should stay review-only or render inline in HTML",
     )
+    parser.add_argument(
+        "--headline-hook-mode",
+        choices=["auto", "neutral", "traffic", "aggressive"],
+        help="Optional Chinese headline hook strategy for higher-click public titles",
+    )
+    parser.add_argument(
+        "--headline-hook-prefixes",
+        nargs="*",
+        help="Optional explicit headline hook prefixes, used before the generated Chinese title",
+    )
     parser.add_argument("--image-strategy", choices=["mixed", "prefer_images", "screenshots_only"], help="Image strategy")
     parser.add_argument("--max-images", type=int, help="Max images to keep")
+    parser.add_argument("--feedback-profile-dir", help="Optional feedback profile directory override")
     parser.add_argument("--account-name", help="Optional public account name for the publish package")
     parser.add_argument("--author", help="Optional author name for the publish package")
     parser.add_argument("--digest-max-chars", type=int, help="Optional digest max length")
@@ -118,10 +129,16 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["article_framework"] = args.article_framework
     if args.editor_anchor_mode:
         payload["editor_anchor_mode"] = args.editor_anchor_mode
+    if args.headline_hook_mode:
+        payload["headline_hook_mode"] = args.headline_hook_mode
+    if args.headline_hook_prefixes is not None:
+        payload["headline_hook_prefixes"] = args.headline_hook_prefixes
     if args.image_strategy:
         payload["image_strategy"] = args.image_strategy
     if args.max_images is not None:
         payload["max_images"] = args.max_images
+    if args.feedback_profile_dir:
+        payload["feedback_profile_dir"] = args.feedback_profile_dir
     if args.account_name:
         payload["account_name"] = args.account_name
     if args.author:

@@ -55,6 +55,8 @@ ARTICLE_REBUILD_KEYS = (
     "image_strategy",
     "draft_mode",
     "language_mode",
+    "headline_hook_mode",
+    "headline_hook_prefixes",
     "must_include",
     "must_avoid",
 )
@@ -196,6 +198,8 @@ def normalize_revision_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "image_strategy": clean_text(raw_payload.get("image_strategy") or prior_request.get("image_strategy") or "mixed"),
         "draft_mode": sanitize_draft_mode(raw_payload.get("draft_mode") or prior_request.get("draft_mode")),
         "language_mode": clean_text(raw_payload.get("language_mode") or prior_request.get("language_mode") or "english"),
+        "headline_hook_mode": clean_text(raw_payload.get("headline_hook_mode") or prior_request.get("headline_hook_mode")),
+        "headline_hook_prefixes": clean_string_list(raw_payload.get("headline_hook_prefixes") or prior_request.get("headline_hook_prefixes")),
         "must_include": clean_string_list(raw_payload.get("must_include") or prior_request.get("must_include")),
         "must_avoid": clean_string_list(raw_payload.get("must_avoid") or prior_request.get("must_avoid")),
         "asset_output_dir": clean_text(raw_payload.get("asset_output_dir") or safe_dict(article_result.get("draft_context")).get("asset_output_dir")),
@@ -251,7 +255,7 @@ def preserve_localized_image_assets(
 
 
 def normalize_rebuild_value(key: str, value: Any) -> Any:
-    if key in {"must_include", "must_avoid", "personal_phrase_bank"}:
+    if key in {"must_include", "must_avoid", "personal_phrase_bank", "headline_hook_prefixes"}:
         return clean_string_list(value)
     if key in {"target_length_chars", "max_images"}:
         try:
@@ -921,6 +925,8 @@ def build_article_revision(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "image_strategy": request.get("image_strategy"),
         "draft_mode": request.get("draft_mode"),
         "language_mode": request.get("language_mode"),
+        "headline_hook_mode": request.get("headline_hook_mode"),
+        "headline_hook_prefixes": request.get("headline_hook_prefixes"),
         "must_include": request.get("must_include"),
         "must_avoid": request.get("must_avoid"),
         "allow_auto_rewrite_after_manual": allow_auto_rewrite_after_manual,

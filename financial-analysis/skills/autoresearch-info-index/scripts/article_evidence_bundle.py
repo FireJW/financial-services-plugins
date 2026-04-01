@@ -4,8 +4,9 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from urllib import error as urllib_error
 
-from news_index_runtime import isoformat_or_blank, short_excerpt
+from news_index_runtime import fetch_public_page_hints, isoformat_or_blank, short_excerpt
 
 
 CONTRACT_VERSION = "article_evidence_bundle_v1"
@@ -157,12 +158,22 @@ def build_citations(source_result: dict[str, Any]) -> list[dict[str, Any]]:
         if key in seen:
             continue
         seen.add(key)
+        page_hints = resolve_observation_page_hints(observation)
         excerpt = clean_text(
             observation.get("combined_summary")
             or observation.get("post_summary")
             or observation.get("media_summary")
             or observation.get("post_text_raw")
             or observation.get("text_excerpt")
+            or page_hints.get("text_excerpt")
+        )
+        title = clean_text(
+            observation.get("post_summary")
+            or observation.get("combined_summary")
+            or observation.get("media_summary")
+            or page_hints.get("post_summary")
+            or observation.get("text_excerpt")
+            or observation.get("post_text_raw")
         )
         citations.append(
             {
@@ -173,6 +184,9 @@ def build_citations(source_result: dict[str, Any]) -> list[dict[str, Any]]:
                 "source_tier": int(observation.get("source_tier", 3)),
                 "channel": clean_text(observation.get("channel")),
                 "access_mode": clean_text(observation.get("access_mode")),
+                "title": short_excerpt(title, limit=180),
+                "published_at": clean_text(observation.get("published_at")),
+                "observed_at": clean_text(observation.get("observed_at")),
                 "excerpt": short_excerpt(excerpt, limit=180),
             }
         )
@@ -220,6 +234,58 @@ def image_candidate_key(role: Any, path: Any, source_url: Any) -> tuple[str, str
     return clean_role, "url", clean_url
 
 
+def is_screenshot_role(role: Any) -> bool:
+    clean_role = clean_text(role).lower()
+    return bool(clean_role) and (clean_role == "screenshot" or clean_role.endswith("_screenshot") or "screenshot" in clean_role)
+
+
+def screenshot_role_score(role: str) -> int:
+    if role == "article_page_screenshot":
+        return 30
+    if role in {"page_screenshot", "title_screenshot", "observation_screenshot"}:
+        return 28
+    if role == "root_post_screenshot":
+        return 24
+    return 26
+
+
+def resolve_observation_page_hints(observation: dict[str, Any]) -> dict[str, Any]:
+    cached = safe_dict(observation.get("public_page_hints") or observation.get("page_hints"))
+    if cached:
+        return cached
+    url = clean_text(observation.get("url"))
+    access_mode = clean_text(observation.get("access_mode"))
+    if access_mode == "blocked" or not url.startswith(("http://", "https://")):
+        return {}
+    try:
+        return safe_dict(fetch_public_page_hints(url))
+    except (TimeoutError, OSError, ValueError, urllib_error.URLError):
+        return {}
+
+
+def observation_visual_summary(observation: dict[str, Any], page_hints: dict[str, Any]) -> str:
+    return clean_text(
+        observation.get("media_summary")
+        or observation.get("post_summary")
+        or observation.get("combined_summary")
+        or observation.get("text_excerpt")
+        or observation.get("post_text_raw")
+        or page_hints.get("media_summary")
+        or page_hints.get("post_summary")
+        or page_hints.get("text_excerpt")
+    )
+
+
+def observation_artifact_manifest(observation: dict[str, Any], page_hints: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    direct_manifest = safe_list(observation.get("artifact_manifest"))
+    if direct_manifest:
+        return direct_manifest, "artifact_manifest"
+    hinted_manifest = safe_list(page_hints.get("artifact_manifest"))
+    if hinted_manifest:
+        return hinted_manifest, "page_hints"
+    return [], ""
+
+
 def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any]) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -244,14 +310,14 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
             return
         seen.add(key)
 
-        if request.get("image_strategy") == "screenshots_only" and role != "root_post_screenshot":
+        if request.get("image_strategy") == "screenshots_only" and not is_screenshot_role(role):
             return
 
         score = 0
         if role == "post_media":
             score += 40
-        elif role == "root_post_screenshot":
-            score += 24
+        elif is_screenshot_role(role):
+            score += screenshot_role_score(role)
         score += {"high": 20, "medium": 10, "low": 2}.get(clean_text(relevance), 5)
         score += {0: 12, 1: 10, 2: 6, 3: 0}.get(int(source_tier), 0)
         if clean_text(summary):
@@ -264,8 +330,15 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
             score += 4
         if clean_text(access_mode) == "blocked" and role == "root_post_screenshot":
             score += 12
+        elif clean_text(access_mode) == "public" and is_screenshot_role(role):
+            score += 10
         if request.get("image_strategy") == "prefer_images":
-            score += 10 if role == "post_media" else 4
+            if role == "post_media":
+                score += 10
+            elif is_screenshot_role(role):
+                score += 6
+            else:
+                score += 4
         if request.get("draft_mode") in {"image_first", "image_only"}:
             score += 10
 
@@ -352,6 +425,50 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
                 int(item.get("source_tier", 3)),
                 clean_text(artifact.get("summary")),
                 "artifact_manifest",
+            )
+
+    runtime = extract_runtime_result(source_result)
+    for observation in safe_list(runtime.get("observations")):
+        if not isinstance(observation, dict):
+            continue
+        source_name = clean_text(observation.get("source_name")) or "Observation source"
+        access_mode = clean_text(observation.get("access_mode")) or "public"
+        source_tier = int(observation.get("source_tier", 3))
+        page_hints = resolve_observation_page_hints(observation)
+        summary = observation_visual_summary(observation, page_hints)
+
+        root_post_screenshot_path = clean_text(observation.get("root_post_screenshot_path"))
+        if root_post_screenshot_path:
+            add(
+                "root_post_screenshot",
+                source_name,
+                root_post_screenshot_path,
+                "",
+                summary,
+                access_mode,
+                "medium",
+                source_tier,
+                "",
+                "observation_screenshot",
+            )
+
+        artifact_manifest, capture_method = observation_artifact_manifest(observation, page_hints)
+        for artifact in artifact_manifest:
+            if not isinstance(artifact, dict):
+                continue
+            artifact_role = clean_text(artifact.get("role")) or "post_media"
+            artifact_summary = clean_text(artifact.get("summary")) or summary
+            add(
+                "post_media" if artifact_role == "post_media" else artifact_role,
+                source_name,
+                clean_text(artifact.get("path")),
+                clean_text(artifact.get("source_url")),
+                artifact_summary,
+                access_mode,
+                "high" if artifact_role == "post_media" else "medium",
+                source_tier,
+                meaningful_image_hint(artifact.get("summary")),
+                capture_method,
             )
 
     candidates.sort(key=candidate_sort_key, reverse=True)

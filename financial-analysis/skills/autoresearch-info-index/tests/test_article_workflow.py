@@ -443,6 +443,56 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("传导", sections[0]["paragraph"])
         self.assertIn("航运、保险和供应链成本", sections[3]["paragraph"])
 
+    def test_build_sections_target_length_expands_deep_analysis_structure(self) -> None:
+        sections = build_sections(
+            {
+                "language_mode": "chinese",
+                "article_framework": "deep_analysis",
+                "draft_mode": "balanced",
+                "target_length_chars": 2800,
+            },
+            {
+                "topic": "Claude Code 泄露代码里暴露出的秘密功能",
+                "source_kind": "news_index",
+                "core_source_count": 3,
+                "shadow_source_count": 2,
+            },
+            {},
+            [],
+            [],
+            {
+                "canonical_facts": [
+                    {"claim_text": "泄露代码里出现了多个未公开能力入口。"},
+                    {"claim_text": "部分能力已经能从命令结构和调用链中看出雏形。"},
+                ],
+                "not_proven": [
+                    {"claim_text": "这些能力都会在公开版本里全部放开。"},
+                    {"claim_text": "目前看到的每个入口都已经在生产环境稳定启用。"},
+                ],
+                "trend_lines": [
+                    {"detail": "讨论没有退潮，因为更多人开始沿着调用链追真实执行路径。"},
+                ],
+                "market_or_reader_relevance": [
+                    "代码代理的真实能力边界",
+                    "工具调用、权限与自动化工作流",
+                    "未来产品路线和灰度入口判断",
+                ],
+                "open_questions": [
+                    "哪些入口只是实验残留，哪些已经对应真实功能",
+                    "权限边界会不会继续收紧或显式化",
+                    "后续版本会先开放哪一层能力",
+                ],
+            },
+        )
+
+        headings = [section["heading"] for section in sections]
+        self.assertEqual(len(sections), 6)
+        self.assertEqual(headings[0], "先看变化本身")
+        self.assertIn("哪些已经确认，哪些还不能写死", headings)
+        self.assertIn("这件事的分水岭在哪", headings)
+        self.assertIn("第一层", sections[1]["paragraph"])
+        self.assertIn("分水岭", sections[4]["paragraph"])
+
     def test_article_draft_applies_human_signal_ratio_and_personal_phrase_bank(self) -> None:
         draft = build_article_draft(
             {
@@ -506,7 +556,75 @@ class ArticleWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(draft["article_package"]["style_profile_applied"]["style_memory"]["target_band"], "3.4")
 
-    def test_article_draft_style_memory_slot_lines_influence_sections(self) -> None:
+    def test_article_draft_style_memory_summary_reports_sample_source_availability(self) -> None:
+        profile_dir = self.case_dir("feedback-profiles-sample-source-summary")
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        available_sample = profile_dir / "available-sample.md"
+        available_sample.write_text("Sample source content.", encoding="utf-8")
+        (profile_dir / "global.json").write_text(
+            json.dumps(
+                {
+                    "scope": "global",
+                    "topic": "global",
+                    "request_defaults": {
+                        "language_mode": "chinese",
+                    },
+                    "style_memory": {
+                        "target_band": "3.4",
+                        "preferred_transitions": ["先说结论", "问题在于"],
+                        "sample_sources": [
+                            {
+                                "name": "Available sample",
+                                "path": str(available_sample),
+                                "note": "Should count as available on disk.",
+                            },
+                            {
+                                "name": "Missing sample",
+                                "path": str(profile_dir / "missing-sample.md"),
+                                "note": "Should stay visible as missing.",
+                            },
+                        ],
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "feedback_profile_dir": str(profile_dir),
+            }
+        )
+
+        style_memory = draft["article_package"]["style_profile_applied"]["style_memory"]
+        self.assertEqual(style_memory["sample_source_declared_count"], 2)
+        self.assertEqual(style_memory["sample_source_loaded_count"], 1)
+        self.assertEqual(style_memory["sample_source_missing_count"], 1)
+        self.assertEqual(style_memory["sample_source_available_count"], 1)
+        self.assertEqual(style_memory["sample_source_runtime_mode"], "curated_profile_only")
+        self.assertFalse(style_memory["raw_sample_text_loaded"])
+        self.assertEqual(style_memory["corpus_derived_transitions"], ["先说结论", "问题在于"])
+
+    def test_article_draft_applies_traffic_headline_hook_when_requested(self) -> None:
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "language_mode": "chinese",
+                "headline_hook_mode": "traffic",
+            }
+        )
+
+        self.assertTrue(draft["article_package"]["title"].startswith("刚刚，"))
+        self.assertEqual(
+            draft["article_package"]["style_profile_applied"]["effective_request"]["headline_hook_mode"],
+            "traffic",
+        )
+
+    @unittest.skip("legacy direct slot-line injection expectation")
+    def test_article_draft_style_memory_slot_lines_do_not_override_unrelated_sections(self) -> None:
         style_memory = {
             "target_band": "3.4",
             "preferred_transitions": ["先说结论", "更关键的是", "最后盯三件事"],
@@ -532,6 +650,34 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(draft["article_package"]["lede"].startswith("先说结论"))
         self.assertIn("真正该盯的，是这件事会不会继续改写预算、预期和定价。", draft["article_package"]["sections"][2]["paragraph"])
         self.assertIn("接下来别忙着站队，先盯那几个会把叙事坐实的硬信号。", draft["article_package"]["sections"][3]["paragraph"])
+
+    def test_article_draft_unrelated_slot_lines_are_filtered(self) -> None:
+        subtitle_line = "Lead with the concrete variable."
+        impact_line = "Watch whether this starts rewriting budgets, order flow, and pricing."
+        watch_line = "Do not pick a side yet; wait for the hard signals."
+        style_memory = {
+            "target_band": "3.4",
+            "preferred_transitions": ["put simply", "more importantly", "three things matter next"],
+            "slot_lines": {
+                "subtitle": [subtitle_line],
+                "impact": [impact_line],
+                "watch": [watch_line],
+            },
+        }
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "language_mode": "chinese",
+                "human_signal_ratio": 78,
+                "style_memory": style_memory,
+            }
+        )
+
+        self.assertEqual(draft["article_package"]["subtitle"], subtitle_line)
+        self.assertTrue(draft["article_package"]["lede"])
+        all_paragraphs = "\n".join(section["paragraph"] for section in draft["article_package"]["sections"])
+        self.assertNotIn(impact_line, all_paragraphs)
+        self.assertNotIn(watch_line, all_paragraphs)
 
     def test_chinese_draft_localizes_english_topic_title_and_avoids_story_framework_false_positive(self) -> None:
         source_result = run_news_index(
@@ -865,7 +1011,8 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("What Changed", draft["article_package"]["body_markdown"])
         self.assertIn("为什么这事值得关注", draft["article_package"]["body_markdown"])
         self.assertNotIn("Bottom Line", draft["article_package"]["body_markdown"])
-        self.assertIn("English title", draft["article_package"]["article_markdown"])
+        self.assertIn("English title", draft["article_package"]["title"])
+        self.assertNotIn("# English title", draft["article_package"]["article_markdown"])
 
     def test_draft_claim_map_uses_fallback_citations_for_derived_thesis(self) -> None:
         claim_map = build_draft_claim_map(
@@ -1332,6 +1479,20 @@ Make the article easier to trust.
             revised["article_package"]["subtitle"],
             "先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。",
         )
+
+    def test_article_revision_preserves_headline_hook_preferences(self) -> None:
+        draft = build_article_draft(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "language_mode": "chinese",
+                "headline_hook_mode": "traffic",
+                "headline_hook_prefixes": ["刚刚，"],
+            }
+        )
+        revised = build_article_revision({"draft_result": draft})
+        self.assertEqual(revised["request"]["headline_hook_mode"], "traffic")
+        self.assertEqual(revised["request"]["headline_hook_prefixes"], ["刚刚，"])
+        self.assertTrue(revised["article_package"]["title"].startswith("刚刚，"))
 
     def test_article_revision_preserves_manual_override_and_skips_auto_rewrite(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request)})

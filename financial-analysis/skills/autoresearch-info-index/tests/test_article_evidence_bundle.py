@@ -11,6 +11,7 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+import article_evidence_bundle as evidence_bundle
 import article_draft_flow_runtime as draft_runtime
 import article_workflow_runtime as workflow_runtime
 from article_brief_runtime import build_analysis_brief
@@ -174,6 +175,107 @@ class ArticleEvidenceBundleTests(unittest.TestCase):
         self.assertFalse(
             any(item["role"] == "root_post_screenshot" and item["source_url"] == "https://example.com/story" for item in image_candidates)
         )
+
+    def test_raw_observation_falls_back_to_page_hints_for_titles_and_images(self) -> None:
+        source_result = {
+            "request": {
+                "topic": "Fallback news page",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+            },
+            "observations": [
+                {
+                    "source_id": "news-raw-1",
+                    "source_name": "Example News",
+                    "source_tier": 1,
+                    "channel": "core",
+                    "access_mode": "public",
+                    "published_at": "2026-03-24T11:30:00+00:00",
+                    "observed_at": "2026-03-24T11:35:00+00:00",
+                    "url": "https://example.com/raw-story",
+                    "text_excerpt": "Fallback page body excerpt.",
+                }
+            ],
+            "verdict_output": {},
+        }
+
+        with patch.object(
+            evidence_bundle,
+            "fetch_public_page_hints",
+            return_value={
+                "post_summary": "Example raw story title",
+                "media_summary": "Example raw story hero image",
+                "artifact_manifest": [
+                    {
+                        "role": "post_media",
+                        "path": "",
+                        "source_url": "https://example.com/images/raw-hero.png",
+                        "summary": "Example raw story hero image",
+                    }
+                ],
+            },
+        ):
+            bundle = evidence_bundle.build_shared_evidence_bundle(
+                source_result,
+                {
+                    "topic": "Fallback news page",
+                    "analysis_time": draft_runtime.parse_datetime("2026-03-24T12:00:00+00:00"),
+                    "image_strategy": "prefer_images",
+                    "draft_mode": "image_first",
+                },
+            )
+
+        self.assertEqual(bundle["citations"][0]["title"], "Example raw story title")
+        self.assertEqual(bundle["citations"][0]["published_at"], "2026-03-24T11:30:00+00:00")
+        self.assertTrue(any(item["source_url"] == "https://example.com/images/raw-hero.png" for item in bundle["image_candidates"]))
+
+    def test_screenshots_only_accepts_public_page_screenshot_roles_from_page_hints(self) -> None:
+        screenshot_path = self.temp_root / "news-page-screenshot.png"
+        screenshot_path.write_bytes(b"page-screenshot")
+        source_result = {
+            "request": {
+                "topic": "News page screenshot",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+            },
+            "observations": [
+                {
+                    "source_id": "news-raw-2",
+                    "source_name": "Example News",
+                    "source_tier": 1,
+                    "channel": "core",
+                    "access_mode": "public",
+                    "published_at": "2026-03-24T11:40:00+00:00",
+                    "observed_at": "2026-03-24T11:45:00+00:00",
+                    "url": "https://example.com/news-page-screenshot",
+                    "text_excerpt": "A story with a reusable headline screenshot.",
+                    "public_page_hints": {
+                        "post_summary": "Example story screenshot title",
+                        "artifact_manifest": [
+                            {
+                                "role": "article_page_screenshot",
+                                "path": str(screenshot_path),
+                                "source_url": "",
+                                "summary": "Screenshot of the news page headline and hero image",
+                            }
+                        ],
+                    },
+                }
+            ],
+            "verdict_output": {},
+        }
+
+        bundle = evidence_bundle.build_shared_evidence_bundle(
+            source_result,
+            {
+                "topic": "News page screenshot",
+                "analysis_time": draft_runtime.parse_datetime("2026-03-24T12:00:00+00:00"),
+                "image_strategy": "screenshots_only",
+                "draft_mode": "image_first",
+            },
+        )
+
+        self.assertEqual(len(bundle["image_candidates"]), 1)
+        self.assertEqual(bundle["image_candidates"][0]["role"], "article_page_screenshot")
+        self.assertEqual(bundle["image_candidates"][0]["path"], str(screenshot_path))
 
 
 if __name__ == "__main__":

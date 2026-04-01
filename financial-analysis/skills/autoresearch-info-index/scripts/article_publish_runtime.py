@@ -376,6 +376,11 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "draft_mode": clean_text(raw_payload.get("draft_mode")) or "balanced",
         "language_mode": clean_text(raw_payload.get("language_mode")) or "zh",
         "article_framework": clean_text(raw_payload.get("article_framework")) or "auto",
+        "headline_hook_mode": clean_text(raw_payload.get("headline_hook_mode") or raw_payload.get("title_hook_mode")) or "traffic",
+        "headline_hook_prefixes": clean_string_list(
+            raw_payload.get("headline_hook_prefixes") or raw_payload.get("title_hook_prefixes") or raw_payload.get("title_prefixes")
+        ),
+        "feedback_profile_dir": clean_text(raw_payload.get("feedback_profile_dir")),
         "editor_anchor_mode": normalize_editor_anchor_mode(raw_payload.get("editor_anchor_mode")),
         "account_name": clean_text(raw_payload.get("account_name")),
         "author": clean_text(raw_payload.get("author")),
@@ -703,7 +708,7 @@ def merge_cover_candidate(existing: dict[str, Any], incoming: dict[str, Any]) ->
             merged[key] = incoming.get(key)
     merged["upload_required"] = bool(merged.get("upload_required")) or bool(incoming.get("upload_required"))
     merged["selected_for_body"] = bool(merged.get("selected_for_body")) or bool(incoming.get("selected_for_body"))
-    merged["body_order"] = min(int(merged.get("body_order", 9999) or 9999), int(incoming.get("body_order", 9999) or 9999))
+    merged["body_order"] = min(normalize_body_order(merged.get("body_order")), normalize_body_order(incoming.get("body_order")))
     merged["cover_score_base"] = max(
         cover_score_base(merged.get("cover_score_base")),
         cover_score_base(incoming.get("cover_score_base")),
@@ -713,6 +718,28 @@ def merge_cover_candidate(existing: dict[str, Any], incoming: dict[str, Any]) ->
     elif not clean_text(merged.get("source_kind")):
         merged["source_kind"] = clean_text(incoming.get("source_kind"))
     return merged
+
+
+def is_screenshot_cover_role(role: Any) -> bool:
+    clean_role = clean_text(role).lower()
+    return bool(clean_role) and (clean_role == "screenshot" or clean_role.endswith("_screenshot") or "screenshot" in clean_role)
+
+
+def screenshot_cover_role_score(role: str) -> int:
+    if role == "article_page_screenshot":
+        return 42
+    if role in {"page_screenshot", "title_screenshot", "observation_screenshot"}:
+        return 36
+    if role == "root_post_screenshot":
+        return 18
+    return 24
+
+
+def normalize_body_order(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 9999
 
 
 def score_cover_candidate(candidate: dict[str, Any]) -> int:
@@ -725,14 +752,16 @@ def score_cover_candidate(candidate: dict[str, Any]) -> int:
     role = clean_text(candidate.get("role"))
     if role == "post_media":
         score += 70
-    elif role == "root_post_screenshot":
-        score -= 12
+    elif is_screenshot_cover_role(role):
+        score += screenshot_cover_role_score(role)
     elif role:
         score += 10
 
     status = clean_text(candidate.get("status"))
     if status == "local_ready":
         score += 18
+        if is_screenshot_cover_role(role) and role != "root_post_screenshot":
+            score += 10
     elif clean_text(candidate.get("source_url")).startswith(("http://", "https://")):
         score += 8
 
@@ -740,10 +769,16 @@ def score_cover_candidate(candidate: dict[str, Any]) -> int:
         score += 8
     if clean_text(candidate.get("source_name")):
         score += 4
-    if clean_text(candidate.get("access_mode")) == "blocked":
-        score -= 16
-    if clean_text(candidate.get("capture_method")) == "dom_clip":
+    access_mode = clean_text(candidate.get("access_mode"))
+    if access_mode == "blocked":
+        score -= 16 if role == "root_post_screenshot" else 6 if is_screenshot_cover_role(role) else 16
+    elif access_mode == "public" and is_screenshot_cover_role(role):
+        score += 6
+    capture_method = clean_text(candidate.get("capture_method"))
+    if capture_method == "dom_clip":
         score -= 3
+    elif capture_method in {"page_hints", "artifact_manifest", "observation_screenshot"} and is_screenshot_cover_role(role):
+        score += 2
     if bool(candidate.get("selected_for_body")):
         score += 4
     if clean_text(candidate.get("placement")) == "after_lede":
@@ -752,10 +787,12 @@ def score_cover_candidate(candidate: dict[str, Any]) -> int:
 
 
 def cover_candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, int, int, int]:
-    body_order = int(candidate.get("body_order", 9999) or 9999)
+    body_order = normalize_body_order(candidate.get("body_order"))
+    role = clean_text(candidate.get("role"))
+    role_rank = 2 if role == "post_media" else 1 if is_screenshot_cover_role(role) else 0
     return (
         int(candidate.get("cover_score", 0) or 0),
-        1 if clean_text(candidate.get("role")) == "post_media" else 0,
+        role_rank,
         1 if clean_text(candidate.get("status")) == "local_ready" else 0,
         -body_order,
     )
@@ -767,9 +804,9 @@ def build_cover_candidates(
 ) -> list[dict[str, Any]]:
     merged_candidates: dict[tuple[str, ...], dict[str, Any]] = {}
     selected_body_order = {
-        clean_text(item.get("asset_id")): index
+        clean_text(item.get("asset_id") or item.get("image_id")): index
         for index, item in enumerate(image_plan)
-        if clean_text(item.get("asset_id"))
+        if clean_text(item.get("asset_id") or item.get("image_id"))
     }
 
     for item in draft_image_candidates:
@@ -811,7 +848,7 @@ def reduce_cover_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         "role": clean_text(candidate.get("role")),
         "source_kind": clean_text(candidate.get("source_kind")),
         "selected_for_body": bool(candidate.get("selected_for_body")),
-        "body_order": int(candidate.get("body_order", 9999) or 9999),
+        "body_order": normalize_body_order(candidate.get("body_order")),
         "cover_score": int(candidate.get("cover_score", 0) or 0),
         "upload_ready": bool(candidate.get("upload_ready")),
         "caption": clean_text(candidate.get("caption")),
@@ -844,7 +881,7 @@ def select_cover_candidate(
 
     body_cover_candidates = sorted(
         [item for item in cover_candidates if bool(item.get("selected_for_body")) and bool(item.get("upload_ready"))],
-        key=lambda item: int(item.get("body_order", 9999) or 9999),
+        key=lambda item: normalize_body_order(item.get("body_order")),
     )
     if body_cover_candidates:
         selected_cover = safe_dict(body_cover_candidates[0])
@@ -884,6 +921,37 @@ def render_image_html(image_item: dict[str, Any]) -> str:
     )
 
 
+def citation_short_date(value: Any) -> str:
+    parsed = parse_datetime(value, fallback=None)
+    if parsed is not None:
+        return parsed.date().isoformat()
+    return clean_text(value)
+
+
+def citation_link_text(citation: dict[str, Any]) -> str:
+    return clean_text(citation.get("title") or citation.get("excerpt") or citation.get("source_name") or citation.get("citation_id") or "source")
+
+
+def render_citation_html(citation: dict[str, Any]) -> str:
+    title = citation_link_text(citation)
+    source_name = clean_text(citation.get("source_name"))
+    published_at = citation_short_date(citation.get("published_at") or citation.get("observed_at"))
+    url = clean_text(citation.get("url"))
+    meta = " | ".join(item for item in (source_name, published_at) if item)
+    title_html = (
+        f"<a href=\"{escape(url)}\" style=\"color:#0f766e;text-decoration:none;\">{escape(title)}</a>"
+        if url
+        else escape(title)
+    )
+    meta_html = f"<div style=\"margin-top:3px;color:#6b7280;font-size:12px;line-height:1.7;\">{escape(meta)}</div>" if meta else ""
+    return (
+        "<li style=\"margin:0 0 12px;color:#374151;font-size:14px;line-height:1.8;\">"
+        f"{title_html}"
+        f"{meta_html}"
+        "</li>"
+    )
+
+
 def render_wechat_html(
     article_package: dict[str, Any],
     image_plan: list[dict[str, Any]],
@@ -891,7 +959,6 @@ def render_wechat_html(
     *,
     editor_anchor_mode: str = "hidden",
 ) -> str:
-    title = clean_text(article_package.get("title"))
     subtitle = clean_text(article_package.get("subtitle"))
     lede = clean_text(article_package.get("lede"))
     sections = safe_list(article_package.get("sections") or article_package.get("body_sections"))
@@ -907,7 +974,6 @@ def render_wechat_html(
         "<article style=\"font-family:'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#1f2329;"
         "font-size:16px;line-height:1.9;\">",
         "<section style=\"margin-bottom:22px;\">",
-        f"<h1 style=\"font-size:28px;line-height:1.35;margin:0 0 12px;color:#111827;\">{escape(title)}</h1>",
     ]
     if subtitle:
         html_parts.append(
@@ -931,7 +997,9 @@ def render_wechat_html(
         heading = clean_text(section.get("heading")) or f"部分 {index}"
         html_parts.append("<section style=\"margin:18px 0;\">")
         html_parts.append(
-            f"<h2 style=\"font-size:22px;line-height:1.45;margin:0 0 10px;color:#111827;\">{escape(heading)}</h2>"
+            "<p style=\"margin:0 0 12px;padding-top:4px;color:#111827;"
+            "font-size:24px;line-height:1.5;font-weight:700;font-style:italic;\">"
+            f"{escape(heading)}</p>"
         )
         for paragraph in paragraph_blocks(section.get("paragraph")):
             html_parts.append(f"<p style=\"margin:0 0 14px;\">{escape(paragraph)}</p>")
@@ -958,9 +1026,14 @@ def render_wechat_html(
                 f"{f'：<a href=\"{escape(url)}\" style=\"color:#0f766e;text-decoration:none;\">{escape(url)}</a>' if url else ''}"
                 "</li>"
             )
+        if citations:
+            html_parts[-len(citations) :] = [render_citation_html(citation) for citation in citations]
         html_parts.append("</ol></section>")
     html_parts.append("</article>")
     return "\n".join(html_parts) + "\n"
+
+
+ACTIVE_RENDER_WECHAT_HTML = render_wechat_html
 
 
 def build_claims(selected_topic: dict[str, Any]) -> list[dict[str, str]]:
@@ -1142,7 +1215,6 @@ def render_wechat_html(
     *,
     editor_anchor_mode: str = "hidden",
 ) -> str:
-    title = clean_text(article_package.get("title"))
     subtitle = clean_text(article_package.get("subtitle"))
     lede = clean_text(article_package.get("lede"))
     sections = safe_list(article_package.get("sections") or article_package.get("body_sections"))
@@ -1158,7 +1230,6 @@ def render_wechat_html(
         "<article style=\"font-family:'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#1f2329;"
         "font-size:16px;line-height:1.9;\">",
         "<section style=\"margin-bottom:22px;\">",
-        f"<h1 style=\"font-size:28px;line-height:1.35;margin:0 0 12px;color:#111827;\">{escape(title)}</h1>",
     ]
     if subtitle:
         html_parts.append(
@@ -1182,7 +1253,9 @@ def render_wechat_html(
         heading = clean_text(section.get("heading")) or f"第 {index} 部分"
         html_parts.append("<section style=\"margin:18px 0;\">")
         html_parts.append(
-            f"<h2 style=\"font-size:22px;line-height:1.45;margin:0 0 10px;color:#111827;\">{escape(heading)}</h2>"
+            "<p style=\"margin:0 0 12px;padding-top:4px;color:#111827;"
+            "font-size:24px;line-height:1.5;font-weight:700;font-style:italic;\">"
+            f"{escape(heading)}</p>"
         )
         for paragraph in paragraph_blocks(section.get("paragraph")):
             html_parts.append(f"<p style=\"margin:0 0 14px;\">{escape(paragraph)}</p>")
@@ -1212,6 +1285,9 @@ def render_wechat_html(
         html_parts.append("</ol></section>")
     html_parts.append("</article>")
     return "\n".join(html_parts) + "\n"
+
+
+render_wechat_html = ACTIVE_RENDER_WECHAT_HTML
 
 
 def build_cover_plan(
@@ -1446,6 +1522,8 @@ def build_publish_package(
         "editor_anchor_visibility": "visible_inline" if request["editor_anchor_mode"] == "inline" else "review_only",
         "editor_anchors": anchors,
         "image_assets": image_plan,
+        "style_profile_applied": deepcopy(safe_dict(article_package.get("style_profile_applied"))),
+        "feedback_profile_status": deepcopy(safe_dict(article_package.get("feedback_profile_status"))),
         "cover_plan": cover_plan,
         "content_ready": content_ready,
         "push_ready": push_ready,
@@ -1458,6 +1536,8 @@ def build_report_markdown(result: dict[str, Any]) -> str:
     selected_topic = safe_dict(result.get("selected_topic"))
     publish_package = safe_dict(result.get("publish_package"))
     push_readiness = safe_dict(publish_package.get("push_readiness"))
+    style_profile = safe_dict(publish_package.get("style_profile_applied"))
+    style_memory = safe_dict(style_profile.get("style_memory"))
     manual_review = safe_dict(result.get("manual_review") or result.get("review_gate"))
     push_stage = safe_dict(result.get("push_stage"))
     lines = [
@@ -1494,6 +1574,21 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         f"- Digest: {publish_package.get('digest', '')}",
         f"- Keywords: {', '.join(publish_package.get('keywords', [])) or 'none'}",
         f"- Next push step: {result.get('next_push_command', '') or 'none'}",
+        "",
+        "## Style Profile",
+        "",
+        f"- Profile applied: {'yes' if style_profile else 'no'}",
+        f"- Global profile applied: {'yes' if style_profile.get('global_profile_applied') else 'no'}",
+        f"- Topic profile applied: {'yes' if style_profile.get('topic_profile_applied') else 'no'}",
+        f"- Applied profile paths: {', '.join(style_profile.get('applied_paths', [])) or 'none'}",
+        f"- Target band: {style_memory.get('target_band', '') or 'none'}",
+        f"- Headline hook mode: {safe_dict(style_profile.get('effective_request')).get('headline_hook_mode', '') or 'none'}",
+        f"- Headline hook prefixes: {', '.join(safe_dict(style_profile.get('effective_request')).get('headline_hook_prefixes', [])) or 'default'}",
+        f"- Sample source references: {style_memory.get('sample_source_declared_count', 0)}",
+        f"- Available sample source paths: {style_memory.get('sample_source_available_count', style_memory.get('sample_source_loaded_count', 0))}",
+        f"- Missing sample source paths: {style_memory.get('sample_source_missing_count', 0)}",
+        f"- Runtime style source mode: {style_memory.get('sample_source_runtime_mode', '') or 'unknown'}",
+        f"- Derived transitions: {', '.join(style_memory.get('corpus_derived_transitions', [])) or 'none'}",
         "",
         "## Files",
         "",
@@ -1560,6 +1655,9 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "draft_mode": request["draft_mode"],
         "language_mode": request["language_mode"],
         "article_framework": request["article_framework"],
+        "headline_hook_mode": request["headline_hook_mode"],
+        "headline_hook_prefixes": request["headline_hook_prefixes"],
+        "feedback_profile_dir": request["feedback_profile_dir"],
     }
     workflow_result = run_article_workflow(workflow_payload)
     publish_package = build_publish_package(workflow_result, selected_topic, request)

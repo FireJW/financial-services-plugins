@@ -15,6 +15,8 @@ PROFILE_REQUEST_KEYS = (
     "tone",
     "draft_mode",
     "image_strategy",
+    "headline_hook_mode",
+    "headline_hook_prefixes",
     "max_images",
     "human_signal_ratio",
     "personal_phrase_bank",
@@ -24,7 +26,7 @@ PROFILE_REQUEST_KEYS = (
     "must_avoid",
 )
 
-LIST_PROFILE_REQUEST_KEYS = {"must_include", "must_avoid", "personal_phrase_bank"}
+LIST_PROFILE_REQUEST_KEYS = {"must_include", "must_avoid", "personal_phrase_bank", "headline_hook_prefixes"}
 STYLE_MEMORY_TEXT_KEYS = {"target_band", "voice_summary"}
 STYLE_MEMORY_LIST_KEYS = {"preferred_transitions", "must_land", "avoid_patterns", "corpus_notes"}
 STYLE_MEMORY_SLOT_KEYS = ("title", "subtitle", "lede", "facts", "spread", "impact", "watch")
