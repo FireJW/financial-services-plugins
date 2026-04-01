@@ -20,6 +20,19 @@ the recovered runtime until the wrapper layer proves out.
 - `scripts/runtime/run-task-profile.mjs`
   - low-level profile router
   - supports `--list`, `--profile`, `--dry-run`, and actual runtime execution
+- `scripts/runtime/run-real-task.mjs`
+  - one-command real-task wrapper that materializes a run pack, routes the
+    request, generates `INTENT` and `NOW`, runs worker, runs verifier
+    preflight, runs the final verifier, and writes a per-run ledger/scorecard
+  - defaults to structured verifier mode, treats the JSON artifact as
+    authoritative, and only reports success when the final verifier verdict is
+    `PASS`
+- `scripts/runtime/route-request.mjs`
+  - lightweight request router that turns a raw task request into a route plan
+    with route id, profile, plugin dirs, native workflow references, and the
+    recommended next `run-task-profile` command
+  - currently recognizes `feedback_workflow`, `classic_case`,
+    `a_share_event_research`, and `fallback_search`
 - `scripts/runtime/run-worker-task.mjs`
   - builds a concrete worker prompt from task text plus optional `NOW` and
     `INTENT` state
@@ -67,6 +80,12 @@ the recovered runtime until the wrapper layer proves out.
     output
 - `scripts/runtime/summarize-runtime-attempt-ledger.mjs`
   - turns an NDJSON attempt ledger into a compact text or JSON scorecard
+- `scripts/runtime/run-runtime-compatibility-suite.mjs`
+  - runs the canonical runtime compatibility gate over runtime init, plugin
+    discovery, and runtime surface diff probes
+  - exits non-zero on semantic probe drift or runtime probe failure
+  - treats an unbuilt recovered runtime as a skipped local state by default
+  - add `--require-built-runtime` when you want skipped runs to fail closed
 - `scripts/runtime/run-runtime-host-reliability-suite.mjs`
   - runs the curated runtime host regression subset that covers worker/verifier
     entrypoints, structured verifier mode, prompt budget guardrails, attempt
@@ -78,6 +97,29 @@ the recovered runtime until the wrapper layer proves out.
     classic-case routes are all covered
 
 ## Recommended Workflow
+
+### Fast Path: One Command For A Real Task
+
+When you already have the request, session snapshot, and main evidence pack,
+use the high-level runner first:
+
+```powershell
+node scripts/runtime/run-real-task.mjs `
+  --input-file tests/fixtures/runtime-real-tasks/jenny-feedback-workflow/task.md `
+  --session-file tests/fixtures/runtime-state/sample-session-input.json `
+  --context-file tests/fixtures/runtime-real-tasks/jenny-feedback-workflow/evidence.md `
+  --output-dir runtime-state/real-task-runs/jenny-demo `
+  --json
+```
+
+This runner:
+
+- writes a self-contained run directory
+- records `INTENT.md`, `INTENT-COMPACT.md`, `NOW.md`, and route guidance
+- persists worker and verifier artifacts plus an attempt ledger scorecard
+- fails closed unless the final verifier verdict is `PASS`
+
+### Manual Path: Step By Step
 
 1. Refresh `INTENT`
 
@@ -264,6 +306,22 @@ To rerun the current curated runtime host reliability suite:
 
 ```powershell
 node scripts/runtime/run-runtime-host-reliability-suite.mjs
+```
+
+To run the canonical runtime compatibility gate:
+
+```powershell
+node scripts/runtime/run-runtime-compatibility-suite.mjs --json --check
+```
+
+To require a built runtime and fail closed when the compatibility gate has to
+skip:
+
+```powershell
+node scripts/runtime/run-runtime-compatibility-suite.mjs `
+  --json `
+  --check `
+  --require-built-runtime
 ```
 
 To inspect fixture coverage before preparing a merge to `main`:

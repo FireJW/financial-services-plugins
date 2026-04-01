@@ -29,6 +29,8 @@ Contracts:
 
 Entry scripts:
 
+- `scripts/runtime/run-real-task.mjs`
+- `scripts/runtime/route-request.mjs`
 - `scripts/runtime/run-task-profile.mjs`
 - `scripts/runtime/run-worker-task.mjs`
 - `scripts/runtime/run-verifier-task.mjs`
@@ -53,6 +55,24 @@ Runtime state:
 - default `max-turns=1`
 - not for final synthesis or verification verdicts
 
+### Request Router
+
+Use `route-request.mjs` when you want the wrapper to choose the closest native
+workflow and profile before you run the main task:
+
+```powershell
+node scripts/runtime/route-request.mjs `
+  --json `
+  --request "Collect what this design leader said in interviews and support tickets, then turn it into a workflow cadence."
+```
+
+The router currently recognizes:
+
+- `feedback_workflow`
+- `classic_case`
+- `a_share_event_research`
+- `fallback_search`
+
 ### `worker`
 
 - use for the main execution pass
@@ -69,6 +89,51 @@ Runtime state:
 - optional structured mode makes JSON authoritative and markdown derived
 
 ## 4. Standard Runbook
+
+### Fast Path: One-Command Real Task Runner
+
+If the task is already defined and you want the wrapper to materialize a clean
+run pack, execute worker, and then gate the result through verifier, start
+here:
+
+```powershell
+node scripts/runtime/run-real-task.mjs `
+  --input-file runtime-state/<task>-task.md `
+  --session-file runtime-state/<task>-session.json `
+  --context-file runtime-state/<task>-evidence.md `
+  --output-dir runtime-state/real-task-runs/<task> `
+  --json
+```
+
+This high-level runner:
+
+- routes the request first and writes route guidance into the run pack
+- derives `INTENT.md`, `INTENT-COMPACT.md`, and `NOW.md`
+- runs worker, verifier preflight, and final verifier in sequence
+- writes a per-run `runtime-attempts.ndjson` plus scorecard files
+- defaults to structured verifier mode
+- fails closed unless the final verifier verdict is `PASS`
+
+Use the step-by-step flow below when you want to inspect or override each stage
+manually.
+
+If the worker already finished and you only want to rerun verifier from the
+same run pack:
+
+```powershell
+node scripts/runtime/run-verifier-task.mjs `
+  --original-task-file runtime-state/real-task-runs/<task>/task.md `
+  --task-id <task> `
+  --worker-output-file runtime-state/real-task-runs/<task>/worker-output.md `
+  --files-changed-file runtime-state/real-task-runs/<task>/files-changed.txt `
+  --approach-file runtime-state/real-task-runs/<task>/approach.md `
+  --intent-file runtime-state/real-task-runs/<task>/INTENT.md `
+  --now-file runtime-state/real-task-runs/<task>/NOW.md `
+  --attempt-ledger-file runtime-state/real-task-runs/<task>/runtime-attempts.ndjson `
+  --structured-verifier `
+  --output runtime-state/real-task-runs/<task>/verifier-output.md `
+  --structured-output-file runtime-state/real-task-runs/<task>/verifier-output.json
+```
 
 ### Step 1: Write the raw request
 
@@ -284,6 +349,23 @@ node scripts/runtime/preserve-user-intent.mjs `
 
 ## 5. Reading Results
 
+### Real-Task Runner Summary
+
+The high-level runner writes:
+
+- `run-plan.json`
+- `run-summary.json`
+- `runtime-attempt-scorecard.json`
+- `runtime-attempt-scorecard.txt`
+
+Treat `run-summary.json` as the machine-readable run envelope. A run is only
+successful when:
+
+1. worker exits cleanly
+2. verifier preflight passes
+3. verifier exits cleanly
+4. final verifier verdict is `PASS`
+
 ### Worker
 
 Valid worker output must contain, in order:
@@ -445,8 +527,8 @@ Recommended regression set after runtime-wrapper changes:
 
 ```powershell
 node scripts/runtime/run-runtime-host-reliability-suite.mjs
+node scripts/runtime/run-runtime-compatibility-suite.mjs --json --check
 node --test tests\runtime-host\*.test.mjs
-node --test tests\runtime-compat\*.test.mjs
 ```
 
 The reliability suite is the fastest high-signal check. It currently covers:
@@ -478,7 +560,21 @@ node --test tests\runtime-host\worker-verifier-entrypoints.test.mjs
 node --test tests\runtime-host\task-profile-routing.test.mjs
 node --test tests\runtime-host\structured-verifier-contract.test.mjs
 node --test tests\runtime-host\structured-verifier-entrypoints.test.mjs
+node --test tests\runtime-host\runtime-compatibility-suite-entrypoint.test.mjs
 ```
+
+Use the compatibility gate when the wrapper, plugin surface, or recovered
+runtime wiring might have drifted:
+
+```powershell
+node scripts/runtime/run-runtime-compatibility-suite.mjs --json --check
+```
+
+Policy:
+
+- semantic probe drift or runtime probe failure returns non-zero
+- missing runtime build returns a skipped report by default
+- add `--require-built-runtime` when you want skipped runs to fail closed
 
 ## 9. Current Practical Guidance
 
