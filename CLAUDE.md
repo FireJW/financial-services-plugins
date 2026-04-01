@@ -51,6 +51,27 @@ Routing order:
 For platform-specific requests, do not start with public-page scraping if the repo
 already contains a signed-session or authenticated workflow.
 
+## Product / Design Feedback Workflow Routing
+
+When the task is about product or design feedback operations, use the repo's
+native route before generic browsing:
+
+1. `financial-analysis/commands/feedback-workflow.md`
+2. `financial-analysis/skills/feedback-iteration-workflow/SKILL.md`
+3. if facts are moving or freshness matters, also read
+   `financial-analysis/skills/autoresearch-info-index/SKILL.md`
+
+Use this route when the user wants interviews, podcasts, talks, support logs,
+customer calls, social posts, or research notes turned into a workflow, SOP,
+priorities brief, or iteration cadence.
+
+Hard rules:
+
+- anchor claims to exact dates
+- separate direct quote, summary, and inference
+- never upgrade host summary material into verbatim quote
+- never present AI synthesis as a replacement for product or design judgment
+
 ### X / Twitter Routing
 
 For X post and thread collection, prefer:

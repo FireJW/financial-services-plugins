@@ -72,6 +72,39 @@ Then pick the nearest case file and follow its native route:
 Use the case router before broad tool selection when the user is effectively
 asking for a repeated workflow we have already handled.
 
+## Product / Design Feedback Workflow Routing
+
+When a request is about any of the following, treat it as a feedback-to-
+iteration workflow task and use the repo's native workflow first:
+
+- collect interviews, talks, podcasts, or public posts from a product or
+  design leader and convert them into an operating workflow
+- reconstruct how a team uses AI to digest user feedback, support tickets,
+  customer calls, social posts, or research notes
+- turn messy feedback into product priorities, design principles, weekly briefs,
+  or research-preview iteration loops
+- separate direct quotes from host summaries and inference before drawing a
+  process conclusion
+
+### Native Routing Order
+
+1. `financial-analysis/commands/feedback-workflow.md`
+2. `financial-analysis/skills/feedback-iteration-workflow/SKILL.md`
+3. if the request also depends on moving facts or fresh source collection,
+   read `financial-analysis/skills/autoresearch-info-index/SKILL.md`
+4. only fall back to generic browser automation or broad web search after the
+   native route has been checked
+
+### Non-Negotiable Rules
+
+- always stamp the output with an exact `as of` date
+- separate `direct quote`, `direct-ish`, `summary`, and `inference only`
+- do not upgrade host recap material into direct quotes
+- do not claim a fixed SOP when the public evidence only supports a partial
+  reconstruction
+- do not let AI-synthesis steps replace the human judgment node in the
+  workflow
+
 ### X / Twitter Routing
 
 For X post and thread collection, prefer:
