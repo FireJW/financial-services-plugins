@@ -66,6 +66,17 @@ const fixtureSpecs = [
     promptPattern: /reviewable|article package|final draft/,
     evidencePattern: /source result|analysis brief|image references/,
   },
+  {
+    name: "Workflow improvement loop",
+    fixtureRoot: path.join(
+      "tests",
+      "fixtures",
+      "runtime-real-tasks",
+      "workflow-improvement-loop",
+    ),
+    promptPattern: /keep-or-rollback|fixed task profile|score dimensions/,
+    evidencePattern: /current baseline|candidate change|verification result/,
+  },
 ];
 
 for (const fixture of fixtureSpecs) {

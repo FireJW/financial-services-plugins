@@ -456,6 +456,7 @@ The reliability suite is the fastest high-signal check. It currently covers:
 - real-task latest-event verification fixtures
 - real-task X-post evidence fixtures
 - real-task evidence-to-article fixtures
+- real-task workflow-improvement-loop fixtures
 - prompt budget guardrails
 - attempt ledger and scorecard
 - worker/verifier entrypoints
