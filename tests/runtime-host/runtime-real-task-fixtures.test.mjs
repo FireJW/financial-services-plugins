@@ -44,6 +44,17 @@ const fixtureSpecs = [
     promptPattern: /latest claim|mediation meeting|already scheduled/,
     evidencePattern: /confirmed|not confirmed|inference only/,
   },
+  {
+    name: "X post evidence",
+    fixtureRoot: path.join(
+      "tests",
+      "fixtures",
+      "runtime-real-tasks",
+      "x-post-evidence",
+    ),
+    promptPattern: /source-faithful|X post|post itself/,
+    evidencePattern: /main post text|thread text|image evidence/,
+  },
 ];
 
 for (const fixture of fixtureSpecs) {
