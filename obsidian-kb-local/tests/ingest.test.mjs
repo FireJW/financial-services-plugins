@@ -93,4 +93,48 @@ describe("ingestRawNote", () => {
       /Unknown sourceType/
     );
   });
+
+  it("writes epub index notes into the books lane with a stable filename base", () => {
+    const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-ingest-epub-test-"));
+
+    try {
+      const config = {
+        vaultPath: tempRoot,
+        vaultName: "Test Vault",
+        machineRoot: "08-ai-kb",
+        obsidian: {
+          cliCandidates: [],
+          exeCandidates: []
+        }
+      };
+
+      const result = ingestRawNote(
+        config,
+        {
+          sourceType: "epub",
+          topic: "Deep Work",
+          sourceUrl: "file:///D:/books/deep-work.epub",
+          title: "Deep Work",
+          filenameBase: "Deep-Work--abc12345",
+          body: "External epub index entry.",
+          status: "archived"
+        },
+        {
+          preferCli: false,
+          allowFilesystemFallback: true
+        }
+      );
+
+      assert.equal(result.path, "08-ai-kb/10-raw/books/Deep-Work-abc12345.md");
+
+      const writtenContent = fs.readFileSync(path.join(tempRoot, result.path), "utf8");
+      const frontmatter = parseFrontmatter(writtenContent);
+      assert.ok(frontmatter);
+      assert.doesNotThrow(() => validateRawFrontmatter(frontmatter));
+      assert.equal(frontmatter.source_type, "epub");
+      assert.equal(frontmatter.status, "archived");
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });

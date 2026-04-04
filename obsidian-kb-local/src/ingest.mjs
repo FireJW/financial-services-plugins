@@ -12,7 +12,8 @@ const LANE_MAP = {
   paper: "papers",
   repo: "repos",
   manual: "manual",
-  article: "articles"
+  article: "articles",
+  epub: "books"
 };
 
 export function ingestRawNote(config, params, options = {}) {
@@ -21,6 +22,7 @@ export function ingestRawNote(config, params, options = {}) {
     topic,
     sourceUrl = "",
     title,
+    filenameBase = null,
     body = "",
     capturedAt = null,
     status = "queued"
@@ -45,7 +47,7 @@ export function ingestRawNote(config, params, options = {}) {
     );
   }
 
-  const safeName = sanitizeFilename(title);
+  const safeName = sanitizeFilename(filenameBase || title);
   const notePath = `${config.machineRoot}/10-raw/${lane}/${safeName}.md`;
   assertWithinBoundary(notePath, config.machineRoot);
 

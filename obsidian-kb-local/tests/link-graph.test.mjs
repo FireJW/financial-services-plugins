@@ -37,6 +37,45 @@ test("buildRelatedGraph links notes that mention each other or share topic", () 
   assert.equal(graph.get(notes[1].relativePath).length, 1);
 });
 
+test("buildRelatedGraph ignores shared template headings across unrelated raw notes", () => {
+  const notes = [
+    {
+      relativePath: "08-ai-kb/10-raw/books/Deep-Work.md",
+      title: "Deep Work",
+      topic: "Deep Work",
+      cleanBody: "## External File\n## Book Metadata\n## Retrieval Notes",
+      content: "# Deep Work\n\n## External File\n\n## Book Metadata\n\n## Retrieval Notes",
+      frontmatter: {
+        kb_type: "raw",
+        source_type: "epub",
+        topic: "Deep Work"
+      },
+      tokens: new Set(["deep", "work"])
+    },
+    {
+      relativePath: "08-ai-kb/10-raw/books/Monetary-History.md",
+      title: "Monetary History",
+      topic: "Monetary History",
+      cleanBody: "## External File\n## Book Metadata\n## Retrieval Notes",
+      content: "# Monetary History\n\n## External File\n\n## Book Metadata\n\n## Retrieval Notes",
+      frontmatter: {
+        kb_type: "raw",
+        source_type: "epub",
+        topic: "Monetary History"
+      },
+      tokens: new Set(["monetary", "history"])
+    }
+  ];
+
+  const graph = buildRelatedGraph(notes, {
+    maxLinks: 8,
+    minScore: 4
+  });
+
+  assert.equal(graph.get(notes[0].relativePath).length, 0);
+  assert.equal(graph.get(notes[1].relativePath).length, 0);
+});
+
 test("applyRelatedSection replaces the managed link block idempotently", () => {
   const original = "# Test\n\nBody.\n";
   const updated = applyRelatedSection(original, [
@@ -148,6 +187,54 @@ Chrome automation is one visible surface.
       conceptContent,
       /\[\[08-ai-kb\/10-raw\/articles\/Claude-Code-Hidden-Features\|Claude Code Hidden Features\]\]/
     );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("collectLinkableNotes includes epub raw notes from the books lane", () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-link-graph-epub-"));
+
+  try {
+    const config = {
+      vaultPath: path.join(tempRoot, "vault"),
+      vaultName: "Test Vault",
+      machineRoot: "08-ai-kb",
+      obsidian: {
+        cliCandidates: [],
+        exeCandidates: []
+      }
+    };
+
+    const bookPath = path.join(
+      config.vaultPath,
+      config.machineRoot,
+      "10-raw",
+      "books",
+      "Deep-Work--abc12345.md"
+    );
+    fs.mkdirSync(path.dirname(bookPath), { recursive: true });
+    fs.writeFileSync(
+      bookPath,
+      `${generateFrontmatter("raw", {
+        source_type: "epub",
+        topic: "Deep Work",
+        source_url: "file:///D:/books/deep-work.epub",
+        captured_at: "2026-04-04T10:00:00+08:00",
+        kb_date: "2026-04-04",
+        status: "archived"
+      })}
+
+# Deep Work
+
+Deep Work discusses focused attention and distraction control.
+`,
+      "utf8"
+    );
+
+    const collected = collectLinkableNotes(config.vaultPath, config.machineRoot);
+    assert.equal(collected.length, 1);
+    assert.equal(collected[0].frontmatter.source_type, "epub");
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }

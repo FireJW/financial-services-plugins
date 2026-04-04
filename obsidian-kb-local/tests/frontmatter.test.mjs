@@ -37,6 +37,12 @@ describe("validateRawFrontmatter", () => {
     assert.doesNotThrow(() => validateRawFrontmatter(validRaw));
   });
 
+  it("accepts epub as a valid raw source_type", () => {
+    assert.doesNotThrow(() =>
+      validateRawFrontmatter({ ...validRaw, source_type: "epub", source_url: "file:///D:/books/test.epub" })
+    );
+  });
+
   it("rejects wrong kb_type", () => {
     assert.throws(
       () => validateRawFrontmatter({ ...validRaw, kb_type: "wiki" }),

@@ -10,6 +10,7 @@
     "write-smoke": "node scripts/write-smoke.mjs",
     "obsidian": "node scripts/obsidian.mjs",
     "ingest-web": "node scripts/ingest-web.mjs",
+    "import-epub-library": "node scripts/import-epub-library.mjs",
     "import-article-corpus": "node scripts/import-article-corpus.mjs",
     "sync-article-corpus": "node scripts/sync-article-corpus.mjs",
     "compile-source": "node scripts/compile-source.mjs",

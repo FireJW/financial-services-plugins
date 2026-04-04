@@ -6,6 +6,8 @@ import { writeNote } from "./note-writer.mjs";
 const LINK_GRAPH_START = "<!-- codex-link-graph:start -->";
 const LINK_GRAPH_END = "<!-- codex-link-graph:end -->";
 const WIKI_DIRECTORIES = ["concepts", "entities", "sources", "syntheses"];
+const RAW_LINK_DIRECTORIES = ["articles", "books"];
+const LINKABLE_RAW_SOURCE_TYPES = new Set(["article", "epub"]);
 const ENGLISH_STOPWORDS = new Set([
   "about",
   "after",
@@ -77,8 +79,10 @@ export function collectLinkableNotes(vaultPath, machineRoot, options = {}) {
   const includeArticleCorpus = options.includeArticleCorpus !== false;
 
   if (includeArticleCorpus) {
-    const articleRoot = path.join(vaultPath, machineRoot, "10-raw", "articles");
-    results.push(...readLinkableFiles(vaultPath, articleRoot));
+    for (const directory of RAW_LINK_DIRECTORIES) {
+      const rawRoot = path.join(vaultPath, machineRoot, "10-raw", directory);
+      results.push(...readLinkableFiles(vaultPath, rawRoot));
+    }
   }
 
   if (includeWiki) {
@@ -212,11 +216,10 @@ function intersectionSize(left, right) {
 }
 
 function buildTokenSet(note) {
-  const pool = [
-    note.title,
-    note.frontmatter.topic,
-    ...extractHeadings(stripFrontmatter(note.content))
-  ].join("\n");
+  const pool =
+    note.frontmatter.kb_type === "raw"
+      ? [note.title, note.frontmatter.topic].join("\n")
+      : [note.title, note.frontmatter.topic, ...extractHeadings(stripFrontmatter(note.content))].join("\n");
   const tokens = new Set();
 
   for (const word of String(pool ?? "").match(/[A-Za-z][A-Za-z0-9/-]{2,}/g) ?? []) {
@@ -282,7 +285,7 @@ function isLinkableNote(note) {
 
   return (
     note.frontmatter.kb_type === "raw" &&
-    normalizeText(note.frontmatter.source_type) === "article"
+    LINKABLE_RAW_SOURCE_TYPES.has(normalizeText(note.frontmatter.source_type))
   );
 }
 

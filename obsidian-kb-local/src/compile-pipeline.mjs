@@ -13,7 +13,7 @@ import { sanitizeFilename } from "./ingest.mjs";
 import { extractHumanOverrides, mergeWithOverrides } from "./human-override.mjs";
 import { writeNote } from "./note-writer.mjs";
 
-const RAW_LANES = ["web", "papers", "repos", "manual", "articles"];
+const RAW_LANES = ["web", "papers", "repos", "manual", "articles", "books"];
 const WIKI_KIND_DIR_MAP = {
   concept: "concepts",
   entity: "entities",

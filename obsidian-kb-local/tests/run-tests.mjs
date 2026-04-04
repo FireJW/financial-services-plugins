@@ -9,6 +9,11 @@ import {
   isLikelyFixtureArticleArtifactPath,
   loadArticleArtifacts
 } from "../src/article-corpus.mjs";
+import {
+  deduplicateEpubArtifacts,
+  importEpubLibrary,
+  loadEpubArtifacts
+} from "../src/epub-library.mjs";
 import { assertWithinBoundary } from "../src/boundary.mjs";
 import { buildBootstrapPlan } from "../src/bootstrap-plan.mjs";
 import { executeCompileForRawNote } from "../src/compile-runner.mjs";
@@ -207,6 +212,21 @@ run("ingest filename sanitization is deterministic", () => {
   assert.equal(sanitizeFilename('<<>>:"/\\\\|?*'), "untitled-note");
 });
 
+run("raw frontmatter accepts epub source_type", () => {
+  assert.doesNotThrow(() =>
+    validateRawFrontmatter({
+      kb_type: "raw",
+      source_type: "epub",
+      topic: "Deep Work",
+      source_url: "file:///D:/books/deep-work.epub",
+      captured_at: "2026-04-04T10:00:00+08:00",
+      kb_date: "2026-04-04",
+      status: "archived",
+      managed_by: "human"
+    })
+  );
+});
+
 run("article corpus fixture filter catches replay and placeholder artifacts", () => {
   assert.equal(
     isLikelyFixtureArticleArtifactPath(
@@ -266,6 +286,45 @@ run("ingest raw note writes valid frontmatter into lane", () => {
 
     assert.ok(frontmatter);
     assert.doesNotThrow(() => validateRawFrontmatter(frontmatter));
+  } finally {
+    fs.rmSync(tempVault, { recursive: true, force: true });
+  }
+});
+
+run("ingest raw note supports epub books lane and stable filename base", () => {
+  const tempVault = fs.mkdtempSync(path.join(process.cwd(), ".tmp-ingest-epub-run-tests-"));
+
+  try {
+    const result = ingestRawNote(
+      {
+        vaultPath: tempVault,
+        vaultName: "Test Vault",
+        machineRoot: "08-ai-kb",
+        obsidian: {
+          cliCandidates: [],
+          exeCandidates: []
+        }
+      },
+      {
+        sourceType: "epub",
+        topic: "Deep Work",
+        sourceUrl: "file:///D:/books/deep-work.epub",
+        title: "Deep Work",
+        filenameBase: "Deep-Work--abc12345",
+        body: "External epub index entry.",
+        status: "archived"
+      },
+      {
+        preferCli: false,
+        allowFilesystemFallback: true
+      }
+    );
+
+    assert.equal(result.path, "08-ai-kb/10-raw/books/Deep-Work-abc12345.md");
+    const content = fs.readFileSync(path.join(tempVault, result.path), "utf8");
+    const frontmatter = parseFrontmatter(content);
+    assert.equal(frontmatter.source_type, "epub");
+    assert.equal(frontmatter.status, "archived");
   } finally {
     fs.rmSync(tempVault, { recursive: true, force: true });
   }
@@ -418,6 +477,77 @@ run("article corpus formatter strips duplicate leading title headings", () => {
   assert.match(body, /Body copy\./);
 });
 
+run("epub library loader normalizes external files without copying them", () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-epub-library-run-tests-"));
+
+  try {
+    const rootPath = path.join(tempRoot, "books");
+    const filePath = path.join(rootPath, "Test.Book.epub");
+    fs.mkdirSync(rootPath, { recursive: true });
+    fs.writeFileSync(filePath, "dummy-epub", "utf8");
+
+    const [artifact] = loadEpubArtifacts([filePath], {
+      roots: [rootPath],
+      machineRoot: "08-ai-kb"
+    });
+
+    assert.equal(artifact.title, "Test Book");
+    assert.equal(artifact.relativePath, "Test.Book.epub");
+    assert.match(artifact.filenameBase, /^Test-Book--[a-f0-9]{8}$/);
+    assert.equal(artifact.notePath.startsWith("08-ai-kb/10-raw/books/"), true);
+    assert.match(artifact.sourceUrl, /^file:/);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+run("epub library import writes lightweight index notes and keeps binaries outside the vault", () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-epub-import-run-tests-"));
+
+  try {
+    const externalRoot = path.join(tempRoot, "external-books");
+    const filePath = path.join(externalRoot, "Deep.Work.epub");
+    fs.mkdirSync(externalRoot, { recursive: true });
+    fs.writeFileSync(filePath, "dummy-epub", "utf8");
+
+    const config = {
+      vaultPath: path.join(tempRoot, "vault"),
+      vaultName: "Test Vault",
+      machineRoot: "08-ai-kb",
+      obsidian: {
+        cliCandidates: [],
+        exeCandidates: []
+      }
+    };
+
+    const [artifact] = loadEpubArtifacts([filePath], {
+      roots: [externalRoot],
+      machineRoot: config.machineRoot
+    });
+    const deduped = deduplicateEpubArtifacts([artifact, artifact]);
+    assert.equal(deduped.length, 1);
+
+    const [result] = importEpubLibrary(config, deduped, {
+      status: "archived",
+      preferCli: false,
+      allowFilesystemFallback: true
+    });
+
+    assert.match(result.path, /^08-ai-kb\/10-raw\/books\/Deep-Work-[a-f0-9]{8}\.md$/);
+    const content = fs.readFileSync(path.join(config.vaultPath, result.path), "utf8");
+    const frontmatter = parseFrontmatter(content);
+    assert.equal(frontmatter.source_type, "epub");
+    assert.equal(frontmatter.status, "archived");
+    assert.match(content, /Indexed from an external EPUB library/);
+
+    const copiedBinaries = [];
+    walkFiles(config.vaultPath, copiedBinaries);
+    assert.equal(copiedBinaries.some((entry) => entry.endsWith(".epub")), false);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 run("compile prompt injects raw content and topic context", () => {
   const prompt = buildCompilePrompt(
     "RAW={{RAW_CONTENT}}\nTOPIC={{TOPIC}}\nNOTES={{EXISTING_NOTES}}",
@@ -567,6 +697,45 @@ run("link graph relates notes that mention each other or share topic", () => {
   );
 });
 
+run("link graph ignores shared template headings across unrelated raw notes", () => {
+  const notes = [
+    {
+      relativePath: "08-ai-kb/10-raw/books/Deep-Work.md",
+      title: "Deep Work",
+      topic: "Deep Work",
+      cleanBody: "## External File\n## Book Metadata\n## Retrieval Notes",
+      content: "# Deep Work\n\n## External File\n\n## Book Metadata\n\n## Retrieval Notes",
+      frontmatter: {
+        kb_type: "raw",
+        source_type: "epub",
+        topic: "Deep Work"
+      },
+      tokens: new Set(["deep", "work"])
+    },
+    {
+      relativePath: "08-ai-kb/10-raw/books/Monetary-History.md",
+      title: "Monetary History",
+      topic: "Monetary History",
+      cleanBody: "## External File\n## Book Metadata\n## Retrieval Notes",
+      content: "# Monetary History\n\n## External File\n\n## Book Metadata\n\n## Retrieval Notes",
+      frontmatter: {
+        kb_type: "raw",
+        source_type: "epub",
+        topic: "Monetary History"
+      },
+      tokens: new Set(["monetary", "history"])
+    }
+  ];
+
+  const graph = buildRelatedGraph(notes, {
+    maxLinks: 8,
+    minScore: 4
+  });
+
+  assert.equal(graph.get("08-ai-kb/10-raw/books/Deep-Work.md").length, 0);
+  assert.equal(graph.get("08-ai-kb/10-raw/books/Monetary-History.md").length, 0);
+});
+
 run("link graph managed block replacement stays idempotent", () => {
   const original = "# Test\n\nBody.\n";
   const updated = applyRelatedSection(original, [
@@ -711,6 +880,54 @@ Chrome automation is one visible surface.
       conceptContent,
       /\[\[08-ai-kb\/10-raw\/articles\/Claude-Code-Hidden-Features\|Claude Code Hidden Features\]\]/
     );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+run("collectLinkableNotes includes epub raw notes from the books lane", () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-link-graph-epub-run-tests-"));
+
+  try {
+    const config = {
+      vaultPath: path.join(tempRoot, "vault"),
+      vaultName: "Test Vault",
+      machineRoot: "08-ai-kb",
+      obsidian: {
+        cliCandidates: [],
+        exeCandidates: []
+      }
+    };
+
+    const bookPath = path.join(
+      config.vaultPath,
+      config.machineRoot,
+      "10-raw",
+      "books",
+      "Deep-Work--abc12345.md"
+    );
+    fs.mkdirSync(path.dirname(bookPath), { recursive: true });
+    fs.writeFileSync(
+      bookPath,
+      `${generateFrontmatter("raw", {
+        source_type: "epub",
+        topic: "Deep Work",
+        source_url: "file:///D:/books/deep-work.epub",
+        captured_at: "2026-04-04T10:00:00+08:00",
+        kb_date: "2026-04-04",
+        status: "archived"
+      })}
+
+# Deep Work
+
+Deep Work discusses focused attention and distraction control.
+`,
+      "utf8"
+    );
+
+    const collected = collectLinkableNotes(config.vaultPath, config.machineRoot);
+    assert.equal(collected.length, 1);
+    assert.equal(collected[0].frontmatter.source_type, "epub");
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
@@ -978,6 +1195,27 @@ function buildWikiFixture(fields) {
 
 ${fields.body}
 `;
+}
+
+function walkFiles(directory, results) {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      walkFiles(fullPath, results);
+      continue;
+    }
+
+    if (entry.isFile()) {
+      results.push(fullPath);
+    }
+  }
 }
 
 function createRollbackFixture(tempRoot) {
