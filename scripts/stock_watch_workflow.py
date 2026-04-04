@@ -1742,6 +1742,7 @@ def maybe_generate_gs_quant_workflows(
 
     compare_payload = build_compare_note_payload(updates, isoformat(now_utc()), output_language=language)
     focus_rows = compare_payload.get("stocks", [])[:2]
+    bridge_script_path = repo_root / GS_QUANT_BRIDGE_SCRIPT
     if prepare_only:
         reason_translations = build_translation_map(
             "prepare-only 模式不会执行 gs-quant workflow 生成。",
@@ -1753,6 +1754,27 @@ def maybe_generate_gs_quant_workflows(
             "status": "skipped",
             "reason_translations": reason_translations,
             "reason": pick_translation(reason_translations, language),
+            "compare_one_line_translations": compare_payload.get("one_line_translations", {}),
+            "compare_one_line": payload_text(compare_payload, "one_line", language),
+            "comparison_basis_translations": compare_payload.get("comparison_basis_translations", {}),
+            "comparison_basis": payload_text(compare_payload, "comparison_basis", language),
+            "bundles": [],
+        }
+        write_json(paths["gs_quant_summary"], summary)
+        write_report(paths["gs_quant_summary_md"], render_gs_quant_summary_markdown(summary))
+        return summary
+    if not bridge_script_path.exists():
+        reason_translations = build_translation_map(
+            "GS quant 插件桥接脚本缺失，已跳过后处理生成。",
+            "gs-quant workflow bridge is unavailable, skipping postprocess generation",
+        )
+        summary = {
+            "output_language": language,
+            "refreshed_at": compare_payload.get("refreshed_at", ""),
+            "status": "skipped",
+            "reason_translations": reason_translations,
+            "reason": pick_translation(reason_translations, language),
+            "bridge_script_path": str(bridge_script_path),
             "compare_one_line_translations": compare_payload.get("one_line_translations", {}),
             "compare_one_line": payload_text(compare_payload, "one_line", language),
             "comparison_basis_translations": compare_payload.get("comparison_basis_translations", {}),

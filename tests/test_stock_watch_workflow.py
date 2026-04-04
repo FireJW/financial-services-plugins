@@ -663,6 +663,33 @@ class StockWatchWorkflowTests(unittest.TestCase):
         self.assertIn("# 股票池 GS Quant 工作流摘要", paths["gs_quant_summary_md"].read_text(encoding="utf-8"))
         self.assertIn("- 对比结论:", paths["gs_quant_summary_md"].read_text(encoding="utf-8"))
 
+    def test_maybe_generate_gs_quant_workflows_skips_when_plugin_bridge_is_missing(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1] / ".tmp" / "test-stock-watch-gs-quant-missing-plugin"
+        repo_root.mkdir(parents=True, exist_ok=True)
+        paths = workflow_paths(repo_root)
+        config = {"generate_gs_quant_workflows": True, "output_language": "zh-CN"}
+        runner_calls: list[list[str]] = []
+
+        def fake_runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            runner_calls.append(command)
+            raise AssertionError("runner should not be called when the gs-quant plugin bridge is unavailable")
+
+        summary = maybe_generate_gs_quant_workflows(
+            repo_root,
+            paths,
+            config,
+            make_compare_updates(),
+            prepare_only=False,
+            command_runner=fake_runner,
+        )
+
+        self.assertEqual(summary["status"], "skipped")
+        self.assertEqual(summary["bundles"], [])
+        self.assertEqual(runner_calls, [])
+        self.assertIn("partner-built", summary["bridge_script_path"])
+        self.assertTrue(paths["gs_quant_summary"].exists())
+        self.assertTrue(paths["gs_quant_summary_md"].exists())
+
     def test_refresh_single_stock_merges_opencli_candidates_into_news_index_request(self) -> None:
         repo_root = Path(__file__).resolve().parents[1] / ".tmp" / "test-stock-watch-opencli-news-index"
         repo_root.mkdir(parents=True, exist_ok=True)
