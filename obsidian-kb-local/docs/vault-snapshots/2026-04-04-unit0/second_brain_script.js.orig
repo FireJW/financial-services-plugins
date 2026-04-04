@@ -1,0 +1,950 @@
+// Obsidian第二大脑助手脚本
+module.exports = async (params) => {
+    const { app, quickAddApi, obsidian } = params;
+    
+    // 显示通知
+    const showNotice = (message, duration = 3000) => {
+        new obsidian.Notice(message, duration);
+    };
+    
+    showNotice("准备构建您的第二大脑...", 3000);
+    
+    // 【基础设置区域】
+    // -------------------------------------
+    // 核心设置
+    const preserveSubfolders = true;
+    const skipFolders = ["Template", "Attachments", "Daily", "Archive"];
+    const skipFiles = ["笔记索引.md", "second_brain.md", "second_brain_undo.md"];
+    const createBackupRecord = true;
+
+    // 学习设置
+    const minKeywordFrequency = 3;
+    const minFilesInFolder = 3;
+    const maxKeywordsPerFolder = 10;
+
+    // 双链设置
+    const enableAutoLinks = true;
+    const maxLinksPerNote = 5;
+    const minLinkRelevance = 0.25;
+    const addLinkComments = true;
+
+    // 卢曼卡片设置
+    const enableZettelkasten = true;
+    const addZettelID = true;
+    const zettelDateFormat = "YYYYMMDDHHmm";
+    const addBacklinks = true;
+
+    // MOC设置（Map of Content）
+    const createMOCs = true;
+    const mocUpdateFrequency = 7; // 天数
+    // -------------------------------------
+
+    // 初始化
+    const backupRecordPath = "second_brain_backup.json";
+    let backupData = {};
+    const allFiles = app.vault.getMarkdownFiles();
+    const noteContents = {};
+    const noteTitles = {};
+    const noteKeywords = {};
+    const noteZettelIDs = {};
+    const folderStats = {};
+    const folderContents = {};
+    const wordFrequency = {};
+    let processedCount = 0;
+    let taggedCount = 0;
+    let movedCount = 0;
+    let linkedCount = 0;
+    let zettelCount = 0;
+    let errorCount = 0;
+    let skippedCount = 0;
+    let totalLinksAdded = 0;
+
+    // 加载备份记录
+    const backupFile = app.vault.getAbstractFileByPath(backupRecordPath);
+    if (backupFile && createBackupRecord) {
+        try {
+            const backupContent = await app.vault.read(backupFile);
+            backupData = JSON.parse(backupContent);
+        } catch (e) {
+            console.error("读取备份记录失败:", e);
+        }
+    }
+
+    // 工具函数：生成卢曼卡片ID
+    const generateZettelID = () => {
+        return window.moment().format(zettelDateFormat);
+    };
+
+    // 工具函数：提取文本中的关键词
+    const extractKeywords = (text) => {
+        // 移除Markdown语法和特殊字符
+        const cleanText = text
+            .replace(/```[\s\S]*?```/g, '') // 代码块
+            .replace(/`[^`]*`/g, '')        // 行内代码
+            .replace(/\[.*?\]\(.*?\)/g, '') // 链接
+            .replace(/\!\[.*?\]\(.*?\)/g, '')// 图片
+            .replace(/\[\[.*?\]\]/g, '')    // 内部链接
+            .replace(/\*\*|\*|~~|==|_/g, '') // 格式标记
+            .replace(/\d+/g, '')            // 数字
+            .replace(/[^\u4e00-\u9fa5a-zA-Z]/g, ' '); // 只保留中文、英文
+        
+        // 分词并计数
+        const words = cleanText
+            .toLowerCase()
+            .split(/\s+/)
+            .filter(word => word.length >= 2);
+        
+        const wordCounts = {};
+        for (const word of words) {
+            wordCounts[word] = (wordCounts[word] || 0) + 1;
+        }
+        
+        // 返回频率最高的词
+        return Object.entries(wordCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 15)
+            .map(([word]) => word);
+    };
+
+    // 工具函数：计算文本相似度
+    const calculateSimilarity = (keywords1, keywords2) => {
+        if (!keywords1.length || !keywords2.length) return 0;
+        
+        const set1 = new Set(keywords1);
+        let matches = 0;
+        
+        for (const word of keywords2) {
+            if (set1.has(word)) matches++;
+        }
+        
+        return matches / Math.min(keywords1.length, keywords2.length);
+    };
+
+    // 第一步：分析现有笔记结构
+    showNotice("正在分析现有笔记结构...", 3000);
+
+    // 分析每个文件
+    for (const file of allFiles) {
+        try {
+            if (skipFiles.some(skipFile => file.name === skipFile) ||
+                skipFolders.some(folder => file.path.startsWith(folder + "/"))) {
+                continue;
+            }
+            
+            // 获取文件所在文件夹
+            const folderPath = file.path.includes("/") 
+                ? file.path.substring(0, file.path.lastIndexOf("/"))
+                : "";
+            
+            // 读取文件内容
+            const content = await app.vault.read(file);
+            noteContents[file.path] = content;
+            
+            // 提取笔记标题
+            let title = file.name.replace(".md", "");
+            const titleMatch = content.match(/^#\s+(.+)$/m);
+            if (titleMatch) {
+                title = titleMatch[1].trim();
+            }
+            noteTitles[file.path] = title;
+            
+            // 提取卢曼ID
+            const zettelMatch = title.match(/^(\d{12})\s+/);
+            if (zettelMatch) {
+                noteZettelIDs[file.path] = zettelMatch[1];
+            }
+            
+            // 提取关键词
+            noteKeywords[file.path] = extractKeywords(content);
+            
+            // 更新文件夹统计
+            if (folderPath !== "") {
+                if (!folderStats[folderPath]) {
+                    folderStats[folderPath] = 0;
+                    folderContents[folderPath] = [];
+                    wordFrequency[folderPath] = {};
+                }
+                folderStats[folderPath]++;
+                folderContents[folderPath].push(file);
+                
+                // 更新文件夹关键词频率
+                for (const word of noteKeywords[file.path]) {
+                    wordFrequency[folderPath][word] = (wordFrequency[folderPath][word] || 0) + 1;
+                }
+            }
+        } catch (error) {
+            console.error("分析文件失败: " + file.path, error);
+        }
+    }
+
+    // 生成关键词映射
+    const keywordMapping = [];
+    const folderPaths = Object.keys(folderStats).filter(folder => folderStats[folder] >= minFilesInFolder);
+
+    for (const folderPath of folderPaths) {
+        const folderName = folderPath.includes("/") 
+            ? folderPath.substring(folderPath.lastIndexOf("/") + 1)
+            : folderPath;
+        
+        // 选择最常见的词作为关键词
+        const sortedWords = Object.entries(wordFrequency[folderPath] || {})
+            .filter(([word, freq]) => freq >= minKeywordFrequency)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, maxKeywordsPerFolder)
+            .map(([word]) => word);
+        
+        // 添加文件夹名称作为关键词
+        if (!sortedWords.includes(folderName.toLowerCase())) {
+            sortedWords.unshift(folderName.toLowerCase());
+        }
+        
+        if (sortedWords.length > 0) {
+            keywordMapping.push({
+                keywords: sortedWords,
+                tag: "#" + folderName,
+                folder: folderPath
+            });
+        }
+    }
+
+    console.log("已学习的分类规则:", keywordMapping);
+    showNotice("已学习 " + keywordMapping.length + " 个分类规则，开始整理笔记...", 3000);
+
+    // 确保所有目标文件夹存在
+    for (const mapping of keywordMapping) {
+        const folder = mapping.folder;
+        if (!app.vault.getAbstractFileByPath(folder)) {
+            try {
+                await app.vault.createFolder(folder);
+            } catch (error) {
+                console.error("创建文件夹失败: " + folder, error);
+            }
+        }
+    }
+
+    // 第二步：处理每个文件
+    const updateProgress = (current, total) => {
+        if (current % 10 === 0 || current === total) {
+            showNotice("笔记整理中... " + current + "/" + total, 1000);
+        }
+    };
+
+    for (const file of allFiles) {
+        try {
+            const shouldSkip = 
+                skipFiles.some(skipFile => file.name === skipFile) ||
+                keywordMapping.some(m => file.path.startsWith(m.folder + "/")) ||
+                skipFolders.some(folder => file.path.startsWith(folder + "/"));
+                
+            if (shouldSkip) {
+                skippedCount++;
+                continue;
+            }
+            
+            const content = await app.vault.read(file);
+            let newContent = content;
+            
+            // 检查frontmatter
+            let hasFrontmatter = content.startsWith("---");
+            let frontmatterEndIndex = -1;
+            if (hasFrontmatter) {
+                frontmatterEndIndex = content.indexOf("---", 3);
+            }
+            
+            // 1. 添加卢曼ID（如果启用）
+            if (enableZettelkasten && addZettelID) {
+                const title = noteTitles[file.path];
+                const hasZettelID = /^\d{12}\s+/.test(title);
+                
+                if (!hasZettelID) {
+                    const zettelID = generateZettelID();
+                    noteZettelIDs[file.path] = zettelID;
+                    
+                    // 在标题前添加ID
+                    const titleRegex = /^#\s+(.+)$/m;
+                    if (titleRegex.test(newContent)) {
+                        newContent = newContent.replace(titleRegex, "# " + zettelID + " $1");
+                    } else {
+                        // 如果没有标题，添加一个
+                        const fileName = file.name.replace(".md", "");
+                        if (hasFrontmatter && frontmatterEndIndex > 0) {
+                            const beforeFM = newContent.substring(0, frontmatterEndIndex + 3);
+                            const afterFM = newContent.substring(frontmatterEndIndex + 3);
+                            newContent = beforeFM + "\n\n# " + zettelID + " " + fileName + afterFM;
+                        } else {
+                            newContent = "# " + zettelID + " " + fileName + "\n\n" + newContent;
+                        }
+                    }
+                    zettelCount++;
+                }
+            }
+            
+            // 2. 找到匹配的分类
+            let matchedMapping = null;
+            let maxMatches = 0;
+            
+            for (const mapping of keywordMapping) {
+                let matches = 0;
+                for (const keyword of mapping.keywords) {
+                    if (newContent.toLowerCase().includes(keyword.toLowerCase()) || 
+                        file.name.toLowerCase().includes(keyword.toLowerCase())) {
+                        matches++;
+                    }
+                }
+                
+                if (matches > maxMatches) {
+                    maxMatches = matches;
+                    matchedMapping = mapping;
+                }
+            }
+            
+            if (matchedMapping && maxMatches >= 2) {
+                // 3. 添加标签
+                let hasTag = newContent.includes(matchedMapping.tag);
+                
+                if (!hasTag) {
+                    if (hasFrontmatter && frontmatterEndIndex > 0) {
+                        const frontmatter = newContent.substring(0, frontmatterEndIndex);
+                        const restContent = newContent.substring(frontmatterEndIndex);
+                        
+                        if (frontmatter.includes("tags:")) {
+                            newContent = frontmatter.replace(/tags:(.*)/, function(match, p1) {
+                                if (p1.includes(matchedMapping.tag.substring(1))) {
+                                    return match;
+                                }
+                                if (p1.trim().startsWith("[")) {
+                                    return "tags:" + p1.substring(0, p1.lastIndexOf("]")) + (p1.trim() === "[" ? "" : ", ") + matchedMapping.tag.substring(1) + "]";
+                                } else {
+                                    return "tags:" + p1 + ", " + matchedMapping.tag.substring(1);
+                                }
+                            }) + restContent;
+                        } else {
+                            newContent = newContent.substring(0, frontmatterEndIndex) + 
+                                        "\ntags: [" + matchedMapping.tag.substring(1) + "]\n" + 
+                                        newContent.substring(frontmatterEndIndex);
+                        }
+                    } else {
+                        // 创建新的frontmatter
+                        newContent = "---\ntags: [" + matchedMapping.tag.substring(1) + "]\n---\n\n" + newContent;
+                        hasFrontmatter = true;
+                        frontmatterEndIndex = 3;
+                    }
+                    
+                    taggedCount++;
+                }
+                
+                // 4. 更新文件内容
+                if (newContent !== content) {
+                    await app.vault.modify(file, newContent);
+                }
+                
+                // 5. 移动文件到对应文件夹
+                let newPath = "";
+                
+                if (preserveSubfolders && file.path.includes("/")) {
+                    const pathParts = file.path.split("/");
+                    const fileName = pathParts.pop();
+                    const subfolderPath = pathParts.join("/");
+                    
+                    if (pathParts.length > 0) {
+                        const newSubfolderPath = matchedMapping.folder + "/" + subfolderPath;
+                        
+                        if (!app.vault.getAbstractFileByPath(newSubfolderPath)) {
+                            try {
+                                await app.vault.createFolder(newSubfolderPath);
+                            } catch (error) {
+                                console.error("创建子文件夹失败: " + newSubfolderPath, error);
+                            }
+                        }
+                        
+                        newPath = matchedMapping.folder + "/" + subfolderPath + "/" + fileName;
+                    } else {
+                        newPath = matchedMapping.folder + "/" + fileName;
+                    }
+                } else {
+                    newPath = matchedMapping.folder + "/" + file.name;
+                }
+                
+                if (!app.vault.getAbstractFileByPath(newPath)) {
+                    if (createBackupRecord) {
+                        backupData[newPath] = file.path;
+                    }
+                    
+                    await app.fileManager.renameFile(file, newPath);
+                    movedCount++;
+                    
+                    // 更新路径映射
+                    noteContents[newPath] = noteContents[file.path];
+                    noteTitles[newPath] = noteTitles[file.path];
+                    noteKeywords[newPath] = noteKeywords[file.path];
+                    if (noteZettelIDs[file.path]) {
+                        noteZettelIDs[newPath] = noteZettelIDs[file.path];
+                    }
+                    delete noteContents[file.path];
+                    delete noteTitles[file.path];
+                    delete noteKeywords[file.path];
+                    delete noteZettelIDs[file.path];
+                }
+            }
+            
+            processedCount++;
+            updateProgress(processedCount, allFiles.length);
+        } catch (error) {
+            console.error("处理文件失败: " + file.path, error);
+            errorCount++;
+        }
+    }
+
+    // 第三步：添加双链
+    if (enableAutoLinks) {
+        showNotice("开始添加双链...", 3000);
+        
+        // 重新获取所有文件
+        const updatedFiles = app.vault.getMarkdownFiles();
+        let linkProcessedCount = 0;
+        
+        // 找到相关笔记
+        const findRelatedNotes = (filePath) => {
+            const results = [];
+            const sourceKeywords = noteKeywords[filePath] || [];
+            
+            for (const targetPath of Object.keys(noteContents)) {
+                if (targetPath === filePath) continue;
+                
+                const targetKeywords = noteKeywords[targetPath] || [];
+                const similarity = calculateSimilarity(sourceKeywords, targetKeywords);
+                
+                if (similarity >= minLinkRelevance) {
+                    results.push({
+                        path: targetPath,
+                        title: noteTitles[targetPath],
+                        similarity: similarity,
+                        zettelID: noteZettelIDs[targetPath]
+                    });
+                }
+            }
+            
+            return results
+                .sort((a, b) => b.similarity - a.similarity)
+                .slice(0, maxLinksPerNote);
+        };
+        
+        // 添加双链
+        const addLinksToNote = async (file, relatedNotes) => {
+            if (relatedNotes.length === 0) return false;
+            
+            try {
+                let content = await app.vault.read(file);
+                const hasRelatedSection = content.includes("## 相关笔记") || content.includes("## 相关链接");
+                
+                let linksText = hasRelatedSection ? "" : "\n\n## 相关笔记\n\n";
+                let linksAdded = 0;
+                
+                for (const related of relatedNotes) {
+                    // 构建链接文本
+                    let linkTitle = related.title;
+                    if (related.zettelID && linkTitle.startsWith(related.zettelID)) {
+                        linkTitle = linkTitle.substring(related.zettelID.length).trim();
+                    }
+                    
+                    const linkText = "- [[" + related.title + "]]";
+                    
+                    // 检查链接是否已存在
+                    if (content.includes(linkText)) continue;
+                    
+                    // 添加链接及相关性说明
+                    if (addLinkComments) {
+                        const similarityPercent = Math.round(related.similarity * 100);
+                        linksText += linkText + " (相关度: " + similarityPercent + "%)\n";
+                    } else {
+                        linksText += linkText + "\n";
+                    }
+                    
+                    linksAdded++;
+                }
+                
+                // 如果有新链接要添加
+                if (linksAdded > 0) {
+                    if (hasRelatedSection) {
+                        const sectionRegex = /(## 相关笔记|## 相关链接)([\s\S]*?)(?=\n##|$)/;
+                        const match = content.match(sectionRegex);
+                        
+                        if (match) {
+                            content = content.replace(
+                                sectionRegex, 
+                                "$1" + match[2] + linksText
+                            );
+                        } else {
+                            content += linksText;
+                        }
+                    } else {
+                        content += linksText;
+                    }
+                    
+                    await app.vault.modify(file, content);
+                    totalLinksAdded += linksAdded;
+                    return true;
+                }
+            } catch (error) {
+                console.error("添加双链失败: " + file.path, error);
+            }
+            
+            return false;
+        };
+        
+        for (const file of updatedFiles) {
+            try {
+                if (skipFiles.some(skipFile => file.name === skipFile) ||
+                    skipFolders.some(folder => file.path.startsWith(folder + "/"))) {
+                    continue;
+                }
+                
+                const relatedNotes = findRelatedNotes(file.path);
+                if (relatedNotes.length > 0) {
+                    const added = await addLinksToNote(file, relatedNotes);
+                    if (added) linkedCount++;
+                }
+                
+                linkProcessedCount++;
+                if (linkProcessedCount % 10 === 0 || linkProcessedCount === updatedFiles.length) {
+                    showNotice("添加双链中... " + linkProcessedCount + "/" + updatedFiles.length, 1000);
+                }
+            } catch (error) {
+                console.error("处理双链失败: " + file.path, error);
+            }
+        }
+    }
+
+    // 第四步：创建MOC（内容地图）
+    if (createMOCs) {
+        showNotice("开始创建内容地图...", 3000);
+        
+        for (const mapping of keywordMapping) {
+            try {
+                const folderName = mapping.folder.includes("/") 
+                    ? mapping.folder.substring(mapping.folder.lastIndexOf("/") + 1)
+                    : mapping.folder;
+                
+                const mocPath = mapping.folder + "/_" + folderName + "_MOC.md";
+                const mocFile = app.vault.getAbstractFileByPath(mocPath);
+                
+                // 检查MOC是否需要更新
+                let shouldUpdate = true;
+                if (mocFile) {
+                    const stats = await app.vault.adapter.stat(mocPath);
+                    const lastModified = new Date(stats.mtime);
+                    const daysSinceUpdate = (new Date() - lastModified) / (1000 * 60 * 60 * 24);
+                    shouldUpdate = daysSinceUpdate >= mocUpdateFrequency;
+                }
+                
+                if (!mocFile || shouldUpdate) {
+                    // 获取文件夹中的所有文件
+                    const filesInFolder = app.vault.getMarkdownFiles()
+                        .filter(f => f.path.startsWith(mapping.folder + "/") && f.path !== mocPath);
+                    
+                    // 按主题分组
+                    const themeGroups = {};
+                    
+                    for (const file of filesInFolder) {
+                        const content = await app.vault.read(file);
+                        const keywords = extractKeywords(content);
+                        
+                        // 找出最主要的主题
+                        let mainTheme = "其他";
+                        for (const keyword of keywords.slice(0, 3)) {
+                            if (mapping.keywords.includes(keyword)) {
+                                mainTheme = keyword;
+                                break;
+                            }
+                        }
+                        
+                        if (!themeGroups[mainTheme]) {
+                            themeGroups[mainTheme] = [];
+                        }
+                        themeGroups[mainTheme].push({
+                            path: file.path,
+                            title: noteTitles[file.path] || file.name.replace(".md", "")
+                        });
+                    }
+                    
+                    // 生成MOC内容
+                    let mocContent = "# " + folderName + " 内容地图\n\n";
+                    mocContent += "*上次更新: " + window.moment().format("YYYY-MM-DD HH:mm") + "*\n\n";
+                    mocContent += "## 关键主题\n\n";
+                    
+                    for (const keyword of mapping.keywords) {
+                        mocContent += "- #" + keyword + "\n";
+                    }
+                    
+                    mocContent += "\n## 笔记分类\n\n";
+                    
+                    // 添加分组的笔记
+                    for (const [theme, files] of Object.entries(themeGroups)) {
+                        if (files.length > 0) {
+                            mocContent += "### " + theme + "\n\n";
+                            
+                            for (const file of files) {
+                                mocContent += "- [[" + file.title + "]]\n";
+                            }
+                            
+                            mocContent += "\n";
+                        }
+                    }
+                    
+                    // 添加数据视图
+                    mocContent += "## 所有笔记\n\n";
+                    mocContent += "```dataview\n";
+                    mocContent += "TABLE file.ctime as 创建时间, file.mtime as 修改时间, file.tags as 标签\n";
+                    mocContent += "FROM \"" + mapping.folder + "\"\n";
+                    mocContent += "WHERE file.name != \"_" + folderName + "_MOC\"\n";
+                    mocContent += "SORT file.mtime DESC\n";
+                    mocContent += "```\n";
+                    
+                    // 创建或更新MOC文件
+                    if (mocFile) {
+                        await app.vault.modify(mocFile, mocContent);
+                    } else {
+                        await app.vault.create(mocPath, mocContent);
+                    }
+                }
+            } catch (error) {
+                console.error("创建MOC失败: " + mapping.folder, error);
+            }
+        }
+    }
+
+    // 保存备份记录
+    if (createBackupRecord) {
+        try {
+            if (backupFile) {
+                await app.vault.modify(backupFile, JSON.stringify(backupData, null, 2));
+            } else {
+                await app.vault.create(backupRecordPath, JSON.stringify(backupData, null, 2));
+            }
+        } catch (e) {
+            console.error("创建备份记录失败:", e);
+        }
+    }
+
+    // 保存学习到的规则
+    const rulesPath = "second_brain_rules.json";
+    try {
+        const rulesData = {
+            keywordMapping: keywordMapping,
+            lastUpdated: new Date().toISOString()
+        };
+        
+        const rulesFile = app.vault.getAbstractFileByPath(rulesPath);
+        if (rulesFile) {
+            await app.vault.modify(rulesFile, JSON.stringify(rulesData, null, 2));
+        } else {
+            await app.vault.create(rulesPath, JSON.stringify(rulesData, null, 2));
+        }
+    } catch (e) {
+        console.error("保存规则失败:", e);
+    }
+
+    // 创建主索引文件
+    // 创建索引文件函数
+    async function createIndexFile(keywordMapping) {
+        const indexPath = "笔记索引.md";
+        let indexContent = "# 笔记索引\n\n";
+        indexContent += "*上次更新: " + window.moment().format("YYYY-MM-DD HH:mm") + "*\n\n";
+    
+        // 添加MOC链接
+        indexContent += "## 内容地图\n\n";
+        for (const mapping of keywordMapping) {
+            const folderName = mapping.folder.includes("/") 
+                ? mapping.folder.substring(mapping.folder.lastIndexOf("/") + 1)
+                : mapping.folder;
+            
+            const mocPath = mapping.folder + "/_" + folderName + "_MOC";
+            indexContent += "- [[" + mocPath + "|" + folderName + " 内容地图]]\n";
+        }
+    
+        // 为每个分类创建索引部分
+        indexContent += "\n## 分类笔记\n\n";
+        for (const mapping of keywordMapping) {
+            const folderName = mapping.folder.includes("/") 
+                ? mapping.folder.substring(mapping.folder.lastIndexOf("/") + 1)
+                : mapping.folder;
+            
+            indexContent += "### " + folderName + "笔记\n";
+            indexContent += "```dataview\n";
+            indexContent += "TABLE file.ctime as 创建时间, file.mtime as 修改时间\n";
+            indexContent += "FROM \"" + mapping.folder + "\" OR " + mapping.tag + "\n";
+            indexContent += "WHERE file.name != \"_" + folderName + "_MOC\"\n";
+            indexContent += "SORT file.mtime DESC\n";
+            indexContent += "LIMIT 10\n";
+            indexContent += "```\n\n";
+        }
+    
+        // 添加未分类笔记部分
+        indexContent += "## 未分类笔记\n";
+        indexContent += "```dataview\n";
+        indexContent += "TABLE file.ctime as 创建时间, file.mtime as 修改时间\n";
+        indexContent += "FROM \"\" \n";
+        indexContent += "WHERE file.folder = \"\"\n";
+        indexContent += "AND file.name != \"笔记索引\"\n";
+        indexContent += "AND file.name != \"second_brain\"\n";
+        indexContent += "SORT file.mtime DESC\n";
+        indexContent += "```\n\n";
+    
+        // 添加最近修改的笔记部分
+        indexContent += "## 最近修改的笔记\n";
+        indexContent += "```dataview\n";
+        indexContent += "TABLE file.folder as 文件夹, file.tags as 标签\n";
+        indexContent += "FROM \"\"\n";
+        indexContent += "SORT file.mtime DESC\n";
+        indexContent += "LIMIT 20\n";
+        indexContent += "```\n\n";
+    
+        // 添加标签云
+        indexContent += "## 标签云\n";
+        indexContent += "```dataviewjs\n";
+        indexContent += "const tagCounts = {};\n";
+        indexContent += "for (const page of dv.pages(\"\")) {\n";
+        indexContent += "  if (page.file.tags) {\n";
+        indexContent += "    for (const tag of page.file.tags) {\n";
+        indexContent += "      const tagName = tag.substring(1);\n";
+        indexContent += "      tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;\n";
+        indexContent += "    }\n";
+        indexContent += "  }\n";
+        indexContent += "}\n\n";
+        indexContent += "const tagLinks = Object.entries(tagCounts)\n";
+        indexContent += "  .sort((a, b) => b[1] - a[1])\n";
+        indexContent += "  .map(([tag, count]) => {\n";
+        indexContent += "    const size = Math.max(1, Math.min(3, Math.log(count) + 0.5));\n";
+        indexContent += "    return '<a href=\"#/tag/' + tag + '\" style=\"font-size: ' + size + 'em; margin-right: 8px;\">#' + tag + ' (' + count + ')</a>';\n";
+        indexContent += "  });\n\n";
+        indexContent += "dv.paragraph(tagLinks.join(\" \"));\n";
+        indexContent += "```\n";
+    
+        // 更新或创建索引文件
+        const indexFile = app.vault.getAbstractFileByPath(indexPath);
+        if (indexFile) {
+            await app.vault.modify(indexFile, indexContent);
+        } else {
+            await app.vault.create(indexPath, indexContent);
+        }
+    }
+    
+    // 创建每日回顾模板
+    async function createDailyReviewTemplate() {
+        const dailyReviewPath = "Template/每日回顾.md";
+        let dailyReviewContent = "<%*\n";
+        dailyReviewContent += "// 获取今天的日期\n";
+        dailyReviewContent += "const today = moment().format(\"YYYY-MM-DD\");\n";
+        dailyReviewContent += "const yesterday = moment().subtract(1, \"days\").format(\"YYYY-MM-DD\");\n";
+        dailyReviewContent += "const lastWeek = moment().subtract(7, \"days\").format(\"YYYY-MM-DD\");\n\n";
+    
+        dailyReviewContent += "// 创建回顾内容\n";
+        dailyReviewContent += "let reviewContent = \"# \" + today + \" 每日回顾\\n\\n\";\n";
+        dailyReviewContent += "reviewContent += \"## 今日修改的笔记\\n\\n\";\n";
+        dailyReviewContent += "reviewContent += \"```dataview\\n\";\n";
+        dailyReviewContent += "reviewContent += \"TABLE file.mtime as 修改时间\\n\";\n";
+        dailyReviewContent += "reviewContent += \"FROM \\\"\\\"\\n\";\n";
+        dailyReviewContent += "reviewContent += \"WHERE file.mtime >= date(\" + today + \")\\n\";\n";
+        dailyReviewContent += "reviewContent += \"SORT file.mtime desc\\n\";\n";
+        dailyReviewContent += "reviewContent += \"```\\n\\n\";\n";
+    
+        dailyReviewContent += "reviewContent += \"## 昨日笔记\\n\\n\";\n";
+        dailyReviewContent += "reviewContent += \"```dataview\\n\";\n";
+        dailyReviewContent += "reviewContent += \"TABLE file.mtime as 修改时间\\n\";\n";
+        dailyReviewContent += "reviewContent += \"FROM \\\"\\\"\\n\";\n";
+        dailyReviewContent += "reviewContent += \"WHERE file.mtime >= date(\" + yesterday + \") AND file.mtime < date(\" + today + \")\\n\";\n";
+        dailyReviewContent += "reviewContent += \"SORT file.mtime desc\\n\";\n";
+        dailyReviewContent += "reviewContent += \"```\\n\\n\";\n";
+    
+        dailyReviewContent += "reviewContent += \"## 上周重要笔记\\n\\n\";\n";
+        dailyReviewContent += "reviewContent += \"```dataview\\n\";\n";
+        dailyReviewContent += "reviewContent += \"TABLE file.mtime as 修改时间, file.tags as 标签\\n\";\n";
+        dailyReviewContent += "reviewContent += \"FROM \\\"\\\"\\n\";\n";
+        dailyReviewContent += "reviewContent += \"WHERE file.mtime >= date(\" + lastWeek + \") AND file.mtime < date(\" + yesterday + \")\\n\";\n";
+        dailyReviewContent += "reviewContent += \"SORT file.mtime desc\\n\";\n";
+        dailyReviewContent += "LIMIT 10\\n\";\n";
+        dailyReviewContent += "reviewContent += \"```\\n\\n\";\n";
+    
+        dailyReviewContent += "reviewContent += \"## 待办事项\\n\\n\";\n";
+        dailyReviewContent += "reviewContent += \"```tasks\\n\";\n";
+        dailyReviewContent += "reviewContent += \"not done\\n\";\n";
+        dailyReviewContent += "reviewContent += \"due today\\n\";\n";
+        dailyReviewContent += "reviewContent += \"```\\n\\n\";\n";
+    
+        dailyReviewContent += "reviewContent += \"## 今日计划\\n\\n\";\n";
+        dailyReviewContent += "reviewContent += \"- [ ] \\n\\n\";\n";
+        dailyReviewContent += "reviewContent += \"## 今日总结\\n\\n\";\n";
+    
+        dailyReviewContent += "// 创建新的每日笔记\n";
+        dailyReviewContent += "const dailyNotePath = \"Daily/\" + today + \".md\";\n";
+        dailyReviewContent += "await tp.file.create_new(reviewContent, dailyNotePath);\n";
+        dailyReviewContent += "%>";
+    
+        // 创建或更新每日回顾工具
+        const dailyReviewFile = app.vault.getAbstractFileByPath(dailyReviewPath);
+        if (dailyReviewFile) {
+            await app.vault.modify(dailyReviewFile, dailyReviewContent);
+        } else {
+            // 确保Template文件夹存在
+            const templateFolder = "Template";
+            if (!app.vault.getAbstractFileByPath(templateFolder)) {
+                await app.vault.createFolder(templateFolder);
+            }
+            await app.vault.create(dailyReviewPath, dailyReviewContent);
+        }
+    }
+
+    // 创建帮助文档
+    async function createHelpDocument() {
+        const helpPath = "second_brain_help.md";
+        let helpContent = "# 第二大脑使用指南\n\n";
+        helpContent += "## 功能概述\n\n";
+        helpContent += "这个第二大脑系统可以帮助您：\n\n";
+        helpContent += "1. **自动整理笔记**：根据内容将笔记分类到合适的文件夹\n";
+        helpContent += "2. **添加智能标签**：根据笔记内容添加相关标签\n";
+        helpContent += "3. **创建知识连接**：自动添加相关笔记的双向链接\n";
+        helpContent += "4. **构建内容地图**：为每个主题创建MOC (Map of Content)\n";
+        helpContent += "5. **支持卢曼卡片**：添加卢曼ID，便于实现卡片盒笔记法\n\n";
+        helpContent += "## 使用方法\n\n";
+        helpContent += "### 基本使用\n\n";
+        helpContent += "1. 创建新笔记时，只需关注内容，不必担心分类\n";
+        helpContent += "2. 定期运行 `第二大脑` QuickAdd命令，系统会自动整理您的笔记\n";
+        helpContent += "3. 通过 `笔记索引.md` 访问您的笔记库\n\n";
+        helpContent += "### 每日回顾\n\n";
+        helpContent += "1. 使用 `Template/每日回顾.md` 创建每日回顾笔记\n";
+        helpContent += "2. 回顾今日和昨日的工作，规划新的一天\n\n";
+        helpContent += "### 恢复误操作\n\n";
+        helpContent += "如果您想恢复笔记的移动操作：\n";
+        helpContent += "1. 运行 `恢复笔记` QuickAdd命令\n";
+        helpContent += "2. 系统会将笔记恢复到原来的位置\n\n";
+        helpContent += "## 自定义设置\n\n";
+        helpContent += "您可以在 `second_brain_script.js` 文件顶部修改以下设置：\n\n";
+        helpContent += "### 核心设置\n";
+        helpContent += "- `preserveSubfolders`: 是否保留子文件夹结构\n";
+        helpContent += "- `skipFolders`: 不处理的文件夹\n";
+        helpContent += "- `skipFiles`: 不处理的文件\n";
+        helpContent += "- `createBackupRecord`: 是否创建备份记录\n\n";
+        helpContent += "### 学习设置\n";
+        helpContent += "- `minKeywordFrequency`: 关键词最小频率\n";
+        helpContent += "- `minFilesInFolder`: 识别为分类的最小文件数\n";
+        helpContent += "- `maxKeywordsPerFolder`: 每个文件夹的最大关键词数\n\n";
+        helpContent += "### 双链设置\n";
+        helpContent += "- `enableAutoLinks`: 是否启用自动链接\n";
+        helpContent += "- `maxLinksPerNote`: 每个笔记的最大链接数\n";
+        helpContent += "- `minLinkRelevance`: 最小相关性阈值\n";
+        helpContent += "- `addLinkComments`: 是否添加相关性说明\n\n";
+        helpContent += "### 卢曼卡片设置\n";
+        helpContent += "- `enableZettelkasten`: 是否启用卢曼卡片\n";
+        helpContent += "- `addZettelID`: 是否添加卢曼ID\n";
+        helpContent += "- `zettelDateFormat`: 卢曼ID日期格式\n";
+        helpContent += "- `addBacklinks`: 是否添加反向链接\n\n";
+        helpContent += "### MOC设置\n";
+        helpContent += "- `createMOCs`: 是否创建内容地图\n";
+        helpContent += "- `mocUpdateFrequency`: 更新频率（天）\n\n";
+        helpContent += "## 最佳实践\n\n";
+        helpContent += "1. **定期整理**：每周运行一次自动整理\n";
+        helpContent += "2. **关注内容**：写笔记时专注于内容，不必担心结构\n";
+        helpContent += "3. **使用标签**：适当使用标签增强可发现性\n";
+        helpContent += "4. **链接相关笔记**：主动链接相关内容，增强知识网络\n";
+        helpContent += "5. **定期回顾**：使用每日回顾功能，巩固记忆\n\n";
+        helpContent += "祝您使用愉快！";
+    
+        // 创建或更新帮助文档
+        const helpFile = app.vault.getAbstractFileByPath(helpPath);
+        if (helpFile) {
+            await app.vault.modify(helpFile, helpContent);
+        } else {
+            await app.vault.create(helpPath, helpContent);
+        }
+    }
+
+    // 创建恢复脚本
+    async function createUndoScript() {
+        const undoScriptPath = "second_brain_undo.js";
+        let undoScript = `// Obsidian第二大脑恢复助手
+module.exports = async (params) => {
+    const { app, quickAddApi, obsidian } = params;
+    
+    // 显示通知
+    const showNotice = (message, duration = 3000) => {
+        new obsidian.Notice(message, duration);
+    };
+    
+    showNotice("准备恢复文件位置...", 3000);
+
+    // 加载备份记录
+    const backupPath = "second_brain_backup.json";
+    let backupData = {};
+    let restoredCount = 0;
+    let errorCount = 0;
+
+    try {
+        const backupFile = app.vault.getAbstractFileByPath(backupPath);
+        if (backupFile) {
+            const backupContent = await app.vault.read(backupFile);
+            backupData = JSON.parse(backupContent);
+        } else {
+            showNotice("找不到备份记录，无法恢复", 5000);
+            return;
+        }
+    } catch (error) {
+        console.error("读取备份记录失败:", error);
+        showNotice("读取备份记录失败", 3000);
+        return;
+    }
+
+    // 恢复文件位置
+    for (const [newPath, originalPath] of Object.entries(backupData)) {
+        try {
+            const file = app.vault.getAbstractFileByPath(newPath);
+            if (file) {
+                // 确保目标文件夹存在
+                const targetFolder = originalPath.includes("/") 
+                    ? originalPath.substring(0, originalPath.lastIndexOf("/"))
+                    : "";
+                    
+                if (targetFolder && !app.vault.getAbstractFileByPath(targetFolder)) {
+                    await app.vault.createFolder(targetFolder);
+                }
+                
+                // 移动文件回原位置
+                await app.fileManager.renameFile(file, originalPath);
+                restoredCount++;
+                
+                if (restoredCount % 10 === 0) {
+                    showNotice("恢复中... " + restoredCount + "/" + Object.keys(backupData).length, 1000);
+                }
+            }
+        } catch (error) {
+            console.error("恢复文件失败: " + newPath + " -> " + originalPath, error);
+            errorCount++;
+        }
+    }
+
+    // 清空备份记录
+    try {
+        const backupFile = app.vault.getAbstractFileByPath(backupPath);
+        if (backupFile) {
+            await app.vault.modify(backupFile, "{}");
+        }
+    } catch (error) {
+        console.error("清空备份记录失败:", error);
+    }
+
+    // 显示结果
+    const resultMessage = "恢复完成！\\n成功: " + restoredCount + " 个文件\\n失败: " + errorCount + " 个文件";
+    showNotice(resultMessage, 5000);
+    console.log(resultMessage);
+};`;
+
+        // 创建或更新恢复脚本
+        const undoScriptFile = app.vault.getAbstractFileByPath(undoScriptPath);
+        if (undoScriptFile) {
+            await app.vault.modify(undoScriptFile, undoScript);
+        } else {
+            await app.vault.create(undoScriptPath, undoScript);
+        }
+    }
+
+    return "第二大脑构建完成！";
+};

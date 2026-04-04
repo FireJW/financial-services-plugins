@@ -1,0 +1,22 @@
+{
+  "name": "obsidian-kb-local",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Codex-to-Obsidian CLI control plane for a local knowledge base vault.",
+  "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "bootstrap-vault": "node scripts/bootstrap-vault.mjs",
+    "write-smoke": "node scripts/write-smoke.mjs",
+    "obsidian": "node scripts/obsidian.mjs",
+    "ingest-web": "node scripts/ingest-web.mjs",
+    "compile-source": "node scripts/compile-source.mjs",
+    "apply-compile": "node scripts/apply-compile-output.mjs",
+    "health-check": "node scripts/health-check.mjs",
+    "rollback": "node scripts/rollback.mjs",
+    "test": "node tests/run-tests.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
