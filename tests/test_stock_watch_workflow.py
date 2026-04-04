@@ -5,6 +5,7 @@ import json
 import subprocess
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import sys
 
@@ -14,6 +15,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from stock_watch_workflow import (
     apply_driver_state_guardrails,
+    build_opencli_bridge_result_for_request,
     build_gs_quant_bundle_plans,
     build_compare_note_payload,
     build_source_delta,
@@ -22,6 +24,8 @@ from stock_watch_workflow import (
     choose_execution_mode,
     maybe_generate_gs_quant_workflows,
     normalize_gs_quant_ticker,
+    project_opencli_candidates_for_request,
+    refresh_single_stock,
     render_compare_note_markdown,
     workflow_paths,
 )
@@ -156,7 +160,125 @@ def make_compare_updates() -> list[dict[str, object]]:
     ]
 
 
+def fake_opencli_bridge_result() -> dict[str, object]:
+    return {
+        "request": {
+            "topic": "tracked stock opencli check",
+            "analysis_time": "2026-04-03T08:00:00+00:00",
+            "site_profile": "broker-research-portal",
+            "input_mode": "result_path",
+        },
+        "import_summary": {
+            "payload_source": "result_path",
+            "imported_candidate_count": 1,
+        },
+        "runner_summary": {
+            "status": "ok",
+        },
+        "retrieval_request": {
+            "candidates": [
+                {
+                    "source_id": "opencli-shared-note",
+                    "source_name": "Broker portal note",
+                    "source_type": "research_note",
+                    "origin": "opencli",
+                    "published_at": "2026-04-03T07:20:00+00:00",
+                    "observed_at": "2026-04-03T07:25:00+00:00",
+                    "url": "https://research.example.com/china-aluminum-note",
+                    "claim_ids": [],
+                    "claim_states": {},
+                    "text_excerpt": "OpenCLI imported broker note excerpt.",
+                    "channel": "shadow",
+                    "access_mode": "browser_session",
+                    "artifact_manifest": [],
+                    "raw_metadata": {
+                        "opencli": {"site_profile": "broker-research-portal"},
+                        "source_item": {"claim_state": "support"},
+                    },
+                }
+            ]
+        },
+        "report_markdown": "# OpenCLI Bridge\n",
+    }
+
+
+def fake_stock_result(request: dict[str, object], *, core_verdict: str = "Result ready.") -> dict[str, object]:
+    return {
+        "request": {
+            "topic": request.get("topic", ""),
+            "analysis_time": request.get("analysis_time", "2026-04-03T08:00:00+00:00"),
+        },
+        "observations": [],
+        "verdict_output": {
+            "core_verdict": core_verdict,
+            "confidence_gate": "shadow-heavy",
+            "confidence_interval": [8, 42],
+            "confirmed": [],
+            "not_confirmed": [],
+            "inference_only": [],
+            "freshness_panel": [],
+        },
+        "workflow_context": {
+            "external_source_count": 0,
+            "fresh_external_source_count": 0,
+        },
+        "report_markdown": "# News Index Report\n",
+    }
+
+
 class StockWatchWorkflowTests(unittest.TestCase):
+    def test_project_opencli_candidates_for_request_assigns_single_claim_from_source_item(self) -> None:
+        projected = project_opencli_candidates_for_request(
+            [
+                {
+                    "source_id": "opencli-shared-note",
+                    "claim_ids": [],
+                    "claim_states": {},
+                    "raw_metadata": {
+                        "source_item": {
+                            "claim_states": {"latest-report-identified": "contradict"},
+                        }
+                    },
+                }
+            ],
+            {
+                "claims": [
+                    {
+                        "claim_id": "latest-report-identified",
+                        "claim_text": "The latest report is identified with an exact release date.",
+                    }
+                ]
+            },
+        )
+
+        self.assertEqual(projected[0]["claim_ids"], ["latest-report-identified"])
+        self.assertEqual(projected[0]["claim_states"], {"latest-report-identified": "contradict"})
+
+    def test_build_opencli_bridge_result_for_request_leaves_multi_claim_requests_unassigned(self) -> None:
+        bridge_result = build_opencli_bridge_result_for_request(
+            fake_opencli_bridge_result(),
+            {
+                "topic": "中国铝业 latest company-state verification",
+                "analysis_time": "2026-04-03T08:00:00+00:00",
+                "questions": ["What changed?"],
+                "use_case": "tracked-stock-company-state",
+                "source_preferences": ["public-first"],
+                "mode": "generic",
+                "windows": ["1h"],
+                "claims": [
+                    {"claim_id": "latest-filing-known", "claim_text": "Latest filing known."},
+                    {"claim_id": "material-update-exists", "claim_text": "Material update exists."},
+                ],
+                "market_relevance": ["company state"],
+                "expected_source_families": ["broker-research"],
+            },
+        )
+
+        opencli_candidate = bridge_result["retrieval_request"]["candidates"][0]
+        self.assertEqual(bridge_result["request"]["topic"], "中国铝业 latest company-state verification")
+        self.assertEqual(opencli_candidate["claim_ids"], [])
+        self.assertEqual(opencli_candidate["claim_states"], {})
+
     def test_choose_execution_mode_distinguishes_auto_refresh_and_full(self) -> None:
         config = {"prefer_news_refresh": True, "default_execution_mode": "auto"}
         tmp_root = Path(__file__).resolve().parents[1] / ".tmp" / "test-stock-watch-workflow"
@@ -540,6 +662,233 @@ class StockWatchWorkflowTests(unittest.TestCase):
         self.assertTrue(paths["gs_quant_summary_md"].exists())
         self.assertIn("# 股票池 GS Quant 工作流摘要", paths["gs_quant_summary_md"].read_text(encoding="utf-8"))
         self.assertIn("- 对比结论:", paths["gs_quant_summary_md"].read_text(encoding="utf-8"))
+
+    def test_refresh_single_stock_merges_opencli_candidates_into_news_index_request(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1] / ".tmp" / "test-stock-watch-opencli-news-index"
+        repo_root.mkdir(parents=True, exist_ok=True)
+        paths = workflow_paths(repo_root)
+        stock = {
+            "slug": "chalco-a",
+            "name": "中国铝业",
+            "ticker": "601600.SH",
+            "market": "A-share",
+            "aliases": [],
+            "peer_keywords": [],
+            "driver_keywords": ["aluminum"],
+            "watch_items": ["LME aluminum"],
+            "sector": "Metals",
+            "status": "active",
+        }
+        captured_requests: list[dict[str, object]] = []
+
+        def fake_run_news_index(payload: dict[str, object]) -> dict[str, object]:
+            captured_requests.append(payload)
+            return fake_stock_result(payload)
+
+        with (
+            patch(
+                "stock_watch_workflow.resolve_opencli_payload",
+                return_value=([{"url": "https://research.example.com/china-aluminum-note"}], "result_path", "C:\\path\\to\\opencli-result.json", {"status": "ok"}),
+            ) as resolve_capture,
+            patch("stock_watch_workflow.prepare_opencli_bridge", return_value=fake_opencli_bridge_result()) as prepare_bridge,
+            patch("stock_watch_workflow.run_news_index", side_effect=fake_run_news_index),
+        ):
+            update = refresh_single_stock(
+                repo_root,
+                stock,
+                paths=paths,
+                config={
+                    "use_opencli": True,
+                    "opencli": {
+                        "site_profile": "broker-research-portal",
+                        "result_path": "C:\\path\\to\\opencli-result.json",
+                    },
+                },
+                execution_mode_requested="full",
+                prepare_only=False,
+            )
+
+        self.assertEqual(resolve_capture.call_count, 1)
+        self.assertEqual(prepare_bridge.call_count, 1)
+        self.assertEqual(len(captured_requests), 3)
+        self.assertTrue(all(any(item.get("origin") == "opencli" for item in request.get("candidates", [])) for request in captured_requests))
+        company_opencli = next(item for item in captured_requests[0]["candidates"] if item.get("origin") == "opencli")
+        earnings_opencli = next(item for item in captured_requests[1]["candidates"] if item.get("origin") == "opencli")
+        driver_opencli = next(item for item in captured_requests[2]["candidates"] if item.get("origin") == "opencli")
+        self.assertEqual(company_opencli["claim_ids"], [])
+        self.assertEqual(company_opencli["claim_states"], {})
+        self.assertEqual(earnings_opencli["claim_ids"], ["latest-report-identified"])
+        self.assertEqual(earnings_opencli["claim_states"], {"latest-report-identified": "support"})
+        self.assertEqual(driver_opencli["claim_ids"], ["driver-state-known"])
+        self.assertEqual(driver_opencli["claim_states"], {"driver-state-known": "support"})
+        self.assertEqual(update["run_results"][0]["opencli_stage"]["status"], "ok")
+        self.assertEqual(update["run_results"][0]["opencli_stage"]["imported_candidate_count"], 1)
+        self.assertTrue(
+            (repo_root / ".tmp" / "stock-watch-workflow" / "cases" / "chalco-a" / "results" / "company_state.opencli-bridge.result.json").exists()
+        )
+        self.assertTrue(
+            (repo_root / ".tmp" / "stock-watch-workflow" / "cases" / "chalco-a" / "reports" / "company_state.opencli-bridge.report.md").exists()
+        )
+
+    def test_refresh_single_stock_merges_opencli_candidates_into_refresh_request(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1] / ".tmp" / "test-stock-watch-opencli-refresh"
+        repo_root.mkdir(parents=True, exist_ok=True)
+        paths = workflow_paths(repo_root)
+        stock = {
+            "slug": "envicool-a",
+            "name": "英维克",
+            "ticker": "002837.SZ",
+            "market": "A-share",
+            "aliases": [],
+            "peer_keywords": [],
+            "driver_keywords": ["cooling"],
+            "watch_items": ["data center cooling"],
+            "sector": "Thermal management",
+            "status": "active",
+        }
+        case_dir = repo_root / ".tmp" / "stock-watch-workflow" / "cases" / "envicool-a"
+        (case_dir / "results").mkdir(parents=True, exist_ok=True)
+        for result_name in ("company_state", "earnings_freshness", "driver_state"):
+            previous_result_path = case_dir / "results" / f"{result_name}.result.json"
+            previous_result_path.write_text(
+                json.dumps(fake_stock_result({"topic": "previous", "analysis_time": "2026-04-02T08:00:00+00:00"})),
+                encoding="utf-8",
+            )
+
+        captured_refresh_requests: list[dict[str, object]] = []
+
+        def fake_merge_refresh(existing_result: dict[str, object], refresh_payload: dict[str, object]) -> dict[str, object]:
+            captured_refresh_requests.append(refresh_payload)
+            return fake_stock_result(refresh_payload, core_verdict="Refresh result ready.")
+
+        with (
+            patch(
+                "stock_watch_workflow.resolve_opencli_payload",
+                return_value=([{"url": "https://research.example.com/china-aluminum-note"}], "result_path", "C:\\path\\to\\opencli-result.json", {"status": "ok"}),
+            ) as resolve_capture,
+            patch("stock_watch_workflow.prepare_opencli_bridge", return_value=fake_opencli_bridge_result()) as prepare_bridge,
+            patch("stock_watch_workflow.merge_refresh", side_effect=fake_merge_refresh),
+            patch("stock_watch_workflow.run_news_index", side_effect=AssertionError("run_news_index should not be used in refresh mode")),
+        ):
+            update = refresh_single_stock(
+                repo_root,
+                stock,
+                paths=paths,
+                config={
+                    "use_opencli": True,
+                    "opencli": {
+                        "site_profile": "broker-research-portal",
+                        "result_path": "C:\\path\\to\\opencli-result.json",
+                    },
+                    "prefer_news_refresh": True,
+                },
+                execution_mode_requested="auto",
+                prepare_only=False,
+            )
+
+        self.assertEqual(resolve_capture.call_count, 1)
+        self.assertEqual(prepare_bridge.call_count, 1)
+        self.assertEqual(len(captured_refresh_requests), 3)
+        self.assertTrue(all(any(item.get("origin") == "opencli" for item in request.get("candidates", [])) for request in captured_refresh_requests))
+        company_opencli = next(item for item in captured_refresh_requests[0]["candidates"] if item.get("origin") == "opencli")
+        earnings_opencli = next(item for item in captured_refresh_requests[1]["candidates"] if item.get("origin") == "opencli")
+        driver_opencli = next(item for item in captured_refresh_requests[2]["candidates"] if item.get("origin") == "opencli")
+        self.assertEqual(company_opencli["claim_ids"], [])
+        self.assertEqual(company_opencli["claim_states"], {})
+        self.assertEqual(earnings_opencli["claim_ids"], ["latest-report-identified"])
+        self.assertEqual(earnings_opencli["claim_states"], {"latest-report-identified": "support"})
+        self.assertEqual(driver_opencli["claim_ids"], ["driver-state-known"])
+        self.assertEqual(driver_opencli["claim_states"], {"driver-state-known": "support"})
+        self.assertTrue(all(item["mode"] == "news_refresh" for item in update["run_results"]))
+
+    def test_refresh_single_stock_continues_when_opencli_is_optional_and_fails(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1] / ".tmp" / "test-stock-watch-opencli-fallback"
+        repo_root.mkdir(parents=True, exist_ok=True)
+        paths = workflow_paths(repo_root)
+        stock = {
+            "slug": "chalco-a",
+            "name": "中国铝业",
+            "ticker": "601600.SH",
+            "market": "A-share",
+            "aliases": [],
+            "peer_keywords": [],
+            "driver_keywords": ["aluminum"],
+            "watch_items": ["LME aluminum"],
+            "sector": "Metals",
+            "status": "active",
+        }
+        captured_requests: list[dict[str, object]] = []
+
+        def fake_run_news_index(payload: dict[str, object]) -> dict[str, object]:
+            captured_requests.append(payload)
+            return fake_stock_result(payload, core_verdict="Fallback result ready.")
+
+        with (
+            patch("stock_watch_workflow.resolve_opencli_payload", side_effect=ValueError("runner failed")),
+            patch("stock_watch_workflow.prepare_opencli_bridge", side_effect=AssertionError("prepare_opencli_bridge should not run after capture failure")),
+            patch("stock_watch_workflow.run_news_index", side_effect=fake_run_news_index),
+        ):
+            update = refresh_single_stock(
+                repo_root,
+                stock,
+                paths=paths,
+                config={
+                    "use_opencli": True,
+                    "opencli": {
+                        "site_profile": "broker-research-portal",
+                        "result_path": "C:\\path\\to\\missing.json",
+                    },
+                },
+                execution_mode_requested="full",
+                prepare_only=False,
+            )
+
+        self.assertEqual(len(captured_requests), 3)
+        self.assertTrue(all(not any(item.get("origin") == "opencli" for item in request.get("candidates", [])) for request in captured_requests))
+        self.assertTrue(all(item["status"] == "ok" for item in update["run_results"]))
+        self.assertTrue(all(item["opencli_stage"]["status"] == "error" for item in update["run_results"]))
+
+    def test_refresh_single_stock_marks_error_when_opencli_is_required_and_fails(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1] / ".tmp" / "test-stock-watch-opencli-required"
+        repo_root.mkdir(parents=True, exist_ok=True)
+        paths = workflow_paths(repo_root)
+        stock = {
+            "slug": "envicool-a",
+            "name": "英维克",
+            "ticker": "002837.SZ",
+            "market": "A-share",
+            "aliases": [],
+            "peer_keywords": [],
+            "driver_keywords": ["cooling"],
+            "watch_items": ["data center cooling"],
+            "sector": "Thermal management",
+            "status": "active",
+        }
+
+        with (
+            patch("stock_watch_workflow.resolve_opencli_payload", side_effect=ValueError("runner failed")),
+            patch("stock_watch_workflow.prepare_opencli_bridge", side_effect=AssertionError("prepare_opencli_bridge should not run after capture failure")),
+            patch("stock_watch_workflow.run_news_index", side_effect=AssertionError("run_news_index should not run when opencli is required")),
+        ):
+            update = refresh_single_stock(
+                repo_root,
+                stock,
+                paths=paths,
+                config={
+                    "use_opencli": True,
+                    "require_opencli": True,
+                    "opencli": {
+                        "site_profile": "broker-research-portal",
+                        "result_path": "C:\\path\\to\\missing.json",
+                    },
+                },
+                execution_mode_requested="full",
+                prepare_only=False,
+            )
+
+        self.assertTrue(all(item["status"] == "error" for item in update["run_results"]))
+        self.assertTrue(all(item["opencli_stage"]["status"] == "error" for item in update["run_results"]))
+        self.assertTrue(all(item["error"] == "runner failed" for item in update["run_results"]))
 
 
 if __name__ == "__main__":

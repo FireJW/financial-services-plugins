@@ -16,6 +16,8 @@ from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_REPO_ROOT = SCRIPT_DIR.parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 INFO_INDEX_SCRIPT_DIR = (
     DEFAULT_REPO_ROOT
     / "financial-analysis"
@@ -41,6 +43,21 @@ from news_index_runtime import (
     run_news_index,
     write_json,
 )
+try:
+    from opencli_bridge_runtime import (
+        build_markdown_report as build_opencli_bridge_report,
+        prepare_opencli_bridge,
+        resolve_opencli_payload,
+    )
+except ModuleNotFoundError:  # OpenCLI bridge is optional for the nightly watchlist path.
+    def build_opencli_bridge_report(result: dict[str, Any]) -> str:
+        return str(result.get("report_markdown", ""))
+
+    def prepare_opencli_bridge(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ModuleNotFoundError("opencli_bridge_runtime")
+
+    def resolve_opencli_payload(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], str, str, dict[str, Any]]:
+        raise ModuleNotFoundError("opencli_bridge_runtime")
 from fred_macro_chart import generate_gold_pricing_chart
 
 
@@ -360,8 +377,47 @@ def load_refresh_config(paths: dict[str, Path]) -> dict[str, Any]:
         "generate_nightly_summary": True,
         "ingest_to_backtest": False,
         "generate_gs_quant_workflows": True,
+        "use_opencli": False,
+        "require_opencli": False,
+        "opencli": {},
         "output_language": DEFAULT_OUTPUT_LANGUAGE,
     }
+
+
+def clean_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def safe_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def safe_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def resolve_opencli_config(config: dict[str, Any]) -> dict[str, Any]:
+    for key in ("opencli", "opencli_config"):
+        value = config.get(key)
+        if isinstance(value, dict):
+            return deepcopy(value)
+    return {}
+
+
+def resolve_opencli_enabled(config: dict[str, Any]) -> bool:
+    if "use_opencli" in config:
+        return bool(config.get("use_opencli"))
+    opencli_config = resolve_opencli_config(config)
+    if "enabled" in opencli_config:
+        return bool(opencli_config.get("enabled"))
+    return bool(opencli_config)
+
+
+def resolve_opencli_required(config: dict[str, Any]) -> bool:
+    if "require_opencli" in config:
+        return bool(config.get("require_opencli"))
+    opencli_config = resolve_opencli_config(config)
+    return bool(opencli_config.get("required"))
 
 
 def load_tracked_stocks(paths: dict[str, Path]) -> list[dict[str, Any]]:
@@ -588,6 +644,146 @@ def build_request(
             }
         },
         "max_parallel_candidates": 4,
+    }
+
+
+def build_opencli_bridge_payload(spec: RequestSpec, request_payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    opencli_config = resolve_opencli_config(config)
+    opencli_config.pop("enabled", None)
+    opencli_config.pop("required", None)
+    use_case = clean_text(request_payload.get("use_case")) or f"tracked-stock-{spec.name}-opencli"
+    if not use_case.endswith("-opencli"):
+        use_case = f"{use_case}-opencli"
+    return {
+        "topic": clean_text(request_payload.get("topic")),
+        "analysis_time": clean_text(request_payload.get("analysis_time")),
+        "questions": deepcopy(safe_list(request_payload.get("questions"))),
+        "use_case": use_case,
+        "source_preferences": deepcopy(safe_list(request_payload.get("source_preferences"))),
+        "mode": clean_text(request_payload.get("mode")) or "generic",
+        "windows": deepcopy(safe_list(request_payload.get("windows"))),
+        "claims": deepcopy(safe_list(request_payload.get("claims"))),
+        "market_relevance": deepcopy(safe_list(request_payload.get("market_relevance"))),
+        "expected_source_families": deepcopy(safe_list(request_payload.get("expected_source_families"))),
+        "opencli": opencli_config,
+    }
+
+
+def build_opencli_capture_payload(stock: dict[str, Any], analysis_time: datetime, config: dict[str, Any]) -> dict[str, Any]:
+    opencli_config = resolve_opencli_config(config)
+    opencli_config.pop("enabled", None)
+    opencli_config.pop("required", None)
+    return {
+        "topic": f"{stock_name(stock)} ({clean_text(stock.get('ticker'))}) stock-watch opencli capture",
+        "analysis_time": isoformat(analysis_time),
+        "use_case": "tracked-stock-opencli-capture",
+        "opencli": opencli_config,
+    }
+
+
+def merge_request_with_opencli_candidates(request_payload: dict[str, Any], bridge_result: dict[str, Any]) -> dict[str, Any]:
+    merged_payload = deepcopy(request_payload)
+    imported_candidates = [
+        deepcopy(item)
+        for item in safe_list(safe_dict(bridge_result.get("retrieval_request")).get("candidates"))
+        if isinstance(item, dict)
+    ]
+    existing_candidates = [
+        deepcopy(item)
+        for item in safe_list(merged_payload.get("candidates") or merged_payload.get("source_candidates"))
+        if isinstance(item, dict)
+    ]
+    merged_payload["candidates"] = existing_candidates + imported_candidates
+    return merged_payload
+
+
+def normalize_projected_claim_state(value: Any) -> str:
+    text = clean_text(value).lower()
+    if text in {"support", "supported", "confirm", "confirmed"}:
+        return "support"
+    if text in {"contradict", "contradiction", "deny", "denied"}:
+        return "contradict"
+    if text in {"unclear", "mixed", "unknown"}:
+        return "unclear"
+    return "support"
+
+
+def project_opencli_candidates_for_request(candidates: list[dict[str, Any]], request_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    request_claim_ids = [clean_text(item.get("claim_id")) for item in safe_list(request_payload.get("claims")) if clean_text(item.get("claim_id"))]
+    projected: list[dict[str, Any]] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        updated = deepcopy(candidate)
+        existing_claim_ids = [clean_text(item) for item in safe_list(updated.get("claim_ids")) if clean_text(item)]
+        if existing_claim_ids:
+            updated["claim_ids"] = existing_claim_ids
+            updated["claim_states"] = safe_dict(updated.get("claim_states"))
+            projected.append(updated)
+            continue
+        if len(request_claim_ids) == 1:
+            claim_id = request_claim_ids[0]
+            raw_source_item = safe_dict(safe_dict(updated.get("raw_metadata")).get("source_item"))
+            raw_states = safe_dict(raw_source_item.get("claim_states") or raw_source_item.get("stance_by_claim"))
+            updated["claim_ids"] = [claim_id]
+            updated["claim_states"] = {
+                claim_id: normalize_projected_claim_state(raw_states.get(claim_id) or raw_source_item.get("claim_state") or "support")
+            }
+        else:
+            updated["claim_ids"] = []
+            updated["claim_states"] = {}
+        projected.append(updated)
+    return projected
+
+
+def build_opencli_bridge_result_for_request(shared_bridge_result: dict[str, Any], request_payload: dict[str, Any]) -> dict[str, Any]:
+    shared_request = safe_dict(shared_bridge_result.get("request"))
+    shared_retrieval_request = safe_dict(shared_bridge_result.get("retrieval_request"))
+    projected_candidates = project_opencli_candidates_for_request(
+        safe_list(shared_retrieval_request.get("candidates")),
+        request_payload,
+    )
+    result = {
+        "request": {
+            "topic": clean_text(request_payload.get("topic")),
+            "analysis_time": clean_text(request_payload.get("analysis_time")),
+            "generated_at": clean_text(shared_request.get("generated_at")),
+            "site_profile": clean_text(shared_request.get("site_profile")),
+            "input_mode": clean_text(shared_request.get("input_mode")),
+        },
+        "notes": deepcopy(safe_list(shared_bridge_result.get("notes"))),
+        "runner_summary": deepcopy(safe_dict(shared_bridge_result.get("runner_summary"))),
+        "import_summary": deepcopy(safe_dict(shared_bridge_result.get("import_summary"))),
+        "retrieval_request": {
+            "topic": clean_text(request_payload.get("topic")),
+            "analysis_time": clean_text(request_payload.get("analysis_time")),
+            "questions": deepcopy(safe_list(request_payload.get("questions"))),
+            "use_case": clean_text(request_payload.get("use_case")),
+            "source_preferences": deepcopy(safe_list(request_payload.get("source_preferences"))),
+            "mode": clean_text(request_payload.get("mode")),
+            "windows": deepcopy(safe_list(request_payload.get("windows"))),
+            "claims": deepcopy(safe_list(request_payload.get("claims"))),
+            "candidates": projected_candidates,
+            "market_relevance": deepcopy(safe_list(request_payload.get("market_relevance"))),
+            "expected_source_families": deepcopy(safe_list(request_payload.get("expected_source_families"))),
+        },
+    }
+    result["report_markdown"] = build_opencli_bridge_report(result)
+    return result
+
+
+def summarize_opencli_stage(bridge_result: dict[str, Any], *, required: bool, status: str = "ok", error: str = "") -> dict[str, Any]:
+    import_summary = safe_dict(bridge_result.get("import_summary"))
+    runner_summary = safe_dict(bridge_result.get("runner_summary"))
+    return {
+        "enabled": True,
+        "required": required,
+        "status": status,
+        "error": clean_text(error),
+        "bridge_result": bridge_result,
+        "payload_source": clean_text(import_summary.get("payload_source")),
+        "imported_candidate_count": int(import_summary.get("imported_candidate_count", 0) or 0),
+        "runner_status": clean_text(runner_summary.get("status")),
     }
 
 
@@ -1732,6 +1928,7 @@ def build_run_result(
     report_path: Path,
     result: dict[str, Any] | None,
     source_delta: dict[str, Any] | None = None,
+    opencli_stage: dict[str, Any] | None = None,
     error: str = "",
 ) -> dict[str, Any]:
     observed_at = ""
@@ -1758,6 +1955,7 @@ def build_run_result(
         "captured_new_external_sources": bool(source_delta.get("captured_new_external_sources")),
         "captured_only_baseline_sources": bool(source_delta.get("captured_only_baseline_sources")),
         "summary": summary,
+        "opencli_stage": deepcopy(opencli_stage) if opencli_stage else {},
         "stdout_tail": stdout_tail,
         "stderr_tail": "",
         "error": error,
@@ -1844,6 +2042,7 @@ def write_latest_update(
     lines.extend(summary_lines)
     lines.extend(["", localized_text(language, zh_cn="## 运行结果", en="## Run Results"), ""])
     for item in run_results:
+        opencli_stage = safe_dict(item.get("opencli_stage"))
         lines.extend(
             [
                 f"- `{item['request_name']}`: `{item['status']}` {localized_text(language, zh_cn='通过', en='via')} `{item['mode']}`",
@@ -1853,6 +2052,14 @@ def write_latest_update(
                 f"  - {localized_text(language, zh_cn='报告文件', en='report')}: `{item['report_path']}`",
             ]
         )
+        if opencli_stage:
+            lines.append(
+                f"  - OpenCLI: `{opencli_stage.get('status', 'unknown')}` / imported `{opencli_stage.get('imported_candidate_count', 0)}` / runner `{opencli_stage.get('runner_status', '') or 'not-run'}`"
+            )
+            if opencli_stage.get("result_path"):
+                lines.append(f"  - OpenCLI bridge result: `{opencli_stage['result_path']}`")
+            if opencli_stage.get("report_path"):
+                lines.append(f"  - OpenCLI bridge report: `{opencli_stage['report_path']}`")
         if item.get("error"):
             lines.append(f"  - {localized_text(language, zh_cn='错误', en='error')}: `{item['error']}`")
     write_report(case_dir / "latest_update.md", "\n".join(lines) + "\n")
@@ -1879,6 +2086,31 @@ def refresh_single_stock(
     write_json(case_dir / "profile.json", profile)
 
     run_results: list[dict[str, Any]] = []
+    opencli_enabled = resolve_opencli_enabled(config)
+    opencli_required = resolve_opencli_required(config)
+    opencli_capture: dict[str, Any] = {}
+    opencli_capture_error = ""
+    shared_opencli_bridge_result: dict[str, Any] = {}
+    if opencli_enabled:
+        try:
+            opencli_payload, payload_source, resolved_result_path, runner_summary = resolve_opencli_payload(
+                build_opencli_capture_payload(stock, analysis_time, config)
+            )
+            opencli_capture = {
+                "payload": deepcopy(opencli_payload),
+                "payload_source": payload_source,
+                "result_path": resolved_result_path,
+                "runner_summary": deepcopy(safe_dict(runner_summary)),
+            }
+            shared_opencli_bridge_result = prepare_opencli_bridge(
+                build_opencli_capture_payload(stock, analysis_time, config),
+                preloaded_payload=opencli_capture.get("payload"),
+                payload_source_override=clean_text(opencli_capture.get("payload_source")),
+                result_path_override=clean_text(opencli_capture.get("result_path")),
+                runner_summary_override=safe_dict(opencli_capture.get("runner_summary")),
+            )
+        except Exception as exc:
+            opencli_capture_error = str(exc)
     for spec in REQUEST_SPECS:
         base_request = build_request(spec, stock, repo_root=repo_root, analysis_time=analysis_time, refresh=False)
         refresh_request = build_request(spec, stock, repo_root=repo_root, analysis_time=analysis_time, refresh=True)
@@ -1887,11 +2119,14 @@ def refresh_single_stock(
         refresh_request_path = case_dir / "requests" / f"{spec.name}.refresh.request.json"
         result_path = case_dir / "results" / f"{spec.name}.result.json"
         report_path = case_dir / "reports" / f"{spec.name}.report.md"
+        opencli_result_path = case_dir / "results" / f"{spec.name}.opencli-bridge.result.json"
+        opencli_report_path = case_dir / "reports" / f"{spec.name}.opencli-bridge.report.md"
 
         write_json(request_path, base_request)
         write_json(refresh_request_path, refresh_request)
         previous_result = load_json(result_path) if result_path.exists() else None
         effective_mode = choose_execution_mode(execution_mode_requested, config, result_path)
+        opencli_stage: dict[str, Any] = {}
 
         if prepare_only:
             item = build_run_result(
@@ -1903,12 +2138,41 @@ def refresh_single_stock(
                 result_path=result_path,
                 report_path=report_path,
                 result=None,
+                opencli_stage=opencli_stage,
             )
             run_results.append(item)
             append_jsonl(paths["observations"], item)
             continue
 
         try:
+            executed_request = refresh_request if effective_mode == "news_refresh" else base_request
+            if opencli_enabled:
+                if opencli_capture_error:
+                    opencli_stage = summarize_opencli_stage({}, required=opencli_required, status="error", error=opencli_capture_error)
+                    if opencli_required:
+                        raise ValueError(opencli_capture_error)
+                else:
+                    try:
+                        bridge_result = build_opencli_bridge_result_for_request(
+                            shared_opencli_bridge_result,
+                            build_opencli_bridge_payload(spec, executed_request, config),
+                        )
+                        opencli_stage = summarize_opencli_stage(bridge_result, required=opencli_required)
+                        write_json(opencli_result_path, bridge_result)
+                        write_report(opencli_report_path, str(bridge_result.get("report_markdown", "")))
+                        opencli_stage["result_path"] = str(opencli_result_path)
+                        opencli_stage["report_path"] = str(opencli_report_path)
+                        executed_request = merge_request_with_opencli_candidates(executed_request, bridge_result)
+                        if effective_mode == "news_refresh":
+                            refresh_request = executed_request
+                            write_json(refresh_request_path, refresh_request)
+                        else:
+                            base_request = executed_request
+                            write_json(request_path, base_request)
+                    except Exception as exc:
+                        opencli_stage = summarize_opencli_stage({}, required=opencli_required, status="error", error=str(exc))
+                        if opencli_required:
+                            raise
             if effective_mode == "news_refresh":
                 if previous_result is None:
                     raise ValueError(f"Cannot refresh without an existing result: {result_path}")
@@ -1939,6 +2203,7 @@ def refresh_single_stock(
                 report_path=report_path,
                 result=result,
                 source_delta=source_delta,
+                opencli_stage=opencli_stage,
             )
         except Exception as exc:
             item = build_run_result(
@@ -1950,6 +2215,7 @@ def refresh_single_stock(
                 result_path=result_path,
                 report_path=report_path,
                 result=None,
+                opencli_stage=opencli_stage,
                 error=str(exc),
             )
         run_results.append(item)

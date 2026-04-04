@@ -1,0 +1,32 @@
+{
+  "items": [
+    {
+      "title": "China Aluminum Daily Note",
+      "url": "https://research.example.com/china-aluminum-note",
+      "published_at": "2026-04-03T07:15:00+00:00",
+      "captured_at": "2026-04-03T07:20:00+00:00",
+      "summary": "A broker note says aluminum demand expectations improved after the latest policy discussion.",
+      "claim_ids": [
+        "driver-state-known"
+      ],
+      "claim_states": {
+        "driver-state-known": "support"
+      },
+      "artifact_manifest": [
+        {
+          "role": "page_screenshot",
+          "path": ".tmp\\opencli\\china-aluminum-note.png",
+          "source_url": "https://research.example.com/china-aluminum-note",
+          "media_type": "image/png"
+        }
+      ]
+    },
+    {
+      "title": "Portal login wall",
+      "url": "https://research.example.com/login",
+      "captured_at": "2026-04-03T07:21:00+00:00",
+      "status": "login_required",
+      "blocked_reason": "session expired"
+    }
+  ]
+}

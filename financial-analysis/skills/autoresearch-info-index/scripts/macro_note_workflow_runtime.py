@@ -6,23 +6,34 @@ from pathlib import Path
 from typing import Any
 
 from agent_reach_bridge_runtime import run_agent_reach_bridge
+from agent_reach_workflow_bridge_runtime import (
+    build_agent_reach_bridge_payload,
+    merge_news_payload_with_agent_reach_candidates,
+    summarize_agent_reach_stage,
+)
 from article_brief_runtime import build_analysis_brief, clean_text, load_json, safe_dict, safe_list, write_json
+from opencli_bridge_runtime import prepare_opencli_bridge
+from opencli_workflow_bridge_runtime import (
+    build_opencli_bridge_payload,
+    merge_news_payload_with_opencli_candidates,
+    summarize_opencli_stage,
+)
 from news_index_runtime import isoformat_or_blank, now_utc, parse_datetime, run_news_index, slugify
 from runtime_paths import runtime_subdir
+from workflow_source_runtime import (
+    augment_news_payload_with_workflow_sources,
+    build_agent_reach_augmentation_lines,
+    build_opencli_augmentation_lines,
+    build_source_stage_file_lines,
+    detect_payload_kind,
+    resolve_agent_reach_enabled,
+    resolve_indexed_source_kind,
+    resolve_news_source_kind,
+    resolve_opencli_enabled,
+    resolve_opencli_required,
+    write_source_stage_outputs,
+)
 from x_index_runtime import run_x_index
-
-
-def detect_payload_kind(payload: dict[str, Any]) -> str:
-    if any(key in payload for key in ("source_result", "source_result_path")):
-        return "indexed_result"
-    if any(key in payload for key in ("x_posts", "evidence_pack", "retrieval_result", "observations", "verdict_output")):
-        return "indexed_result"
-    if any(
-        key in payload
-        for key in ("seed_posts", "manual_urls", "account_allowlist", "include_threads", "include_images", "max_thread_posts")
-    ):
-        return "x_request"
-    return "news_request"
 
 
 def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
@@ -60,103 +71,49 @@ def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         else runtime_subdir("macro-note-workflow", slugify(topic, "macro-note-topic"), analysis_time.strftime("%Y%m%dT%H%M%SZ"))
     )
     agent_reach_config = safe_dict(payload.get("agent_reach"))
+    opencli_config = safe_dict(payload.get("opencli_config") or payload.get("opencli"))
     return {
         "payload_kind": payload_kind,
         "topic": topic,
         "analysis_time": analysis_time,
         "agent_reach_enabled": resolve_agent_reach_enabled(payload, agent_reach_config),
         "agent_reach_config": agent_reach_config,
+        "opencli_enabled": resolve_opencli_enabled(payload, opencli_config),
+        "opencli_required": resolve_opencli_required(payload, opencli_config),
+        "opencli_config": opencli_config,
         "source_result": source_payload,
         "source_result_path": source_result_path,
         "payload": payload,
         "output_dir": output_dir,
     }
-
-
-def resolve_agent_reach_enabled(payload: dict[str, Any], agent_reach_config: dict[str, Any]) -> bool:
-    if "use_agent_reach" in payload:
-        return bool(payload.get("use_agent_reach"))
-    if "enabled" in agent_reach_config:
-        return bool(agent_reach_config.get("enabled"))
-    return bool(agent_reach_config)
-
-
-def build_agent_reach_bridge_payload(request: dict[str, Any]) -> dict[str, Any]:
-    payload = safe_dict(request.get("payload"))
-    agent_reach_config = safe_dict(request.get("agent_reach_config"))
-    bridge_payload: dict[str, Any] = {
-        "topic": request["topic"],
-        "analysis_time": isoformat_or_blank(request["analysis_time"]),
-        "questions": deepcopy(safe_list(payload.get("questions"))),
-        "use_case": clean_text(payload.get("use_case")) or "macro-note-workflow-agent-reach",
-        "source_preferences": deepcopy(safe_list(payload.get("source_preferences"))),
-        "mode": clean_text(payload.get("mode")) or "generic",
-        "windows": deepcopy(safe_list(payload.get("windows"))),
-        "claims": deepcopy(safe_list(payload.get("claims"))),
-        "market_relevance": deepcopy(safe_list(payload.get("market_relevance"))),
-        "expected_source_families": deepcopy(safe_list(payload.get("expected_source_families"))),
-    }
-    for key in (
-        "pseudo_home",
-        "channels",
-        "timeout_per_channel",
-        "max_results_per_channel",
-        "dedupe_window_hours",
-        "dedupe_store_path",
-        "rss_feeds",
-        "channel_payloads",
-        "channel_result_paths",
-        "channel_commands",
-    ):
-        value = agent_reach_config.get(key)
-        if value not in (None, "", [], {}):
-            bridge_payload[key] = deepcopy(value)
-    return bridge_payload
-
-
-def merge_news_payload_with_agent_reach_candidates(payload: dict[str, Any], bridge_result: dict[str, Any]) -> dict[str, Any]:
-    merged_payload = deepcopy(payload)
-    imported_candidates = [
-        deepcopy(item)
-        for item in safe_list(safe_dict(bridge_result.get("retrieval_request")).get("candidates"))
-        if isinstance(item, dict)
-    ]
-    existing_candidates = [
-        deepcopy(item)
-        for item in safe_list(merged_payload.get("candidates") or merged_payload.get("source_candidates"))
-        if isinstance(item, dict)
-    ]
-    merged_payload["candidates"] = existing_candidates + imported_candidates
-    return merged_payload
-
-
-def prepare_source_payload(request: dict[str, Any]) -> tuple[dict[str, Any], str, dict[str, Any]]:
+def prepare_source_payload(request: dict[str, Any]) -> tuple[dict[str, Any], str, dict[str, Any], dict[str, Any]]:
     payload_kind = request["payload_kind"]
     source_payload = request["source_result"]
     agent_reach_stage: dict[str, Any] = {}
+    opencli_stage: dict[str, Any] = {}
     if payload_kind == "x_request":
         x_payload = deepcopy(request["payload"])
         x_payload["output_dir"] = clean_text(x_payload.get("x_output_dir") or x_payload.get("source_output_dir")) or str(
             (request["output_dir"] / "source-stage").resolve()
         )
-        return run_x_index(x_payload), "x_index", agent_reach_stage
+        return run_x_index(x_payload), "x_index", agent_reach_stage, opencli_stage
     if payload_kind == "news_request":
-        if request.get("agent_reach_enabled"):
-            bridge_result = run_agent_reach_bridge(build_agent_reach_bridge_payload(request))
-            source_payload = run_news_index(merge_news_payload_with_agent_reach_candidates(request["payload"], bridge_result))
-            agent_reach_stage = {
-                "enabled": True,
-                "bridge_result": bridge_result,
-                "channels_attempted": deepcopy(bridge_result.get("channels_attempted", [])),
-                "channels_succeeded": deepcopy(bridge_result.get("channels_succeeded", [])),
-                "channels_failed": deepcopy(bridge_result.get("channels_failed", [])),
-                "imported_candidate_count": int(bridge_result.get("observations_imported", 0) or 0),
-            }
-            return source_payload, "news_index_agent_reach", agent_reach_stage
-        return run_news_index(request["payload"]), "news_index", agent_reach_stage
+        merged_payload, agent_reach_stage, opencli_stage = augment_news_payload_with_workflow_sources(
+            request,
+            default_agent_reach_use_case="macro-note-workflow-agent-reach",
+            default_opencli_use_case="macro-note-workflow-opencli",
+            run_agent_reach_bridge=run_agent_reach_bridge,
+            build_agent_reach_bridge_payload=build_agent_reach_bridge_payload,
+            merge_news_payload_with_agent_reach_candidates=merge_news_payload_with_agent_reach_candidates,
+            summarize_agent_reach_stage=summarize_agent_reach_stage,
+            prepare_opencli_bridge=prepare_opencli_bridge,
+            build_opencli_bridge_payload=build_opencli_bridge_payload,
+            merge_news_payload_with_opencli_candidates=merge_news_payload_with_opencli_candidates,
+            summarize_opencli_stage=summarize_opencli_stage,
+        )
+        return run_news_index(merged_payload), resolve_news_source_kind(agent_reach_stage=agent_reach_stage, opencli_stage=opencli_stage), agent_reach_stage, opencli_stage
     if source_payload:
-        source_kind = "x_index" if safe_list(source_payload.get("x_posts")) or safe_dict(source_payload.get("evidence_pack")) else "news_index"
-        return source_payload, source_kind, agent_reach_stage
+        return source_payload, resolve_indexed_source_kind(source_payload), agent_reach_stage, opencli_stage
     raise ValueError("macro-note-workflow could not resolve a source payload")
 
 
@@ -301,6 +258,7 @@ def build_macro_note_markdown(result: dict[str, Any]) -> str:
 def build_workflow_report_markdown(result: dict[str, Any]) -> str:
     source_stage = safe_dict(result.get("source_stage"))
     agent_reach_stage = safe_dict(source_stage.get("agent_reach_stage"))
+    opencli_stage = safe_dict(source_stage.get("opencli_stage"))
     macro_note_stage = safe_dict(result.get("macro_note_stage"))
     brief_stage = safe_dict(result.get("brief_stage"))
     lines = [
@@ -308,24 +266,18 @@ def build_workflow_report_markdown(result: dict[str, Any]) -> str:
         "",
         f"- Analysis time: {clean_text(result.get('analysis_time'))}",
         f"- Source stage: {clean_text(source_stage.get('source_kind'))}",
-        f"- Source result: {clean_text(source_stage.get('result_path'))}",
-        f"- Agent Reach bridge result: {clean_text(agent_reach_stage.get('result_path')) or 'not used'}",
+    ]
+    lines.extend(build_source_stage_file_lines(source_stage, include_source_report=False, include_bridge_reports=False))
+    lines.extend(
+        [
         f"- Analysis brief: {clean_text(brief_stage.get('result_path'))}",
         f"- Macro note result: {clean_text(macro_note_stage.get('result_path'))}",
         f"- Macro note report: {clean_text(macro_note_stage.get('report_path'))}",
         f"- One-line judgment: {clean_text(macro_note_stage.get('one_line_judgment')) or 'None'}",
-    ]
-    if agent_reach_stage:
-        lines.extend(
-            [
-                "",
-                "## Agent Reach Augmentation",
-                "",
-                f"- Channels attempted: {', '.join(safe_list(agent_reach_stage.get('channels_attempted'))) or 'none'}",
-                f"- Channels succeeded: {', '.join(safe_list(agent_reach_stage.get('channels_succeeded'))) or 'none'}",
-                f"- Imported shadow candidates: {int(agent_reach_stage.get('imported_candidate_count', 0) or 0)}",
-            ]
-        )
+        ]
+    )
+    lines.extend(build_agent_reach_augmentation_lines(agent_reach_stage))
+    lines.extend(build_opencli_augmentation_lines(opencli_stage))
     return "\n".join(lines).strip() + "\n"
 
 
@@ -333,19 +285,16 @@ def run_macro_note_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = normalize_workflow_request(raw_payload)
     request["output_dir"].mkdir(parents=True, exist_ok=True)
 
-    source_payload, source_kind, agent_reach_stage = prepare_source_payload(request)
-    source_result_path = request["output_dir"] / "source-result.json"
-    source_report_path = request["output_dir"] / "source-report.md"
-    write_json(source_result_path, source_payload)
-    source_report_path.write_text(source_payload.get("report_markdown", ""), encoding="utf-8-sig")
-    staged_source_result_path = str(source_result_path)
-    if agent_reach_stage:
-        agent_reach_result_path = request["output_dir"] / "agent-reach-bridge-result.json"
-        agent_reach_report_path = request["output_dir"] / "agent-reach-bridge-report.md"
-        write_json(agent_reach_result_path, safe_dict(agent_reach_stage.get("bridge_result")))
-        agent_reach_report_path.write_text(safe_dict(agent_reach_stage.get("bridge_result")).get("report_markdown", ""), encoding="utf-8-sig")
-        agent_reach_stage["result_path"] = str(agent_reach_result_path)
-        agent_reach_stage["report_path"] = str(agent_reach_report_path)
+    source_payload, source_kind, agent_reach_stage, opencli_stage = prepare_source_payload(request)
+    source_stage = write_source_stage_outputs(
+        request["output_dir"],
+        source_kind=source_kind,
+        source_payload=source_payload,
+        agent_reach_stage=agent_reach_stage,
+        opencli_stage=opencli_stage,
+        write_json=write_json,
+    )
+    staged_source_result_path = clean_text(source_stage.get("result_path"))
 
     brief_payload = build_brief_payload(request, source_payload, staged_source_result_path)
     brief_result = build_analysis_brief(brief_payload)
@@ -365,12 +314,7 @@ def run_macro_note_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "workflow_kind": "macro_note_workflow",
         "topic": request["topic"],
         "analysis_time": isoformat_or_blank(request["analysis_time"]),
-        "source_stage": {
-            "source_kind": source_kind,
-            "result_path": str(source_result_path),
-            "report_path": str(source_report_path),
-            "agent_reach_stage": agent_reach_stage,
-        },
+        "source_stage": source_stage,
         "brief_stage": {
             "result_path": str(brief_result_path),
             "report_path": str(brief_report_path),
