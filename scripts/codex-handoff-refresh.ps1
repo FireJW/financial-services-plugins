@@ -3,6 +3,16 @@ param(
   [string]$Path
 )
 
+function Write-Utf8BomText {
+  param(
+    [string]$Path,
+    [string]$Content
+  )
+
+  $encoding = New-Object System.Text.UTF8Encoding($true)
+  [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
 $repoRoot = (& git rev-parse --show-toplevel 2>$null)
 if (-not $repoRoot) {
   throw "Not inside a git repository."
@@ -86,5 +96,7 @@ $content = [regex]::Replace(
   }
 )
 
-Set-Content -LiteralPath $targetPath -Value $content -Encoding UTF8
+$content = [regex]::Replace($content, '(?:\r?\n)+\z', "`r`n")
+
+Write-Utf8BomText -Path $targetPath -Content $content
 Write-Output $targetPath

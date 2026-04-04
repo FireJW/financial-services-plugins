@@ -20,7 +20,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ## Managed Snapshot
 
 <!-- codex:handoff-meta:start -->
-- Last updated: 2026-04-04T15:07:31.6996811+08:00
+- Last updated: 2026-04-04T15:11:49.9221887+08:00
 - Branch: main
 - Working directory: C:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins
 <!-- codex:handoff-meta:end -->
@@ -122,6 +122,10 @@ PowerShell CLI sessions can continue without rediscovering process context.
   result: generated a temporary handoff whose resume commands already used the
   real repo path and branch-local `latest-commit.md` path; the smoke file was
   removed after validation
+- command:
+  `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path .\.claude\handoff\repo-codex-flow-current.md` followed by `git diff --check -- .\.claude\handoff\repo-codex-flow-current.md`
+  result: refreshed the active handoff without reintroducing the EOF blank-line
+  formatting failure
 
 ## Decisions
 
@@ -171,6 +175,9 @@ PowerShell CLI sessions can continue without rediscovering process context.
   `codex-handoff-init.ps1`
   reason: a generated handoff should be directly usable in PowerShell or Claude
   CLI without a manual placeholder cleanup pass
+- decision: normalize trailing newlines inside `codex-handoff-refresh.ps1`
+  reason: refresh should not create a formatting-only diff that blocks
+  workflow-only commits on `git diff --check`
 
 ## Risks / Open Questions
 
@@ -199,7 +206,6 @@ PowerShell CLI sessions can continue without rediscovering process context.
 <!-- codex:handoff-git-status:start -->
 ```text
  M .claude-plugin/marketplace.json
- M .claude/handoff/README.md
  M .claude/handoff/repo-codex-flow-current.md
  M AGENTS.md
  M CLAUDE.md
@@ -231,13 +237,14 @@ PowerShell CLI sessions can continue without rediscovering process context.
  M financial-analysis/skills/autoresearch-info-index/tests/test_news_index.py
  M financial-analysis/skills/autoresearch-info-index/tests/test_wechat_draft_push.py
  M financial-analysis/skills/classic-case-router/references/x-post-evidence.md
- M scripts/codex-handoff-init.ps1
+ M scripts/codex-handoff-refresh.ps1
  M scripts/runtime/run-financial-headless.ps1
 ?? .claude/handoff/stock-analysis-thread-413-migration.md
 ?? .tmp-chrome-cookies.db
 ?? docs/ideation/2026-04-01-local-codex-capability-next-optimizations.md
 ?? docs/plans/2026-04-03-001-feat-opencli-source-adapter-plan.md
 ?? docs/plans/2026-04-04-001-feat-reddit-community-signal-adapter-plan.md
+?? docs/plans/2026-04-04-002-feat-local-obsidian-kb-deployment-plan.md
 ?? docs/solutions/best-practices/x-window-first-session-reuse-2026-04-02.md
 ?? financial-analysis/commands/reddit-bridge.md
 ?? financial-analysis/skills/autoresearch-info-index/examples/article-workflow-style-profile-request.json
@@ -245,6 +252,8 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ?? financial-analysis/skills/autoresearch-info-index/examples/fixtures/reddit-universal-scraper-sample/
 ?? financial-analysis/skills/autoresearch-info-index/examples/hot-topic-reddit-multi-post-request.json
 ?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-export-root-request.json
+?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-inline-comments-request.json
+?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-low-signal-request.json
 ?? financial-analysis/skills/autoresearch-info-index/references/reddit-cluster-aliases.json
 ?? financial-analysis/skills/autoresearch-info-index/references/reddit-community-profiles.json
 ?? financial-analysis/skills/autoresearch-info-index/scripts/article_publish_regression_check.py
@@ -292,4 +301,3 @@ Get-Content .\.context\current\branches\main\latest-commit.md
   - `CODEX_DEVELOPMENT_FLOW.md`
   - `.context/README.md`
   - `.context/prefs/workflow.md`
-
