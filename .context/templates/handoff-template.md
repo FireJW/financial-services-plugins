@@ -8,6 +8,7 @@
 
 - Status:
 - Scope boundary:
+- Local checkpoint note:
 
 ## Managed Snapshot
 
@@ -58,8 +59,13 @@
 ```powershell
 Set-Location 'C:\path\to\repo'
 git status --short
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1
+Get-Content .\.context\current\branches\<branch>\latest-commit.md
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-context-show.ps1
 ```
+
+Open `latest-commit.md` before versioned history when you need the true local
+`HEAD` and durable history may be one refresh behind.
 
 ## References
 

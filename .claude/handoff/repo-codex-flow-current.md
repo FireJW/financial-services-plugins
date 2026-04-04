@@ -20,7 +20,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ## Managed Snapshot
 
 <!-- codex:handoff-meta:start -->
-- Last updated: 2026-04-04T14:58:09.3931618+08:00
+- Last updated: 2026-04-04T15:03:53.1495568+08:00
 - Branch: main
 - Working directory: C:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins
 <!-- codex:handoff-meta:end -->
@@ -28,7 +28,10 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ## Files In Play
 
 - changed:
+  - `.claude/handoff/README.md`
+  - `.claude/handoff/TEMPLATE.md`
   - `.context/README.md`
+  - `.context/templates/handoff-template.md`
   - `CLAUDE.md`
   - `CODEX_DEVELOPMENT_FLOW.md`
   - `.context/prefs/workflow.md`
@@ -55,8 +58,6 @@ PowerShell CLI sessions can continue without rediscovering process context.
 - still pending:
   - decide whether the local HEAD checkpoint should stay implicit inside
     `codex-workflow-status.ps1` or later graduate into its own helper
-  - decide whether the active handoff template should explicitly mention
-    `latest-commit.md` for post-commit continuation
 
 ## Verification Already Run
 
@@ -157,6 +158,10 @@ PowerShell CLI sessions can continue without rediscovering process context.
   self-reference the commit they live inside
   reason: tracked `commits.jsonl` and `latest-summary.md` cannot describe the
   commit that introduces them without recursive refresh churn
+- decision: teach handoff templates and handoff README to point operators at
+  `latest-commit.md` before versioned durable history when resuming
+  reason: the local checkpoint is now the authoritative answer for true local
+  `HEAD`, so new handoffs should make that recovery order explicit
 
 ## Risks / Open Questions
 
@@ -175,8 +180,8 @@ PowerShell CLI sessions can continue without rediscovering process context.
 
 1. Decide whether `latest-commit.md` should remain an implicit side effect of
    `codex-workflow-status.ps1` or get a dedicated helper for narrower use.
-2. Decide whether the handoff template and docs should explicitly tell post-
-   commit operators to open `latest-commit.md` before reading versioned history.
+2. Decide whether review or plan templates also need the same local checkpoint
+   cue, or whether keeping it handoff-only is the right boundary.
 3. Keep future changes thin and avoid collapsing the current split between
    durable history, local checkpoint, and handoff refresh.
 
@@ -185,13 +190,12 @@ PowerShell CLI sessions can continue without rediscovering process context.
 <!-- codex:handoff-git-status:start -->
 ```text
  M .claude-plugin/marketplace.json
+ M .claude/handoff/README.md
+ M .claude/handoff/TEMPLATE.md
  M .claude/handoff/repo-codex-flow-current.md
- M .claude/plan/repo-codex-flow-followups.md
- M .context/README.md
- M .context/prefs/workflow.md
+ M .context/templates/handoff-template.md
  M AGENTS.md
  M CLAUDE.md
- M CODEX_DEVELOPMENT_FLOW.md
  M README.md
  M docs/runtime/OPERATOR-MANUAL.md
  M docs/runtime/README.md
@@ -220,7 +224,6 @@ PowerShell CLI sessions can continue without rediscovering process context.
  M financial-analysis/skills/autoresearch-info-index/tests/test_news_index.py
  M financial-analysis/skills/autoresearch-info-index/tests/test_wechat_draft_push.py
  M financial-analysis/skills/classic-case-router/references/x-post-evidence.md
- M scripts/codex-workflow-status.ps1
  M scripts/runtime/run-financial-headless.ps1
 ?? .claude/handoff/stock-analysis-thread-413-migration.md
 ?? .tmp-chrome-cookies.db

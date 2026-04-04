@@ -15,9 +15,12 @@ Codex or PowerShell CLI session continue without rediscovering context.
    `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-init.ps1 -Name "task-name"`
 2. Refresh the managed snapshot when the branch state changes:
    `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path .\.claude\handoff\task-name.md`
-3. Fill in the current state, changed files, verification, and next actions.
-4. Keep commands copy-pasteable and Windows-friendly.
-5. Reference related plan files under `.claude/plan/` when they exist.
+3. Refresh local status before handoff review:
+   `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1`
+4. Read `.context/current/branches/<branch>/latest-commit.md` when you need the true local `HEAD` and durable history may lag.
+5. Fill in the current state, changed files, verification, and next actions.
+6. Keep commands copy-pasteable and Windows-friendly.
+7. Reference related plan files under `.claude/plan/` when they exist.
 
 ## Minimum Standard
 
@@ -27,5 +30,6 @@ Every handoff should contain:
 - exact files changed or still pending
 - exact verification that already ran
 - refreshed timestamp, branch, and git snapshot
+- an explicit local checkpoint note when `latest-commit.md` matters
 - next steps in priority order
 - resume commands that work from Windows PowerShell
