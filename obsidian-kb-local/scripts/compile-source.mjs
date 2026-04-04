@@ -8,6 +8,7 @@ import {
   findRawNotes,
   findWikiNotes
 } from "../src/compile-pipeline.mjs";
+import { rebuildAutomaticLinks } from "../src/link-graph.mjs";
 
 const args = process.argv.slice(2);
 
@@ -24,23 +25,33 @@ function hasFlag(name) {
   return args.includes(`--${name}`);
 }
 
+function printUsage() {
+  console.error(
+    "Usage: node scripts/compile-source.mjs --topic <topic> [--dry-run|--execute] [--batch-size N] [--skip-links]"
+  );
+  console.error(
+    "   or: node scripts/compile-source.mjs --file <raw-note-path> [--dry-run|--execute] [--skip-links]"
+  );
+}
+
 async function main() {
+  if (hasFlag("help") || hasFlag("h")) {
+    printUsage();
+    process.exit(0);
+  }
+
   const topic = getArg("topic");
   const file = getArg("file");
   const dryRun = hasFlag("dry-run");
   const execute = hasFlag("execute");
+  const skipLinks = hasFlag("skip-links");
   const requestedBatchSize = Number.parseInt(getArg("batch-size") || "10", 10);
   const batchSize = Number.isFinite(requestedBatchSize)
     ? Math.min(Math.max(requestedBatchSize, 1), 10)
     : 10;
 
   if (!topic && !file) {
-    console.error(
-      "Usage: node scripts/compile-source.mjs --topic <topic> [--dry-run|--execute] [--batch-size N]"
-    );
-    console.error(
-      "   or: node scripts/compile-source.mjs --file <raw-note-path> [--dry-run|--execute]"
-    );
+    printUsage();
     process.exit(1);
   }
 
@@ -74,6 +85,7 @@ async function main() {
   }
 
   const failures = [];
+  let successfulCompiles = 0;
 
   for (const rawNote of rawNotes) {
     const existingWikiNotes = findWikiNotes(config.vaultPath, config.machineRoot, {
@@ -112,6 +124,7 @@ async function main() {
         console.error(`Raw note marked as error (mode: ${result.rawWriteMode})`);
         console.error(`Error log: ${result.logFile}`);
       } else {
+        successfulCompiles += 1;
         console.log(`Applied ${result.applyResult.results.length} compile note(s).`);
         console.log(
           `Raw note status: ${result.applyResult.rawStatus} (mode: ${result.applyResult.rawWriteMode})`
@@ -141,6 +154,16 @@ async function main() {
   if (failures.length > 0) {
     console.error(`Compile execution finished with ${failures.length} failure(s).`);
     process.exit(1);
+  }
+
+  if (execute && !skipLinks && successfulCompiles > 0) {
+    const linkResult = rebuildAutomaticLinks(config, {
+      allowFilesystemFallback: true,
+      preferCli: true
+    });
+    console.log(
+      `Automatic links rebuilt for ${linkResult.updated} note(s) out of ${linkResult.scanned} scanned.`
+    );
   }
 }
 

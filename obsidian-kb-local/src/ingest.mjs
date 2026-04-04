@@ -11,7 +11,8 @@ const LANE_MAP = {
   web_article: "web",
   paper: "papers",
   repo: "repos",
-  manual: "manual"
+  manual: "manual",
+  article: "articles"
 };
 
 export function ingestRawNote(config, params, options = {}) {
@@ -20,7 +21,9 @@ export function ingestRawNote(config, params, options = {}) {
     topic,
     sourceUrl = "",
     title,
-    body = ""
+    body = "",
+    capturedAt = null,
+    status = "queued"
   } = params ?? {};
 
   if (typeof sourceType !== "string" || sourceType.trim() === "") {
@@ -50,7 +53,8 @@ export function ingestRawNote(config, params, options = {}) {
     source_type: sourceType,
     topic: topic.trim(),
     source_url: sourceUrl.trim(),
-    status: "queued"
+    captured_at: capturedAt,
+    status
   });
 
   validateRawFrontmatter(parseFrontmatter(`${frontmatter}\n`));

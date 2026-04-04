@@ -1,4 +1,4 @@
-const RAW_SOURCE_TYPES = ["web_article", "paper", "repo", "manual"];
+const RAW_SOURCE_TYPES = ["web_article", "paper", "repo", "manual", "article"];
 const RAW_STATUSES = ["queued", "compiled", "archived", "error"];
 const WIKI_KINDS = ["concept", "entity", "source", "synthesis"];
 const WIKI_REVIEW_STATES = ["draft", "reviewed"];

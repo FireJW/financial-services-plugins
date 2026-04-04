@@ -2,6 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
+import {
+  deduplicateArticleArtifacts,
+  formatArticleCorpusBody,
+  importArticleCorpus,
+  isLikelyFixtureArticleArtifactPath,
+  loadArticleArtifacts
+} from "../src/article-corpus.mjs";
 import { assertWithinBoundary } from "../src/boundary.mjs";
 import { buildBootstrapPlan } from "../src/bootstrap-plan.mjs";
 import { executeCompileForRawNote } from "../src/compile-runner.mjs";
@@ -33,6 +40,12 @@ import {
   callResponsesApi,
   extractResponseOutputText
 } from "../src/llm-provider.mjs";
+import {
+  applyRelatedSection,
+  buildRelatedGraph,
+  collectLinkableNotes,
+  rebuildAutomaticLinks
+} from "../src/link-graph.mjs";
 import { buildObsidianArgs } from "../src/obsidian-cli.mjs";
 import {
   collectRollbackCandidates,
@@ -194,6 +207,27 @@ run("ingest filename sanitization is deterministic", () => {
   assert.equal(sanitizeFilename('<<>>:"/\\\\|?*'), "untitled-note");
 });
 
+run("article corpus fixture filter catches replay and placeholder artifacts", () => {
+  assert.equal(
+    isLikelyFixtureArticleArtifactPath(
+      "C:/tmp/claude-code-article-resume-placeholder-diagnostic/workflow/publish-package.json"
+    ),
+    true
+  );
+  assert.equal(
+    isLikelyFixtureArticleArtifactPath(
+      "C:/tmp/claude-code-secret-features/workflow-rerun-headline-traffic/publish-package.json"
+    ),
+    true
+  );
+  assert.equal(
+    isLikelyFixtureArticleArtifactPath(
+      "C:/tmp/live-ai-learning-article/run/article-publish-result.json"
+    ),
+    false
+  );
+});
+
 run("ingest raw note writes valid frontmatter into lane", () => {
   const tempVault = fs.mkdtempSync(path.join(process.cwd(), ".tmp-ingest-run-tests-"));
 
@@ -235,6 +269,153 @@ run("ingest raw note writes valid frontmatter into lane", () => {
   } finally {
     fs.rmSync(tempVault, { recursive: true, force: true });
   }
+});
+
+run("article corpus loader normalizes publish results", () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-article-corpus-run-tests-"));
+
+  try {
+    const artifactPath = path.join(tempRoot, "article-publish-result.json");
+    fs.writeFileSync(
+      artifactPath,
+      JSON.stringify(
+        {
+          analysis_time: "2026-04-04T10:00:00+08:00",
+          publication_readiness: "ready",
+          review_gate: { status: "approved" },
+          selected_topic: {
+            title: "Claude Code Hidden Features",
+            summary: "Workflow summary",
+            keywords: ["Claude Code", "Agent"],
+            source_items: [
+              {
+                source_name: "X post",
+                source_type: "social",
+                summary: "Social trigger",
+                url: "https://x.com/example/status/1"
+              }
+            ]
+          },
+          publish_package: {
+            title: "Claude Code Hidden Features",
+            digest: "Digest text",
+            keywords: ["Codex", "Claude Code"],
+            content_markdown: "# Claude Code Hidden Features\n\nBody copy."
+          },
+          workflow_stage: {
+            result_path: ".tmp/example/workflow-result.json"
+          }
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const [artifact] = loadArticleArtifacts(artifactPath, {
+      workspaceRoot: tempRoot
+    });
+
+    assert.equal(artifact.title, "Claude Code Hidden Features");
+    assert.equal(artifact.reviewStatus, "approved");
+    assert.match(artifact.contentMarkdown, /Body copy\./);
+    assert.deepEqual(artifact.keywords, ["Codex", "Claude Code", "Agent"]);
+    assert.equal(artifact.sourceItems.length, 1);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+run("article corpus dedup keeps newest artifact", () => {
+  const deduped = deduplicateArticleArtifacts([
+    { title: "Same Title", analysisTimestamp: 10 },
+    { title: "Same Title", analysisTimestamp: 20 },
+    { title: "Different Title", analysisTimestamp: 15 }
+  ]);
+
+  assert.equal(deduped.length, 2);
+  assert.equal(deduped[0].analysisTimestamp, 20);
+});
+
+run("article corpus import writes dedicated article lane notes", () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-article-import-run-tests-"));
+
+  try {
+    const config = {
+      vaultPath: tempRoot,
+      vaultName: "Test Vault",
+      machineRoot: "08-ai-kb",
+      obsidian: {
+        cliCandidates: [],
+        exeCandidates: []
+      }
+    };
+
+    const [result] = importArticleCorpus(
+      config,
+      [
+        {
+          title: "Claude Code Hidden Features",
+          topic: "Claude Code Hidden Features",
+          analysisTime: "2026-04-04T10:00:00+08:00",
+          sourceUrl: "workflow://article-corpus/claude-code-hidden-features",
+          digest: "Digest text",
+          keywords: ["Claude Code"],
+          contentMarkdown: "# Claude Code Hidden Features\n\nBody copy.",
+          publicationReadiness: "ready",
+          reviewStatus: "approved",
+          artifactPath: "C:/tmp/article-publish-result.json",
+          publishPackagePath: "C:/tmp/publish-package.json",
+          workflowResultPath: "C:/tmp/workflow-result.json",
+          feedbackPath: "C:/tmp/ARTICLE-FEEDBACK.md",
+          sourceItems: [
+            {
+              sourceName: "X post",
+              sourceType: "social",
+              summary: "Social trigger",
+              url: "https://x.com/example/status/1"
+            }
+          ]
+        }
+      ],
+      {
+        preferCli: false,
+        allowFilesystemFallback: true
+      }
+    );
+
+    const content = fs.readFileSync(path.join(tempRoot, result.path), "utf8");
+    const frontmatter = parseFrontmatter(content);
+    assert.equal(result.path, "08-ai-kb/10-raw/articles/Claude-Code-Hidden-Features.md");
+    assert.doesNotThrow(() => validateRawFrontmatter(frontmatter));
+    assert.equal(frontmatter.source_type, "article");
+    assert.match(content, /## Corpus Metadata/);
+    assert.match(content, /## Article Markdown/);
+    assert.match(content, /Body copy\./);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+run("article corpus formatter strips duplicate leading title headings", () => {
+  const body = formatArticleCorpusBody({
+    title: "Claude Code Hidden Features",
+    topic: "Claude Code Hidden Features",
+    analysisTime: "2026-04-04T10:00:00+08:00",
+    publicationReadiness: "ready",
+    reviewStatus: "approved",
+    artifactPath: "C:/tmp/article-publish-result.json",
+    publishPackagePath: "",
+    workflowResultPath: "",
+    feedbackPath: "",
+    digest: "",
+    keywords: [],
+    sourceItems: [],
+    contentMarkdown: "# Claude Code Hidden Features\n\nBody copy."
+  });
+
+  assert.doesNotMatch(body, /^# Claude Code Hidden Features/m);
+  assert.match(body, /Body copy\./);
 });
 
 run("compile prompt injects raw content and topic context", () => {
@@ -355,6 +536,62 @@ run("health check reports missing sources and dedup conflicts", () => {
   }
 });
 
+run("link graph relates notes that mention each other or share topic", () => {
+  const graph = buildRelatedGraph(
+    [
+      {
+        relativePath: "08-ai-kb/20-wiki/concepts/Claude-Code.md",
+        title: "Claude Code",
+        topic: "claude code",
+        cleanBody: "Claude Code can drive Chrome.",
+        tokens: new Set(["claude", "code"])
+      },
+      {
+        relativePath: "08-ai-kb/10-raw/articles/Claude-Code-Hidden-Features.md",
+        title: "Claude Code Hidden Features",
+        topic: "claude code",
+        cleanBody: "This article covers Claude Code and Chrome automation.",
+        tokens: new Set(["claude", "code", "chrome"])
+      }
+    ],
+    {
+      maxLinks: 8,
+      minScore: 4
+    }
+  );
+
+  assert.equal(graph.get("08-ai-kb/20-wiki/concepts/Claude-Code.md").length, 1);
+  assert.equal(
+    graph.get("08-ai-kb/10-raw/articles/Claude-Code-Hidden-Features.md").length,
+    1
+  );
+});
+
+run("link graph managed block replacement stays idempotent", () => {
+  const original = "# Test\n\nBody.\n";
+  const updated = applyRelatedSection(original, [
+    {
+      note: {
+        relativePath: "08-ai-kb/20-wiki/concepts/Claude-Code.md",
+        title: "Claude Code"
+      },
+      score: 10
+    }
+  ]);
+  const rerun = applyRelatedSection(updated, [
+    {
+      note: {
+        relativePath: "08-ai-kb/20-wiki/concepts/Claude-Code.md",
+        title: "Claude Code"
+      },
+      score: 10
+    }
+  ]);
+
+  assert.match(updated, /\[\[08-ai-kb\/20-wiki\/concepts\/Claude-Code\|Claude Code\]\]/);
+  assert.equal(updated, rerun);
+});
+
 run("rollback only targets codex-managed notes and preserves human notes", () => {
   const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-rollback-run-tests-"));
 
@@ -382,6 +619,97 @@ run("rollback only targets codex-managed notes and preserves human notes", () =>
         path.join(config.vaultPath, config.machineRoot, "10-raw", "manual", "Human-Note.md")
       ),
       true
+    );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+run("link graph rebuild updates wiki and article notes in the vault", () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-link-graph-run-tests-"));
+
+  try {
+    const config = {
+      vaultPath: path.join(tempRoot, "vault"),
+      vaultName: "Test Vault",
+      machineRoot: "08-ai-kb",
+      obsidian: {
+        cliCandidates: [],
+        exeCandidates: []
+      }
+    };
+
+    const articlePath = path.join(
+      config.vaultPath,
+      config.machineRoot,
+      "10-raw",
+      "articles",
+      "Claude-Code-Hidden-Features.md"
+    );
+    const conceptPath = path.join(
+      config.vaultPath,
+      config.machineRoot,
+      "20-wiki",
+      "concepts",
+      "Claude-Code.md"
+    );
+
+    fs.mkdirSync(path.dirname(articlePath), { recursive: true });
+    fs.mkdirSync(path.dirname(conceptPath), { recursive: true });
+
+    fs.writeFileSync(
+      articlePath,
+      `${generateFrontmatter("raw", {
+        source_type: "article",
+        topic: "Claude Code",
+        source_url: "workflow://article-corpus/claude-code-hidden-features",
+        captured_at: "2026-04-04T10:00:00+08:00",
+        kb_date: "2026-04-04",
+        status: "queued"
+      })}
+
+# Claude Code Hidden Features
+
+Claude Code can drive Chrome and other tools.
+`,
+      "utf8"
+    );
+
+    fs.writeFileSync(
+      conceptPath,
+      `${generateFrontmatter("wiki", {
+        wiki_kind: "concept",
+        topic: "Claude Code",
+        compiled_from: ["08-ai-kb/10-raw/articles/Claude-Code-Hidden-Features.md"],
+        compiled_at: "2026-04-04T12:00:00+08:00",
+        kb_date: "2026-04-04",
+        review_state: "draft",
+        kb_source_count: 1,
+        dedup_key: "claude code::concept::title:claude-code"
+      })}
+
+# Claude Code
+
+Chrome automation is one visible surface.
+`,
+      "utf8"
+    );
+
+    const collected = collectLinkableNotes(config.vaultPath, config.machineRoot);
+    assert.equal(collected.length, 2);
+
+    const result = rebuildAutomaticLinks(config, {
+      preferCli: false,
+      allowFilesystemFallback: true
+    });
+
+    assert.equal(result.updated, 2);
+    const articleContent = fs.readFileSync(articlePath, "utf8");
+    const conceptContent = fs.readFileSync(conceptPath, "utf8");
+    assert.match(articleContent, /\[\[08-ai-kb\/20-wiki\/concepts\/Claude-Code\|Claude Code\]\]/);
+    assert.match(
+      conceptContent,
+      /\[\[08-ai-kb\/10-raw\/articles\/Claude-Code-Hidden-Features\|Claude Code Hidden Features\]\]/
     );
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });

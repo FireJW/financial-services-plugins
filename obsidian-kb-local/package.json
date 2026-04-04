@@ -10,8 +10,11 @@
     "write-smoke": "node scripts/write-smoke.mjs",
     "obsidian": "node scripts/obsidian.mjs",
     "ingest-web": "node scripts/ingest-web.mjs",
+    "import-article-corpus": "node scripts/import-article-corpus.mjs",
+    "sync-article-corpus": "node scripts/sync-article-corpus.mjs",
     "compile-source": "node scripts/compile-source.mjs",
     "apply-compile": "node scripts/apply-compile-output.mjs",
+    "rebuild-links": "node scripts/rebuild-links.mjs",
     "health-check": "node scripts/health-check.mjs",
     "rollback": "node scripts/rollback.mjs",
     "test": "node tests/run-tests.mjs"
