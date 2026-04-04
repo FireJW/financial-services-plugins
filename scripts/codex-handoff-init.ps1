@@ -8,6 +8,11 @@ if (-not $repoRoot) {
   throw "Not inside a git repository."
 }
 
+$branch = (& git branch --show-current 2>$null)
+if (-not $branch) {
+  $branch = "main"
+}
+
 $templatePath = Join-Path $repoRoot ".context\templates\handoff-template.md"
 if (-not (Test-Path $templatePath)) {
   throw "Missing handoff template at $templatePath"
@@ -27,6 +32,8 @@ if (Test-Path $targetPath) {
 
 $content = Get-Content -Raw -LiteralPath $templatePath -Encoding UTF8
 $content = $content.Replace("<task-name>", $safeName)
+$content = $content.Replace("<branch>", $branch)
+$content = $content.Replace("C:\path\to\repo", $repoRoot)
 
 New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
 Set-Content -LiteralPath $targetPath -Value $content -Encoding UTF8

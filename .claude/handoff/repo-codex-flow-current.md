@@ -20,7 +20,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ## Managed Snapshot
 
 <!-- codex:handoff-meta:start -->
-- Last updated: 2026-04-04T15:03:53.1495568+08:00
+- Last updated: 2026-04-04T15:07:31.6996811+08:00
 - Branch: main
 - Working directory: C:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins
 <!-- codex:handoff-meta:end -->
@@ -117,6 +117,11 @@ PowerShell CLI sessions can continue without rediscovering process context.
   `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1`
   result: refreshed `.context/current/branches/main/latest-commit.md` and
   surfaced that durable history is lagging the current `HEAD` by 2 commits
+- command:
+  `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-init.ps1 -Name 'workflow-autofill-smoke'`
+  result: generated a temporary handoff whose resume commands already used the
+  real repo path and branch-local `latest-commit.md` path; the smoke file was
+  removed after validation
 
 ## Decisions
 
@@ -162,6 +167,10 @@ PowerShell CLI sessions can continue without rediscovering process context.
   `latest-commit.md` before versioned durable history when resuming
   reason: the local checkpoint is now the authoritative answer for true local
   `HEAD`, so new handoffs should make that recovery order explicit
+- decision: auto-fill branch and repo-root placeholders during
+  `codex-handoff-init.ps1`
+  reason: a generated handoff should be directly usable in PowerShell or Claude
+  CLI without a manual placeholder cleanup pass
 
 ## Risks / Open Questions
 
@@ -182,8 +191,8 @@ PowerShell CLI sessions can continue without rediscovering process context.
    `codex-workflow-status.ps1` or get a dedicated helper for narrower use.
 2. Decide whether review or plan templates also need the same local checkpoint
    cue, or whether keeping it handoff-only is the right boundary.
-3. Keep future changes thin and avoid collapsing the current split between
-   durable history, local checkpoint, and handoff refresh.
+3. Decide whether plan/review init scripts should auto-fill any environment
+   placeholders, or whether that convenience should stay handoff-only.
 
 ## Git Snapshot
 
@@ -191,9 +200,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ```text
  M .claude-plugin/marketplace.json
  M .claude/handoff/README.md
- M .claude/handoff/TEMPLATE.md
  M .claude/handoff/repo-codex-flow-current.md
- M .context/templates/handoff-template.md
  M AGENTS.md
  M CLAUDE.md
  M README.md
@@ -224,6 +231,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
  M financial-analysis/skills/autoresearch-info-index/tests/test_news_index.py
  M financial-analysis/skills/autoresearch-info-index/tests/test_wechat_draft_push.py
  M financial-analysis/skills/classic-case-router/references/x-post-evidence.md
+ M scripts/codex-handoff-init.ps1
  M scripts/runtime/run-financial-headless.ps1
 ?? .claude/handoff/stock-analysis-thread-413-migration.md
 ?? .tmp-chrome-cookies.db

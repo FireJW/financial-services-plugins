@@ -13,6 +13,8 @@ Codex or PowerShell CLI session continue without rediscovering context.
 
 1. Create a new handoff:
    `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-init.ps1 -Name "task-name"`
+   This auto-fills the current branch and repository path in the generated
+   resume commands.
 2. Refresh the managed snapshot when the branch state changes:
    `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path .\.claude\handoff\task-name.md`
 3. Refresh local status before handoff review:
