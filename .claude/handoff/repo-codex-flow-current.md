@@ -11,16 +11,18 @@ PowerShell CLI sessions can continue without rediscovering process context.
   workflow layer now includes a branch-local operator status board plus durable
   commit-history sync, commit enrichment, and a CLI-readable recent-summary
   helper plus a one-command workflow refresh entrypoint and a dedicated
-  local-only current-HEAD checkpoint helper so a CLI session can resume from
-  one generated checkpoint and a repo-local change ledger instead of reading
-  raw git history first.
+  local-only current-HEAD checkpoint helper. Plan and review artifacts now
+  auto-fill branch-local resume context and checkpoint guidance, and the
+  workflow-refresh command now prints checkpoint refresh as its own step before
+  status so a CLI session can resume from one generated checkpoint and a
+  repo-local change ledger instead of reading raw git history first.
 - Scope boundary: repo-level workflow only. No plugin behavior or quant logic
   was changed.
 
 ## Managed Snapshot
 
 <!-- codex:handoff-meta:start -->
-- Last updated: 2026-04-04T15:57:00.4962142+08:00
+- Last updated: 2026-04-04T16:12:06.4847237+08:00
 - Branch: main
 - Working directory: C:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins
 <!-- codex:handoff-meta:end -->
@@ -57,9 +59,8 @@ PowerShell CLI sessions can continue without rediscovering process context.
 - reviewed:
   - `.context/current/reviews/workflow-review-smoke-2-review.md`
 - still pending:
-  - decide whether plan or review templates should surface the dedicated
-    commit-checkpoint helper, or whether handoff plus status is the right
-    boundary
+  - review the workflow-only diff, stage only the workflow files, and keep the
+    unrelated repo dirt out of the next commit
 
 ## Verification Already Run
 
@@ -137,6 +138,21 @@ PowerShell CLI sessions can continue without rediscovering process context.
   result: generated a temporary handoff whose resume commands already included
   `codex-commit-checkpoint.ps1` and still auto-filled the real repo path; the
   smoke file was removed after validation
+- command:
+  `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-plan-init.ps1 -Name 'workflow-checkpoint-smoke'`
+  result: generated a temporary plan whose operator context and resume commands
+  already used the real repo path, current branch, and default local
+  checkpoint note; the smoke file was removed after validation
+- command:
+  `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-review-init.ps1 -Name 'workflow-checkpoint-smoke'`
+  result: generated a temporary review report whose scope and resume commands
+  already used the real repo path, current branch, and default local
+  checkpoint note; the smoke file was removed after validation
+- command:
+  `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 30 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md`
+  result: refreshed durable history to the latest workflow commit, printed the
+  checkpoint refresh as a dedicated step, refreshed status without rewriting
+  the checkpoint twice, and refreshed this active handoff
 
 ## Decisions
 
@@ -194,6 +210,19 @@ PowerShell CLI sessions can continue without rediscovering process context.
   consume it
   reason: operators sometimes need the true local `HEAD` without rebuilding the
   full status board, and the shared path keeps status and handoffs aligned
+- decision: surface the same checkpoint helper and resume context inside plan
+  and review artifacts
+  reason: these files also become handoff surfaces once work spans multiple CLI
+  sessions, so hiding local-HEAD recovery in handoff-only docs was too narrow
+- decision: make `codex-workflow-refresh.ps1` print checkpoint refresh as its
+  own labeled step while keeping `codex-workflow-status.ps1` self-sufficient by
+  default
+  reason: direct status refresh should stay convenient, but the full refresh
+  chain should be readable in CLI output without implying duplicate work
+- decision: widen durable-history refresh examples from `Count 5` to `Count 30`
+  in resume-oriented commands
+  reason: small counts are fine for ad hoc probes, but they shrink the
+  versioned history window too aggressively for normal resume and handoff flow
 
 ## Risks / Open Questions
 
@@ -207,28 +236,33 @@ PowerShell CLI sessions can continue without rediscovering process context.
   the committed `commits.jsonl`/`latest-summary.md` may lag newer commits until
   operators rerun the refresh flow, even though the local checkpoint now makes
   that lag visible.
+- Durable history is still count-windowed, so ad hoc low-count refreshes should
+  be treated as local probes rather than the default repo-level sync path.
 
 ## Next Steps
 
-1. Decide whether review or plan templates also need the same local checkpoint
-   cue, or whether keeping it handoff-plus-status-only is the right boundary.
-2. Decide whether plan/review init scripts should auto-fill any environment
-   placeholders, or whether that convenience should stay handoff-only.
-3. Decide whether `codex-workflow-refresh.ps1` should surface the checkpoint
-   helper as its own labeled step, or keep it implicit through status refresh.
+1. Review the workflow-only diff and confirm the intended scope is limited to
+   workflow docs, helper scripts, history sync output, and the active handoff.
+2. Stage only the workflow files with `scripts/git-stage-safe.ps1`, keeping the
+   unrelated financial-analysis and runtime changes out of the index.
+3. Run `git diff --cached --check` plus `.\.githooks\check_staged_artifacts.ps1`,
+   then make the next local workflow commit if the staged scope is clean.
 
 ## Git Snapshot
 
 <!-- codex:handoff-git-status:start -->
 ```text
  M .claude-plugin/marketplace.json
- M .claude/handoff/README.md
- M .claude/handoff/TEMPLATE.md
  M .claude/handoff/repo-codex-flow-current.md
+ M .claude/plan/README.md
+ M .claude/plan/TEMPLATE.md
  M .claude/plan/repo-codex-flow-followups.md
  M .context/README.md
+ M .context/history/commits.jsonl
+ M .context/history/commits.md
+ M .context/history/latest-summary.md
  M .context/prefs/workflow.md
- M .context/templates/handoff-template.md
+ M .context/templates/review-report-template.md
  M AGENTS.md
  M CLAUDE.md
  M CODEX_DEVELOPMENT_FLOW.md
@@ -260,6 +294,10 @@ PowerShell CLI sessions can continue without rediscovering process context.
  M financial-analysis/skills/autoresearch-info-index/tests/test_news_index.py
  M financial-analysis/skills/autoresearch-info-index/tests/test_wechat_draft_push.py
  M financial-analysis/skills/classic-case-router/references/x-post-evidence.md
+ M scripts/codex-commit-checkpoint.ps1
+ M scripts/codex-plan-init.ps1
+ M scripts/codex-review-init.ps1
+ M scripts/codex-workflow-refresh.ps1
  M scripts/codex-workflow-status.ps1
  M scripts/runtime/run-financial-headless.ps1
 ?? .claude/handoff/stock-analysis-thread-413-migration.md
@@ -278,6 +316,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-export-root-request.json
 ?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-inline-comments-request.json
 ?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-low-signal-request.json
+?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-valueinvesting-request.json
 ?? financial-analysis/skills/autoresearch-info-index/references/reddit-cluster-aliases.json
 ?? financial-analysis/skills/autoresearch-info-index/references/reddit-community-profiles.json
 ?? financial-analysis/skills/autoresearch-info-index/scripts/article_publish_regression_check.py
@@ -297,7 +336,6 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ?? financial-analysis/skills/autoresearch-info-index/tests/test_article_workflow_canonical_snapshots.py
 ?? financial-analysis/skills/autoresearch-info-index/tests/test_reddit_bridge.py
 ?? obsidian-kb-local/
-?? scripts/codex-commit-checkpoint.ps1
 ?? scripts/safe_automation_cleanup.py
 ```
 <!-- codex:handoff-git-status:end -->

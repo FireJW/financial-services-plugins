@@ -12,6 +12,8 @@ Use this directory for task plans that should survive a single chat session.
 
 1. Create a new plan from the template:
    `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-plan-init.ps1 -Name "task-name"`
+   This auto-fills the current branch, repository path, resume commands, and a
+   default local checkpoint note.
 2. Fill in the scope, target files, execution steps, and verification.
 3. Update the file as decisions change.
 4. Reference the plan path in future handoff documents.

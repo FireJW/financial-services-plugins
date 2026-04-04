@@ -64,6 +64,9 @@ Get-Content .\.context\prefs\workflow.md
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-plan-init.ps1 -Name "example-task"
 ```
 
+The plan and review helpers prefill the current branch, working directory,
+resume commands, and a default local checkpoint note.
+
 ### Show The Current Branch Notes
 
 ```powershell
@@ -96,6 +99,8 @@ Get-Content .\.context\prefs\workflow.md
 
 This reruns recent history sync, recent-summary generation, operator status
 refresh, and active handoff refresh in one command.
+It now prints the local commit checkpoint as its own step before status so the
+refresh chain is easier to follow from PowerShell output.
 
 ### Refresh The Local Commit Checkpoint
 

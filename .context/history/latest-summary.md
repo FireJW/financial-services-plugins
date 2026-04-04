@@ -7,12 +7,20 @@ Generated from commits.jsonl.
 | Item | Value |
 |------|-------|
 | Selected commits | 30 |
-| Enriched commits | 1 |
+| Enriched commits | 0 |
 
 ## Recent Commits
 
 | Date | Commit | Summary | Context Id |
 |------|--------|---------|------------|
+| 2026-04-04 | a1556be | feat(workflow): prefill handoff checkpoint notes |  |
+| 2026-04-04 | b7a48c0 | feat(workflow): add dedicated head checkpoint helper |  |
+| 2026-04-04 | e8cdea8 | fix(workflow): stop handoff refresh eof churn |  |
+| 2026-04-04 | a4bb083 | feat(workflow): autofill handoff resume context |  |
+| 2026-04-04 | d881bdc | docs(workflow): surface local checkpoint in handoffs |  |
+| 2026-04-04 | 988299a | feat(workflow): add local head checkpoint |  |
+| 2026-04-04 | b8898a6 | docs(workflow): document windows hook fallback |  |
+| 2026-04-04 | 40ce727 | feat(workflow): add codex resume checkpoint helpers |  |
 | 2026-04-04 | c014105 | feat(financial-analysis): add opencli source adapter workflows |  |
 | 2026-04-03 | 77352ca | feat(stock-watch): add multilingual watchlist workflow reports |  |
 | 2026-04-03 | bb7ebde | feat(runtime): add gs quant workflow bundle support |  |
@@ -35,17 +43,7 @@ Generated from commits.jsonl.
 | 2026-03-31 | 7fdd9be | fix(financial-analysis): respect explicit agent reach disable flag |  |
 | 2026-03-31 | 201a193 | feat(financial-analysis): add agent reach bridge and deploy checks |  |
 | 2026-03-31 | fa3a4d4 | fix(financial-analysis): restore wechat draft runtime helpers |  |
-| 2026-03-31 | 7b30b32 | feat(financial-analysis): reset wechat public writer flow |  |
-| 2026-03-30 | 46d81f3 | feat(financial-analysis): harden live wechat draft publishing |  |
-| 2026-03-30 | d04356a | Remove WeChat export artifacts and harden staged file guards |  |
-| 2026-03-30 | 2f29ff3 | Add Codex workflow planning and handoff helpers | repo-codex-flow-followups |
-| 2026-03-30 | 4ec3c47 | Add WeChat article publishing workflow and review gates |  |
-| 2026-03-29 | 6dd0692 | Add Codex workflow context and decision logging guides |  |
-| 2026-03-28 | 8369008 | Add monthly one-sheet for XLK and XLE regime checks |  |
-| 2026-03-27 | e8983f9 | Expand AGENTS.md with A-share research routing guidance |  |
 
 ## Enriched Notes
 
-| Commit | Decisions | Bugs | Risk |
-|--------|-----------|------|------|
-| 2f29ff3 | add reusable plan and handoff scaffolding for CLI continuation |  | operators can still drift if generated handoffs are not refreshed before pausing |
+No enriched commit rows in the selected window.

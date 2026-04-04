@@ -1,3 +1,7 @@
+param(
+  [switch]$SkipCheckpointRefresh
+)
+
 function Write-Utf8Bom {
   param(
     [string]$Path,
@@ -50,7 +54,12 @@ if (-not (Test-Path -LiteralPath $checkpointScript)) {
   throw "Missing commit checkpoint script: $checkpointScript"
 }
 
-$checkpointState = & $checkpointScript -PassThru
+$checkpointArgs = @{ PassThru = $true }
+if ($SkipCheckpointRefresh) {
+  $checkpointArgs.SkipWrite = $true
+}
+
+$checkpointState = & $checkpointScript @checkpointArgs
 if (-not $checkpointState) {
   throw "Commit checkpoint refresh failed."
 }
@@ -168,9 +177,9 @@ $lines += ".\scripts\codex-workflow-status.ps1"
 $lines += ("Get-Content .\.context\current\branches\{0}\status.md" -f $branch)
 $lines += ("Get-Content .\.context\current\branches\{0}\latest-commit.md" -f $branch)
 if (Test-Path $handoffPath) {
-  $lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 5 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md"
+  $lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 30 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md"
 } else {
-  $lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 5 -SkipHandoff"
+  $lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 30 -SkipHandoff"
 }
 if (Test-Path $handoffPath) {
   $lines += "Get-Content .\.claude\handoff\repo-codex-flow-current.md"
@@ -180,11 +189,11 @@ if (Test-Path $planPath) {
 }
 if (Test-Path $historyPath) {
   $lines += "Get-Content .\.context\history\commits.md"
-  $lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-sync.ps1 -Count 5"
+  $lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-sync.ps1 -Count 30"
 }
 if (Test-Path $latestSummaryPath) {
   $lines += "Get-Content .\.context\history\latest-summary.md"
-  $lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-release-summary.ps1 -Count 5"
+  $lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-release-summary.ps1 -Count 30"
 }
 $lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1"
 $lines += '```'

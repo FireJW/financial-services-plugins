@@ -35,6 +35,7 @@ $scriptsDir = Join-Path $repoRoot "scripts"
 
 $syncScript = Join-Path $scriptsDir "codex-commit-history-sync.ps1"
 $summaryScript = Join-Path $scriptsDir "codex-release-summary.ps1"
+$checkpointScript = Join-Path $scriptsDir "codex-commit-checkpoint.ps1"
 $statusScript = Join-Path $scriptsDir "codex-workflow-status.ps1"
 $handoffScript = Join-Path $scriptsDir "codex-handoff-refresh.ps1"
 
@@ -56,7 +57,8 @@ if (-not $SkipHandoff) {
 
 Invoke-WorkflowScript -Label "Sync commit history" -ScriptPath $syncScript -Arguments @{ Count = $Count }
 Invoke-WorkflowScript -Label "Generate recent summary" -ScriptPath $summaryScript -Arguments @{ Count = $Count }
-Invoke-WorkflowScript -Label "Refresh workflow status" -ScriptPath $statusScript
+Invoke-WorkflowScript -Label "Refresh local commit checkpoint" -ScriptPath $checkpointScript
+Invoke-WorkflowScript -Label "Refresh workflow status" -ScriptPath $statusScript -Arguments @{ SkipCheckpointRefresh = $true }
 
 if ($resolvedHandoffPath) {
   Invoke-WorkflowScript -Label "Refresh handoff" -ScriptPath $handoffScript -Arguments @{ Path = $resolvedHandoffPath }

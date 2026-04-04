@@ -8,6 +8,11 @@ if (-not $repoRoot) {
   throw "Not inside a git repository."
 }
 
+$branch = (& git branch --show-current 2>$null)
+if (-not $branch) {
+  $branch = "main"
+}
+
 $templatePath = Join-Path $repoRoot ".context\templates\review-report-template.md"
 if (-not (Test-Path $templatePath)) {
   throw "Missing review template at $templatePath"
@@ -27,6 +32,12 @@ if (Test-Path $targetPath) {
 
 $content = Get-Content -Raw -LiteralPath $templatePath -Encoding UTF8
 $content = $content.Replace("<task-name>", $safeName)
+$content = $content.Replace("<branch>", $branch)
+$content = $content.Replace("C:\path\to\repo", $repoRoot)
+$content = $content.Replace(
+  "- Local checkpoint note:",
+  '- Local checkpoint note: refresh `scripts/codex-commit-checkpoint.ps1` before trusting versioned durable history when local HEAD matters.'
+)
 
 New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
 Set-Content -LiteralPath $targetPath -Value $content -Encoding UTF8

@@ -94,6 +94,9 @@ PowerShell helpers:
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-enrich.ps1 -Commit <hash> -ContextId "task-id" -Decisions "why this changed" -Risk "what could drift"`
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-release-summary.ps1 -Count 10`
 
+The plan, review, and handoff init helpers should prefill the current branch,
+working directory, resume commands, and a default local checkpoint note.
+
 ## Status Check
 
 Before resuming after a pause, prefer:
@@ -111,6 +114,8 @@ is readable even when versioned durable history is one refresh behind.
 The status helper writes a local snapshot under
 `.context/current/branches/<branch>/status.md` and also refreshes the same
 commit checkpoint through the dedicated helper.
+The workflow-refresh helper now prints the commit-checkpoint refresh as its own
+step before status so the broader refresh chain is visible in CLI output.
 
 ## Durable History Flow
 

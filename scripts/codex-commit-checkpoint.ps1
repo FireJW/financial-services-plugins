@@ -1,5 +1,6 @@
 param(
-  [switch]$PassThru
+  [switch]$PassThru,
+  [switch]$SkipWrite
 )
 
 function Write-Utf8Bom {
@@ -101,7 +102,7 @@ $statusDir = Join-Path $repoRoot ".context\current\branches\$branch"
 $commitCheckpointPath = Join-Path $statusDir "latest-commit.md"
 $historyJsonlPath = Join-Path $repoRoot ".context\history\commits.jsonl"
 $commitCheckpointLabel = ".context/current/branches/$branch/latest-commit.md"
-$refreshCommand = "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 5 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md"
+$refreshCommand = "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 30 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md"
 
 New-Item -ItemType Directory -Force -Path $statusDir | Out-Null
 
@@ -130,7 +131,9 @@ if ($durableHistoryState.coverage -eq "lagging") {
   $checkpointLines += ""
 }
 
-Write-Utf8Bom -Path $commitCheckpointPath -Lines $checkpointLines
+if (-not $SkipWrite) {
+  Write-Utf8Bom -Path $commitCheckpointPath -Lines $checkpointLines
+}
 
 $result = [pscustomobject]@{
   repo_root = $repoRoot
@@ -155,4 +158,8 @@ if ($PassThru) {
 
 $checkpointLines | Write-Output
 Write-Output ""
-Write-Output ("Checkpoint file: {0}" -f $commitCheckpointPath)
+if ($SkipWrite) {
+  Write-Output ("Checkpoint write skipped: {0}" -f $commitCheckpointPath)
+} else {
+  Write-Output ("Checkpoint file: {0}" -f $commitCheckpointPath)
+}

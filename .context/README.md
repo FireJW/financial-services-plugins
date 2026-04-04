@@ -47,7 +47,8 @@ PowerShell CLI session, or another coding environment.
 3. Use `../CODEX_DEVELOPMENT_FLOW.md` as the repository-level operator guide.
 4. Keep branch-local notes in `current/branches/<branch>/session.log`.
 5. Refresh branch-local commit checkpoints with `../scripts/codex-commit-checkpoint.ps1` and keep the generated file in `current/branches/<branch>/latest-commit.md`.
-6. Use `templates/review-report-template.md` for structured review notes.
+6. Use `templates/review-report-template.md` for structured review notes with
+   branch-local resume context and local checkpoint guidance.
 7. Use `templates/handoff-template.md` when another CLI session needs to resume.
 8. Use branch-local status snapshots in `current/branches/<branch>/status.md`
    as a resumable local checkpoint.
