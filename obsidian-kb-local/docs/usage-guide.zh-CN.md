@@ -169,17 +169,21 @@ cmd /c "cd obsidian-kb-local && npm run doctor"
 - Vault 正常
 - Machine root 正常
 - Desktop app 检测正常
+- Obsidian command entrypoint 已检测到
 - LLM provider 正常
-- Obsidian CLI 仍显示 `not found`
 
-所以当前真实状态更接近：
+当前这台机器上，`doctor` 已能识别到 Obsidian 命令入口。
 
-- 优先尝试走 Obsidian CLI
-- 如果 CLI 没注册成功，就回退到 filesystem 写入
+你可以把下面两种结果都视为可用：
 
-这不会阻止 raw / wiki / 双链的生成，但会影响“直接调用 Obsidian CLI”的那条路径。
+- 检测到 `registered shim`
+- 检测到 `desktop executable fallback`
 
-如果你确认已经在 Obsidian 里注册过 CLI，通常再做两件事：
+前者表示系统里有更标准的 CLI/shim 入口，后者表示控制平面直接使用桌面可执行文件作为命令入口。
+
+这两种模式都可以正常驱动 raw / wiki / 双链流程。
+
+如果你以后又看到 `not found`，再按下面两步排查：
 
 1. 彻底重开一个新终端
 2. 再跑一次 `npm run doctor`

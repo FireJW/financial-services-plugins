@@ -24,9 +24,9 @@ const checks = [
     detail: env.exePath ?? "not configured"
   },
   {
-    label: "Obsidian CLI registered",
+    label: "Obsidian command entrypoint",
     ok: Boolean(env.cliCommand),
-    detail: env.cliCommand ?? "not found"
+    detail: formatCliDetail(env)
   },
   {
     label: "Codex LLM provider ready",
@@ -43,7 +43,7 @@ for (const check of checks) {
 if (!env.cliCommand) {
   if (env.exePath) {
     console.log("\nNote:");
-    console.log("Desktop app path is configured. The remaining blocker is CLI registration.");
+    console.log("Desktop app path is configured. The remaining blocker is command entrypoint detection.");
   }
 
   console.log("\nNext step:");
@@ -76,4 +76,24 @@ function resolveProviderCheck() {
       detail: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+function formatCliDetail(env) {
+  if (!env.cliCommand) {
+    return "not found";
+  }
+
+  if (env.cliMode === "desktop-executable") {
+    return `${env.cliCommand} (desktop executable fallback)`;
+  }
+
+  if (env.cliMode === "registered-shim") {
+    return `${env.cliCommand} (registered shim)`;
+  }
+
+  if (env.cliMode === "path-candidate") {
+    return `${env.cliCommand} (configured path candidate)`;
+  }
+
+  return env.cliCommand;
 }

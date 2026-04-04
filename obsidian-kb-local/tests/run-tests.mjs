@@ -51,7 +51,7 @@ import {
   collectLinkableNotes,
   rebuildAutomaticLinks
 } from "../src/link-graph.mjs";
-import { buildObsidianArgs } from "../src/obsidian-cli.mjs";
+import { buildObsidianArgs, resolveObsidianEnvironment } from "../src/obsidian-cli.mjs";
 import {
   collectRollbackCandidates,
   executeRollback,
@@ -121,6 +121,79 @@ run("vault selector is prepended first", () => {
   const args = buildObsidianArgs(config, ["read", "path=README.md"]);
   assert.equal(args[0], `vault=${config.vaultName}`);
   assert.equal(args[1], "read");
+});
+
+run("resolveObsidianEnvironment prefers registered command when available", () => {
+  const env = resolveObsidianEnvironment(
+    {
+      obsidian: {
+        cliCandidates: ["obsidian"],
+        exeCandidates: ["C:\\Obsidian\\Obsidian.exe"]
+      }
+    },
+    {
+      commandExists(command) {
+        return command === "obsidian";
+      },
+      pathExists(candidate) {
+        return candidate === "C:\\Obsidian\\Obsidian.exe";
+      }
+    }
+  );
+
+  assert.equal(env.cliCommand, "obsidian");
+  assert.equal(env.cliMode, "registered-command");
+  assert.equal(env.exePath, "C:\\Obsidian\\Obsidian.exe");
+});
+
+run("resolveObsidianEnvironment falls back to configured desktop executable", () => {
+  const env = resolveObsidianEnvironment(
+    {
+      obsidian: {
+        cliCandidates: ["obsidian"],
+        exeCandidates: ["C:\\Obsidian\\Obsidian.exe"]
+      }
+    },
+    {
+      commandExists() {
+        return false;
+      },
+      pathExists(candidate) {
+        return candidate === "C:\\Obsidian\\Obsidian.exe";
+      }
+    }
+  );
+
+  assert.equal(env.cliCommand, "C:\\Obsidian\\Obsidian.exe");
+  assert.equal(env.cliMode, "desktop-executable");
+  assert.equal(env.exePath, "C:\\Obsidian\\Obsidian.exe");
+});
+
+run("resolveObsidianEnvironment infers executable from PATH hint", () => {
+  const inferredPath = "C:\\Users\\rickylu\\AppData\\Local\\Programs\\obsidian\\Obsidian.exe";
+  const env = resolveObsidianEnvironment(
+    {
+      obsidian: {
+        cliCandidates: ["obsidian"],
+        exeCandidates: []
+      }
+    },
+    {
+      env: {
+        Path: "C:\\WINDOWS\\system32;C:\\Users\\rickylu\\AppData\\Local\\Programs\\obsidian"
+      },
+      commandExists() {
+        return false;
+      },
+      pathExists(candidate) {
+        return candidate === inferredPath;
+      }
+    }
+  );
+
+  assert.equal(env.cliCommand, inferredPath);
+  assert.equal(env.cliMode, "desktop-executable");
+  assert.equal(env.exePath, inferredPath);
 });
 
 run("frontmatter generation uses v2 fields", () => {

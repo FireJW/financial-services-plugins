@@ -1,5 +1,22 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
+
+const COMMON_OBSIDIAN_COMMANDS = [
+  "obsidian",
+  "Obsidian",
+  "obsidian.exe",
+  "Obsidian.exe",
+  "obsidian.com",
+  "Obsidian.com"
+];
+
+const COMMON_OBSIDIAN_EXECUTABLES = [
+  "Obsidian.exe",
+  "obsidian.exe",
+  "Obsidian.com",
+  "obsidian.com"
+];
 
 function firstConfiguredCandidate(candidates) {
   return candidates.find(
@@ -7,42 +24,154 @@ function firstConfiguredCandidate(candidates) {
   ) ?? null;
 }
 
-function commandExists(command) {
+function commandExists(command, options = {}) {
+  const injectedCommandExists = options.commandExists;
+  if (typeof injectedCommandExists === "function") {
+    return injectedCommandExists(command);
+  }
+
   const result = spawnSync("cmd", ["/c", "where", command], { encoding: "utf8" });
   return result.status === 0;
 }
 
-function chooseCliCandidate(config) {
-  for (const candidate of config.obsidian.cliCandidates) {
-    if (candidate.includes("\\") || candidate.includes("/")) {
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
+function pathExists(candidate, options = {}) {
+  const injectedPathExists = options.pathExists;
+  if (typeof injectedPathExists === "function") {
+    return injectedPathExists(candidate);
+  }
+
+  try {
+    return fs.existsSync(candidate);
+  } catch {
+    return false;
+  }
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter((value) => typeof value === "string" && value.trim() !== ""))];
+}
+
+function looksLikePath(candidate) {
+  return (
+    typeof candidate === "string" &&
+    (candidate.includes("\\") || candidate.includes("/") || /^[A-Za-z]:/.test(candidate))
+  );
+}
+
+function splitPathEntries(rawPath) {
+  return String(rawPath ?? "")
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function inferInstallPathCandidates(options = {}) {
+  const env = options.env ?? process.env;
+  const pathEntries = splitPathEntries(env.Path ?? env.PATH);
+  const candidates = [];
+
+  for (const entry of pathEntries) {
+    if (path.basename(entry).toLowerCase() !== "obsidian") {
       continue;
     }
-    if (commandExists(candidate)) {
+
+    for (const executable of COMMON_OBSIDIAN_EXECUTABLES) {
+      candidates.push(path.join(entry, executable));
+    }
+  }
+
+  return uniqueStrings(candidates);
+}
+
+function normalizePath(candidate) {
+  return typeof candidate === "string" ? candidate.replace(/\//g, "\\").toLowerCase() : "";
+}
+
+function samePath(left, right) {
+  return normalizePath(left) !== "" && normalizePath(left) === normalizePath(right);
+}
+
+function chooseCliCandidate(config, options = {}) {
+  const configuredCandidates = Array.isArray(config.obsidian?.cliCandidates)
+    ? config.obsidian.cliCandidates
+    : [];
+  const configuredExeCandidates = Array.isArray(config.obsidian?.exeCandidates)
+    ? config.obsidian.exeCandidates
+    : [];
+  const fallbackPathCandidates = [];
+
+  for (const candidate of uniqueStrings([...configuredCandidates, ...COMMON_OBSIDIAN_COMMANDS])) {
+    if (looksLikePath(candidate)) {
+      if (pathExists(candidate, options)) {
+        return candidate;
+      }
+      fallbackPathCandidates.push(candidate);
+      continue;
+    }
+
+    if (commandExists(candidate, options)) {
       return candidate;
     }
   }
-  return null;
+
+  for (const candidate of uniqueStrings([
+    ...inferInstallPathCandidates(options),
+    ...configuredExeCandidates
+  ])) {
+    if (pathExists(candidate, options)) {
+      return candidate;
+    }
+    fallbackPathCandidates.push(candidate);
+  }
+
+  return firstConfiguredCandidate(fallbackPathCandidates);
 }
 
-function chooseExeCandidate(config) {
-  for (const candidate of config.obsidian.exeCandidates) {
-    if (fs.existsSync(candidate)) {
+function chooseExeCandidate(config, options = {}) {
+  const configuredCandidates = Array.isArray(config.obsidian?.exeCandidates)
+    ? config.obsidian.exeCandidates
+    : [];
+  const inferredCandidates = inferInstallPathCandidates(options);
+
+  for (const candidate of uniqueStrings([...configuredCandidates, ...inferredCandidates])) {
+    if (pathExists(candidate, options)) {
       return candidate;
     }
   }
 
   // Sandboxed runtimes can hide AppData installs from fs.existsSync even when
   // the configured path is correct on the host machine.
-  return firstConfiguredCandidate(config.obsidian.exeCandidates);
+  return firstConfiguredCandidate([...configuredCandidates, ...inferredCandidates]);
 }
 
-export function resolveObsidianEnvironment(config) {
+function resolveCliMode(cliCommand, exePath) {
+  if (!cliCommand) {
+    return null;
+  }
+
+  if (!looksLikePath(cliCommand)) {
+    return "registered-command";
+  }
+
+  if (samePath(cliCommand, exePath)) {
+    return "desktop-executable";
+  }
+
+  if (/\.com$/i.test(cliCommand)) {
+    return "registered-shim";
+  }
+
+  return "path-candidate";
+}
+
+export function resolveObsidianEnvironment(config, options = {}) {
+  const exePath = chooseExeCandidate(config, options);
+  const cliCommand = chooseCliCandidate(config, options);
+
   return {
-    cliCommand: chooseCliCandidate(config),
-    exePath: chooseExeCandidate(config)
+    cliCommand,
+    exePath,
+    cliMode: resolveCliMode(cliCommand, exePath)
   };
 }
 
@@ -51,7 +180,7 @@ export function buildObsidianArgs(config, commandArgs) {
 }
 
 export function runObsidian(config, commandArgs, options = {}) {
-  const env = resolveObsidianEnvironment(config);
+  const env = resolveObsidianEnvironment(config, options);
   if (!env.cliCommand) {
     const exeHint = env.exePath
       ? `Detected desktop app at ${env.exePath}, but CLI is not registered yet.`
