@@ -35,6 +35,7 @@ PowerShell CLI session, or another coding environment.
 `-- history/
     |-- commits.jsonl
     |-- commits.md
+    |-- latest-summary.md
     `-- archives/
         `-- .gitkeep
 ```
@@ -47,8 +48,14 @@ PowerShell CLI session, or another coding environment.
 4. Keep branch-local notes in `current/branches/<branch>/session.log`.
 5. Use `templates/review-report-template.md` for structured review notes.
 6. Use `templates/handoff-template.md` when another CLI session needs to resume.
-7. Preserve durable decisions in `history/`.
-8. Treat this directory as repository infrastructure, not task output.
+7. Use branch-local status snapshots in `current/branches/<branch>/status.md`
+   as a resumable local checkpoint.
+8. Sync durable commit history into `history/` after meaningful workflow commits.
+9. Enrich important commit rows when raw git subjects are not enough context.
+10. Refresh `history/latest-summary.md` when recent change context should be
+    easy to skim from CLI.
+11. Preserve durable decisions in `history/`.
+12. Treat this directory as repository infrastructure, not task output.
 
 ## Commit Boundaries
 
@@ -72,6 +79,11 @@ This folder complements, not replaces:
 - `scripts/codex-review-init.ps1`
 - `scripts/codex-handoff-init.ps1`
 - `scripts/codex-handoff-refresh.ps1`
+- `scripts/codex-workflow-refresh.ps1`
+- `scripts/codex-workflow-status.ps1`
+- `scripts/codex-commit-history-sync.ps1`
+- `scripts/codex-commit-history-enrich.ps1`
+- `scripts/codex-release-summary.ps1`
 - `scripts/git-stage-safe.ps1`
 
 If rules conflict, prefer the more specific repository safety rule.

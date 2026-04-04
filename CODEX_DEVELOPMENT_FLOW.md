@@ -88,6 +88,51 @@ Get-Content .\.context\prefs\workflow.md
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path .\.claude\handoff\example-task.md
 ```
 
+### Refresh The Workflow Checkpoint
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 10 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md
+```
+
+This reruns recent history sync, recent-summary generation, operator status
+refresh, and active handoff refresh in one command.
+
+### Show Operator Status
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1
+```
+
+This prints a current status board and refreshes a local snapshot at
+`.context/current/branches/<branch>/status.md`.
+
+### Sync Commit History
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-sync.ps1 -Count 10
+```
+
+This refreshes `.context/history/commits.jsonl` and `.context/history/commits.md`
+from recent git history while preserving durable manual metadata fields.
+
+### Enrich A Commit Entry
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-enrich.ps1 -Commit 2f29ff3 -ContextId "repo-codex-flow-followups" -Decisions "why this changed" -Risk "what could drift"
+```
+
+This updates durable metadata for an already-synced commit without hand-editing
+`.context/history/commits.jsonl`.
+
+### Generate A Recent Summary
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-release-summary.ps1 -Count 10
+```
+
+This writes `.context/history/latest-summary.md` so the next CLI session can
+skim recent durable changes without reading the full commit ledger first.
+
 ## Repo-Specific Defaults
 
 - Prefer repository-native workflows over generic scraping.
@@ -112,6 +157,12 @@ If you are extending this system later, do it in this order:
 2. use the logging helpers during meaningful decisions
 3. add task plans to `.claude/plan/` for multi-step work
 4. leave a `.claude/handoff/` note when another CLI session needs to resume work
-5. refresh the handoff before pausing if the git snapshot or next steps changed
-6. use structured review reports when a change needs explicit sign-off
-7. only then consider more automation, such as commit summarizers
+5. prefer `scripts/codex-workflow-refresh.ps1` before pausing when history,
+   status, and handoff all changed together
+6. use `scripts/codex-workflow-status.ps1` before resuming after a pause
+7. sync `.context/history/` after meaningful commits when durable history matters
+8. enrich important commit rows when raw subjects are not enough context
+9. regenerate `.context/history/latest-summary.md` when recent change context
+   should be resumable from CLI
+10. use structured review reports when a change needs explicit sign-off
+11. only then consider more automation

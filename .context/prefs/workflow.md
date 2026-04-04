@@ -87,6 +87,36 @@ PowerShell helpers:
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-review-init.ps1 -Name "task-name"`
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-init.ps1 -Name "task-name"`
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path ".\.claude\handoff\task-name.md"`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 10 -HandoffPath ".\.claude\handoff\task-name.md"`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-sync.ps1 -Count 10`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-enrich.ps1 -Commit <hash> -ContextId "task-id" -Decisions "why this changed" -Risk "what could drift"`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-release-summary.ps1 -Count 10`
+
+## Status Check
+
+Before resuming after a pause, prefer:
+
+1. `scripts/codex-workflow-refresh.ps1 -Count 10 -HandoffPath ".\.claude\handoff\task-name.md"` when you need every checkpoint regenerated
+2. `scripts/codex-workflow-status.ps1` for a lighter snapshot refresh
+3. the active handoff under `.claude/handoff/`
+4. the branch-local session log under `.context/current/branches/<branch>/session.log`
+
+The status helper writes a local snapshot under
+`.context/current/branches/<branch>/status.md` so the next CLI session can
+reopen one checkpoint before scanning multiple workflow docs.
+
+## Durable History Flow
+
+When repository workflow or operator-facing behavior changes:
+
+1. prefer `scripts/codex-workflow-refresh.ps1` when the default refresh chain is enough
+2. sync the recent commits into `.context/history/commits.jsonl`
+3. enrich any commit rows that need durable `context_id`, `decisions`, `bugs`,
+   or `risk`
+4. regenerate `.context/history/latest-summary.md`
+5. review `.context/history/commits.md` for CLI readability
+6. refresh the active handoff if the next operator will depend on the new state
 
 ## Staging And Commit Safety
 

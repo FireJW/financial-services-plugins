@@ -35,6 +35,11 @@ from the desktop app and from Windows PowerShell CLI sessions.
 - [x] Plan and review helpers are present and runnable
 - [x] Handoff creation is standardized for future sessions
 - [x] Handoff refresh is standardized for future sessions
+- [x] A local operator status board can be refreshed in one PowerShell command
+- [x] Recent commit history can be synced into `.context/history/`
+- [x] Commit enrichment can be updated from PowerShell without hand-editing JSONL
+- [x] A CLI-friendly recent summary can be regenerated from durable history
+- [x] A one-command refresh helper can rebuild history, summary, status, and handoff together
 - [x] Follow-up work is concrete enough to continue without rediscovery
 
 ## Target Files
@@ -51,6 +56,11 @@ from the desktop app and from Windows PowerShell CLI sessions.
 | `scripts/codex-review-init.ps1` | create review files | add |
 | `scripts/codex-handoff-init.ps1` | create handoff files | add |
 | `scripts/codex-handoff-refresh.ps1` | refresh git snapshot in handoff files | add |
+| `scripts/codex-workflow-status.ps1` | show current operator status and resume cues | add |
+| `scripts/codex-commit-history-sync.ps1` | sync durable commit history | add |
+| `scripts/codex-commit-history-enrich.ps1` | enrich durable commit metadata | add |
+| `scripts/codex-release-summary.ps1` | regenerate recent summary from durable history | add |
+| `scripts/codex-workflow-refresh.ps1` | rerun the default checkpoint refresh chain | add |
 
 ## Execution Steps
 
@@ -58,7 +68,12 @@ from the desktop app and from Windows PowerShell CLI sessions.
 2. Add missing plan, review, and handoff scaffolding.
 3. Update documentation to point at the actual Windows PowerShell commands.
 4. Smoke-test each helper with a throwaway task name.
-5. Refresh the handoff so the next session can continue without rediscovery.
+5. Add a branch-local operator status helper.
+6. Add a durable commit-history sync helper.
+7. Add a durable commit-history enrichment helper.
+8. Add a CLI-friendly recent summary helper.
+9. Add a one-command workflow refresh helper.
+10. Refresh the handoff so the next session can continue without rediscovery.
 
 ## Verification
 
@@ -69,6 +84,11 @@ from the desktop app and from Windows PowerShell CLI sessions.
 | `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-review-init.ps1 -Name "workflow-smoke-test"` | verify review helper works | review file is created |
 | `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-init.ps1 -Name "workflow-smoke-test"` | verify handoff helper works | handoff file is created |
 | `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path .\.claude\handoff\workflow-smoke-test.md` | verify handoff refresh works | handoff file gets a fresh managed snapshot |
+| `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1` | verify operator status helper works | a readable status board is printed and `.context/current/branches/<branch>/status.md` is refreshed |
+| `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-sync.ps1 -Count 5` | verify durable history sync works | `.context/history/commits.jsonl` and `.context/history/commits.md` are refreshed |
+| `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-enrich.ps1 -Commit 2f29ff3 -ContextId "repo-codex-flow-followups"` | verify durable history enrichment works | the matching commit row is updated in `.context/history/commits.jsonl` |
+| `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-release-summary.ps1 -Count 10` | verify recent summary helper works | `.context/history/latest-summary.md` is refreshed |
+| `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 10 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md` | verify the default checkpoint refresh chain works | history, summary, status, and handoff are all refreshed in one command |
 | manual doc read-through | catch stale filenames or commands | docs match actual files |
 
 ## Risks
@@ -81,8 +101,8 @@ from the desktop app and from Windows PowerShell CLI sessions.
 
 ## Open Questions
 
-- Should commit-history summarization be the next helper after handoff refresh?
 - Should there be one repo-level active handoff file in addition to per-task handoffs?
+- Should future enrichment helpers support multiline notes or keep a strict one-line CLI format?
 
 ## Notes
 
