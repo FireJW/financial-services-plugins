@@ -46,7 +46,7 @@ PowerShell CLI session, or another coding environment.
 2. Use `prefs/review-checklist.md` for self-review and handoff review.
 3. Use `../CODEX_DEVELOPMENT_FLOW.md` as the repository-level operator guide.
 4. Keep branch-local notes in `current/branches/<branch>/session.log`.
-5. Keep branch-local commit checkpoints in `current/branches/<branch>/latest-commit.md`.
+5. Refresh branch-local commit checkpoints with `../scripts/codex-commit-checkpoint.ps1` and keep the generated file in `current/branches/<branch>/latest-commit.md`.
 6. Use `templates/review-report-template.md` for structured review notes.
 7. Use `templates/handoff-template.md` when another CLI session needs to resume.
 8. Use branch-local status snapshots in `current/branches/<branch>/status.md`
@@ -80,6 +80,7 @@ This folder complements, not replaces:
 - `scripts/codex-review-init.ps1`
 - `scripts/codex-handoff-init.ps1`
 - `scripts/codex-handoff-refresh.ps1`
+- `scripts/codex-commit-checkpoint.ps1`
 - `scripts/codex-workflow-refresh.ps1`
 - `scripts/codex-workflow-status.ps1`
 - `scripts/codex-commit-history-sync.ps1`

@@ -97,6 +97,15 @@ Get-Content .\.context\prefs\workflow.md
 This reruns recent history sync, recent-summary generation, operator status
 refresh, and active handoff refresh in one command.
 
+### Refresh The Local Commit Checkpoint
+
+```powershell
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-checkpoint.ps1
+```
+
+Use this when you only need the true local `HEAD` checkpoint and do not want to
+rebuild the full status board.
+
 ### Show Operator Status
 
 ```powershell
@@ -139,8 +148,9 @@ skim recent durable changes without reading the full commit ledger first.
 Get-Content .\.context\current\branches\main\latest-commit.md
 ```
 
-This local-only file is refreshed by `codex-workflow-status.ps1` and shows
-whether versioned durable history is synced with the current `HEAD` or lagging.
+This local-only file is refreshed by `codex-commit-checkpoint.ps1` and also by
+`codex-workflow-status.ps1`, and shows whether versioned durable history is
+synced with the current `HEAD` or lagging.
 
 ## Repo-Specific Defaults
 
@@ -183,12 +193,15 @@ If you are extending this system later, do it in this order:
 4. leave a `.claude/handoff/` note when another CLI session needs to resume work
 5. prefer `scripts/codex-workflow-refresh.ps1` before pausing when history,
    status, and handoff all changed together
-6. use `scripts/codex-workflow-status.ps1` before resuming after a pause
-7. sync `.context/history/` after meaningful commits when durable history matters
-8. enrich important commit rows when raw subjects are not enough context
-9. regenerate `.context/history/latest-summary.md` when recent change context
+6. use `scripts/codex-commit-checkpoint.ps1` when the true local `HEAD` matters
+   more than the broader status snapshot
+7. use `scripts/codex-workflow-status.ps1` before resuming after a pause when
+   you also need git/session context
+8. sync `.context/history/` after meaningful commits when durable history matters
+9. enrich important commit rows when raw subjects are not enough context
+10. regenerate `.context/history/latest-summary.md` when recent change context
    should be resumable from CLI
-10. use `.context/current/branches/<branch>/latest-commit.md` when you need the
+11. use `.context/current/branches/<branch>/latest-commit.md` when you need the
     true local `HEAD` checkpoint and the versioned history snapshot may lag
-11. use structured review reports when a change needs explicit sign-off
-12. only then consider more automation
+12. use structured review reports when a change needs explicit sign-off
+13. only then consider more automation

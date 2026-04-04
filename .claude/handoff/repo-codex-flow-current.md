@@ -10,17 +10,17 @@ PowerShell CLI sessions can continue without rediscovering process context.
 - Status: plan, review, and handoff scaffolding now exist on disk, and the
   workflow layer now includes a branch-local operator status board plus durable
   commit-history sync, commit enrichment, and a CLI-readable recent-summary
-  helper plus a one-command workflow refresh entrypoint and a local-only
-  current-HEAD checkpoint so a CLI session can resume from one generated
-  checkpoint and a repo-local change ledger instead of reading raw git history
-  first.
+  helper plus a one-command workflow refresh entrypoint and a dedicated
+  local-only current-HEAD checkpoint helper so a CLI session can resume from
+  one generated checkpoint and a repo-local change ledger instead of reading
+  raw git history first.
 - Scope boundary: repo-level workflow only. No plugin behavior or quant logic
   was changed.
 
 ## Managed Snapshot
 
 <!-- codex:handoff-meta:start -->
-- Last updated: 2026-04-04T15:11:49.9221887+08:00
+- Last updated: 2026-04-04T15:57:00.4962142+08:00
 - Branch: main
 - Working directory: C:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins
 <!-- codex:handoff-meta:end -->
@@ -48,6 +48,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
   - `scripts/codex-review-init.ps1`
   - `scripts/codex-handoff-init.ps1`
   - `scripts/codex-handoff-refresh.ps1`
+  - `scripts/codex-commit-checkpoint.ps1`
   - `scripts/codex-workflow-status.ps1`
   - `scripts/codex-commit-history-sync.ps1`
   - `scripts/codex-commit-history-enrich.ps1`
@@ -56,8 +57,9 @@ PowerShell CLI sessions can continue without rediscovering process context.
 - reviewed:
   - `.context/current/reviews/workflow-review-smoke-2-review.md`
 - still pending:
-  - decide whether the local HEAD checkpoint should stay implicit inside
-    `codex-workflow-status.ps1` or later graduate into its own helper
+  - decide whether plan or review templates should surface the dedicated
+    commit-checkpoint helper, or whether handoff plus status is the right
+    boundary
 
 ## Verification Already Run
 
@@ -126,6 +128,15 @@ PowerShell CLI sessions can continue without rediscovering process context.
   `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path .\.claude\handoff\repo-codex-flow-current.md` followed by `git diff --check -- .\.claude\handoff\repo-codex-flow-current.md`
   result: refreshed the active handoff without reintroducing the EOF blank-line
   formatting failure
+- command:
+  `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-checkpoint.ps1`
+  result: refreshed `.context/current/branches/main/latest-commit.md` without
+  rebuilding the full status board
+- command:
+  `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-init.ps1 -Name 'workflow-checkpoint-helper-smoke'`
+  result: generated a temporary handoff whose resume commands already included
+  `codex-commit-checkpoint.ps1` and still auto-filled the real repo path; the
+  smoke file was removed after validation
 
 ## Decisions
 
@@ -178,6 +189,11 @@ PowerShell CLI sessions can continue without rediscovering process context.
 - decision: normalize trailing newlines inside `codex-handoff-refresh.ps1`
   reason: refresh should not create a formatting-only diff that blocks
   workflow-only commits on `git diff --check`
+- decision: graduate the local HEAD checkpoint into a dedicated
+  `codex-commit-checkpoint.ps1` helper and have `codex-workflow-status.ps1`
+  consume it
+  reason: operators sometimes need the true local `HEAD` without rebuilding the
+  full status board, and the shared path keeps status and handoffs aligned
 
 ## Risks / Open Questions
 
@@ -194,21 +210,28 @@ PowerShell CLI sessions can continue without rediscovering process context.
 
 ## Next Steps
 
-1. Decide whether `latest-commit.md` should remain an implicit side effect of
-   `codex-workflow-status.ps1` or get a dedicated helper for narrower use.
-2. Decide whether review or plan templates also need the same local checkpoint
-   cue, or whether keeping it handoff-only is the right boundary.
-3. Decide whether plan/review init scripts should auto-fill any environment
+1. Decide whether review or plan templates also need the same local checkpoint
+   cue, or whether keeping it handoff-plus-status-only is the right boundary.
+2. Decide whether plan/review init scripts should auto-fill any environment
    placeholders, or whether that convenience should stay handoff-only.
+3. Decide whether `codex-workflow-refresh.ps1` should surface the checkpoint
+   helper as its own labeled step, or keep it implicit through status refresh.
 
 ## Git Snapshot
 
 <!-- codex:handoff-git-status:start -->
 ```text
  M .claude-plugin/marketplace.json
+ M .claude/handoff/README.md
+ M .claude/handoff/TEMPLATE.md
  M .claude/handoff/repo-codex-flow-current.md
+ M .claude/plan/repo-codex-flow-followups.md
+ M .context/README.md
+ M .context/prefs/workflow.md
+ M .context/templates/handoff-template.md
  M AGENTS.md
  M CLAUDE.md
+ M CODEX_DEVELOPMENT_FLOW.md
  M README.md
  M docs/runtime/OPERATOR-MANUAL.md
  M docs/runtime/README.md
@@ -237,7 +260,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
  M financial-analysis/skills/autoresearch-info-index/tests/test_news_index.py
  M financial-analysis/skills/autoresearch-info-index/tests/test_wechat_draft_push.py
  M financial-analysis/skills/classic-case-router/references/x-post-evidence.md
- M scripts/codex-handoff-refresh.ps1
+ M scripts/codex-workflow-status.ps1
  M scripts/runtime/run-financial-headless.ps1
 ?? .claude/handoff/stock-analysis-thread-413-migration.md
 ?? .tmp-chrome-cookies.db
@@ -251,6 +274,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ?? financial-analysis/skills/autoresearch-info-index/examples/fixtures/feedback-profile-english/
 ?? financial-analysis/skills/autoresearch-info-index/examples/fixtures/reddit-universal-scraper-sample/
 ?? financial-analysis/skills/autoresearch-info-index/examples/hot-topic-reddit-multi-post-request.json
+?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-duplicate-comments-request.json
 ?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-export-root-request.json
 ?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-inline-comments-request.json
 ?? financial-analysis/skills/autoresearch-info-index/examples/reddit-bridge-low-signal-request.json
@@ -272,6 +296,8 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ?? financial-analysis/skills/autoresearch-info-index/tests/test_article_publish_canonical_snapshots.py
 ?? financial-analysis/skills/autoresearch-info-index/tests/test_article_workflow_canonical_snapshots.py
 ?? financial-analysis/skills/autoresearch-info-index/tests/test_reddit_bridge.py
+?? obsidian-kb-local/
+?? scripts/codex-commit-checkpoint.ps1
 ?? scripts/safe_automation_cleanup.py
 ```
 <!-- codex:handoff-git-status:end -->
@@ -286,6 +312,7 @@ Get-Content .\.claude\plan\repo-codex-flow-followups.md
 Get-Content .\.claude\handoff\repo-codex-flow-current.md
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-context-show.ps1
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 10 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md
+& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-checkpoint.ps1
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1
 Get-Content .\.context\current\branches\main\latest-commit.md
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-sync.ps1 -Count 5

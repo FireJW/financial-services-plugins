@@ -39,75 +39,23 @@ function Get-LastSessionBlock {
   return $block
 }
 
-function Get-FirstJsonLine {
-  param(
-    [string]$Path
-  )
-
-  if (-not (Test-Path $Path)) {
-    return $null
-  }
-
-  $lines = Get-Content -LiteralPath $Path -Encoding UTF8
-  foreach ($line in $lines) {
-    if ($line.Trim()) {
-      return ($line | ConvertFrom-Json)
-    }
-  }
-
-  return $null
-}
-
-function Get-DurableHistoryState {
-  param(
-    [string]$JsonlPath,
-    [string]$HeadCommit
-  )
-
-  $state = [ordered]@{
-    coverage = "missing"
-    ahead_count = ""
-    short_commit = ""
-    summary = ""
-  }
-
-  $entry = Get-FirstJsonLine -Path $JsonlPath
-  if (-not $entry) {
-    return [pscustomobject]$state
-  }
-
-  $state.short_commit = [string]$entry.short_commit
-  $state.summary = [string]$entry.summary
-
-  if ([string]$entry.commit -eq $HeadCommit) {
-    $state.coverage = "synced"
-    $state.ahead_count = "0"
-    return [pscustomobject]$state
-  }
-
-  & git merge-base --is-ancestor ([string]$entry.commit) $HeadCommit 2>$null | Out-Null
-  if ($LASTEXITCODE -eq 0) {
-    $aheadCount = (& git rev-list --count "$([string]$entry.commit)..$HeadCommit" 2>$null)
-    $state.coverage = "lagging"
-    $state.ahead_count = [string]$aheadCount
-    return [pscustomobject]$state
-  }
-
-  $state.coverage = "diverged"
-  return [pscustomobject]$state
-}
-
 $repoRoot = (& git rev-parse --show-toplevel 2>$null)
 if (-not $repoRoot) {
   throw "Not inside a git repository."
 }
 
 $repoRoot = (Resolve-Path -LiteralPath $repoRoot).Path
-$branch = (& git branch --show-current 2>$null)
-if (-not $branch) {
-  $branch = "detached-head"
+$checkpointScript = Join-Path $PSScriptRoot "codex-commit-checkpoint.ps1"
+if (-not (Test-Path -LiteralPath $checkpointScript)) {
+  throw "Missing commit checkpoint script: $checkpointScript"
 }
 
+$checkpointState = & $checkpointScript -PassThru
+if (-not $checkpointState) {
+  throw "Commit checkpoint refresh failed."
+}
+
+$branch = [string]$checkpointState.branch
 $statusLines = @(& git status --short)
 if ($LASTEXITCODE -ne 0) {
   throw "git status failed."
@@ -139,35 +87,22 @@ foreach ($line in $statusLines) {
   }
 }
 
-$commitRecord = (& git log -1 "--date=iso-strict" "--pretty=format:%H%x1f%h%x1f%aI%x1f%s")
-if ($LASTEXITCODE -ne 0) {
-  throw "git log failed."
-}
-
-$commitFields = $commitRecord -split [char]0x1f, 4
-$shortCommit = if ($commitFields.Count -ge 2) { $commitFields[1] } else { "" }
-$committedAt = if ($commitFields.Count -ge 3) { $commitFields[2] } else { "" }
-$commitSummary = if ($commitFields.Count -ge 4) { $commitFields[3] } else { "" }
-
 $sessionLogPath = Join-Path $repoRoot ".context\current\branches\$branch\session.log"
 $statusDir = Join-Path $repoRoot ".context\current\branches\$branch"
 $statusPath = Join-Path $statusDir "status.md"
-$commitCheckpointPath = Join-Path $statusDir "latest-commit.md"
 $planPath = Join-Path $repoRoot ".claude\plan\repo-codex-flow-followups.md"
 $handoffPath = Join-Path $repoRoot ".claude\handoff\repo-codex-flow-current.md"
 $historyPath = Join-Path $repoRoot ".context\history\commits.md"
-$historyJsonlPath = Join-Path $repoRoot ".context\history\commits.jsonl"
 $latestSummaryPath = Join-Path $repoRoot ".context\history\latest-summary.md"
 
 New-Item -ItemType Directory -Force -Path $statusDir | Out-Null
 
 $lastSessionBlock = Get-LastSessionBlock -Path $sessionLogPath
-$durableHistoryState = Get-DurableHistoryState -JsonlPath $historyJsonlPath -HeadCommit $commitFields[0]
 $planLabel = if (Test-Path $planPath) { ".claude/plan/repo-codex-flow-followups.md" } else { "-" }
 $handoffLabel = if (Test-Path $handoffPath) { ".claude/handoff/repo-codex-flow-current.md" } else { "-" }
 $historyLabel = if (Test-Path $historyPath) { ".context/history/commits.md" } else { "-" }
 $latestSummaryLabel = if (Test-Path $latestSummaryPath) { ".context/history/latest-summary.md" } else { "-" }
-$commitCheckpointLabel = ".context/current/branches/$branch/latest-commit.md"
+$commitCheckpointLabel = [string]$checkpointState.checkpoint_label
 $sessionLogLabel = if (Test-Path $sessionLogPath) {
   ".context/current/branches/$branch/session.log"
 } else {
@@ -186,17 +121,17 @@ $lines = @(
   "| Staged entries | $stagedCount |",
   "| Modified entries | $modifiedCount |",
   "| Untracked entries | $untrackedCount |",
-  "| Latest commit | $shortCommit |",
-  "| Latest commit date | $committedAt |",
-  "| Latest commit summary | $commitSummary |",
+  "| Latest commit | $([string]$checkpointState.short_commit) |",
+  "| Latest commit date | $([string]$checkpointState.committed_at) |",
+  "| Latest commit summary | $([string]$checkpointState.commit_summary) |",
   "| Active plan | $planLabel |",
   "| Active handoff | $handoffLabel |",
   "| Commit history | $historyLabel |",
   "| Latest summary | $latestSummaryLabel |",
   "| Local commit checkpoint | $commitCheckpointLabel |",
-  "| Durable history coverage | $($durableHistoryState.coverage) |",
-  "| Durable history head | $($durableHistoryState.short_commit) |",
-  "| Commits ahead of durable history | $($durableHistoryState.ahead_count) |",
+  "| Durable history coverage | $([string]$checkpointState.durable_history_coverage) |",
+  "| Durable history head | $([string]$checkpointState.durable_history_head) |",
+  "| Commits ahead of durable history | $([string]$checkpointState.commits_ahead_of_durable_history) |",
   "| Session log | $sessionLogLabel |",
   ""
 )
@@ -223,36 +158,12 @@ if ($statusLines.Count -gt 0) {
   )
 }
 
-$commitCheckpointLines = @(
-  "# Latest Commit Checkpoint",
-  "",
-  "| Item | Value |",
-  "|------|-------|",
-  "| Branch | $branch |",
-  "| Latest commit | $shortCommit |",
-  "| Latest commit date | $committedAt |",
-  "| Latest commit summary | $commitSummary |",
-  "| Durable history coverage | $($durableHistoryState.coverage) |",
-  "| Durable history head | $($durableHistoryState.short_commit) |",
-  "| Durable history summary | $($durableHistoryState.summary) |",
-  "| Commits ahead of durable history | $($durableHistoryState.ahead_count) |",
-  "| Refresh command | & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 5 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md |",
-  ""
-)
-
-if ($durableHistoryState.coverage -eq "lagging") {
-  $commitCheckpointLines += "Durable history is a versioned snapshot and currently trails `HEAD`."
-  $commitCheckpointLines += "Use the refresh flow after pausing or before handoff to rebuild the durable summary files."
-  $commitCheckpointLines += ""
-}
-
-Write-Utf8Bom -Path $commitCheckpointPath -Lines $commitCheckpointLines
-
 $lines += "## Resume Commands"
 $lines += ""
 $lines += '```powershell'
 $lines += ("Set-Location '{0}'" -f $repoRoot)
 $lines += "git status --short"
+$lines += "& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-checkpoint.ps1"
 $lines += ".\scripts\codex-workflow-status.ps1"
 $lines += ("Get-Content .\.context\current\branches\{0}\status.md" -f $branch)
 $lines += ("Get-Content .\.context\current\branches\{0}\latest-commit.md" -f $branch)

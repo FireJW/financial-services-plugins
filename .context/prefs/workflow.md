@@ -87,6 +87,7 @@ PowerShell helpers:
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-review-init.ps1 -Name "task-name"`
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-init.ps1 -Name "task-name"`
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-handoff-refresh.ps1 -Path ".\.claude\handoff\task-name.md"`
+- `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-checkpoint.ps1`
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 10 -HandoffPath ".\.claude\handoff\task-name.md"`
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1`
 - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-sync.ps1 -Count 10`
@@ -98,17 +99,18 @@ PowerShell helpers:
 Before resuming after a pause, prefer:
 
 1. `scripts/codex-workflow-refresh.ps1 -Count 10 -HandoffPath ".\.claude\handoff\task-name.md"` when you need every checkpoint regenerated
-2. `scripts/codex-workflow-status.ps1` for a lighter snapshot refresh
-3. the branch-local commit checkpoint under `.context/current/branches/<branch>/latest-commit.md`
-4. the active handoff under `.claude/handoff/`
-5. the branch-local session log under `.context/current/branches/<branch>/session.log`
+2. `scripts/codex-commit-checkpoint.ps1` when only the true local `HEAD` checkpoint matters
+3. `scripts/codex-workflow-status.ps1` for a broader snapshot refresh
+4. the branch-local commit checkpoint under `.context/current/branches/<branch>/latest-commit.md`
+5. the active handoff under `.claude/handoff/`
+6. the branch-local session log under `.context/current/branches/<branch>/session.log`
 
+The commit-checkpoint helper writes
+`.context/current/branches/<branch>/latest-commit.md` so the true local `HEAD`
+is readable even when versioned durable history is one refresh behind.
 The status helper writes a local snapshot under
-`.context/current/branches/<branch>/status.md` so the next CLI session can
-reopen one checkpoint before scanning multiple workflow docs.
-It also writes `.context/current/branches/<branch>/latest-commit.md` so the
-true local `HEAD` is readable even when versioned durable history is one refresh
-behind.
+`.context/current/branches/<branch>/status.md` and also refreshes the same
+commit checkpoint through the dedicated helper.
 
 ## Durable History Flow
 
