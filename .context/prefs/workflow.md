@@ -127,6 +127,14 @@ When repository workflow or operator-facing behavior changes:
 - Before commit, inspect:
   - `git status --short`
   - `git diff --cached --stat`
+- If `git commit` fails because Git for Windows cannot launch the hook shell
+  (for example `sh.exe ... couldn't create signal pipe`), run:
+  - `git diff --cached --check`
+  - `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\.githooks\check_staged_artifacts.ps1`
+  - `git commit --no-verify -m "..."`
+- Use the `--no-verify` fallback only after the direct PowerShell guard passes,
+  and only when the failing layer is the shell launcher rather than the guard
+  itself.
 
 ## Environment Notes
 

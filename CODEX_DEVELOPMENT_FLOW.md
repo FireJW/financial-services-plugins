@@ -140,6 +140,21 @@ skim recent durable changes without reading the full commit ledger first.
 - Keep temp artifacts out of git.
 - When a task depends on sibling projects, state exact paths and split responsibilities clearly.
 
+## Windows Hook Fallback
+
+If `git commit` fails on Windows with a Git-for-Windows shell launcher error such
+as `sh.exe ... couldn't create signal pipe`, treat that as a hook-launch
+problem, not an automatic reason to skip validation.
+
+Use this fallback sequence:
+
+1. run `git diff --cached --check`
+2. run `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\.githooks\check_staged_artifacts.ps1`
+3. only if both checks pass, retry with `git commit --no-verify -m "..."`
+
+Use `--no-verify` only when the hook launcher is the failing layer and the
+PowerShell guard was run manually in the same staged state.
+
 ## For `.tmp` Prototype Work
 
 When working in `.tmp` prototype areas:

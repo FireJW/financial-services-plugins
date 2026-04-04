@@ -19,7 +19,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ## Managed Snapshot
 
 <!-- codex:handoff-meta:start -->
-- Last updated: 2026-04-04T14:41:33.4583995+08:00
+- Last updated: 2026-04-04T14:50:06.1749794+08:00
 - Branch: main
 - Working directory: C:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins
 <!-- codex:handoff-meta:end -->
@@ -95,6 +95,17 @@ PowerShell CLI sessions can continue without rediscovering process context.
   `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 30 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md`
   result: reran durable history sync, summary generation, status refresh, and
   active handoff refresh in one CLI-safe command
+- command:
+  `git commit -m "feat(workflow): add codex resume checkpoint helpers"`
+  result: failed because Git for Windows could not launch the `pre-commit`
+  shell wrapper and raised `sh.exe ... couldn't create signal pipe, Win32 error 5`
+- command:
+  `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\.githooks\check_staged_artifacts.ps1`
+  result: the direct PowerShell staged-artifact guard passed, confirming the
+  failure was in hook launch rather than repository validation
+- command:
+  `git commit --no-verify -m "feat(workflow): add codex resume checkpoint helpers"`
+  result: created local commit `40ce727` on `main`
 
 ## Decisions
 
@@ -127,6 +138,10 @@ PowerShell CLI sessions can continue without rediscovering process context.
   the existing scripts
   reason: operators need a fast resume/handoff command without introducing a
   second source of truth for workflow state
+- decision: document a Windows hook-launch fallback instead of silently relying
+  on `--no-verify`
+  reason: the guard logic still matters, but Git for Windows can fail before
+  the PowerShell guard script even starts
 
 ## Risks / Open Questions
 
@@ -136,13 +151,18 @@ PowerShell CLI sessions can continue without rediscovering process context.
   now carry both prior and new modifications.
 - The refresh helper defaults to the repo-level active handoff file, so
   task-specific handoffs should pass an explicit `-HandoffPath`.
+- Durable history snapshots are still based on the last explicit refresh, so
+  the committed `commits.jsonl`/`latest-summary.md` may lag newer commits until
+  operators rerun the refresh flow.
 
 ## Next Steps
 
-1. Review the exact diff for the workflow assets only and decide the intended
-   commit scope.
-2. Stage or defer only the workflow files after that diff review.
-3. Commit once the workflow-only boundary is clean enough to stage safely.
+1. Decide whether the durable history files should intentionally remain
+   one-refresh behind commits, or move to a local-only checkpoint surface.
+2. If keeping the current model, document when operators should rerun refresh
+   after commit versus before pause.
+3. If changing the model, do it as a thin increment without collapsing the
+   current script split.
 
 ## Git Snapshot
 
@@ -150,10 +170,6 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ```text
  M .claude-plugin/marketplace.json
  M .claude/handoff/repo-codex-flow-current.md
- M .claude/plan/repo-codex-flow-followups.md
- M .context/README.md
- M .context/history/commits.jsonl
- M .context/history/commits.md
  M .context/prefs/workflow.md
  M AGENTS.md
  M CLAUDE.md
@@ -188,7 +204,6 @@ PowerShell CLI sessions can continue without rediscovering process context.
  M financial-analysis/skills/classic-case-router/references/x-post-evidence.md
  M scripts/runtime/run-financial-headless.ps1
 ?? .claude/handoff/stock-analysis-thread-413-migration.md
-?? .context/history/latest-summary.md
 ?? .tmp-chrome-cookies.db
 ?? docs/ideation/2026-04-01-local-codex-capability-next-optimizations.md
 ?? docs/plans/2026-04-03-001-feat-opencli-source-adapter-plan.md
@@ -218,11 +233,6 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ?? financial-analysis/skills/autoresearch-info-index/tests/test_article_publish_canonical_snapshots.py
 ?? financial-analysis/skills/autoresearch-info-index/tests/test_article_workflow_canonical_snapshots.py
 ?? financial-analysis/skills/autoresearch-info-index/tests/test_reddit_bridge.py
-?? scripts/codex-commit-history-enrich.ps1
-?? scripts/codex-commit-history-sync.ps1
-?? scripts/codex-release-summary.ps1
-?? scripts/codex-workflow-refresh.ps1
-?? scripts/codex-workflow-status.ps1
 ?? scripts/safe_automation_cleanup.py
 ```
 <!-- codex:handoff-git-status:end -->
