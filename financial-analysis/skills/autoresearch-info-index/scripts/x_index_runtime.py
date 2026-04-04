@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from html import unescape
 from pathlib import Path
 from shutil import copy2, which
@@ -62,6 +62,20 @@ BLOCKED_TEXT_MARKERS = [
     "javascript is disabled",
     "privacy related extensions may cause issues",
 ]
+CLUE_LINE_HINTS = (
+    "morgan stanley",
+    "focus list",
+    "strategy",
+    "research",
+    "reflation",
+    "exhibit",
+    "thematic",
+)
+TICKER_CLUE_RE = re.compile(r"\b(?:\d{6}\.(?:SS|SZ)|\d{4}\.HK|[A-Z]{2,5}\.N)\b")
+DEFAULT_X_RESULT_FILENAME = "x-index-result.json"
+DEFAULT_X_REPORT_FILENAME = "x-index-report.md"
+DEFAULT_REUSE_SCAN_LIMIT = 24
+DEFAULT_WINDOW_QUERY_LIMIT = 6
 
 
 @dataclass
@@ -90,6 +104,202 @@ def now_utc() -> datetime:
 
 def clean_text(text: Any) -> str:
     return WHITESPACE_RE.sub(" ", unescape(str(text or "")).replace("\u200b", " ")).strip()
+
+
+def unique_cleaned_strings(values: list[Any], *, limit: int = 12, min_length: int = 0) -> list[str]:
+    cleaned_values: list[str] = []
+    for value in values:
+        cleaned = clean_text(value)
+        if not cleaned or (min_length and len(cleaned) < min_length):
+            continue
+        if cleaned not in cleaned_values:
+            cleaned_values.append(cleaned)
+        if len(cleaned_values) >= limit:
+            break
+    return cleaned_values
+
+
+def derive_phrase_clues_from_ocr_text(text: str) -> list[str]:
+    if not clean_text(text):
+        return []
+    raw_candidates: list[str] = []
+    for line in re.split(r"[\r\n]+", str(text)):
+        cleaned = clean_text(line)
+        lowered = cleaned.lower()
+        if not cleaned or len(cleaned) < 12 or len(cleaned) > 140:
+            continue
+        if any(hint in lowered for hint in CLUE_LINE_HINTS):
+            raw_candidates.append(cleaned)
+            if ":" in cleaned:
+                suffix = clean_text(cleaned.split(":", 1)[1])
+                if suffix and suffix != cleaned:
+                    raw_candidates.append(suffix)
+    return unique_cleaned_strings(raw_candidates, limit=10, min_length=12)
+
+
+def derive_entity_clues_from_ocr_text(text: str) -> list[str]:
+    if not clean_text(text):
+        return []
+    return unique_cleaned_strings(TICKER_CLUE_RE.findall(text), limit=12, min_length=5)
+
+
+def build_x_window_queries(request: dict[str, Any]) -> list[dict[str, str]]:
+    queries: list[dict[str, str]] = []
+    seen_queries: set[str] = set()
+    handles = [item.lstrip("@") for item in request.get("account_allowlist", []) if clean_text(item)]
+    keywords = unique_cleaned_strings(request.get("keywords", []), limit=8, min_length=3)
+    phrase_clues = unique_cleaned_strings(request.get("phrase_clues", []), limit=8, min_length=8)
+    entity_clues = unique_cleaned_strings(request.get("entity_clues", []), limit=8, min_length=3)
+
+    def add_query(query: str, reason: str) -> None:
+        normalized_query = clean_text(query)
+        if not normalized_query or normalized_query in seen_queries or len(queries) >= DEFAULT_WINDOW_QUERY_LIMIT:
+            return
+        seen_queries.add(normalized_query)
+        queries.append({"query": normalized_query, "reason": clean_text(reason) or "window_capture"})
+
+    for handle in handles:
+        for phrase in phrase_clues[:4]:
+            add_query(f'from:{handle} "{phrase}"', f"allowlist_phrase:@{handle}|phrase:{phrase}")
+        for keyword in keywords[:3]:
+            add_query(f'from:{handle} "{keyword}"', f"allowlist_keyword:@{handle}|keyword:{keyword}")
+        for entity in entity_clues[:4]:
+            add_query(f'from:{handle} "{entity}"', f"allowlist_entity:@{handle}|entity:{entity}")
+        for phrase in phrase_clues[:2]:
+            for entity in entity_clues[:2]:
+                add_query(
+                    f'from:{handle} "{phrase}" "{entity}"',
+                    f"allowlist_phrase_entity:@{handle}|phrase:{phrase}|entity:{entity}",
+                )
+
+    if not queries:
+        for phrase in phrase_clues[:4]:
+            add_query(f'"{phrase}"', f"phrase:{phrase}")
+        for keyword in keywords[:3]:
+            add_query(f'"{keyword}"', f"keyword:{keyword}")
+        for entity in entity_clues[:4]:
+            add_query(f'"{entity}"', f"entity:{entity}")
+
+    return queries[:DEFAULT_WINDOW_QUERY_LIMIT]
+
+
+def build_window_capture_hints(request: dict[str, Any]) -> dict[str, Any]:
+    manual_urls = [canonical_status_url(url) for url in request.get("manual_urls", []) if clean_text(url)]
+    search_queries = build_x_window_queries(request)
+    search_urls = [
+        {
+            "query": item["query"],
+            "reason": item["reason"],
+            "url": f"https://x.com/search?q={urllib.parse.quote_plus(item['query'])}&src=typed_query&f=live",
+        }
+        for item in search_queries
+    ]
+    notes = [
+        "Prefer reusing the last successful x-index result or running session before bootstrapping a fresh X flow.",
+        "On Windows, prefer a new Edge window in the existing signed-in profile before any interruptive relaunch.",
+    ]
+    return {
+        "preferred": True,
+        "manual_urls": manual_urls,
+        "search_urls": search_urls,
+        "notes": notes,
+    }
+
+
+def build_search_queries(request: dict[str, Any]) -> list[dict[str, str]]:
+    queries: list[dict[str, str]] = []
+    seen_queries: set[str] = set()
+    max_queries = max(1, int(request.get("max_search_queries", 24)))
+    handles = [item.lstrip("@") for item in request.get("account_allowlist", []) if clean_text(item)]
+    keywords = unique_cleaned_strings(request.get("keywords", []), limit=10, min_length=3)
+    phrase_clues = unique_cleaned_strings(request.get("phrase_clues", []), limit=10, min_length=8)
+    entity_clues = unique_cleaned_strings(request.get("entity_clues", []), limit=12, min_length=3)
+    query_overrides = unique_cleaned_strings(request.get("query_overrides", []), limit=12, min_length=3)
+
+    def add_query(query: str, reason: str) -> None:
+        normalized_query = clean_text(query)
+        if not normalized_query or normalized_query in seen_queries or len(queries) >= max_queries:
+            return
+        seen_queries.add(normalized_query)
+        queries.append({"query": normalized_query, "reason": clean_text(reason) or "derived"})
+
+    for query in query_overrides:
+        add_query(query, "query_override")
+
+    for keyword in keywords:
+        add_query(f'site:x.com/status "{keyword}"', f"keyword:{keyword}")
+        for handle in handles:
+            add_query(f'site:x.com/{handle}/status "{keyword}"', f"keyword:{keyword}|allowlist:@{handle}")
+
+    for phrase in phrase_clues:
+        add_query(f'site:x.com/status "{phrase}"', f"phrase:{phrase}")
+        for handle in handles:
+            add_query(f'site:x.com/{handle}/status "{phrase}"', f"phrase:{phrase}|allowlist:@{handle}")
+        for entity in entity_clues[:6]:
+            add_query(f'site:x.com/status "{phrase}" "{entity}"', f"phrase:{phrase}|entity:{entity}")
+            for handle in handles:
+                add_query(
+                    f'site:x.com/{handle}/status "{phrase}" "{entity}"',
+                    f"phrase:{phrase}|entity:{entity}|allowlist:@{handle}",
+                )
+
+    for keyword in keywords[:6]:
+        for entity in entity_clues[:6]:
+            add_query(f'site:x.com/status "{keyword}" "{entity}"', f"keyword:{keyword}|entity:{entity}")
+            for handle in handles:
+                add_query(
+                    f'site:x.com/{handle}/status "{keyword}" "{entity}"',
+                    f"keyword:{keyword}|entity:{entity}|allowlist:@{handle}",
+                )
+
+    for handle in handles:
+        for entity in entity_clues[:6]:
+            add_query(f'site:x.com/{handle}/status "{entity}"', f"entity:{entity}|allowlist:@{handle}")
+
+    return queries[:max_queries]
+
+
+def build_same_author_scan_queries(root_post: dict[str, Any], request: dict[str, Any]) -> list[dict[str, str]]:
+    handle = clean_text(root_post.get("author_handle")).lstrip("@")
+    if not handle:
+        return []
+
+    queries: list[dict[str, str]] = []
+    seen_queries: set[str] = set()
+    max_queries = max(1, int(request.get("same_author_scan_limit", 12)))
+    keywords = unique_cleaned_strings(request.get("keywords", []), limit=8, min_length=3)
+    phrase_clues = unique_cleaned_strings(request.get("phrase_clues", []), limit=8, min_length=8)
+    entity_clues = unique_cleaned_strings(request.get("entity_clues", []), limit=8, min_length=3)
+
+    def add_query(query: str, reason: str) -> None:
+        normalized_query = clean_text(query)
+        if not normalized_query or normalized_query in seen_queries or len(queries) >= max_queries:
+            return
+        seen_queries.add(normalized_query)
+        queries.append({"query": normalized_query, "reason": clean_text(reason) or "same_author_scan"})
+
+    for phrase in phrase_clues:
+        add_query(f'site:x.com/{handle}/status "{phrase}"', f"same_author_phrase:@{handle}|phrase:{phrase}")
+        for entity in entity_clues[:4]:
+            add_query(
+                f'site:x.com/{handle}/status "{phrase}" "{entity}"',
+                f"same_author_phrase:@{handle}|phrase:{phrase}|entity:{entity}",
+            )
+
+    for keyword in keywords[:4]:
+        add_query(f'site:x.com/{handle}/status "{keyword}"', f"same_author_keyword:@{handle}|keyword:{keyword}")
+        for entity in entity_clues[:4]:
+            add_query(
+                f'site:x.com/{handle}/status "{keyword}" "{entity}"',
+                f"same_author_keyword:@{handle}|keyword:{keyword}|entity:{entity}",
+            )
+
+    for entity in entity_clues[:6]:
+        add_query(f'site:x.com/{handle}/status "{entity}"', f"same_author_entity:@{handle}|entity:{entity}")
+
+    if not queries:
+        add_query(f"site:x.com/{handle}/status", f"same_author_handle:@{handle}")
+    return queries[:max_queries]
 
 
 def meaningful_image_hint(text: Any) -> str:
@@ -210,10 +420,31 @@ def parse_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         or ("cookie_file" if clean_text(browser_session_raw.get("cookie_file") or raw_payload.get("session_cookie_file")) else "")
         or ("remote_debugging" if clean_text(browser_session_raw.get("cdp_endpoint") or raw_payload.get("browser_debug_endpoint")) else "")
     )
+    raw_ocr_root_text = str(raw_payload.get("ocr_root_text") or "")
+    ocr_root_text = clean_text(raw_ocr_root_text)
+    phrase_clues = unique_cleaned_strings(
+        [
+            *[item for item in raw_payload.get("phrase_clues", []) if clean_text(item)],
+            *derive_phrase_clues_from_ocr_text(raw_ocr_root_text),
+        ],
+        limit=10,
+        min_length=8,
+    )
+    entity_clues = unique_cleaned_strings(
+        [
+            *[item for item in raw_payload.get("entity_clues", []) if clean_text(item)],
+            *derive_entity_clues_from_ocr_text(raw_ocr_root_text),
+        ],
+        limit=12,
+        min_length=3,
+    )
     return {
         "topic": clean_text(raw_payload.get("topic") or "x-index-topic"),
         "analysis_time": analysis_time,
         "keywords": [clean_text(item) for item in raw_payload.get("keywords", []) if clean_text(item)],
+        "phrase_clues": phrase_clues,
+        "entity_clues": entity_clues,
+        "query_overrides": [clean_text(item) for item in raw_payload.get("query_overrides", []) if clean_text(item)],
         "account_allowlist": [clean_text(item).lstrip("@") for item in raw_payload.get("account_allowlist", []) if clean_text(item)],
         "manual_urls": [clean_text(item) for item in raw_payload.get("manual_urls", []) if clean_text(item)],
         "seed_posts": [item for item in raw_payload.get("seed_posts", []) if isinstance(item, dict)],
@@ -225,9 +456,15 @@ def parse_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "max_candidates": int(raw_payload.get("max_candidates", 50)),
         "max_kept_posts": int(raw_payload.get("max_kept_posts", 10)),
         "max_thread_posts": int(raw_payload.get("max_thread_posts", 10)),
+        "max_search_queries": int(raw_payload.get("max_search_queries", 24)),
+        "same_author_scan_window_hours": max(1, int(raw_payload.get("same_author_scan_window_hours", 48))),
+        "same_author_scan_limit": max(1, int(raw_payload.get("same_author_scan_limit", 12))),
         "access_mode": clean_text(raw_payload.get("access_mode") or "public_first_browser_fallback"),
         "output_dir": output_dir,
-        "ocr_root_text": clean_text(raw_payload.get("ocr_root_text")),
+        "ocr_root_text": ocr_root_text,
+        "reuse_recent_runs": bool(raw_payload.get("reuse_recent_runs", True)),
+        "reuse_recent_hours": max(1, int(raw_payload.get("reuse_recent_hours", 168))),
+        "reuse_max_seed_posts": max(1, int(raw_payload.get("reuse_max_seed_posts", 6))),
         "browser_session": {
             "strategy": browser_session_strategy,
             "cookie_file": clean_text(browser_session_raw.get("cookie_file") or raw_payload.get("session_cookie_file")),
@@ -268,6 +505,21 @@ def resolve_node_command() -> str | None:
 def resolve_cdp_fetch_script() -> Path | None:
     candidate = SCRIPT_DIR / "browser_session_fetch.js"
     return candidate if candidate.exists() else None
+
+
+def probe_cdp_endpoint(endpoint: str) -> tuple[bool, str]:
+    normalized_endpoint = clean_text(endpoint).rstrip("/")
+    if not normalized_endpoint:
+        return False, "browser_session.cdp_endpoint was not provided"
+    version_url = f"{normalized_endpoint}/json/version"
+    try:
+        request = urllib.request.Request(version_url, headers={"User-Agent": "Codex-XIndex/1.0"})
+        with urllib.request.urlopen(request, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="ignore") or "{}")
+        browser_name = clean_text(payload.get("Browser"))
+        return True, browser_name or version_url
+    except Exception as exc:  # pragma: no cover - exact transport failure varies by host
+        return False, clean_text(exc) or "endpoint probe failed"
 
 
 def unique_notes(values: list[str]) -> list[str]:
@@ -326,16 +578,24 @@ def prepare_session_context(request: dict[str, Any]) -> dict[str, Any]:
         script_path = resolve_cdp_fetch_script()
         endpoint = clean_text(session_request.get("cdp_endpoint") or "http://127.0.0.1:9222")
         notes: list[str] = []
+        endpoint_reachable = False
         if not node_cmd:
             notes.append("node runtime not found for remote debugging helper")
         if not script_path:
             notes.append("browser_session_fetch.js helper is missing")
         if not endpoint:
             notes.append("browser_session.cdp_endpoint was not provided")
+        if node_cmd and script_path and endpoint:
+            endpoint_reachable, endpoint_detail = probe_cdp_endpoint(endpoint)
+            if not endpoint_reachable:
+                notes.append(f"remote debugging endpoint is not reachable: {endpoint_detail}")
+                notes.append(
+                    "Prefer a new Edge window in the existing signed-in profile before any interruptive close-and-relaunch step."
+                )
         context.update(
             {
-                "active": bool(node_cmd and script_path and endpoint),
-                "status": "ready" if node_cmd and script_path and endpoint else "unavailable",
+                "active": bool(node_cmd and script_path and endpoint and endpoint_reachable),
+                "status": "ready" if node_cmd and script_path and endpoint and endpoint_reachable else "unavailable",
                 "source": "remote_debugging",
                 "cdp_endpoint": endpoint,
                 "notes": notes or [f"will attach to {endpoint}"],
@@ -545,24 +805,255 @@ def maybe_fetch_search_results(query: str) -> list[str]:
 
 def discover_search_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
     discovered: list[dict[str, Any]] = []
-    queries: list[tuple[str, str]] = []
-    for keyword in request.get("keywords", []):
-        queries.append((f'site:x.com/status "{keyword}"', f"keyword:{keyword}"))
-        for handle in request.get("account_allowlist", []):
-            queries.append((f'site:x.com/{handle}/status "{keyword}"', f"keyword:{keyword}|allowlist:@{handle}"))
-
-    for query, reason in queries:
+    for query_spec in build_search_queries(request):
+        query = query_spec.get("query", "")
+        reason = query_spec.get("reason", "")
         try:
             for url in maybe_fetch_search_results(query):
                 if len(discovered) >= request.get("max_candidates", 50):
                     break
                 if any(item.get("post_url") == url for item in discovered):
                     continue
-                discovered.append({"post_url": url, "discovery_reason": reason})
+                discovered.append({"post_url": url, "discovery_reason": reason, "search_query": query})
         except OSError as exc:
-            discovered.append({"post_url": "", "discovery_reason": reason, "blocked_reason": f"search_fetch_failed: {exc}"})
+            discovered.append(
+                {
+                    "post_url": "",
+                    "discovery_reason": reason,
+                    "search_query": query,
+                    "blocked_reason": f"search_fetch_failed: {exc}",
+                }
+            )
         if len(discovered) >= request.get("max_candidates", 50):
             break
+    return discovered
+
+
+def candidate_reuse_roots(request: dict[str, Any]) -> list[Path]:
+    roots: list[Path] = []
+    for candidate in [request.get("output_dir", Path.cwd()).parent, runtime_subdir("x-index")]:
+        path = Path(candidate).resolve()
+        if path.exists() and path not in roots:
+            roots.append(path)
+    return roots
+
+
+def cached_post_is_reusable(post: dict[str, Any]) -> bool:
+    if not clean_text(post.get("post_url")):
+        return False
+    if clean_text(post.get("access_mode")) == "blocked" and not any(
+        [
+            clean_text(post.get("post_text_raw")),
+            clean_text(post.get("root_post_screenshot_path")),
+            isinstance(post.get("media_items"), list) and post.get("media_items"),
+        ]
+    ):
+        return False
+    return bool(
+        clean_text(post.get("post_text_raw"))
+        or clean_text(post.get("root_post_screenshot_path"))
+        or (isinstance(post.get("media_items"), list) and post.get("media_items"))
+    )
+
+
+def score_cached_result_match(result_payload: dict[str, Any], request: dict[str, Any]) -> int:
+    result_request = result_payload.get("request", {}) if isinstance(result_payload.get("request"), dict) else {}
+    current_topic = clean_text(request.get("topic")).lower()
+    previous_topic = clean_text(result_request.get("topic")).lower()
+    score = 0
+    if current_topic and previous_topic:
+        if current_topic == previous_topic:
+            score += 12
+        elif current_topic in previous_topic or previous_topic in current_topic:
+            score += 6
+
+    author_handles = {
+        clean_text(post.get("author_handle")).lstrip("@").lower()
+        for post in result_payload.get("x_posts", [])
+        if isinstance(post, dict) and clean_text(post.get("author_handle"))
+    }
+    allowlist = {clean_text(item).lstrip("@").lower() for item in request.get("account_allowlist", []) if clean_text(item)}
+    score += min(12, 6 * len(author_handles & allowlist))
+
+    haystack_parts: list[str] = []
+    for post in result_payload.get("x_posts", []):
+        if not isinstance(post, dict):
+            continue
+        haystack_parts.extend(
+            [
+                clean_text(post.get("post_text_raw")),
+                clean_text(post.get("post_summary")),
+                clean_text(post.get("media_summary")),
+                clean_text(post.get("combined_summary")),
+            ]
+        )
+    flattened_haystack = " ".join(part for part in haystack_parts if part).lower()
+    phrase_hits = sum(1 for clue in request.get("phrase_clues", []) if clean_text(clue).lower() in flattened_haystack)
+    entity_hits = sum(1 for clue in request.get("entity_clues", []) if clean_text(clue).lower() in flattened_haystack)
+    keyword_hits = sum(1 for clue in request.get("keywords", []) if clean_text(clue).lower() in flattened_haystack)
+    score += min(12, phrase_hits * 4)
+    score += min(10, entity_hits * 3)
+    score += min(6, keyword_hits * 2)
+    return score
+
+
+def discover_reusable_candidates(request: dict[str, Any]) -> dict[str, Any]:
+    summary = {
+        "enabled": bool(request.get("reuse_recent_runs", True)),
+        "matched_results": 0,
+        "reused_posts": 0,
+        "result_paths": [],
+        "notes": [],
+        "candidates": [],
+    }
+    if not summary["enabled"]:
+        summary["notes"].append("recent x-index reuse is disabled for this run")
+        return summary
+
+    cutoff = request["analysis_time"] - timedelta(hours=max(1, int(request.get("reuse_recent_hours", 168))))
+    result_candidates: list[dict[str, Any]] = []
+    for root in candidate_reuse_roots(request):
+        for path in root.rglob(DEFAULT_X_RESULT_FILENAME):
+            if path.parent.resolve() == request["output_dir"].resolve():
+                continue
+            try:
+                modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            except OSError:
+                continue
+            if modified_at < cutoff:
+                continue
+            result_candidates.append({"path": path.resolve(), "modified_at": modified_at})
+
+    if not result_candidates:
+        summary["notes"].append("no recent x-index result files were available for reuse")
+        return summary
+
+    deduped_result_candidates: list[dict[str, Any]] = []
+    seen_paths: set[Path] = set()
+    for item in sorted(result_candidates, key=lambda candidate: candidate["modified_at"], reverse=True):
+        path = item["path"]
+        if path in seen_paths:
+            continue
+        seen_paths.add(path)
+        deduped_result_candidates.append(item)
+        if len(deduped_result_candidates) >= DEFAULT_REUSE_SCAN_LIMIT:
+            break
+
+    matched_results: list[dict[str, Any]] = []
+    for item in deduped_result_candidates:
+        path = item["path"]
+        try:
+            payload = load_json(path)
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        score = score_cached_result_match(payload, request)
+        if score <= 0:
+            continue
+        reusable_posts = [
+            deepcopy(post)
+            for post in payload.get("x_posts", [])
+            if isinstance(post, dict) and cached_post_is_reusable(post)
+        ]
+        if not reusable_posts:
+            continue
+        matched_results.append(
+            {
+                "path": str(path),
+                "score": score,
+                "modified_at": item["modified_at"],
+                "posts": reusable_posts,
+            }
+        )
+
+    if not matched_results:
+        summary["notes"].append("recent x-index results were found, but none matched the current topic/clues strongly enough")
+        return summary
+
+    matched_results.sort(key=lambda item: (item["score"], item["modified_at"]), reverse=True)
+    seen_post_urls: set[str] = set()
+    for match in matched_results:
+        summary["result_paths"].append(match["path"])
+        for post in match["posts"]:
+            canonical = canonical_status_url(clean_text(post.get("post_url")))
+            if not canonical or canonical in seen_post_urls:
+                continue
+            seen_post_urls.add(canonical)
+            summary["candidates"].append(
+                {
+                    "post_url": canonical,
+                    "discovery_reason": f"reused_recent_result:{Path(match['path']).name}",
+                    "cached_x_post": deepcopy(post),
+                    "reuse_source_path": match["path"],
+                    "reuse_match_score": match["score"],
+                }
+            )
+            if len(summary["candidates"]) >= request.get("reuse_max_seed_posts", 6):
+                break
+        if len(summary["candidates"]) >= request.get("reuse_max_seed_posts", 6):
+            break
+
+    summary["matched_results"] = len(matched_results)
+    summary["reused_posts"] = len(summary["candidates"])
+    if summary["reused_posts"]:
+        summary["notes"].append(f"reused {summary['reused_posts']} cached post(s) from prior x-index output")
+    return summary
+
+
+def within_same_author_time_window(candidate_posted_at: str, root_posted_at: str, request: dict[str, Any]) -> bool:
+    root_time = parse_datetime(root_posted_at)
+    if not root_time:
+        return True
+    candidate_time = parse_datetime(candidate_posted_at)
+    if not candidate_time:
+        return False
+    window = timedelta(hours=max(1, int(request.get("same_author_scan_window_hours", 48))))
+    return abs(candidate_time - root_time) <= window
+
+
+def discover_same_author_candidates(
+    root_post: dict[str, Any],
+    request: dict[str, Any],
+    visited: set[str],
+) -> list[dict[str, Any]]:
+    handle = clean_text(root_post.get("author_handle")).lstrip("@")
+    if not handle:
+        return []
+
+    discovered: list[dict[str, Any]] = []
+    limit = max(1, int(request.get("same_author_scan_limit", 12)))
+    for query_spec in build_same_author_scan_queries(root_post, request):
+        query = query_spec.get("query", "")
+        reason = query_spec.get("reason", "")
+        try:
+            for url in maybe_fetch_search_results(query):
+                canonical = canonical_status_url(url)
+                match = STATUS_URL_RE.search(canonical)
+                if not canonical or not match or match.group(1) != handle:
+                    continue
+                if canonical == clean_text(root_post.get("post_url")) or canonical in visited:
+                    continue
+                if any(item.get("post_url") == canonical for item in discovered):
+                    continue
+                discovered.append(
+                    {
+                        "post_url": canonical,
+                        "discovery_reason": reason,
+                        "search_query": query,
+                    }
+                )
+                if len(discovered) >= limit:
+                    return discovered
+        except OSError as exc:
+            discovered.append(
+                {
+                    "post_url": "",
+                    "discovery_reason": reason,
+                    "search_query": query,
+                    "blocked_reason": f"same_author_scan_failed: {exc}",
+                }
+            )
     return discovered
 
 
@@ -861,6 +1352,19 @@ def score_post(post: dict[str, Any], request: dict[str, Any]) -> int:
 
     if post.get("author_handle") in request.get("account_allowlist", []):
         score += 20
+    haystack = " ".join(
+        [
+            post.get("post_text_raw", ""),
+            post.get("post_summary", ""),
+            post.get("media_summary", ""),
+            post.get("combined_summary", ""),
+            post.get("discovery_reason", ""),
+        ]
+    ).lower()
+    phrase_hits = sum(1 for clue in request.get("phrase_clues", []) if clean_text(clue).lower() in haystack)
+    entity_hits = sum(1 for clue in request.get("entity_clues", []) if clean_text(clue).lower() in haystack)
+    score += min(24, phrase_hits * 12)
+    score += min(18, entity_hits * 6)
     return score
 
 
@@ -874,34 +1378,75 @@ def fetch_thread_posts(
 ) -> list[dict[str, Any]]:
     if not request.get("include_threads"):
         return []
-    same_author_links = []
-    handle = root_post.get("author_handle", "")
-    root_url = root_post.get("post_url", "")
-    for url in LINK_RE.findall(links_text or ""):
-        canonical = canonical_status_url(url)
-        match = STATUS_URL_RE.search(canonical)
-        if not match or match.group(1) != handle:
-            continue
-        if canonical == root_url or canonical in visited or canonical in same_author_links:
-            continue
-        same_author_links.append(canonical)
-
+    same_author_links: list[str] = []
+    handle = clean_text(root_post.get("author_handle")).lstrip("@")
+    root_url = canonical_status_url(clean_text(root_post.get("post_url")))
+    root_posted_at = clean_text(root_post.get("posted_at"))
+    max_thread_posts = max(1, int(request.get("max_thread_posts", 10)))
+    collected_at = isoformat_or_blank(request["analysis_time"])
     thread_posts: list[dict[str, Any]] = []
-    for index, url in enumerate(same_author_links[: request.get("max_thread_posts", 10)], start=1):
-        visited.add(url)
-        artifact = fetch_page(url, output_dir / f"{slugify(handle or 'thread', 'thread')}-thread-{index}.png", session_context)
+    seen_thread_urls: set[str] = set()
+
+    def append_thread_post(url: str, artifact: FetchArtifact, fallback_posted_at: str = "") -> None:
+        canonical = canonical_status_url(url)
+        candidate_handle = extract_author_handle(canonical, artifact.html)
+        if handle and candidate_handle and candidate_handle != handle:
+            return
+        posted_at = extract_posted_at(artifact.html, fallback_posted_at)
+        if not within_same_author_time_window(posted_at, root_posted_at, request):
+            return
         post_text_raw, source, confidence = extract_post_text(artifact.html, artifact.visible_text, artifact.accessibility_text, "")
+        if canonical in seen_thread_urls:
+            return
+        seen_thread_urls.add(canonical)
         thread_posts.append(
             {
-                "post_url": canonical_status_url(url),
-                "posted_at": extract_posted_at(artifact.html, ""),
+                "post_url": canonical,
+                "posted_at": posted_at,
                 "post_text_raw": post_text_raw,
                 "post_text_source": source,
                 "post_text_confidence": confidence,
-                "collected_at": isoformat_or_blank(request["analysis_time"]),
+                "collected_at": collected_at,
             }
         )
-    return thread_posts
+
+    scan_candidates = discover_same_author_candidates(root_post, request, visited)
+    for index, candidate in enumerate(scan_candidates, start=1):
+        url = canonical_status_url(candidate.get("post_url", ""))
+        if not url or len(thread_posts) >= max_thread_posts:
+            continue
+        visited.add(url)
+        artifact = fetch_page(
+            url,
+            output_dir / f"{slugify(handle or 'thread', 'thread')}-scan-thread-{index}.png",
+            session_context,
+        )
+        append_thread_post(url, artifact, clean_text(candidate.get("posted_at")))
+
+    if not thread_posts:
+        for url in LINK_RE.findall(links_text or ""):
+            canonical = canonical_status_url(url)
+            match = STATUS_URL_RE.search(canonical)
+            if not match or match.group(1) != handle:
+                continue
+            if canonical == root_url or canonical in visited or canonical in same_author_links:
+                continue
+            same_author_links.append(canonical)
+
+        for index, url in enumerate(same_author_links[:max_thread_posts], start=1):
+            if len(thread_posts) >= max_thread_posts:
+                break
+            visited.add(url)
+            artifact = fetch_page(url, output_dir / f"{slugify(handle or 'thread', 'thread')}-thread-{index}.png", session_context)
+            append_thread_post(url, artifact)
+
+    thread_posts.sort(
+        key=lambda item: (
+            parse_datetime(item.get("posted_at")) or request["analysis_time"],
+            item.get("post_url", ""),
+        )
+    )
+    return thread_posts[:max_thread_posts]
 
 
 def build_x_post_record(
@@ -915,6 +1460,52 @@ def build_x_post_record(
     post_slug = slugify(f"x-{ordinal}-{post_url}", f"x-post-{ordinal}")
     output_dir = request["output_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
+    cached_post = candidate.get("cached_x_post") if isinstance(candidate.get("cached_x_post"), dict) else None
+
+    if cached_post:
+        artifact_manifest = deepcopy(cached_post.get("artifact_manifest", [])) if isinstance(cached_post.get("artifact_manifest"), list) else []
+        return {
+            "post_url": canonical_status_url(clean_text(cached_post.get("post_url")) or post_url),
+            "author_handle": clean_text(cached_post.get("author_handle")),
+            "author_display_name": clean_text(cached_post.get("author_display_name")),
+            "posted_at": isoformat_or_blank(parse_datetime(cached_post.get("posted_at"))),
+            "collected_at": isoformat_or_blank(collected_at),
+            "post_text_raw": clean_text(cached_post.get("post_text_raw")),
+            "post_text_source": clean_text(cached_post.get("post_text_source")) or "cached_x_index_result",
+            "post_text_extracted_at": isoformat_or_blank(collected_at),
+            "post_text_confidence": round(float(cached_post.get("post_text_confidence", 0.75)), 2),
+            "thread_posts": [
+                normalize_thread_post(item, collected_at)
+                for item in cached_post.get("thread_posts", [])
+                if isinstance(item, dict)
+            ][: request.get("max_thread_posts", 10)],
+            "thread_incomplete": bool(cached_post.get("thread_incomplete")),
+            "engagement": normalize_engagement(cached_post.get("engagement", {})),
+            "root_post_screenshot_path": clean_text(cached_post.get("root_post_screenshot_path")),
+            "media_items": deepcopy(cached_post.get("media_items", [])) if isinstance(cached_post.get("media_items"), list) else [],
+            "post_summary": clean_text(cached_post.get("post_summary")),
+            "media_summary": clean_text(cached_post.get("media_summary")),
+            "combined_summary": clean_text(cached_post.get("combined_summary")),
+            "conflict_note": clean_text(cached_post.get("conflict_note")),
+            "discovery_reason": clean_text(candidate.get("discovery_reason")) or clean_text(cached_post.get("discovery_reason")) or "reused_x_index_result",
+            "access_mode": clean_text(cached_post.get("access_mode")) or "public",
+            "crawl_notes": unique_notes(
+                [
+                    *(cached_post.get("crawl_notes", []) if isinstance(cached_post.get("crawl_notes"), list) else []),
+                    f"reused cached x-index output from {clean_text(candidate.get('reuse_source_path'))}",
+                ]
+            ),
+            "session_source": clean_text(cached_post.get("session_source")),
+            "session_status": clean_text(cached_post.get("session_status")) or "cached_reuse",
+            "session_health": clean_text(cached_post.get("session_health")) or "effective",
+            "session_notes": unique_notes(
+                [
+                    *(cached_post.get("session_notes", []) if isinstance(cached_post.get("session_notes"), list) else []),
+                    f"reused from {clean_text(candidate.get('reuse_source_path'))}",
+                ]
+            ),
+            "artifact_manifest": artifact_manifest,
+        }
 
     if clean_text(candidate.get("html")) or clean_text(candidate.get("visible_text")):
         artifact = FetchArtifact(
@@ -952,7 +1543,7 @@ def build_x_post_record(
     if not thread_posts:
         visited = {post_url}
         thread_posts = fetch_thread_posts(
-            {"author_handle": author_handle, "post_url": post_url},
+            {"author_handle": author_handle, "post_url": post_url, "posted_at": posted_at},
             artifact.links_text,
             request,
             output_dir,
@@ -1066,6 +1657,12 @@ def collect_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
         if canonical and not any(item.get("post_url") == canonical for item in candidates):
             candidates.append({"post_url": canonical, "discovery_reason": "manual_url"})
 
+    reuse_summary = discover_reusable_candidates(request)
+    for candidate in reuse_summary.get("candidates", []):
+        canonical = canonical_status_url(candidate.get("post_url", ""))
+        if canonical and not any(item.get("post_url") == canonical for item in candidates):
+            candidates.append({**candidate, "post_url": canonical})
+
     if len(candidates) < request.get("max_candidates", 50):
         for item in discover_search_candidates(request):
             canonical = canonical_status_url(item.get("post_url", ""))
@@ -1077,6 +1674,7 @@ def collect_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
             candidates.append({**item, "post_url": canonical})
             if len(candidates) >= request.get("max_candidates", 50):
                 break
+    request["_reuse_summary"] = reuse_summary
     return candidates[: request.get("max_candidates", 50)]
 
 
@@ -1168,6 +1766,8 @@ def build_markdown_report(result: dict[str, Any]) -> str:
     request = result.get("request", {})
     x_posts = result.get("x_posts", [])
     session_bootstrap = result.get("session_bootstrap", {})
+    reuse_summary = result.get("reuse_summary", {})
+    window_capture_hints = result.get("window_capture_hints", {})
     lines = [
         f"# X Index Report: {request.get('topic', 'x-index-topic')}",
         "",
@@ -1190,6 +1790,28 @@ def build_markdown_report(result: dict[str, Any]) -> str:
             lines.append(f"- Cookie file: {session_bootstrap.get('cookie_file', '')}")
         for note in session_bootstrap.get("notes", []):
             lines.append(f"- Note: {note}")
+    if reuse_summary:
+        lines.extend(
+            [
+                "",
+                "## Reuse Summary",
+                f"- Enabled: {bool(reuse_summary.get('enabled'))}",
+                f"- Matched results: {reuse_summary.get('matched_results', 0)}",
+                f"- Reused posts: {reuse_summary.get('reused_posts', 0)}",
+            ]
+        )
+        for path in reuse_summary.get("result_paths", []):
+            lines.append(f"- Reused result: {path}")
+        for note in reuse_summary.get("notes", []):
+            lines.append(f"- Note: {note}")
+    if window_capture_hints:
+        lines.extend(["", "## Window-First Capture Hints"])
+        for note in window_capture_hints.get("notes", []):
+            lines.append(f"- Note: {note}")
+        for url in window_capture_hints.get("manual_urls", []):
+            lines.append(f"- Direct URL: {url}")
+        for item in window_capture_hints.get("search_urls", []):
+            lines.append(f"- Search URL: {item.get('url', '')} | Query: {item.get('query', '')}")
     lines.extend(
         [
         "",
@@ -1222,10 +1844,21 @@ def build_markdown_report(result: dict[str, Any]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def persist_x_index_outputs(result: dict[str, Any]) -> dict[str, str]:
+    output_dir = Path(result.get("request", {}).get("output_dir", "")).expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    result_path = output_dir / DEFAULT_X_RESULT_FILENAME
+    report_path = output_dir / DEFAULT_X_REPORT_FILENAME
+    write_json(result_path, result)
+    report_path.write_text(result.get("report_markdown", ""), encoding="utf-8")
+    return {"result_json": str(result_path), "report_markdown": str(report_path)}
+
+
 def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = parse_request(raw_payload)
     session_context = prepare_session_context(request)
     collected_candidates = collect_candidates(request)
+    reuse_summary = deepcopy(request.pop("_reuse_summary", {}))
     x_posts = []
     blocked_candidates = []
     for index, candidate in enumerate(collected_candidates, start=1):
@@ -1265,8 +1898,15 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "discovery_summary": {
             "attempted_candidates": len(collected_candidates),
             "kept_posts": len(kept_posts),
+            "search_queries": build_search_queries(request),
             "blocked_candidates": blocked_candidates,
         },
+        "reuse_summary": {
+            key: deepcopy(value)
+            for key, value in reuse_summary.items()
+            if key != "candidates"
+        },
+        "window_capture_hints": build_window_capture_hints(request),
         "evidence_pack": evidence_pack,
         "retrieval_request": retrieval_request,
         "retrieval_result": retrieval_result,
@@ -1279,13 +1919,17 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
             else ("degraded" if "degraded" in health_values else ("attached" if health_values else "unverified"))
         )
     result["report_markdown"] = build_markdown_report(result)
+    result["workflow_artifacts"] = persist_x_index_outputs(result)
     return result
 
 
 __all__ = [
     "build_markdown_report",
+    "build_window_capture_hints",
+    "build_search_queries",
     "build_chain_commands",
     "load_json",
+    "probe_cdp_endpoint",
     "prepare_session_context",
     "run_x_index",
     "write_json",

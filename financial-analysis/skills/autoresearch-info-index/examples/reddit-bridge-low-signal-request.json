@@ -1,0 +1,34 @@
+{
+  "topic": "Retail AI infra low-signal thread",
+  "analysis_time": "2026-04-04T04:00:00+00:00",
+  "questions": [
+    "What part of this WSB thread is only community heat and what is reusable watchlist context?"
+  ],
+  "reddit_result": {
+    "posts": [
+      {
+        "id": "wsb123",
+        "title": "I am still long AI infra",
+        "author": "degentrader",
+        "subreddit": "wallstreetbets",
+        "permalink": "/r/wallstreetbets/comments/wsb123/i_am_still_long_ai_infra/",
+        "url": "https://www.reddit.com/r/wallstreetbets/comments/wsb123/i_am_still_long_ai_infra/",
+        "selftext": "The post itself is noisy but has a few useful replies in the thread.",
+        "score": 1200,
+        "num_comments": 340,
+        "created_utc": "2026-04-04T03:15:00+00:00"
+      }
+    ],
+    "comments": [
+      {
+        "id": "wsbc1",
+        "link_id": "t3_wsb123",
+        "author": "cashflowlurker",
+        "score": 130,
+        "created_utc": "2026-04-04T03:20:00+00:00",
+        "body": "Top reply says hyperscaler capex still matters more than meme sentiment.",
+        "permalink": "/r/wallstreetbets/comments/wsb123/i_am_still_long_ai_infra/wsbc1/"
+      }
+    ]
+  }
+}

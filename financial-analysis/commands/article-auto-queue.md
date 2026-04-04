@@ -22,6 +22,10 @@ This gives you:
 - staged indexed source files
 - a batch article queue for the selected items
 - a review-ready output folder for the winners
+- per-selected-candidate `final_publication_readiness` /
+  `final_manual_review_*` fields for compatibility
+- the same `workflow_publication_gate` object on ranked candidates so downstream
+  automation can read one shared publication gate
 
 Local helper:
 

@@ -1,0 +1,81 @@
+{
+  "analysis_time": "2026-04-04T05:00:00+00:00",
+  "query": "NVIDIA TSMC packaging bottleneck",
+  "sources": ["agent-reach:reddit"],
+  "top_n": 5,
+  "agent_reach_channel_payloads": {
+    "reddit": [
+      {
+        "title": "NVDA packaging squeeze gets worse after Blackwell push",
+        "permalink": "/r/stocks/comments/nvda901/nvda_packaging_squeeze_gets_worse_after_blackwell_push/",
+        "subreddit": "stocks",
+        "url": "https://www.reuters.com/technology/nvidia-packaging-bottlenecks-2026-04-04/",
+        "selftext": "Retail investors are debating advanced packaging queues and supplier leverage again.",
+        "score": 640,
+        "num_comments": 180,
+        "upvote_ratio": 0.9,
+        "created_utc": "2026-04-04T04:18:00+00:00",
+        "listing": "hot"
+      },
+      {
+        "title": "Reuters note says NVIDIA supplier bottlenecks are back",
+        "permalink": "/r/investing/comments/nvda902/reuters_note_says_nvidia_supplier_bottlenecks_are_back/",
+        "subreddit": "investing",
+        "url": "https://www.reuters.com/technology/nvidia-packaging-bottlenecks-2026-04-04/",
+        "selftext": "Another subreddit is using the same Reuters link to debate capacity and allocation.",
+        "score": 590,
+        "num_comments": 165,
+        "upvote_ratio": 0.89,
+        "created_utc": "2026-04-04T04:12:00+00:00",
+        "listing": "rising",
+        "time_filter": "day"
+      },
+      {
+        "title": "Why NVIDIA bottlenecks keep showing up in advanced packaging",
+        "permalink": "/r/SecurityAnalysis/comments/nvda903/why_nvidia_bottlenecks_keep_showing_up_in_advanced_packaging/",
+        "subreddit": "SecurityAnalysis",
+        "selftext": "The thread argues advanced packaging and CoWoS capacity are still the gating node.",
+        "score": 410,
+        "num_comments": 110,
+        "upvote_ratio": 0.88,
+        "created_utc": "2026-04-04T04:07:00+00:00",
+        "listing": "top",
+        "time_filter": "day"
+      },
+      {
+        "title": "台积电 CoWoS 还是卡",
+        "permalink": "/r/stocks/comments/tsmc901/tsmc_cowos_still_tight/",
+        "subreddit": "stocks",
+        "selftext": "中文帖子讨论台积电先进封装排产依旧偏紧。",
+        "score": 420,
+        "num_comments": 108,
+        "upvote_ratio": 0.87,
+        "created_utc": "2026-04-04T04:15:00+00:00",
+        "listing": "hot"
+      },
+      {
+        "title": "Why TSMC packaging constraints still matter",
+        "permalink": "/r/investing/comments/tsmc902/why_tsmc_packaging_constraints_still_matter/",
+        "subreddit": "investing",
+        "selftext": "English thread debates advanced packaging lead times and AI server ramps.",
+        "score": 395,
+        "num_comments": 102,
+        "upvote_ratio": 0.86,
+        "created_utc": "2026-04-04T04:09:00+00:00",
+        "listing": "rising",
+        "time_filter": "day"
+      },
+      {
+        "title": "Broadcom custom silicon upside check",
+        "permalink": "/r/stocks/comments/avgo901/broadcom_custom_silicon_upside_check/",
+        "subreddit": "stocks",
+        "selftext": "Separate discussion about custom silicon upside and networking attach rates.",
+        "score": 250,
+        "num_comments": 70,
+        "upvote_ratio": 0.82,
+        "created_utc": "2026-04-04T04:05:00+00:00",
+        "listing": "new"
+      }
+    ]
+  }
+}

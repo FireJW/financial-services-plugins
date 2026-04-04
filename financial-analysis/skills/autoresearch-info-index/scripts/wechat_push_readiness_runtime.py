@@ -8,6 +8,7 @@ from typing import Any
 from article_publish_runtime import build_push_readiness
 from news_index_runtime import write_json
 from wechat_draftbox_runtime import (
+    build_workflow_publication_gate,
     default_request_fn,
     fetch_access_token,
     inspect_wechat_credentials,
@@ -60,6 +61,8 @@ def build_report_markdown(result: dict[str, Any]) -> str:
     push_readiness = safe_dict(result.get("push_readiness"))
     credential_check = safe_dict(result.get("credential_check"))
     live_auth = safe_dict(result.get("live_auth_check"))
+    workflow_publication_gate = safe_dict(result.get("workflow_publication_gate"))
+    workflow_manual_review = safe_dict(workflow_publication_gate.get("manual_review"))
     blockers = safe_list(result.get("blockers"))
     warnings = safe_list(result.get("warnings"))
     lines = [
@@ -87,6 +90,14 @@ def build_report_markdown(result: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
+            "## Workflow Publication Gate",
+            "",
+            f"- Publication readiness: {clean_text(workflow_publication_gate.get('publication_readiness')) or 'ready'}",
+            f"- Reddit operator review: {clean_text(workflow_manual_review.get('status')) or 'not_required'}",
+            f"- Required items: {int(workflow_manual_review.get('required_count', 0) or 0)}",
+            f"- High-priority items: {int(workflow_manual_review.get('high_priority_count', 0) or 0)}",
+            f"- Next step: {clean_text(workflow_manual_review.get('next_step')) or 'none'}",
+            "",
             "## Live Auth",
             "",
             f"- Status: {clean_text(live_auth.get('status')) or 'not_run'}",
@@ -103,6 +114,7 @@ def run_wechat_push_readiness_audit(
 ) -> dict[str, Any]:
     request = normalize_request(raw_payload)
     publish_package = safe_dict(request.get("publish_package"))
+    workflow_publication_gate = build_workflow_publication_gate(publish_package)
     push_readiness = build_push_readiness(
         request,
         clean_text(publish_package.get("content_html")),
@@ -157,6 +169,7 @@ def run_wechat_push_readiness_audit(
         "ready_for_real_push": readiness_level == "ready",
         "human_review_approved": request["human_review_approved"],
         "human_review_approved_by": request["human_review_approved_by"],
+        "workflow_publication_gate": workflow_publication_gate,
         "push_readiness": push_readiness,
         "credential_check": credential_check,
         "live_auth_check": live_auth_check,

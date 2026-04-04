@@ -12,7 +12,8 @@ if not exist "%EDGE_EXE%" (
 tasklist /FI "IMAGENAME eq msedge.exe" | find /I "msedge.exe" >nul
 if not errorlevel 1 (
   echo Edge is already running.
-  echo Please close all Edge windows first, then run this command again.
+  echo Default X workflow: reuse the last successful flow or open a new Edge window first.
+  echo Only close all Edge windows and rerun this helper if the user explicitly approved that interruptive relaunch.
   exit /b 1
 )
 

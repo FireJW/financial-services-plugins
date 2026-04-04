@@ -11,6 +11,7 @@ from article_batch_workflow_runtime import run_article_batch_workflow
 from article_workflow_runtime import load_json, write_json
 from news_index_runtime import parse_datetime, slugify, run_news_index
 from runtime_paths import runtime_subdir
+from workflow_publication_gate_runtime import build_workflow_publication_gate
 from x_index_runtime import run_x_index
 
 
@@ -385,6 +386,25 @@ def build_batch_request(request: dict[str, Any], ranked_candidates: list[dict[st
     return batch_request
 
 
+def resolve_batch_item_workflow_publication_gate(batch_item: dict[str, Any]) -> dict[str, Any]:
+    workflow_publication_gate = safe_dict(batch_item.get("workflow_publication_gate"))
+    if workflow_publication_gate:
+        return workflow_publication_gate
+    if not batch_item:
+        return {}
+    return build_workflow_publication_gate(
+        {
+            "publication_readiness": clean_text(batch_item.get("publication_readiness")),
+            "workflow_manual_review": {
+                "required": bool(batch_item.get("manual_review_required")),
+                "status": clean_text(batch_item.get("manual_review_status")),
+                "required_count": int(batch_item.get("manual_review_required_count", 0) or 0),
+                "high_priority_count": int(batch_item.get("manual_review_high_priority_count", 0) or 0),
+            },
+        }
+    )
+
+
 def build_report(result: dict[str, Any]) -> str:
     lines = [
         "# Article Auto Queue",
@@ -399,6 +419,8 @@ def build_report(result: dict[str, Any]) -> str:
         "",
     ]
     for item in safe_list(result.get("ranked_candidates")):
+        workflow_publication_gate = safe_dict(item.get("workflow_publication_gate"))
+        workflow_manual_review = safe_dict(workflow_publication_gate.get("manual_review"))
         lines.extend(
             [
                 f"### {clean_text(item.get('label'))}",
@@ -412,6 +434,8 @@ def build_report(result: dict[str, Any]) -> str:
                 f"- Reason: {clean_text(item.get('reason_summary'))}",
                 f"- Source result: {clean_text(item.get('source_result_path'))}",
                 f"- Final quality gate: {clean_text(item.get('final_quality_gate')) or 'n/a'}",
+                f"- Publication readiness: {clean_text(workflow_publication_gate.get('publication_readiness') or item.get('final_publication_readiness')) or 'n/a'}",
+                f"- Reddit operator review: {clean_text(workflow_manual_review.get('status') or item.get('final_manual_review_status')) or 'n/a'}",
                 f"- Rewrite mode: {clean_text(item.get('final_rewrite_mode')) or 'n/a'}",
                 "",
             ]
@@ -451,6 +475,8 @@ def run_article_auto_queue(raw_payload: dict[str, Any]) -> dict[str, Any]:
     enriched_candidates = []
     for item in ranked_candidates:
         batch_item = safe_dict(batch_items_by_index.get(int(item.get("index", 0) or 0)))
+        workflow_publication_gate = resolve_batch_item_workflow_publication_gate(batch_item)
+        workflow_manual_review = safe_dict(workflow_publication_gate.get("manual_review"))
         if clean_text(item.get("status")) != "ok":
             selection_status = "error"
         elif int(item.get("index", 0) or 0) in selected_indexes:
@@ -462,6 +488,26 @@ def run_article_auto_queue(raw_payload: dict[str, Any]) -> dict[str, Any]:
                 **{key: value for key, value in item.items() if key != "source_payload"},
                 "selection_status": selection_status,
                 "final_quality_gate": clean_text(batch_item.get("quality_gate")),
+                "workflow_publication_gate": workflow_publication_gate,
+                "final_publication_readiness": clean_text(
+                    workflow_publication_gate.get("publication_readiness") or batch_item.get("publication_readiness")
+                ),
+                "final_manual_review_required": bool(
+                    workflow_manual_review.get("required") if workflow_manual_review else batch_item.get("manual_review_required")
+                ),
+                "final_manual_review_status": clean_text(
+                    workflow_manual_review.get("status") or batch_item.get("manual_review_status")
+                ),
+                "final_manual_review_required_count": int(
+                    workflow_manual_review.get("required_count", batch_item.get("manual_review_required_count", 0)) or 0
+                ),
+                "final_manual_review_high_priority_count": int(
+                    workflow_manual_review.get(
+                        "high_priority_count",
+                        batch_item.get("manual_review_high_priority_count", 0),
+                    )
+                    or 0
+                ),
                 "final_rewrite_mode": clean_text(batch_item.get("rewrite_mode")),
             }
         )

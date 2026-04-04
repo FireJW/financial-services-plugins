@@ -64,9 +64,14 @@ The output package includes:
 - ranked topic selection
 - the generated `news-index` request
 - the full article workflow result
-- a `publish-package.json`
+- a `publish-package.json` with `workflow_manual_review` plus
+  `publication_readiness`
+- an `article-publish-result.json` / markdown report with a top-level
+  `workflow_publication_gate`
 - a `wechat-draft.html`
 - a `draftbox_payload_template`
+- automatic acceptance JSON / markdown artifacts that preserve the same
+  workflow publication gate
 - a `push_readiness` block that tells you whether the later WeChat push step is blocked by content, cover image, or credentials
 - when push is requested and succeeds, a `wechat-push-result.json`
 

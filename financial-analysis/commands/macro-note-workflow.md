@@ -23,6 +23,16 @@ The workflow writes staged outputs for:
 - the macro note report
 - the workflow summary report
 
+The workflow result and the saved macro-note result both preserve the same
+publication-side gate:
+
+- `manual_review`
+- `publication_readiness`
+- `workflow_publication_gate`
+
+That keeps Reddit-origin comment caution visible without upgrading it into fact
+confirmation.
+
 Accepted inputs:
 
 - an existing indexed result JSON

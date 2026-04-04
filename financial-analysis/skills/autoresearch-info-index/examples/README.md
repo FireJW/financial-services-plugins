@@ -60,6 +60,131 @@ Recommended smoke command:
 scripts\run_last30days_bridge_demo.cmd
 ```
 
+## Reddit Bridge Fixture
+
+- `reddit-bridge-export-root-request.json`
+- `reddit-bridge-inline-comments-request.json`
+- `reddit-bridge-low-signal-request.json`
+- `reddit-bridge-duplicate-comments-request.json`
+- `reddit-bridge-valueinvesting-request.json`
+- `fixtures/reddit-universal-scraper-sample/`
+
+This fixture mimics the exported directory shape of
+`reddit-universal-scraper`, including `data/r_*` and `data/u_*` folders with
+`posts.csv`, plus optional sibling `comments.csv`.
+
+Use it when you want to verify that `reddit-bridge` can:
+
+- start from a higher export root instead of a single CSV path
+- select a target with `subreddit`, `user`, or `export_target`
+- preserve the Reddit thread permalink while keeping the outbound article URL
+  in metadata
+- merge `comments.csv` into post-level metadata such as `top_comment_summary`
+  and `top_comment_count`
+- deduplicate repeated comment snapshots conservatively so duplicate exports do
+  not artificially inflate comment-sample counts
+- flag suspiciously similar comments through `comment_near_duplicate_count`
+  without collapsing them out of the retained sample
+- preserve the caution split between same-author and cross-author near
+  duplicates so operator review can tell repetition from broader meme spread
+- retain a few representative `comment_near_duplicate_examples` so the warning
+  can be audited without reopening the raw export immediately
+- preserve partial-sample caution metadata such as
+  `comment_count_mismatch` and `comment_sample_coverage_ratio`
+- preserve duplicate-comment cleanup metadata such as `comment_duplicate_count`
+- surface the consolidated `comment_operator_review` block that rolls sample
+  coverage, duplicate cleanup, near-duplicate caution, and top-comment context
+  into one bounded review object
+- emit `operator_review_priority` plus a result-level `operator_review_queue`
+  when you want the runtime to pre-sort which Reddit topics need manual review
+  first
+- preserve profile-specific metadata such as `subreddit_kind=deep_research`
+  when the request targets communities like `r/ValueInvesting`
+- test non-default comment ranking with `comment_sort_strategy=hybrid`
+
+The inline-comments example is useful when the Reddit payload already nests
+comment arrays under each post item and you want the bridge to preserve them
+without a separate `comments.csv`.
+
+The low-signal example is useful when you want one deterministic request that
+shows `subreddit_signal:low`, partial comment-sample warnings, and top-comment
+context on the same bridged observation.
+
+The duplicate-comments example is useful when you want to verify that repeated
+comment snapshots are deduplicated conservatively and still surfaced via
+`comment_duplicate_count`.
+
+The ValueInvesting example is useful when you want one deterministic request
+that shows a `deep_research` subreddit profile together with near-duplicate
+comment caution metadata.
+
+Recommended smoke command:
+
+```text
+scripts\run_reddit_bridge.cmd "financial-analysis\skills\autoresearch-info-index\examples\reddit-bridge-export-root-request.json"
+```
+
+## Reddit Hot-Topic Multi-Post Fixture
+
+- `hot-topic-reddit-multi-post-request.json`
+- `tests/fixtures/reddit-hot-topic/reddit-multi-post-request.json`
+
+This fixture is a deterministic offline sample for the `hot_topic_discovery`
+surface rather than the `news-index` bridge surface.
+
+Use it when you want to verify that Reddit topic clustering can still handle a
+more realistic mixed batch with:
+
+- same-outbound clustering
+- ticker vs company-name alias clustering such as `NVDA` / `NVIDIA`
+- cross-language alias clustering such as `TSMC` / `台积电`
+- one unrelated standalone topic that should stay separate
+
+Recommended smoke command:
+
+```text
+scripts\run_hot_topic_discovery.cmd "financial-analysis\skills\autoresearch-info-index\examples\hot-topic-reddit-multi-post-request.json"
+```
+
+The bounded Reddit alias layer now lives in:
+
+- `financial-analysis/skills/autoresearch-info-index/references/reddit-cluster-aliases.json`
+
+Use the layered keys when you need to extend it:
+
+- `ticker_alias_groups`
+- `company_alias_groups`
+- `cross_language_alias_groups`
+
+The runtime merges overlapping groups before clustering. That means entries
+such as `["alphabet", "googl", "goog"]` plus `["google", "alphabet"]` still
+become one bounded alias cluster instead of two competing mappings.
+
+The subreddit community-profile layer now lives in:
+
+- `financial-analysis/skills/autoresearch-info-index/references/reddit-community-profiles.json`
+
+Use it when you want the bridge and `hot_topic_discovery` to classify
+subreddits into bounded signal buckets such as:
+
+- `broad_market_subreddits`
+- `deep_research_subreddits`
+- `speculative_flow_subreddits`
+- `event_watch_subreddits`
+
+Those profiles currently feed:
+
+- `subreddit_kind:*` bridge tags
+- `subreddit_signal:low` tags for configured low-signal communities
+- bounded Reddit score multipliers and subreddit-specific overrides inside
+  `hot_topic_discovery`
+- normalized Reddit bridge metadata such as `subreddit_kind`,
+  `reddit_listing_normalized`, `reddit_outbound_domain`,
+  `top_comment_summary`, and comment-sample caution metadata
+- hot-topic candidate metadata such as `reddit_subreddit_kinds`,
+  `reddit_author_count`, `reddit_outbound_domains`, `top_comment_count`,
+  `top_comment_author_count`, and `top_comment_max_score`
+
 ## WeChat Article Publishing
 
 - `wechat-article-publish-demo-request.json`
@@ -87,9 +212,63 @@ The generated `publish-package.json` now includes:
 - `draftbox_payload_template`
 - `push_readiness`
 - `next_push_command`
+- `workflow_manual_review`
+- `publication_readiness`
 
 That means phase 1 can stop at export time without losing the exact package
 shape required for the later `draft/add` step.
+
+The generated `article-publish-result.json` and automatic acceptance artifacts
+also now expose:
+
+- `workflow_publication_gate`
+- top-level `publication_readiness`
+- top-level `workflow_manual_review`
+
+So downstream reuse, regression, and operator review flows can read one
+consistent gate without reconstructing it from nested package fields. Batch
+queueing and auto queue now preserve that same `workflow_publication_gate`
+shape as well, and the underlying workflow / macro-note outputs now expose the
+same object directly.
+
+## Article Workflow Style / Headline Tuning
+
+- `article-workflow-style-profile-request.json`
+- `fixtures/feedback-profile-english/`
+
+Use this request when you already have a fixed indexed result and want to
+exercise the writing-layer controls instead of re-running discovery:
+
+- `source_result_path`
+- `feedback_profile_dir`
+- `headline_hook_mode`
+- `human_signal_ratio`
+- `personal_phrase_bank`
+
+Recommended smoke command:
+
+```text
+scripts\run_article_workflow.cmd "financial-analysis\skills\autoresearch-info-index\examples\article-workflow-style-profile-request.json"
+```
+
+Canonical regression snapshots for this surface now live under:
+
+- `tests/fixtures/article-workflow-canonical/`
+- `tests/test_article_workflow_canonical_snapshots.py`
+
+## Article Publish Acceptance Baselines
+
+Canonical publish acceptance snapshots now live under:
+
+- `tests/fixtures/article-publish-canonical/`
+- `tests/test_article_publish_canonical_snapshots.py`
+
+When you want the stable article workflow + publish regression pack in one shot,
+run:
+
+```text
+scripts\run_article_publish_acceptance.cmd
+```
 
 ## Generated Scaffold Outputs
 

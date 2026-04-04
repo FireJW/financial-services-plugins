@@ -11,6 +11,7 @@ from runtime_paths import runtime_subdir
 
 
 PROFILE_REQUEST_KEYS = (
+    "author",
     "language_mode",
     "tone",
     "draft_mode",

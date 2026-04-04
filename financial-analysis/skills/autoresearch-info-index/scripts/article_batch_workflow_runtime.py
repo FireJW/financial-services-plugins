@@ -10,6 +10,7 @@ from article_cleanup_runtime import cleanup_article_temp_dirs
 from article_workflow_runtime import load_json, run_article_workflow, write_json
 from news_index_runtime import parse_datetime, slugify
 from runtime_paths import runtime_subdir
+from workflow_publication_gate_runtime import build_workflow_publication_gate
 
 
 def clean_text(value: Any) -> str:
@@ -152,6 +153,8 @@ def build_batch_report(result: dict[str, Any]) -> str:
     ]
     )
     for item in safe_list(result.get("items")):
+        workflow_publication_gate = safe_dict(item.get("workflow_publication_gate"))
+        workflow_manual_review = safe_dict(workflow_publication_gate.get("manual_review"))
         lines.extend(
             [
                 f"### {clean_text(item.get('label'))}",
@@ -162,6 +165,10 @@ def build_batch_report(result: dict[str, Any]) -> str:
                 f"- Rewrite mode: {clean_text(item.get('rewrite_mode')) or 'n/a'}",
                 f"- Pre-rewrite quality gate: {clean_text(item.get('pre_rewrite_quality_gate')) or 'n/a'}",
                 f"- Final quality gate: {clean_text(item.get('quality_gate')) or 'n/a'}",
+                f"- Publication readiness: {clean_text(workflow_publication_gate.get('publication_readiness') or item.get('publication_readiness')) or 'ready'}",
+                f"- Reddit operator review: {clean_text(workflow_manual_review.get('status') or item.get('manual_review_status')) or 'not_required'}",
+                f"- Review items: {int(workflow_manual_review.get('required_count', item.get('manual_review_required_count', 0)) or 0)}",
+                f"- High-priority review items: {int(workflow_manual_review.get('high_priority_count', item.get('manual_review_high_priority_count', 0)) or 0)}",
                 f"- Images: {item.get('image_count', 0)}",
                 f"- Local images ready: {item.get('local_ready_count', 0)}",
                 f"- Remote images pending: {item.get('remote_only_count', 0)}",
@@ -195,6 +202,18 @@ def run_batch_item(request: dict[str, Any], item: dict[str, Any], index: int) ->
     asset_stage = safe_dict(workflow_result.get("asset_stage"))
     review_stage = safe_dict(workflow_result.get("review_stage"))
     final_stage = safe_dict(workflow_result.get("final_stage"))
+    manual_review = safe_dict(workflow_result.get("manual_review"))
+    workflow_publication_gate = safe_dict(workflow_result.get("workflow_publication_gate")) or build_workflow_publication_gate(
+        {
+            "publication_readiness": clean_text(
+                workflow_result.get("publication_readiness")
+                or final_stage.get("publication_readiness")
+                or manual_review.get("publication_readiness")
+            ),
+            "workflow_manual_review": manual_review,
+        }
+    )
+    workflow_manual_review = safe_dict(workflow_publication_gate.get("manual_review"))
     result_item = {
         "index": index,
         "candidate_index": int(item.get("candidate_index", 0) or 0),
@@ -217,6 +236,12 @@ def run_batch_item(request: dict[str, Any], item: dict[str, Any], index: int) ->
         "review_result_path": clean_text(review_stage.get("result_path")),
         "final_article_result_path": clean_text(final_stage.get("result_path")),
         "quality_gate": clean_text(final_stage.get("quality_gate")),
+        "publication_readiness": clean_text(workflow_publication_gate.get("publication_readiness")) or "ready",
+        "workflow_publication_gate": workflow_publication_gate,
+        "manual_review_required": bool(workflow_manual_review.get("required")),
+        "manual_review_status": clean_text(final_stage.get("manual_review_status") or workflow_manual_review.get("status")),
+        "manual_review_required_count": int(workflow_manual_review.get("required_count", 0) or 0),
+        "manual_review_high_priority_count": int(workflow_manual_review.get("high_priority_count", 0) or 0),
         "suggested_revise_command": clean_text(review_stage.get("suggested_revise_command")),
         "suggested_asset_hydrate_command": clean_text(asset_stage.get("suggested_asset_hydrate_command")),
     }

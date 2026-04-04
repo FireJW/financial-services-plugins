@@ -11,7 +11,7 @@ from agent_reach_workflow_bridge_runtime import (
     merge_news_payload_with_agent_reach_candidates,
     summarize_agent_reach_stage,
 )
-from article_brief_runtime import build_analysis_brief, clean_text, load_json, safe_dict, safe_list, write_json
+from article_brief_runtime import build_analysis_brief, build_reddit_operator_review_manual_state, clean_text, load_json, safe_dict, safe_list, write_json
 from opencli_bridge_runtime import prepare_opencli_bridge
 from opencli_workflow_bridge_runtime import (
     build_opencli_bridge_payload,
@@ -20,6 +20,7 @@ from opencli_workflow_bridge_runtime import (
 )
 from news_index_runtime import isoformat_or_blank, now_utc, parse_datetime, run_news_index, slugify
 from runtime_paths import runtime_subdir
+from workflow_publication_gate_runtime import build_workflow_publication_gate
 from workflow_source_runtime import (
     augment_news_payload_with_workflow_sources,
     build_agent_reach_augmentation_lines,
@@ -133,6 +134,13 @@ def build_macro_note_result(
     staged_source_result_path: str,
 ) -> dict[str, Any]:
     source_summary = safe_dict(brief_result.get("source_summary"))
+    manual_review = build_reddit_operator_review_manual_state(source_summary)
+    workflow_publication_gate = build_workflow_publication_gate(
+        {
+            "manual_review": manual_review,
+            "publication_readiness": clean_text(manual_review.get("publication_readiness")) or "ready",
+        }
+    )
     analysis_brief = safe_dict(brief_result.get("analysis_brief"))
     macro_fields = safe_dict(analysis_brief.get("macro_note_fields"))
     policy_overlay = safe_dict(analysis_brief.get("policy_pressure_overlay"))
@@ -145,6 +153,9 @@ def build_macro_note_result(
         },
         "source_summary": source_summary,
         "analysis_brief": analysis_brief,
+        "manual_review": manual_review,
+        "publication_readiness": clean_text(workflow_publication_gate.get("publication_readiness")) or "ready",
+        "workflow_publication_gate": workflow_publication_gate,
         "macro_note": {
             "one_line_judgment": safe_dict(macro_fields.get("one_line_judgment")),
             "confidence_markers": safe_dict(macro_fields.get("confidence_markers")),
@@ -170,6 +181,8 @@ def build_macro_note_result(
 def build_macro_note_markdown(result: dict[str, Any]) -> str:
     request = safe_dict(result.get("request"))
     macro_note = safe_dict(result.get("macro_note"))
+    workflow_publication_gate = safe_dict(result.get("workflow_publication_gate"))
+    manual_review = safe_dict(workflow_publication_gate.get("manual_review")) or safe_dict(result.get("manual_review"))
     judgment = safe_dict(macro_note.get("one_line_judgment"))
     confidence = safe_dict(macro_note.get("confidence_markers"))
     benchmark_map = safe_dict(macro_note.get("benchmark_map"))
@@ -178,6 +191,8 @@ def build_macro_note_markdown(result: dict[str, Any]) -> str:
         f"# Macro Note: {clean_text(request.get('topic'))}",
         "",
         f"- Analysis time: {clean_text(request.get('analysis_time'))}",
+        f"- Publication readiness: {clean_text(workflow_publication_gate.get('publication_readiness') or result.get('publication_readiness')) or 'ready'}",
+        f"- Reddit operator review: {clean_text(manual_review.get('status')) or 'not_required'}",
         "",
         "## One-line Judgment",
         "",
@@ -190,9 +205,23 @@ def build_macro_note_markdown(result: dict[str, Any]) -> str:
         f"- Gate: {clean_text(confidence.get('confidence_gate')) or 'None'}",
         f"- Evidence mode: {clean_text(confidence.get('evidence_mode')) or 'None'}",
         "",
-        "## Current State",
+        "## Reddit Operator Review",
         "",
+        f"- Status: {clean_text(manual_review.get('status')) or 'not_required'}",
+        f"- Required items: {int(manual_review.get('required_count', 0) or 0)}",
+        f"- High-priority items: {int(manual_review.get('high_priority_count', 0) or 0)}",
+        f"- Summary: {clean_text(manual_review.get('summary')) or 'None'}",
+        f"- Next step: {clean_text(manual_review.get('next_step')) or 'None'}",
     ]
+    for item in safe_list(manual_review.get("queue")):
+        label = clean_text(item.get("title") or item.get("source_name") or item.get("url")) or "queued item"
+        lines.append(
+            f"- Queue: [{clean_text(item.get('priority_level')) or 'unknown'}] {label} | "
+            f"{clean_text(item.get('summary')) or 'operator review required'}"
+        )
+    if not safe_list(manual_review.get("queue")):
+        lines.append("- Queue: None")
+    lines.extend(["", "## Current State", ""])
     for item in safe_list(macro_note.get("current_state_rows")):
         lines.append(f"- {clean_text(item.get('state'))}: {clean_text(item.get('detail'))}")
     if not safe_list(macro_note.get("current_state_rows")):
@@ -261,11 +290,15 @@ def build_workflow_report_markdown(result: dict[str, Any]) -> str:
     opencli_stage = safe_dict(source_stage.get("opencli_stage"))
     macro_note_stage = safe_dict(result.get("macro_note_stage"))
     brief_stage = safe_dict(result.get("brief_stage"))
+    workflow_publication_gate = safe_dict(result.get("workflow_publication_gate"))
+    manual_review = safe_dict(workflow_publication_gate.get("manual_review")) or safe_dict(result.get("manual_review"))
     lines = [
         f"# Macro Note Workflow Report: {clean_text(result.get('topic'))}",
         "",
         f"- Analysis time: {clean_text(result.get('analysis_time'))}",
         f"- Source stage: {clean_text(source_stage.get('source_kind'))}",
+        f"- Publication readiness: {clean_text(workflow_publication_gate.get('publication_readiness') or result.get('publication_readiness')) or 'ready'}",
+        f"- Reddit operator review: {clean_text(manual_review.get('status')) or 'not_required'}",
     ]
     lines.extend(build_source_stage_file_lines(source_stage, include_source_report=False, include_bridge_reports=False))
     lines.extend(
@@ -278,6 +311,26 @@ def build_workflow_report_markdown(result: dict[str, Any]) -> str:
     )
     lines.extend(build_agent_reach_augmentation_lines(agent_reach_stage))
     lines.extend(build_opencli_augmentation_lines(opencli_stage))
+    lines.extend(
+        [
+            "",
+            "## Reddit Operator Review",
+            "",
+            f"- Status: {clean_text(manual_review.get('status')) or 'not_required'}",
+            f"- Required items: {int(manual_review.get('required_count', 0) or 0)}",
+            f"- High-priority items: {int(manual_review.get('high_priority_count', 0) or 0)}",
+            f"- Summary: {clean_text(manual_review.get('summary')) or 'None'}",
+            f"- Next step: {clean_text(manual_review.get('next_step')) or 'None'}",
+        ]
+    )
+    for item in safe_list(manual_review.get("queue")):
+        label = clean_text(item.get("title") or item.get("source_name") or item.get("url")) or "queued item"
+        lines.append(
+            f"- Queue: [{clean_text(item.get('priority_level')) or 'unknown'}] {label} | "
+            f"{clean_text(item.get('summary')) or 'operator review required'}"
+        )
+    if not safe_list(manual_review.get("queue")):
+        lines.append("- Queue: None")
     return "\n".join(lines).strip() + "\n"
 
 
@@ -308,12 +361,16 @@ def run_macro_note_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     macro_note_report_path = request["output_dir"] / "macro-note-report.md"
     write_json(macro_note_result_path, macro_note_result)
     macro_note_report_path.write_text(macro_note_result.get("report_markdown", ""), encoding="utf-8-sig")
+    workflow_publication_gate = deepcopy(safe_dict(macro_note_result.get("workflow_publication_gate")))
 
     result = {
         "status": "ok",
         "workflow_kind": "macro_note_workflow",
         "topic": request["topic"],
         "analysis_time": isoformat_or_blank(request["analysis_time"]),
+        "publication_readiness": clean_text(workflow_publication_gate.get("publication_readiness")) or "ready",
+        "manual_review": deepcopy(safe_dict(macro_note_result.get("manual_review"))),
+        "workflow_publication_gate": workflow_publication_gate,
         "source_stage": source_stage,
         "brief_stage": {
             "result_path": str(brief_result_path),
@@ -326,6 +383,10 @@ def run_macro_note_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "one_line_judgment": clean_text(
                 safe_dict(safe_dict(macro_note_result.get("macro_note")).get("one_line_judgment")).get("text")
             ),
+            "manual_review_required": bool(safe_dict(macro_note_result.get("manual_review")).get("required")),
+            "manual_review_status": clean_text(safe_dict(macro_note_result.get("manual_review")).get("status")) or "not_required",
+            "publication_readiness": clean_text(workflow_publication_gate.get("publication_readiness")) or "ready",
+            "workflow_publication_gate": deepcopy(workflow_publication_gate),
         },
         "source_result": source_payload,
         "analysis_brief": safe_dict(brief_result.get("analysis_brief")),

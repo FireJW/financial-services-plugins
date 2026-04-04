@@ -4,16 +4,20 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import subprocess
+import tempfile
 import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
+from shutil import which
 from typing import Any, Callable
 
 from article_workflow_runtime import load_json
 from news_index_runtime import safe_dict, safe_list
+from workflow_publication_gate_runtime import build_workflow_publication_gate
 
 
 def clean_text(value: Any) -> str:
@@ -22,7 +26,9 @@ def clean_text(value: Any) -> str:
 
 RequestFn = Callable[[str, str, bytes | None, dict[str, str], int], bytes]
 DownloadFn = Callable[[str, int], bytes]
+BrowserRunner = Callable[[Path, dict[str, Any], int], dict[str, Any]]
 REPO_ROOT = Path(__file__).resolve().parents[4]
+SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_LOCAL_SECRET_FILES = [
     ".env.wechat.local",
     ".tmp/wechat-phase2-dev/.env.wechat.local",
@@ -40,6 +46,13 @@ def parse_bool(value: Any, *, default: bool = False) -> bool:
     if lowered in {"0", "false", "no", "n", "off", "rejected"}:
         return False
     return default
+
+
+def parse_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -325,6 +338,214 @@ def resolve_human_review_gate(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def resolve_push_backend(payload: dict[str, Any]) -> str:
+    backend = clean_text(payload.get("push_backend") or payload.get("wechat_push_backend") or "api").lower()
+    if backend in {"api", "browser_session", "auto"}:
+        return backend
+    return "api"
+
+
+def normalize_browser_session_request(payload: dict[str, Any]) -> dict[str, Any]:
+    browser_session_raw = payload.get("browser_session") if isinstance(payload.get("browser_session"), dict) else {}
+    inferred_strategy = ""
+    if clean_text(browser_session_raw.get("cdp_endpoint") or payload.get("browser_debug_endpoint")):
+        inferred_strategy = "remote_debugging"
+    return {
+        "strategy": clean_text(
+            browser_session_raw.get("strategy")
+            or payload.get("browser_session_strategy")
+            or inferred_strategy
+        ),
+        "required": parse_bool(browser_session_raw.get("required", payload.get("browser_session_required")), default=False),
+        "cdp_endpoint": clean_text(browser_session_raw.get("cdp_endpoint") or payload.get("browser_debug_endpoint") or "http://127.0.0.1:9222"),
+        "browser_name": clean_text(browser_session_raw.get("browser_name") or payload.get("browser_name") or "edge"),
+        "wait_ms": max(1000, parse_int(browser_session_raw.get("wait_ms", payload.get("browser_wait_ms")), 8000)),
+        "home_url": clean_text(browser_session_raw.get("home_url") or payload.get("browser_home_url") or "https://mp.weixin.qq.com/"),
+        "editor_url": clean_text(browser_session_raw.get("editor_url") or payload.get("browser_editor_url")),
+    }
+
+
+def resolve_node_command() -> str | None:
+    candidates = [
+        clean_text(os.environ.get("NODE_EXE")),
+        "D:\\nodejs\\node.exe",
+        "C:\\Program Files\\nodejs\\node.exe",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return candidate
+    return which("node")
+
+
+def resolve_wechat_browser_push_script() -> Path | None:
+    candidate = SCRIPT_DIR / "wechat_browser_session_push.js"
+    return candidate if candidate.exists() else None
+
+
+def probe_cdp_endpoint(endpoint: str) -> tuple[bool, str]:
+    normalized_endpoint = clean_text(endpoint).rstrip("/")
+    if not normalized_endpoint:
+        return False, "browser_session.cdp_endpoint was not provided"
+    version_url = f"{normalized_endpoint}/json/version"
+    try:
+        request = urllib.request.Request(version_url, headers={"User-Agent": "Codex-WeChatPush/1.0"})
+        with urllib.request.urlopen(request, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="ignore") or "{}")
+        browser_name = clean_text(payload.get("Browser"))
+        return True, browser_name or version_url
+    except Exception as exc:  # pragma: no cover - exact transport failure varies by host
+        return False, clean_text(exc) or "endpoint probe failed"
+
+
+def prepare_wechat_browser_session_context(payload: dict[str, Any]) -> dict[str, Any]:
+    session_request = normalize_browser_session_request(payload)
+    strategy = clean_text(session_request.get("strategy"))
+    context = {
+        "requested": bool(strategy),
+        "strategy": strategy,
+        "required": bool(session_request.get("required")),
+        "active": False,
+        "status": "disabled" if not strategy else "unavailable",
+        "source": "",
+        "cdp_endpoint": clean_text(session_request.get("cdp_endpoint")),
+        "browser_name": clean_text(session_request.get("browser_name")),
+        "wait_ms": int(session_request.get("wait_ms", 8000) or 8000),
+        "home_url": clean_text(session_request.get("home_url")),
+        "editor_url": clean_text(session_request.get("editor_url")),
+        "notes": [],
+    }
+    if not strategy:
+        return context
+    if strategy != "remote_debugging":
+        context["notes"] = [f"unsupported browser session strategy: {strategy}"]
+        return context
+
+    node_cmd = resolve_node_command()
+    script_path = resolve_wechat_browser_push_script()
+    endpoint = clean_text(session_request.get("cdp_endpoint"))
+    notes: list[str] = []
+    endpoint_reachable = False
+    if not node_cmd:
+        notes.append("node runtime not found for browser-session helper")
+    if not script_path:
+        notes.append("wechat_browser_session_push.js helper is missing")
+    if not endpoint:
+        notes.append("browser_session.cdp_endpoint was not provided")
+    if node_cmd and script_path and endpoint:
+        endpoint_reachable, endpoint_detail = probe_cdp_endpoint(endpoint)
+        if not endpoint_reachable:
+            notes.append(f"remote debugging endpoint is not reachable: {endpoint_detail}")
+            notes.append("Launch a signed-in Edge/Chrome window with remote debugging before using the browser fallback.")
+
+    context.update(
+        {
+            "active": bool(node_cmd and script_path and endpoint and endpoint_reachable),
+            "status": "ready" if node_cmd and script_path and endpoint and endpoint_reachable else "unavailable",
+            "source": "remote_debugging",
+            "notes": notes or [f"will attach to {endpoint}"],
+        }
+    )
+    return context
+
+
+def choose_browser_remote_image_url(asset: dict[str, Any]) -> str:
+    for candidate in [
+        clean_text(asset.get("source_url")),
+        clean_text(asset.get("render_src")),
+    ]:
+        if candidate.startswith(("http://", "https://", "data:image/")):
+            return candidate
+    return ""
+
+
+def rewrite_content_images_for_browser_session(
+    content_html: str,
+    image_assets: list[dict[str, Any]],
+) -> tuple[str, list[str]]:
+    resolved = content_html
+    unresolved_asset_ids: list[str] = []
+    for index, asset in enumerate(image_assets, start=1):
+        asset_id = clean_text(asset.get("asset_id")) or f"asset-{index:02d}"
+        remote_url = choose_browser_remote_image_url(asset)
+        local_path = clean_text(asset.get("local_path"))
+        local_uri = ""
+        if local_path:
+            try:
+                local_uri = Path(local_path).expanduser().resolve().as_uri()
+            except OSError:
+                local_uri = ""
+        references = [
+            clean_text(asset.get("render_src")),
+            clean_text(asset.get("upload_token")),
+            clean_text(asset.get("source_url")),
+            local_path,
+            local_uri,
+        ]
+        if remote_url:
+            for candidate in references:
+                if candidate:
+                    resolved = resolved.replace(candidate, remote_url)
+            continue
+        if any(candidate and candidate in content_html for candidate in references):
+            unresolved_asset_ids.append(asset_id)
+    return resolved, unresolved_asset_ids
+
+
+def resolve_browser_session_output_dir(payload: dict[str, Any]) -> Path:
+    explicit = clean_text(payload.get("browser_session_output_dir"))
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    publish_package_path = clean_text(payload.get("publish_package_path"))
+    if publish_package_path:
+        return (Path(publish_package_path).expanduser().resolve().parent / "browser-session-push").resolve()
+    output_dir = clean_text(payload.get("output_dir"))
+    if output_dir:
+        return (Path(output_dir).expanduser().resolve() / "browser-session-push").resolve()
+    return (REPO_ROOT / ".tmp" / "wechat-browser-session-push").resolve()
+
+
+def default_browser_session_push_runner(
+    manifest_path: Path,
+    session_context: dict[str, Any],
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    node_cmd = resolve_node_command()
+    script_path = resolve_wechat_browser_push_script()
+    if not node_cmd or not script_path:
+        raise ValueError("browser-session helper prerequisites are missing")
+
+    command = [
+        node_cmd,
+        str(script_path),
+        "--manifest",
+        str(manifest_path),
+        "--endpoint",
+        clean_text(session_context.get("cdp_endpoint")),
+        "--wait-ms",
+        str(max(1000, parse_int(session_context.get("wait_ms"), 8000))),
+    ]
+    process = subprocess.run(
+        command,
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        errors="ignore",
+        timeout=max(30, timeout_seconds * 4),
+    )
+    stdout_text = clean_text(process.stdout)
+    stderr_text = clean_text(process.stderr)
+    if process.returncode != 0:
+        raise ValueError(stderr_text or stdout_text or "browser-session helper failed")
+    try:
+        payload = json.loads(process.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError("browser-session helper returned non-JSON content") from exc
+    if clean_text(payload.get("status")) not in {"ok", "saved"}:
+        message = clean_text(payload.get("message")) or stderr_text or stdout_text or "browser-session push failed"
+        raise ValueError(message)
+    return payload
+
+
 def fetch_access_token(app_id: str, app_secret: str, timeout_seconds: int, request_fn: RequestFn) -> str:
     url = (
         "https://api.weixin.qq.com/cgi-bin/token?"
@@ -467,7 +688,7 @@ def choose_cover_reference(payload: dict[str, Any], publish_package: dict[str, A
     raise ValueError("No cover image is available. Provide cover_image_path/cover_image_url or keep at least one article image.")
 
 
-def push_publish_package_to_wechat(
+def push_publish_package_to_wechat_api(
     raw_payload: dict[str, Any],
     *,
     request_fn: RequestFn | None = None,
@@ -477,11 +698,15 @@ def push_publish_package_to_wechat(
     download_fn = download_fn or default_download_fn
     timeout_seconds = max(5, int(raw_payload.get("timeout_seconds", 30) or 30))
     review_gate = resolve_human_review_gate(raw_payload)
+    workflow_publication_gate = build_workflow_publication_gate(safe_dict(raw_payload.get("publish_package")))
     if not review_gate["approved"]:
         return {
             "status": "blocked_review_gate",
             "workflow_kind": "wechat_draft_push",
+            "push_backend": "api",
+            "fallback_used": False,
             "review_gate": review_gate,
+            "workflow_publication_gate": workflow_publication_gate,
             "blocked_reason": "human_review_not_approved",
             "resolved_content_html": clean_text(safe_dict(raw_payload.get("publish_package")).get("content_html")),
             "uploaded_inline_images": [],
@@ -491,6 +716,7 @@ def push_publish_package_to_wechat(
             "error_message": "Human review approval is required before pushing to WeChat. Set human_review_approved=true after review.",
         }
     publish_package = resolve_publish_package(raw_payload)
+    workflow_publication_gate = build_workflow_publication_gate(publish_package)
     credentials = resolve_wechat_credentials(raw_payload)
     access_token = fetch_access_token(credentials["app_id"], credentials["app_secret"], timeout_seconds, request_fn)
 
@@ -538,7 +764,10 @@ def push_publish_package_to_wechat(
     return {
         "status": "ok",
         "workflow_kind": "wechat_draft_push",
+        "push_backend": "api",
+        "fallback_used": False,
         "review_gate": review_gate,
+        "workflow_publication_gate": workflow_publication_gate,
         "resolved_content_html": resolved_content_html,
         "uploaded_inline_images": uploaded_assets,
         "uploaded_cover": cover_upload,
@@ -548,5 +777,214 @@ def push_publish_package_to_wechat(
         "articles_payload": articles_payload,
     }
 
+def push_publish_package_via_browser_session(
+    raw_payload: dict[str, Any],
+    *,
+    browser_runner: BrowserRunner | None = None,
+    download_fn: DownloadFn | None = None,
+) -> dict[str, Any]:
+    browser_runner = browser_runner or default_browser_session_push_runner
+    download_fn = download_fn or default_download_fn
+    timeout_seconds = max(5, int(raw_payload.get("timeout_seconds", 30) or 30))
+    review_gate = resolve_human_review_gate(raw_payload)
+    workflow_publication_gate = build_workflow_publication_gate(safe_dict(raw_payload.get("publish_package")))
+    if not review_gate["approved"]:
+        return {
+            "status": "blocked_review_gate",
+            "workflow_kind": "wechat_draft_push",
+            "push_backend": "browser_session",
+            "fallback_used": False,
+            "review_gate": review_gate,
+            "workflow_publication_gate": workflow_publication_gate,
+            "blocked_reason": "human_review_not_approved",
+            "resolved_content_html": clean_text(safe_dict(raw_payload.get("publish_package")).get("content_html")),
+            "uploaded_inline_images": [],
+            "uploaded_cover": {},
+            "draft_result": {},
+            "articles_payload": {},
+            "browser_session": prepare_wechat_browser_session_context(raw_payload),
+            "error_message": "Human review approval is required before pushing to WeChat. Set human_review_approved=true after review.",
+        }
 
-__all__ = ["inspect_wechat_credentials", "push_publish_package_to_wechat", "resolve_wechat_credentials"]
+    publish_package = resolve_publish_package(raw_payload)
+    workflow_publication_gate = build_workflow_publication_gate(publish_package)
+    session_context = prepare_wechat_browser_session_context(raw_payload)
+    if not session_context.get("active"):
+        next_step = "Launch a signed-in browser with remote debugging, then rerun with push_backend=browser_session or push_backend=auto."
+        return {
+            "status": "blocked_browser_session",
+            "workflow_kind": "wechat_draft_push",
+            "push_backend": "browser_session",
+            "fallback_used": False,
+            "review_gate": review_gate,
+            "workflow_publication_gate": workflow_publication_gate,
+            "blocked_reason": "browser_session_unavailable",
+            "resolved_content_html": clean_text(publish_package.get("content_html")),
+            "uploaded_inline_images": [],
+            "uploaded_cover": {},
+            "draft_result": {},
+            "articles_payload": {},
+            "browser_session": session_context,
+            "error_message": next_step,
+            "next_step": next_step,
+        }
+
+    image_assets = [dict(item) for item in safe_list(publish_package.get("image_assets"))]
+    browser_content_html, unresolved_asset_ids = rewrite_content_images_for_browser_session(
+        clean_text(publish_package.get("content_html")),
+        image_assets,
+    )
+    if unresolved_asset_ids:
+        return {
+            "status": "blocked_browser_session",
+            "workflow_kind": "wechat_draft_push",
+            "push_backend": "browser_session",
+            "fallback_used": False,
+            "review_gate": review_gate,
+            "workflow_publication_gate": workflow_publication_gate,
+            "blocked_reason": "browser_session_missing_remote_inline_images",
+            "resolved_content_html": browser_content_html,
+            "uploaded_inline_images": [],
+            "uploaded_cover": {},
+            "draft_result": {},
+            "articles_payload": {},
+            "browser_session": session_context,
+            "missing_remote_inline_asset_ids": unresolved_asset_ids,
+            "error_message": (
+                "Browser-session fallback currently requires every inline image in content_html to already have an "
+                "HTTP(S) source so the editor can import it without the API upload path."
+            ),
+            "next_step": (
+                "Reuse a publish package whose content_html already references remote image URLs, or extend the "
+                "browser-session path to drive inline image uploads."
+            ),
+        }
+
+    cover_reference = choose_cover_reference(raw_payload, publish_package)
+    output_dir = resolve_browser_session_output_dir(raw_payload)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    content_html_path = output_dir / "browser-session-content.html"
+    content_html_path.write_text(browser_content_html, encoding="utf-8")
+
+    cover_bytes, cover_filename = resolve_binary_from_reference(
+        local_path=cover_reference["local_path"],
+        remote_url=cover_reference["remote_url"],
+        fallback_name=clean_text(cover_reference["filename"]) or "cover-image",
+        timeout_seconds=timeout_seconds,
+        download_fn=download_fn,
+    )
+    cover_file_path = output_dir / sanitize_filename(cover_filename, "cover-image")
+    cover_file_path.write_bytes(cover_bytes)
+
+    articles_payload = build_articles_payload(
+        safe_dict(publish_package.get("draftbox_payload_template")),
+        browser_content_html,
+        clean_text(raw_payload.get("browser_thumb_media_id")) or "{{BROWSER_SESSION_THUMB_MEDIA_ID}}",
+        clean_text(raw_payload.get("author")) or clean_text(publish_package.get("author")),
+        int(raw_payload.get("show_cover_pic", 1) or 1),
+    )
+    primary_article = safe_dict(safe_list(articles_payload.get("articles"))[:1][0] if safe_list(articles_payload.get("articles")) else {})
+
+    browser_session_request = normalize_browser_session_request(raw_payload)
+    manifest = {
+        "workflow_kind": "wechat_browser_session_push",
+        "created_at": datetime.now(UTC).isoformat(),
+        "cover_image_path": str(cover_file_path),
+        "content_html_path": str(content_html_path),
+        "article": {
+            "title": clean_text(primary_article.get("title")),
+            "author": clean_text(primary_article.get("author")),
+            "digest": clean_text(primary_article.get("digest")),
+            "content_html": browser_content_html,
+            "show_cover_pic": int(primary_article.get("show_cover_pic", 1) or 1),
+        },
+        "browser_session": {
+            "strategy": clean_text(session_context.get("strategy")),
+            "cdp_endpoint": clean_text(session_context.get("cdp_endpoint")),
+            "wait_ms": int(session_context.get("wait_ms", 8000) or 8000),
+            "home_url": clean_text(browser_session_request.get("home_url")),
+            "editor_url": clean_text(browser_session_request.get("editor_url")),
+        },
+    }
+    manifest_path = output_dir / "browser-session-manifest.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    browser_result = browser_runner(manifest_path, session_context, timeout_seconds)
+    browser_result_path = output_dir / "browser-session-result.json"
+    browser_result_path.write_text(json.dumps(browser_result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "status": "ok",
+        "workflow_kind": "wechat_draft_push",
+        "push_backend": "browser_session",
+        "fallback_used": False,
+        "review_gate": review_gate,
+        "workflow_publication_gate": workflow_publication_gate,
+        "resolved_content_html": browser_content_html,
+        "uploaded_inline_images": [],
+        "uploaded_cover": {
+            "media_id": clean_text(browser_result.get("cover_media_id")),
+            "url": clean_text(browser_result.get("cover_url")),
+            "local_path": str(cover_file_path),
+        },
+        "draft_result": {
+            "media_id": clean_text(browser_result.get("draft_media_id")),
+            "draft_url": clean_text(browser_result.get("draft_url")),
+        },
+        "articles_payload": articles_payload,
+        "browser_session": {
+            **session_context,
+            "manifest_path": str(manifest_path),
+            "content_html_path": str(content_html_path),
+            "result_path": str(browser_result_path),
+        },
+    }
+
+
+def push_publish_package_to_wechat(
+    raw_payload: dict[str, Any],
+    *,
+    request_fn: RequestFn | None = None,
+    download_fn: DownloadFn | None = None,
+    browser_runner: BrowserRunner | None = None,
+) -> dict[str, Any]:
+    backend = resolve_push_backend(raw_payload)
+    if backend == "browser_session":
+        return push_publish_package_via_browser_session(
+            raw_payload,
+            browser_runner=browser_runner,
+            download_fn=download_fn,
+        )
+    if backend == "auto":
+        try:
+            return push_publish_package_to_wechat_api(
+                raw_payload,
+                request_fn=request_fn,
+                download_fn=download_fn,
+            )
+        except Exception as exc:
+            if not normalize_browser_session_request(raw_payload).get("strategy"):
+                raise
+            browser_result = push_publish_package_via_browser_session(
+                raw_payload,
+                browser_runner=browser_runner,
+                download_fn=download_fn,
+            )
+            browser_result["fallback_used"] = True
+            browser_result["api_error_message"] = clean_text(exc)
+            return browser_result
+    return push_publish_package_to_wechat_api(
+        raw_payload,
+        request_fn=request_fn,
+        download_fn=download_fn,
+    )
+
+
+__all__ = [
+    "build_workflow_publication_gate",
+    "inspect_wechat_credentials",
+    "prepare_wechat_browser_session_context",
+    "push_publish_package_to_wechat",
+    "push_publish_package_to_wechat_api",
+    "push_publish_package_via_browser_session",
+    "resolve_wechat_credentials",
+]

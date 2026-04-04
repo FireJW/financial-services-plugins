@@ -1,6 +1,6 @@
 # Runtime Operator Manual
 
-As of 2026-04-01.
+As of 2026-04-04.
 
 This manual describes how to run the wrapper-layer `explore -> worker ->
 verifier` flow on a real task without relying on chat memory.
@@ -73,6 +73,69 @@ The router currently recognizes:
 - `a_share_event_research`
 - `fallback_search`
 
+### Research Route: Reddit Community Signal
+
+Use the Reddit route only as bounded community context:
+
+1. use `agent-reach:reddit` when Reddit should enter live discovery and compete
+   with other channels inside `hot_topic_discovery`
+2. use `financial-analysis/commands/reddit-bridge.md` plus
+   `scripts/run_reddit_bridge.cmd` when you already have a saved Reddit
+   payload, `posts.csv`, or an export root from an external scraper
+
+Do not cross these boundaries:
+
+- Reddit stays `shadow`; it does not become direct claim confirmation
+- `x-index` remains the native X/Twitter workflow
+- subreddit weighting must stay bounded and config-driven through
+  `references/reddit-community-profiles.json`
+
+Read comment-layer fields conservatively:
+
+- `comment_duplicate_count` means exact duplicate snapshots were collapsed
+- `comment_near_duplicate_count` means similar comments were flagged for
+  caution but still left in the sample
+- `comment_near_duplicate_same_author_count` vs
+  `comment_near_duplicate_cross_author_count` tells you whether the caution is
+  mostly one author rephrasing or multiple authors converging on the same line
+- `comment_near_duplicate_level` currently resolves to `same_author_only` or
+  `cross_author`
+- `comment_near_duplicate_examples` keeps a few representative pairs for
+  manual review without turning the bridge into a full comment-forensics layer
+- `comment_sample_coverage_ratio`, `comment_count_mismatch`, and
+  `comment_sample_status` tell you whether the imported replies are only a
+  partial slice of the thread
+- `comment_operator_review` is the preferred bounded object for downstream
+  consumers; it rolls sample coverage, exact-duplicate cleanup,
+  near-duplicate caution level, representative examples, and top-comment
+  context into one review payload
+- `operator_review_priority` is the follow-on triage layer; use it for
+  `high` / `medium` / `low` review ordering, and read the result-level
+  `operator_review_queue` when you need the runtime to hand you a manual-review
+  worklist directly
+
+Current downstream carry-through as of 2026-04-04:
+
+- brief output exposes the queue under `source_summary`
+- article workflow and macro note workflow emit `manual_review`,
+  `publication_readiness`, and `workflow_publication_gate`
+- publish packaging, publish reuse, batch queueing, and auto queue preserve the
+  same gate instead of rebuilding a second Reddit ranking layer
+- publish reuse results, batch items, and auto-queue ranked candidates now also
+  expose that gate as `workflow_publication_gate` so operators can read one
+  shared object instead of reassembling it from flat compatibility fields
+- `article-publish-result.json` plus the automatic acceptance report now also
+  expose the same workflow publication gate at the top level, so operators do
+  not have to reopen nested package fields just to read the Reddit review state
+- WeChat push readiness audits expose the workflow publication gate in the
+  report so operators can still see unresolved Reddit review items before push
+- direct WeChat push results and the article-publish `push_stage` summary now
+  carry the same workflow publication gate for end-to-end traceability
+- publish regression checks, publish reuse reports, and the standalone
+  `wechat_push_draft.py` markdown summary also carry the same gate so operators
+  do not have to reopen raw JSON artifacts just to see unresolved Reddit review
+  state
+
 ### `worker`
 
 - use for the main execution pass
@@ -110,6 +173,8 @@ This high-level runner:
 - routes the request first and writes route guidance into the run pack
 - derives `INTENT.md`, `INTENT-COMPACT.md`, and `NOW.md`
 - writes `shaping-plan.json` and `shaping-plan.md` before any model call
+- writes `shaping/execution-plan.{json,md}` plus per-pass task/context overlays
+  when the evidence pack is large enough to need chunk-first execution
 - runs worker, verifier preflight, and final verifier in sequence
 - writes a per-run `runtime-attempts.ndjson` plus scorecard files
 - defaults to structured verifier mode
@@ -139,6 +204,49 @@ node scripts/runtime/run-verifier-task.mjs `
 If the shaping plan marks the worker pass as `danger` risk and you want to
 block execution until the evidence pack is trimmed or split, add
 `--fail-on-danger-budget` to `run-real-task.mjs`.
+
+When `shaping/execution-plan.md` exists in the run bundle, treat that as the
+wrapper-approved chunk-first route:
+
+1. run each `shaping/passes/*-worker-command.txt`
+2. inspect the resulting per-pass `*-worker-output.md`
+3. only then run `shaping/synthesis-worker-command.txt`
+
+This keeps the original bundle intact while making the oversize-task split
+flow concrete and repeatable.
+
+If you already have several run packs and want to inspect or replay them
+without rebuilding file paths manually:
+
+```powershell
+node scripts/runtime/real-task-runs.mjs `
+  --json
+```
+
+Inspect one saved run bundle:
+
+```powershell
+node scripts/runtime/real-task-runs.mjs `
+  --run-dir runtime-state/real-task-runs/<task> `
+  --json
+```
+
+Replay verifier preflight or the final verifier into an isolated replay
+directory under `replays/`:
+
+```powershell
+node scripts/runtime/real-task-runs.mjs `
+  --run-dir runtime-state/real-task-runs/<task> `
+  --replay-stage verifier-preflight `
+  --json
+```
+
+```powershell
+node scripts/runtime/real-task-runs.mjs `
+  --run-dir runtime-state/real-task-runs/<task> `
+  --replay-stage verifier `
+  --json
+```
 
 ### Step 1: Write the raw request
 

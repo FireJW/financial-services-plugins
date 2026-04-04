@@ -1,0 +1,40 @@
+{
+  "topic": "AI infra nested Reddit comments",
+  "analysis_time": "2026-04-04T04:00:00+00:00",
+  "comment_sort_strategy": "hybrid",
+  "questions": [
+    "Which comment-level signals are fresh context only versus anything that can be promoted?"
+  ],
+  "reddit_result": {
+    "posts": [
+      {
+        "id": "mix123",
+        "title": "AI infra mixed thread",
+        "subreddit": "stocks",
+        "permalink": "/r/stocks/comments/mix123/ai_infra_mixed_thread/",
+        "selftext": "The post body is noisy, but the comment layer contains the useful debate.",
+        "score": 880,
+        "num_comments": 220,
+        "created_utc": "2026-04-04T03:10:00+00:00",
+        "comments": [
+          {
+            "comment_id": "mixc1",
+            "submission_id": "mix123",
+            "user": "slower-bull",
+            "upvotes": 120,
+            "time": "2026-04-04T03:20:00+00:00",
+            "comment_text": "Older high-score comment says demand is real but capex discipline still matters."
+          },
+          {
+            "comment_id": "mixc2",
+            "submission_url": "https://www.reddit.com/r/stocks/comments/mix123/ai_infra_mixed_thread/",
+            "author_name": "faster-bull",
+            "vote_score": 118,
+            "created": "2026-04-04T03:58:00+00:00",
+            "body_text": "Fresher reply says supplier bottlenecks matter more than headline momentum."
+          }
+        ]
+      }
+    ]
+  }
+}

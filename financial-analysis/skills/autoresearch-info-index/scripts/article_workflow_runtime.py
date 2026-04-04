@@ -5,7 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from article_brief_runtime import build_analysis_brief
+from article_brief_runtime import build_analysis_brief, build_reddit_operator_review_manual_state
 from article_cleanup_runtime import cleanup_article_temp_dirs
 from article_feedback_markdown import build_feedback_markdown
 from article_feedback_profiles import feedback_profile_status, resolve_profile_dir
@@ -25,6 +25,7 @@ from opencli_workflow_bridge_runtime import (
 from article_revise_flow_runtime import build_article_revision
 from news_index_runtime import isoformat_or_blank, parse_datetime, run_news_index, slugify
 from runtime_paths import runtime_subdir
+from workflow_publication_gate_runtime import build_workflow_publication_gate
 from workflow_source_runtime import (
     augment_news_payload_with_workflow_sources,
     build_agent_reach_augmentation_lines,
@@ -581,6 +582,8 @@ def build_report_markdown(result: dict[str, Any]) -> str:
     final_stage = safe_dict(result.get("final_stage"))
     asset_stage = safe_dict(result.get("asset_stage"))
     feedback_stage = safe_dict(result.get("feedback_stage"))
+    workflow_publication_gate = safe_dict(result.get("workflow_publication_gate"))
+    manual_review = safe_dict(workflow_publication_gate.get("manual_review")) or safe_dict(result.get("manual_review"))
     decision_trace = safe_dict(result.get("decision_trace"))
     brief_trace = safe_dict(decision_trace.get("brief"))
     draft_trace = safe_dict(decision_trace.get("draft"))
@@ -596,6 +599,8 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         f"- Rewrite mode: {clean_text(final_stage.get('rewrite_mode')) or 'n/a'}",
         f"- Pre-rewrite quality gate: {clean_text(final_stage.get('pre_rewrite_quality_gate')) or 'n/a'}",
         f"- Review quality gate: {clean_text(final_stage.get('quality_gate')) or 'n/a'}",
+        f"- Publication readiness: {clean_text(workflow_publication_gate.get('publication_readiness') or result.get('publication_readiness')) or 'ready'}",
+        f"- Reddit operator review: {clean_text(manual_review.get('status')) or 'not_required'}",
         f"- Images kept: {draft_stage.get('image_count', 0)}",
         f"- Citations kept: {draft_stage.get('citation_count', 0)}",
         "",
@@ -619,7 +624,11 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         "",
         "## Next Step",
         "",
-        "Use the final article result as the current best version, then edit the feedback markdown file for the next revision pass.",
+        (
+            "Use the final article result as a draft only, then review the queued Reddit comment signals before treating community-comment context as publication-ready."
+            if manual_review.get("required")
+            else "Use the final article result as the current best version, then edit the feedback markdown file for the next revision pass."
+        ),
         ]
     )
     lines.extend(build_agent_reach_augmentation_lines(agent_reach_stage))
@@ -640,6 +649,21 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         lines.append(f"- Voice constraint: {item}")
     for item in clean_text_list_preview(draft_trace.get("writer_risk_notes"), limit=3):
         lines.append(f"- Writer risk note: {item}")
+    lines.extend(["", "## Reddit Operator Review", ""])
+    lines.append(f"- Status: {clean_text(manual_review.get('status')) or 'not_required'}")
+    lines.append(f"- Publication readiness: {clean_text(workflow_publication_gate.get('publication_readiness') or manual_review.get('publication_readiness')) or 'ready'}")
+    lines.append(f"- Required items: {int(manual_review.get('required_count', 0) or 0)}")
+    lines.append(f"- High-priority items: {int(manual_review.get('high_priority_count', 0) or 0)}")
+    lines.append(f"- Summary: {clean_text(manual_review.get('summary')) or 'None'}")
+    lines.append(f"- Next step: {clean_text(manual_review.get('next_step')) or 'None'}")
+    for item in safe_list(manual_review.get("queue")):
+        label = clean_text(item.get("title") or item.get("source_name") or item.get("url")) or "queued item"
+        lines.append(
+            f"- Queue: [{clean_text(item.get('priority_level')) or 'unknown'}] {label} | "
+            f"{clean_text(item.get('summary')) or 'operator review required'}"
+        )
+    if not safe_list(manual_review.get("queue")):
+        lines.append("- Queue: None")
     lines.extend(["", "## Claim Support Map", ""])
     for item in safe_list(draft_trace.get("top_claims")):
         lines.append(
@@ -779,6 +803,7 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
 
     brief_payload = build_brief_payload(request, source_payload)
     brief_result = build_analysis_brief(brief_payload)
+    manual_review = build_reddit_operator_review_manual_state(safe_dict(brief_result.get("source_summary")))
     brief_result_path = request["output_dir"] / "analysis-brief-result.json"
     brief_report_path = request["output_dir"] / "analysis-brief-report.md"
     write_json(brief_result_path, brief_result)
@@ -810,7 +835,17 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     write_json(review_result_path, review_result)
     review_report_path.write_text(review_result.get("report_markdown", ""), encoding="utf-8-sig")
     review_preview_path.write_text(review_result.get("preview_html", ""), encoding="utf-8-sig")
-    write_json(final_article_result_path, safe_dict(review_result.get("final_article_result")))
+    workflow_publication_gate = build_workflow_publication_gate(
+        {
+            "manual_review": manual_review,
+            "publication_readiness": clean_text(manual_review.get("publication_readiness")) or "ready",
+        }
+    )
+    final_article_result = deepcopy(safe_dict(review_result.get("final_article_result")))
+    final_article_result["manual_review"] = deepcopy(manual_review)
+    final_article_result["publication_readiness"] = clean_text(workflow_publication_gate.get("publication_readiness")) or "ready"
+    final_article_result["workflow_publication_gate"] = deepcopy(workflow_publication_gate)
+    write_json(final_article_result_path, final_article_result)
 
     revision_template = build_revision_template(draft_result)
     revision_template_path = request["output_dir"] / "article-revise-template.json"
@@ -833,6 +868,9 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "workflow_kind": "article_workflow",
         "topic": request["topic"],
         "analysis_time": isoformat_or_blank(request["analysis_time"]),
+        "publication_readiness": clean_text(workflow_publication_gate.get("publication_readiness")) or "ready",
+        "manual_review": manual_review,
+        "workflow_publication_gate": workflow_publication_gate,
         "source_stage": source_stage,
         "brief_stage": {
             "result_path": str(brief_result_path),
@@ -887,12 +925,16 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "pre_rewrite_quality_gate": clean_text(safe_dict(review_result.get("review_rewrite_package")).get("pre_rewrite_quality_gate")),
             "quality_gate": clean_text(safe_dict(review_result.get("review_rewrite_package")).get("quality_gate")),
             "draft_thesis": clean_text(safe_dict(review_result.get("final_article_result")).get("draft_thesis")),
+            "manual_review_required": bool(manual_review.get("required")),
+            "manual_review_status": clean_text(manual_review.get("status")) or "not_required",
+            "publication_readiness": clean_text(workflow_publication_gate.get("publication_readiness")) or "ready",
+            "workflow_publication_gate": deepcopy(workflow_publication_gate),
         },
         "source_result": source_payload,
         "analysis_brief": safe_dict(brief_result.get("analysis_brief")),
         "draft_result": draft_result,
         "review_result": review_result,
-        "final_article_result": safe_dict(review_result.get("final_article_result")),
+        "final_article_result": final_article_result,
         "decision_trace": decision_trace,
     }
     result["report_markdown"] = build_report_markdown(result)

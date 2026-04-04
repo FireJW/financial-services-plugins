@@ -18,14 +18,22 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from article_cleanup_runtime import cleanup_article_temp_dirs
 from article_brief_runtime import build_analysis_brief
-from article_draft_flow_runtime import build_article_draft, build_draft_claim_map, build_sections
+from article_draft_flow_runtime import (
+    build_article_draft,
+    build_draft_claim_map,
+    build_sections,
+    chinese_watch_item,
+    polish_chinese_wechat_paragraph,
+    split_chinese_wechat_breaths,
+    topic_prefers_business_shorthand,
+)
 from article_feedback_markdown import parse_feedback_markdown
 from article_feedback_profiles import feedback_profile_status as real_feedback_profile_status
 from article_revise import build_payload as build_article_revise_payload
 from article_revise_flow_runtime import build_article_revision, build_red_team_review, rewrite_request_after_attack
 from article_batch_workflow_runtime import run_article_batch_workflow
 from article_auto_queue_runtime import run_article_auto_queue
-from article_workflow_runtime import build_revision_template, run_article_workflow
+from article_workflow_runtime import build_revision_template, run_article_workflow, summarize_review_decisions
 from macro_note_workflow_runtime import run_macro_note_workflow
 from news_index_core import read_json, run_news_index
 from x_index_runtime import run_x_index
@@ -232,6 +240,20 @@ class ArticleWorkflowTests(unittest.TestCase):
             }
         )
 
+    def build_reddit_operator_review_source_result(self) -> dict:
+        source_result = json.loads(json.dumps(self.build_clean_core_news_result()))
+        retrieval_result = source_result.get("retrieval_result", source_result)
+        retrieval_result["operator_review_queue"] = [
+            {
+                "title": "Semicap capex thread",
+                "priority_level": "high",
+                "priority_score": 90,
+                "summary": "Partial Reddit comment sampling and duplicate replies still need operator review.",
+                "recommended_action": "manual_review_before_promotion",
+            }
+        ]
+        return source_result
+
     def build_energy_war_news_result(self) -> dict:
         return run_news_index(
             {
@@ -357,6 +379,18 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(brief["analysis_brief"]["image_keep_reasons"])
         self.assertIn("## Image Keep Reasons", brief["report_markdown"])
 
+    def test_article_brief_surfaces_reddit_operator_review_gate(self) -> None:
+        brief = build_analysis_brief({"source_result": self.build_reddit_operator_review_source_result()})
+        source_summary = brief["source_summary"]
+        gate = source_summary["reddit_comment_review_gate"]
+        self.assertEqual(source_summary["operator_review_required_count"], 1)
+        self.assertEqual(source_summary["operator_review_high_priority_count"], 1)
+        self.assertEqual(source_summary["operator_review_queue"][0]["priority_level"], "high")
+        self.assertTrue(gate["required"])
+        self.assertEqual(gate["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertTrue(any("Reddit comment-derived material" in item for item in brief["analysis_brief"]["voice_constraints"]))
+        self.assertIn("## Reddit Operator Review", brief["report_markdown"])
+
     def test_build_sections_localizes_chinese_brief_snippets_and_joiners(self) -> None:
         sections = build_sections(
             {
@@ -398,7 +432,7 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("中方已启动撤侨", sections[0]["paragraph"])
         self.assertNotIn("tracked claim(s)", sections[1]["paragraph"])
         self.assertIn("目前仍有5条关键判断处在未证实、被否认或仅能推演的状态", sections[1]["paragraph"])
-        self.assertIn("先看中国能源安全与输入性通胀，再看航运、保险和供应链成本，最后看中国外交回旋空间与中东布局", sections[2]["paragraph"])
+        self.assertIn("先看中国能源安全与输入性通胀，其次看航运、保险和供应链成本，最重要的是看中国外交回旋空间与中东布局", sections[2]["paragraph"])
         self.assertIn("第一，下一轮官方表态是否升级", sections[3]["paragraph"])
         self.assertIn("第二，油运保险费率会不会继续上跳", sections[3]["paragraph"])
 
@@ -492,6 +526,82 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn("这件事的分水岭在哪", headings)
         self.assertIn("第一层", sections[1]["paragraph"])
         self.assertIn("分水岭", sections[4]["paragraph"])
+
+    def test_article_draft_preserves_longform_structure_and_avoids_business_shorthand_for_developer_tooling(self) -> None:
+        source_result = run_news_index(
+            {
+                "topic": "Claude Code 泄露源码后，真正值得看的隐藏能力",
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-core",
+                        "claim_text": "The leaked code exposes browser control and tool-calling entrypoints.",
+                        "claim_text_zh": "泄露代码已经露出了浏览器控制和工具调用入口。",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "social-1",
+                        "source_name": "X @agintender",
+                        "source_type": "social",
+                        "published_at": "2026-03-29T10:00:00+00:00",
+                        "observed_at": "2026-03-29T10:05:00+00:00",
+                        "url": "https://x.com/agintender/status/1",
+                        "text_excerpt": "The thread walks through browser control, subagents, and workflow orchestration entrypoints.",
+                        "claim_ids": ["claim-core"],
+                        "claim_states": {"claim-core": "support"},
+                    },
+                    {
+                        "source_id": "docs-1",
+                        "source_name": "Anthropic docs / Chrome",
+                        "source_type": "major_news",
+                        "published_at": "2026-03-29T09:50:00+00:00",
+                        "observed_at": "2026-03-29T09:55:00+00:00",
+                        "url": "https://docs.anthropic.com/en/docs/claude-code/chrome",
+                        "text_excerpt": "Official docs describe browser control and Chrome integration.",
+                        "claim_ids": ["claim-core"],
+                        "claim_states": {"claim-core": "support"},
+                    },
+                ],
+                "market_relevance_zh": [
+                    "产品能力表面、工具调用边界和权限设计",
+                    "浏览器控制、工作流编排与多步开发者执行",
+                    "后续版本开放哪些入口与边界",
+                ],
+            }
+        )
+
+        draft = build_article_draft(
+            {
+                "source_result": source_result,
+                "language_mode": "chinese",
+                "article_framework": "deep_analysis",
+                "draft_mode": "balanced",
+                "target_length_chars": 2800,
+                "headline_hook_mode": "traffic",
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-claude-code-longform"),
+            }
+        )
+
+        package = draft["article_package"]
+        headings = [section["heading"] for section in package["sections"]]
+        joined_text = "\n".join([package["lede"], *(section["paragraph"] for section in package["sections"])])
+
+        self.assertEqual(package["render_context"]["request"]["target_length_chars"], 2800)
+        self.assertFalse(package["title"].startswith("刚刚，"))
+        self.assertEqual(len(package["sections"]), 6)
+        self.assertGreaterEqual(len(joined_text), 1300)
+        self.assertIn("哪些已经确认，哪些还不能写死", headings)
+        self.assertIn("这件事的分水岭在哪", headings)
+        self.assertFalse(any("经营和投资判断题" in item for item in draft["analysis_brief"]["open_questions_zh"]))
+        self.assertNotIn("预算", joined_text)
+        self.assertNotIn("订单", joined_text)
+        self.assertNotIn("定价", joined_text)
+        self.assertNotIn("经营变量", joined_text)
+        self.assertNotIn("经营层", joined_text)
+        self.assertLessEqual(joined_text.count("产品边界、权限设计"), 2)
+        self.assertLessEqual(joined_text.count("浏览器控制、工作流编排"), 2)
+        self.assertLessEqual(joined_text.count("能力边界和开发者工作流"), 2)
 
     def test_article_draft_applies_human_signal_ratio_and_personal_phrase_bank(self) -> None:
         draft = build_article_draft(
@@ -623,15 +733,17 @@ class ArticleWorkflowTests(unittest.TestCase):
             "traffic",
         )
 
-    @unittest.skip("legacy direct slot-line injection expectation")
-    def test_article_draft_style_memory_slot_lines_do_not_override_unrelated_sections(self) -> None:
+    def test_article_draft_inline_style_memory_slot_lines_stay_scoped(self) -> None:
+        subtitle_line = "Lead with the concrete variable."
+        impact_line = "Watch whether this starts rewriting budgets, order flow, and pricing."
+        watch_line = "Do not pick a side yet; wait for the hard signals."
         style_memory = {
             "target_band": "3.4",
-            "preferred_transitions": ["先说结论", "更关键的是", "最后盯三件事"],
+            "preferred_transitions": ["put simply", "more importantly", "three things matter next"],
             "slot_lines": {
-                "subtitle": ["先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。"],
-                "impact": ["真正该盯的，是这件事会不会继续改写预算、预期和定价。"],
-                "watch": ["接下来别忙着站队，先盯那几个会把叙事坐实的硬信号。"],
+                "subtitle": [subtitle_line],
+                "impact": [impact_line],
+                "watch": [watch_line],
             },
         }
         draft = build_article_draft(
@@ -643,13 +755,14 @@ class ArticleWorkflowTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(
-            draft["article_package"]["subtitle"],
-            "先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。",
+        article_package = draft["article_package"]
+        self.assertEqual(article_package["subtitle"], subtitle_line)
+        self.assertTrue(article_package["lede"].startswith("先说结论"))
+        combined_text = "\n".join(
+            [article_package["lede"], *(section["paragraph"] for section in article_package["sections"])]
         )
-        self.assertTrue(draft["article_package"]["lede"].startswith("先说结论"))
-        self.assertIn("真正该盯的，是这件事会不会继续改写预算、预期和定价。", draft["article_package"]["sections"][2]["paragraph"])
-        self.assertIn("接下来别忙着站队，先盯那几个会把叙事坐实的硬信号。", draft["article_package"]["sections"][3]["paragraph"])
+        self.assertNotIn(impact_line, combined_text)
+        self.assertNotIn(watch_line, combined_text)
 
     def test_article_draft_unrelated_slot_lines_are_filtered(self) -> None:
         subtitle_line = "Lead with the concrete variable."
@@ -678,6 +791,38 @@ class ArticleWorkflowTests(unittest.TestCase):
         all_paragraphs = "\n".join(section["paragraph"] for section in draft["article_package"]["sections"])
         self.assertNotIn(impact_line, all_paragraphs)
         self.assertNotIn(watch_line, all_paragraphs)
+
+    def test_article_draft_filters_business_shorthand_for_macro_conflict_topics(self) -> None:
+        style_memory = {
+            "target_band": "3.4",
+            "slot_lines": {
+                "subtitle": ["先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。"],
+                "impact": ["真正该盯的，是这件事会不会继续改写预算、预期和定价。"],
+                "watch": ["接下来别忙着站队，先盯订单、预算和定价会不会一起动。"],
+            },
+        }
+        draft = build_article_draft(
+            {
+                "source_result": self.build_energy_war_news_result(),
+                "language_mode": "chinese",
+                "article_framework": "deep_analysis",
+                "target_length_chars": 2800,
+                "style_memory": style_memory,
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-macro-gating"),
+            }
+        )
+
+        package = draft["article_package"]
+        joined_text = "\n".join([package["subtitle"], package["lede"], *(section["paragraph"] for section in package["sections"])])
+
+        self.assertNotEqual(package["subtitle"], style_memory["slot_lines"]["subtitle"][0])
+        self.assertEqual(len(package["sections"]), 6)
+        self.assertNotIn("预算", joined_text)
+        self.assertNotIn("订单", joined_text)
+        self.assertNotIn("经营层", joined_text)
+        self.assertNotIn("经营和定价", joined_text)
+        self.assertNotIn("预算、预期和定价", joined_text)
+        self.assertTrue(any(keyword in joined_text for keyword in ("霍尔木兹", "原油", "油价", "航运")))
 
     def test_chinese_draft_localizes_english_topic_title_and_avoids_story_framework_false_positive(self) -> None:
         source_result = run_news_index(
@@ -783,7 +928,14 @@ class ArticleWorkflowTests(unittest.TestCase):
         media_item["ocr_summary"] = ""
         media_item["alt_text"] = ""
         media_item["capture_method"] = "dom_clip"
-        draft = build_article_draft({"source_result": source_result, "max_images": 2, "image_strategy": "prefer_images"})
+        draft = build_article_draft(
+            {
+                "source_result": source_result,
+                "language_mode": "english",
+                "max_images": 2,
+                "image_strategy": "prefer_images",
+            }
+        )
         selected_post_media = next(item for item in draft["article_package"]["selected_images"] if item["role"] == "post_media")
         self.assertEqual(selected_post_media["caption"], "Browser-captured image from the original X post.")
         self.assertEqual(selected_post_media["status"], "local_ready")
@@ -806,6 +958,33 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertIn(package["selected_images"][0]["embed_markdown"], package["article_markdown"])
         self.assertTrue(package["verification"]["blocked_images_labeled"])
         self.assertIn("What The Images Show", package["body_markdown"])
+
+    def test_article_draft_realistic_offline_request_prefers_screenshot_captions_and_dedupes_assets(self) -> None:
+        draft = build_article_draft(
+            {
+                "source_result": run_news_index(self.realistic_news_request),
+                "draft_mode": "image_first",
+                "image_strategy": "prefer_images",
+                "max_images": 3,
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-realistic-offline-images"),
+            }
+        )
+
+        package = draft["article_package"]
+        selected_images = package["selected_images"]
+        self.assertGreaterEqual(len(selected_images), 2)
+        self.assertEqual(selected_images[0]["role"], "root_post_screenshot")
+        self.assertEqual(selected_images[0]["source_name"], "Axios")
+        self.assertEqual(selected_images[0]["caption"], "Blocked page card kept only as a limitation-aware artifact.")
+        self.assertEqual(selected_images[1]["role"], "root_post_screenshot")
+        self.assertEqual(selected_images[1]["source_name"], "MarineTraffic")
+        self.assertEqual(selected_images[1]["caption"], "Offline fixture screenshot for public ship-tracker evidence.")
+        render_targets = [item["render_target"] for item in selected_images]
+        self.assertEqual(len(render_targets), len(set(render_targets)))
+        image_section = next(section for section in package["sections"] if section["heading"] == "What The Images Add")
+        self.assertIn("Blocked page card kept only as a limitation-aware artifact.", image_section["paragraph"])
+        self.assertIn("Offline fixture screenshot for public ship-tracker evidence.", image_section["paragraph"])
+        self.assertNotIn("Blocked major-news page card indicating the envoy channel remains active", image_section["paragraph"])
 
     def test_article_draft_from_news_index_result_builds_without_x_posts(self) -> None:
         draft = build_article_draft(
@@ -852,6 +1031,62 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(Path(result["macro_note_stage"]["report_path"]).exists())
         self.assertIn("one_line_judgment", result["macro_note_result"]["macro_note"])
         self.assertIn("# Macro Note:", result["macro_note_result"]["report_markdown"])
+
+    def test_article_workflow_marks_reddit_operator_review_as_publication_gate(self) -> None:
+        output_dir = self.case_dir("article-workflow-reddit-operator-review")
+        result = run_article_workflow(
+            {
+                "source_result": self.build_reddit_operator_review_source_result(),
+                "topic": "Semicap capex thread",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "output_dir": str(output_dir),
+                "feedback_profile_dir": self.empty_profile_dir("feedback-empty-reddit-operator-review"),
+            }
+        )
+
+        self.assertEqual(result["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertTrue(result["manual_review"]["required"])
+        self.assertEqual(result["manual_review"]["status"], "awaiting_reddit_operator_review")
+        self.assertEqual(result["workflow_publication_gate"]["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertEqual(result["workflow_publication_gate"]["manual_review"]["status"], "awaiting_reddit_operator_review")
+        self.assertEqual(result["final_stage"]["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertEqual(
+            result["final_stage"]["workflow_publication_gate"]["publication_readiness"],
+            "blocked_by_reddit_operator_review",
+        )
+        self.assertTrue(result["final_article_result"]["manual_review"]["required"])
+        self.assertEqual(
+            result["final_article_result"]["workflow_publication_gate"]["manual_review"]["status"],
+            "awaiting_reddit_operator_review",
+        )
+        self.assertIn("## Reddit Operator Review", result["report_markdown"])
+
+    def test_macro_note_workflow_marks_reddit_operator_review_as_publication_gate(self) -> None:
+        output_dir = self.case_dir("macro-note-workflow-reddit-operator-review")
+        result = run_macro_note_workflow(
+            {
+                "source_result": self.build_reddit_operator_review_source_result(),
+                "topic": "Semicap capex thread",
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "output_dir": str(output_dir),
+            }
+        )
+
+        self.assertEqual(result["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertTrue(result["manual_review"]["required"])
+        self.assertEqual(result["workflow_publication_gate"]["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertEqual(result["workflow_publication_gate"]["manual_review"]["status"], "awaiting_reddit_operator_review")
+        self.assertEqual(result["macro_note_stage"]["manual_review_status"], "awaiting_reddit_operator_review")
+        self.assertEqual(
+            result["macro_note_stage"]["workflow_publication_gate"]["publication_readiness"],
+            "blocked_by_reddit_operator_review",
+        )
+        self.assertTrue(result["macro_note_result"]["manual_review"]["required"])
+        self.assertEqual(
+            result["macro_note_result"]["workflow_publication_gate"]["manual_review"]["status"],
+            "awaiting_reddit_operator_review",
+        )
+        self.assertIn("## Reddit Operator Review", result["macro_note_result"]["report_markdown"])
 
     def test_macro_note_workflow_defaults_analysis_time_for_fresh_news_request(self) -> None:
         request = json.loads(json.dumps(self.news_request))
@@ -1102,6 +1337,77 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(revised["style_learning"]["change_summary"])
         self.assertIn("## Style Learning", revised["report_markdown"])
 
+    def test_polish_chinese_wechat_paragraph_adds_breath_breaks_for_dense_developer_tooling_copy(self) -> None:
+        request = {
+            "language_mode": "chinese",
+            "target_length_chars": 2800,
+            "topic": "Claude Code hidden features",
+        }
+        source_summary = {
+            "topic": "Claude Code hidden features",
+            "core_verdict": "browser control and workflow changes are the real point",
+        }
+        analysis_brief = {
+            "market_or_reader_relevance_zh": ["浏览器控制、工作流编排", "产品边界、权限设计"],
+            "open_questions_zh": ["哪些入口会开放、哪些权限会收口"],
+        }
+        paragraph = (
+            "图像素材能帮你把现场感补回来，但它更适合做补充，不适合替代判断。"
+            "对这类题材来说，截图的价值不只是占位，而是把入口、页面状态和当时上下文一起保留下来。"
+            "多一张帖子配图的意义，不是把版面铺满，而是让截图里的入口、帖子里的强调点和当时的页面状态彼此校验。"
+            "对这种同时有截图和帖子配图的 case，最稳的不是单看哪张图更抓眼，而是看图像层、帖子文案和文档命名能不能指向同一件事。"
+        )
+        polished = polish_chinese_wechat_paragraph(
+            paragraph,
+            request,
+            source_summary,
+            analysis_brief,
+            allow_numbered_breaks=True,
+            allow_breath_breaks=True,
+        )
+
+        self.assertIn("图像素材能把现场感补回来，但它最多是补充，替代不了判断。", polished)
+        self.assertIn("\n\n对这类题材来说", polished)
+        self.assertIn("\n\n多一张帖子配图的意义", polished)
+        self.assertIn("像这种同时有截图和帖子配图的情况", polished)
+        self.assertNotIn(" case", polished)
+
+    def test_split_chinese_wechat_breaths_breaks_on_natural_transition_markers(self) -> None:
+        paragraph = (
+            "这轮讨论能继续往下走，不是靠单一爆料，而是官方文档、recovered 代码和社区拆解开始互相补位。"
+            "说白了，官方文档先证明入口已经摆上台面，源码和社区拆解则在提示后面还有多深的工作流层。"
+            "这里最容易看走眼的，是把 feature flag 和实验入口直接当成已经公开承诺的产品路线图。"
+            "说到底，下一阶段最关键的，不是再多几个内部名词，而是能不能把文档、入口、调用和权限连成闭环。"
+        )
+
+        updated = split_chinese_wechat_breaths(paragraph)
+
+        self.assertIn("\n\n说白了", updated)
+        self.assertIn("\n\n这里最容易看走眼的", updated)
+        self.assertIn("\n\n说到底", updated)
+
+    def test_split_chinese_wechat_breaths_breaks_on_new_tail_tone_marker(self) -> None:
+        paragraph = (
+            "顺序最好也别看反：先看文档有没有补页，再看入口能不能调用，最后看权限边界是不是被写清。"
+            "文档、入口、权限这条线一旦开始补齐。这东西就更像真要进日常开发了。"
+            "要是一直补不齐，这事大概率还是停在挖源码、猜功能。"
+            "只要这里面有两项开始连续被验证，叙事就还能往前走。"
+            "要是截图、文档和调用痕迹始终对不上，再热的讨论最后也会回到围观层面。"
+        )
+
+        updated = split_chinese_wechat_breaths(paragraph)
+
+        self.assertIn("\n\n这东西就更像真要进日常开发了", updated)
+        self.assertIn("\n\n要是一直补不齐", updated)
+
+    def test_chinese_watch_item_prefers_more_conversational_developer_tooling_copy(self) -> None:
+        self.assertEqual(chinese_watch_item("产品边界、权限设计"), "哪些入口真会放出来，哪些权限还是会卡着")
+        self.assertEqual(chinese_watch_item("浏览器控制、工作流编排"), "浏览器协同这条线会不会真进日常开发")
+        self.assertEqual(
+            chinese_watch_item("能力边界和开发者工作流"),
+            "这波讨论会不会从围观源码，走到团队到底会不会真用",
+        )
+
     def test_article_revision_style_learning_tiers_explicit_style_controls(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request)})
         revised = build_article_revision(
@@ -1247,6 +1553,85 @@ class ArticleWorkflowTests(unittest.TestCase):
             revised["request"]["edit_reason_feedback"]["changes"][0]["change"],
             "Move the clearest confirmed development to the top.",
         )
+
+    def test_summarize_review_decisions_exposes_learning_previews(self) -> None:
+        summary = summarize_review_decisions(
+            {
+                "review_rewrite_package": {
+                    "quality_gate": "pass",
+                    "attacks": [
+                        {
+                            "severity": "major",
+                            "title": "Overclaim",
+                            "detail": "The draft briefly outran the evidence layer.",
+                        }
+                    ],
+                    "claims_removed_or_softened": ["Removed the sentence that sounded too final."],
+                    "remaining_risks": ["A fast-moving headline could still tempt overclaiming."],
+                },
+                "style_learning": {
+                    "high_confidence_rules": [
+                        {
+                            "key": "tone",
+                            "scope": "global",
+                            "confidence": 0.98,
+                            "rule_type": "explicit_preference",
+                            "reason": "Keep the tone careful when evidence is still moving.",
+                        }
+                    ],
+                    "medium_confidence_rules": [
+                        {
+                            "key": "must_include",
+                            "scope": "topic",
+                            "confidence": 0.65,
+                            "rule_type": "constraint_candidate",
+                            "reason": "Lead with the strongest confirmed fact before scenarios.",
+                        }
+                    ],
+                    "low_confidence_rules": [
+                        {
+                            "key": "manual_rewrite",
+                            "scope": "review",
+                            "confidence": 0.25,
+                            "rule_type": "rewrite_observation",
+                            "reason": "The rewrite was substantial but not yet reusable.",
+                        }
+                    ],
+                    "change_summary": [
+                        "Human summary: tighten the opening.",
+                        "Human change [body/structure]: Lead with the strongest confirmed fact first.",
+                    ],
+                    "excluded_signals": [
+                        "Citation maintenance should not be promoted into style memory.",
+                    ],
+                    "explicit_change_count": 1,
+                    "explicit_preference_count": 1,
+                    "used_explicit_feedback": True,
+                    "proposed_profile_feedback": {
+                        "defaults": {
+                            "tone": "neutral-cautious",
+                            "must_include": ["Lead with the strongest confirmed fact before any scenario."],
+                        }
+                    },
+                },
+                "profile_update_decision": {
+                    "status": "suggest_only",
+                    "reason": "Reusable defaults were detected but still require human review.",
+                },
+            }
+        )
+
+        learning = summary["style_learning"]
+        self.assertEqual(learning["decision"], "suggest_only")
+        self.assertEqual(learning["high_confidence_rule_preview"][0]["key"], "tone")
+        self.assertEqual(learning["medium_confidence_rule_preview"][0]["key"], "must_include")
+        self.assertEqual(learning["low_confidence_rule_preview"][0]["key"], "manual_rewrite")
+        self.assertIn("Human summary: tighten the opening.", learning["change_summary_preview"])
+        self.assertIn(
+            "Citation maintenance should not be promoted into style memory.",
+            learning["excluded_signals_preview"],
+        )
+        self.assertEqual(learning["proposed_default_keys"], ["must_include", "tone"])
 
     def test_feedback_markdown_parses_into_revision_payload(self) -> None:
         draft = build_article_draft({"source_result": run_news_index(self.news_request)})
@@ -1927,10 +2312,16 @@ Make the article easier to trust.
         self.assertIn("Rewrite mode", result["report_markdown"])
         self.assertIn("Pre-rewrite quality gate", result["report_markdown"])
         self.assertIn("learning_stage", result)
+        self.assertIn("change_summary_preview", result["learning_stage"])
+        self.assertIn("high_confidence_rule_preview", result["learning_stage"])
+        self.assertIn("proposed_default_keys", result["learning_stage"])
         self.assertIn("brief_stage", result)
         self.assertIn("review_result", result)
         self.assertIn("rewrite_mode", result["final_stage"])
         self.assertIn("pre_rewrite_quality_gate", result["final_stage"])
+        self.assertIn("learning_decision", result["review_stage"])
+        self.assertIn("learning_change_summary_preview", result["review_stage"])
+        self.assertIn("Learning summary:", result["report_markdown"])
         revision_form_markdown = Path(result["review_stage"]["revision_form_path"]).read_text(encoding="utf-8-sig")
         self.assertIn("# Article Feedback", revision_form_markdown)
         self.assertIn("## Overall Goal", revision_form_markdown)
@@ -2181,6 +2572,69 @@ Make the article easier to trust.
         self.assertIn("Final quality gate", result["report_markdown"])
         self.assertIn("Selection", result["report_markdown"])
 
+    def test_article_batch_workflow_surfaces_reddit_operator_review_gate(self) -> None:
+        batch_dir = self.case_dir("batch-reddit-review-gate")
+        result = run_article_batch_workflow(
+            {
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "output_dir": str(batch_dir / "out"),
+                "items": [
+                    {
+                        "label": "reddit-reviewed-item",
+                        "payload": self.build_reddit_operator_review_source_result(),
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(result["succeeded_items"], 1)
+        self.assertEqual(result["items"][0]["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertEqual(result["items"][0]["manual_review_status"], "awaiting_reddit_operator_review")
+        self.assertEqual(
+            result["items"][0]["workflow_publication_gate"]["publication_readiness"],
+            "blocked_by_reddit_operator_review",
+        )
+        self.assertEqual(
+            result["items"][0]["workflow_publication_gate"]["manual_review"]["status"],
+            "awaiting_reddit_operator_review",
+        )
+        self.assertEqual(result["items"][0]["manual_review_required_count"], 1)
+        self.assertEqual(result["items"][0]["manual_review_high_priority_count"], 1)
+        self.assertIn("Publication readiness", result["report_markdown"])
+        self.assertIn("Reddit operator review", result["report_markdown"])
+
+    def test_article_auto_queue_surfaces_reddit_operator_review_gate(self) -> None:
+        auto_dir = self.case_dir("auto-reddit-review-gate")
+        result = run_article_auto_queue(
+            {
+                "analysis_time": "2026-03-24T12:00:00+00:00",
+                "output_dir": str(auto_dir / "out"),
+                "top_n": 1,
+                "candidates": [
+                    {
+                        "label": "reddit-reviewed-candidate",
+                        "payload": self.build_reddit_operator_review_source_result(),
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(result["selected_count"], 1)
+        self.assertEqual(result["ranked_candidates"][0]["final_publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertEqual(result["ranked_candidates"][0]["final_manual_review_status"], "awaiting_reddit_operator_review")
+        self.assertEqual(
+            result["ranked_candidates"][0]["workflow_publication_gate"]["publication_readiness"],
+            "blocked_by_reddit_operator_review",
+        )
+        self.assertEqual(
+            result["ranked_candidates"][0]["workflow_publication_gate"]["manual_review"]["status"],
+            "awaiting_reddit_operator_review",
+        )
+        self.assertEqual(result["ranked_candidates"][0]["final_manual_review_required_count"], 1)
+        self.assertEqual(result["ranked_candidates"][0]["final_manual_review_high_priority_count"], 1)
+        self.assertIn("Publication readiness", result["report_markdown"])
+        self.assertIn("Reddit operator review", result["report_markdown"])
+
     def test_key_article_scripts_compile_cleanly(self) -> None:
         script_dir = Path(__file__).resolve().parents[1] / "scripts"
         for name in [
@@ -2360,6 +2814,96 @@ Make the article easier to trust.
         self.assertIn("normalization failed", blocked[0]["text_excerpt"].lower())
         self.assertEqual(result["retrieval_run_report"]["sources_blocked"][0]["source_id"], "bad-source")
         self.assertGreaterEqual(result["retrieval_quality"]["blocked_source_handling_score"], 80)
+
+
+def _override_test_article_draft_applies_style_memory_from_feedback_profile(self: ArticleWorkflowTests) -> None:
+    profile_dir = self.case_dir("feedback-profiles-style-memory")
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    (profile_dir / "global.json").write_text(
+        json.dumps(
+            {
+                "scope": "global",
+                "topic": "global",
+                "request_defaults": {
+                    "language_mode": "chinese",
+                    "human_signal_ratio": 76,
+                },
+                "style_memory": {
+                    "target_band": "3.4",
+                    "voice_summary": "结论先行，判断明确，但别写成模板审查口吻。",
+                    "preferred_transitions": ["先说结论", "更关键的是"],
+                    "must_land": ["把影响路径写在前面", "优先回答读者真正关心的变量"],
+                    "avoid_patterns": ["当前最稳妥的写法是"],
+                    "slot_lines": {
+                        "subtitle": ["先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。"],
+                        "impact": ["真正该盯的，是这件事会不会继续改写预算、预期和定价。"],
+                        "watch": ["接下来别忙着站队，先盯那几个会把叙事坐实的硬信号。"],
+                    },
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    draft = build_article_draft(
+        {
+            "source_result": self.build_clean_core_news_result(),
+            "feedback_profile_dir": str(profile_dir),
+        }
+    )
+
+    self.assertEqual(draft["request"]["style_memory"]["target_band"], "3.4")
+    self.assertIn("先说结论", draft["request"]["personal_phrase_bank"])
+    self.assertIn("把影响路径写在前面", draft["request"]["must_include"])
+    self.assertIn("当前最稳妥的写法是", draft["request"]["must_avoid"])
+    self.assertEqual(draft["article_package"]["subtitle"], "先把发生了什么说清楚，再看这件事为什么会继续发酵。")
+    self.assertEqual(draft["article_package"]["style_profile_applied"]["style_memory"]["target_band"], "3.4")
+
+
+def _override_test_article_revision_preserves_style_memory_from_prior_request(self: ArticleWorkflowTests) -> None:
+    draft = build_article_draft(
+        {
+            "source_result": self.build_clean_core_news_result(),
+            "language_mode": "chinese",
+            "style_memory": {
+                "target_band": "3.4",
+                "slot_lines": {
+                    "subtitle": ["先把更硬的变量拎出来，再看这波讨论会不会继续往经营和定价上传。"],
+                },
+            },
+        }
+    )
+    revised = build_article_revision({"draft_result": draft, "title_hint": "改一个标题但保留风格记忆"})
+    self.assertEqual(revised["request"]["style_memory"]["target_band"], "3.4")
+    self.assertEqual(revised["article_package"]["style_profile_applied"]["style_memory"]["target_band"], "3.4")
+    self.assertEqual(revised["article_package"]["subtitle"], "先把发生了什么说清楚，再看这件事为什么会继续发酵。")
+
+
+ArticleWorkflowTests.test_article_draft_applies_style_memory_from_feedback_profile = (
+    _override_test_article_draft_applies_style_memory_from_feedback_profile
+)
+ArticleWorkflowTests.test_article_revision_preserves_style_memory_from_prior_request = (
+    _override_test_article_revision_preserves_style_memory_from_prior_request
+)
+
+
+def _test_article_draft_keeps_business_shorthand_for_business_topics(self: ArticleWorkflowTests) -> None:
+    request = {
+        "topic": "AI Agent hiring rebound starts showing up in startup budgets and pricing",
+        "must_include": [
+            "招聘节奏、订单转化和预算投放开始重新联动",
+            "商业化交付和定价能力开始变得更重要",
+        ],
+    }
+
+    self.assertTrue(topic_prefers_business_shorthand(request))
+
+
+ArticleWorkflowTests.test_article_draft_keeps_business_shorthand_for_business_topics = (
+    _test_article_draft_keeps_business_shorthand_for_business_topics
+)
 
 
 if __name__ == "__main__":

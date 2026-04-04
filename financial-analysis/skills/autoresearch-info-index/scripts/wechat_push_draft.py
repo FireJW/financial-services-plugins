@@ -26,6 +26,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--human-review-approved", action="store_true", help="Mark the article as human-reviewed so a real WeChat push is allowed")
     parser.add_argument("--human-review-approved-by", help="Optional reviewer name recorded for the push gate")
     parser.add_argument("--human-review-note", help="Optional review note recorded for the push gate")
+    parser.add_argument("--push-backend", choices=["api", "browser_session", "auto"], help="Choose API push, browser-session push, or auto fallback")
+    parser.add_argument("--browser-session-strategy", choices=["remote_debugging"], help="Browser-session strategy for WeChat backend fallback")
+    parser.add_argument("--browser-debug-endpoint", help="Remote debugging endpoint, e.g. http://127.0.0.1:9222")
+    parser.add_argument("--browser-wait-ms", type=int, help="Browser-session settle wait in milliseconds")
+    parser.add_argument("--browser-home-url", help="Optional browser-session home URL override")
+    parser.add_argument("--browser-editor-url", help="Optional browser-session editor URL override")
+    parser.add_argument("--browser-session-required", action="store_true", help="Mark browser-session fallback as required")
     parser.add_argument("--wechat-env-file", help="Optional path to a local .env.wechat.local file")
     parser.add_argument("--wechat-app-id", help="Optional WeChat app id override")
     parser.add_argument("--wechat-app-secret", help="Optional WeChat app secret override")
@@ -54,6 +61,23 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["human_review_approved_by"] = args.human_review_approved_by
     if args.human_review_note:
         payload["human_review_note"] = args.human_review_note
+    if args.push_backend:
+        payload["push_backend"] = args.push_backend
+    browser_session = payload.get("browser_session") if isinstance(payload.get("browser_session"), dict) else {}
+    if args.browser_session_strategy:
+        browser_session["strategy"] = args.browser_session_strategy
+    if args.browser_debug_endpoint:
+        browser_session["cdp_endpoint"] = args.browser_debug_endpoint
+    if args.browser_wait_ms is not None:
+        browser_session["wait_ms"] = args.browser_wait_ms
+    if args.browser_home_url:
+        browser_session["home_url"] = args.browser_home_url
+    if args.browser_editor_url:
+        browser_session["editor_url"] = args.browser_editor_url
+    if args.browser_session_required:
+        browser_session["required"] = True
+    if browser_session:
+        payload["browser_session"] = browser_session
     if args.wechat_env_file:
         payload["wechat_env_file"] = args.wechat_env_file
     if args.wechat_app_id:
@@ -66,11 +90,17 @@ def build_payload(args: argparse.Namespace) -> dict:
 
 
 def build_markdown(result: dict) -> str:
+    workflow_publication_gate = result.get("workflow_publication_gate", {}) if isinstance(result.get("workflow_publication_gate"), dict) else {}
+    workflow_manual_review = workflow_publication_gate.get("manual_review", {}) if isinstance(workflow_publication_gate.get("manual_review"), dict) else {}
     lines = [
         "# WeChat Draft Push",
         "",
         f"- Status: {result.get('status', '')}",
+        f"- Backend: {result.get('push_backend', '')}",
+        f"- Workflow publication readiness: {workflow_publication_gate.get('publication_readiness', '') or 'ready'}",
+        f"- Workflow Reddit operator review: {workflow_manual_review.get('status', '') or 'not_required'}",
         f"- Draft media_id: {result.get('draft_result', {}).get('media_id', '')}",
+        f"- Draft URL: {result.get('draft_result', {}).get('draft_url', '')}",
         f"- Inline images uploaded: {len(result.get('uploaded_inline_images', []))}",
         f"- Cover media_id: {result.get('uploaded_cover', {}).get('media_id', '')}",
     ]

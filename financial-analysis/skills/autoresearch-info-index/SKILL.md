@@ -11,6 +11,59 @@ This is the task-specific layer for `autoresearch-loop` when the recurring job
 is to turn fast-moving messages, headlines, or market-moving statements into a
 clean, source-traceable index record.
 
+Routing note for Reddit:
+
+- prefer `agent-reach:reddit` when Reddit should be fetched as part of the
+  broader live discovery surface and then compete with other channels inside
+  `hot_topic_discovery`
+- prefer `reddit-bridge` when you already have a saved Reddit payload,
+  `posts.csv`, or a scraper export root such as `data/r_<subreddit>/posts.csv`
+  or `data/u_<user>/posts.csv` and only need to normalize it into
+  `news-index`
+- when extending Reddit clustering or bridge metadata, update the bounded
+  config under `references/reddit-cluster-aliases.json` and
+  `references/reddit-community-profiles.json` before hardcoding more runtime
+  branches
+- if a Reddit export directory also includes `comments.csv`, prefer preserving
+  that top-comment layer instead of dropping it; the bridge can now fold it
+  into `top_comment_summary` and related metadata automatically
+- if the Reddit payload already nests `comments` under each post item, preserve
+  that structure instead of flattening it by hand before running the bridge
+- if the same Reddit comment appears multiple times across export fragments,
+  let the bridge deduplicate it conservatively and preserve the duplicate count
+  as metadata instead of inflating `top_comment_count`
+- if comments are only near-duplicates, keep them in the imported sample and
+  surface `comment_near_duplicate_count` as operator-review caution instead of
+  merging them into the exact-duplicate path
+- when near-duplicate comments are present, preserve the split between
+  `comment_near_duplicate_same_author_count` and
+  `comment_near_duplicate_cross_author_count`; cross-author repetition is a
+  stronger caution signal than one author rephrasing the same point
+- preserve a few bounded `comment_near_duplicate_examples` when operator review
+  needs to inspect which comment pairs triggered the caution
+- when Reddit comment imports are partial, keep the mismatch metadata
+  (`comment_declared_count`, `comment_sample_coverage_ratio`,
+  `comment_count_mismatch`) visible for operator review instead of pretending
+  the sampled comments represent the whole thread
+- prefer consuming the consolidated `comment_operator_review` block in
+  `raw_metadata`, `source_items`, and clustered topic output when downstream
+  tooling needs one bounded operator-review object instead of many scattered
+  Reddit comment fields
+- when triage order matters, prefer the emitted `operator_review_priority`
+  object and result-level `operator_review_queue` instead of inventing a second
+  manual ranking pass outside the runtime
+- when the indexing result enters article, macro note, publish, reuse, or queue
+  workflows, preserve the emitted `manual_review` /
+  `publication_readiness` state instead of collapsing it back into a free-form
+  note; downstream consumers should keep Reddit as a publication gate signal,
+  not upgrade it into claim confirmation
+- when you expose publish-side operator tooling, keep the same gate visible in
+  human-readable outputs too: readiness reports, regression reports, reuse
+  reports, push summaries, and queue reports should all surface the carried
+  `manual_review` / `publication_readiness` state
+- if comment freshness matters, prefer setting `comment_sort_strategy=hybrid`
+  or `recency_then_score` explicitly instead of hardcoding a new ranking branch
+
 ## Use This When
 
 - the same type of news or statement analysis happens repeatedly
@@ -243,6 +296,9 @@ patterns:
 - [scripts/agent_reach_bridge_runtime.py](scripts/agent_reach_bridge_runtime.py) imports a separate Agent Reach payload or per-channel fetch result and bridges selected findings into `news-index` as shadow observations
 - [scripts/agent_reach_bridge.py](scripts/agent_reach_bridge.py) runs the one-shot Agent Reach bridge entry
 - [scripts/run_agent_reach_bridge.cmd](scripts/run_agent_reach_bridge.cmd) runs the Agent Reach bridge through the local Python wrapper
+- [scripts/reddit_bridge_runtime.py](scripts/reddit_bridge_runtime.py) imports exported Reddit result files or inline Reddit post payloads and bridges them into `news-index` as shadow observations
+- [scripts/reddit_bridge.py](scripts/reddit_bridge.py) runs the one-shot Reddit bridge entry
+- [scripts/run_reddit_bridge.cmd](scripts/run_reddit_bridge.cmd) runs the Reddit bridge through the local Python wrapper
 - [scripts/agent_reach_deploy_check_runtime.py](scripts/agent_reach_deploy_check_runtime.py) inspects whether a separate Agent Reach deployment exists, whether the core channels are actively verified, and which runtime/config gaps remain
 - [scripts/agent_reach_deploy_check.py](scripts/agent_reach_deploy_check.py) runs the separate Agent Reach deployment check entry
 - [scripts/run_agent_reach_deploy_check.cmd](scripts/run_agent_reach_deploy_check.cmd) runs the Agent Reach deployment check through the local Python wrapper
@@ -269,6 +325,7 @@ patterns:
 - [scripts/article_publish.py](scripts/article_publish.py) runs the full publish entry
 - [scripts/run_article_publish.cmd](scripts/run_article_publish.cmd) runs the publish flow through the local Python wrapper
 - [scripts/run_article_publish_demo.cmd](scripts/run_article_publish_demo.cmd) runs the deterministic publish demo fixture end to end
+- [scripts/run_article_publish_acceptance.cmd](scripts/run_article_publish_acceptance.cmd) runs the article workflow + publish acceptance baselines in one shot
 - [scripts/wechat_draftbox_runtime.py](scripts/wechat_draftbox_runtime.py) uploads images and pushes a publish-package into the WeChat draft box
 - [scripts/wechat_push_draft.py](scripts/wechat_push_draft.py) runs the standalone WeChat draft push entry
 - [scripts/run_wechat_push_draft.cmd](scripts/run_wechat_push_draft.cmd) runs the WeChat draft push flow through the local Python wrapper
@@ -303,6 +360,38 @@ patterns:
 Keep the local batch evaluator flow parallel to `autoresearch-code-fix`:
 validated sample pool, batch run-record generation, batch evaluation, then one
 markdown report.
+
+## Article Workflow Tuning Inputs
+
+When the task has already produced a stable `news-index` / `x-index` result and
+you want to tune the writing layer instead of recollecting evidence, prefer an
+`article-workflow` request that starts from:
+
+- `source_result`
+- or `source_result_path`
+
+Useful style / packaging controls that are now part of the supported workflow
+surface:
+
+- `feedback_profile_dir`
+  - applies persisted request defaults and style memory before drafting
+- `headline_hook_mode`
+  - lets you force the title hook strategy instead of relying on auto mode
+- `human_signal_ratio`
+  - adjusts how much the draft should sound like a human operator rather than a neutral scaffold
+- `personal_phrase_bank`
+  - injects explicit preferred transitions or signature phrasing
+
+For deterministic regression coverage of this surface, use:
+
+- [tests/test_article_workflow_canonical_snapshots.py](tests/test_article_workflow_canonical_snapshots.py)
+- [tests/fixtures/article-workflow-canonical](tests/fixtures/article-workflow-canonical)
+
+For deterministic publish-layer acceptance coverage, use:
+
+- [tests/test_article_publish_canonical_snapshots.py](tests/test_article_publish_canonical_snapshots.py)
+- [tests/fixtures/article-publish-canonical](tests/fixtures/article-publish-canonical)
+- [scripts/run_article_publish_acceptance.cmd](scripts/run_article_publish_acceptance.cmd)
 
 ## References
 

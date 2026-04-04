@@ -324,27 +324,232 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
     return shared_build_image_candidates(source_result, request)
 
 
+def looks_like_ui_capture_noise(text: str) -> bool:
+    cleaned = clean_text(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return False
+    markers = (
+        'link "',
+        "/url:",
+        "progressbar",
+        "banner - main",
+        "login",
+        "log in",
+        "sign in",
+        "sign up",
+        "new to x",
+        "加载中",
+        "登录",
+        "注册",
+        "抢先知道",
+        "main:",
+    )
+    marker_hits = sum(1 for marker in markers if marker in lowered or marker in cleaned)
+    return marker_hits >= 2
+
+
+def synthesized_screenshot_caption(item: dict[str, Any], *, language_mode: str = "english") -> str:
+    source_name = clean_text(item.get("source_name")) or "来源"
+    role = clean_text(item.get("role"))
+    if language_mode == "chinese":
+        if role == "root_post_screenshot" and source_name.startswith("X @"):
+            return "原始 X 帖子截图，保留了这轮讨论最早的页面界面和上下文。"
+        if role == "article_page_screenshot":
+            return "来源页面截图，保留了标题、版面和关键信息块。"
+        if role == "observation_screenshot":
+            return f"{source_name} 的观察截图，用来补充当时页面状态。"
+        return f"{source_name} 的页面截图，用来补充来源界面和上下文。"
+    if role == "root_post_screenshot" and source_name.startswith("X @"):
+        return "Screenshot of the original X post, kept to preserve the early page context."
+    if role == "article_page_screenshot":
+        return "Screenshot of the source page, kept for title and layout context."
+    if role == "observation_screenshot":
+        return f"Observation screenshot from {source_name}, kept as page-state context."
+    return f"Source page screenshot from {source_name}."
+
+
+def image_caption_english_word_count(text: str) -> int:
+    return len(re.findall(r"\b[A-Za-z][A-Za-z/-]*\b", clean_text(text)))
+
+
+def localized_image_caption_text(
+    text: Any,
+    *,
+    language_mode: str,
+    role: str = "",
+    source_name: str = "",
+) -> str:
+    cleaned = clean_text(text)
+    if language_mode != "chinese" or not cleaned or has_cjk(cleaned):
+        return cleaned
+    lowered = cleaned.lower()
+    explicit_patterns = [
+        (
+            r"screenshot-backed thread about claude code browser control and hidden capabilities",
+            "这是一条带截图的线程，集中展示了 Claude Code 的浏览器控制和隐藏能力。",
+        ),
+        (
+            r"browser-captured image from the original x post showing workflow panels",
+            "这张图直接截自原始 X 帖子，能看到工作流面板。",
+        ),
+        (
+            r"browser mode entrypoint shown next to remote control and workflow panels",
+            "图里能看到浏览器模式入口，旁边就是远程控制和工作流面板。",
+        ),
+        (
+            r"screenshot of the original x thread discussing claude code hidden capabilities",
+            "原始 X 线程截图，保留了 Claude Code 隐藏能力讨论的现场界面。",
+        ),
+    ]
+    for pattern, replacement in explicit_patterns:
+        if re.search(pattern, lowered):
+            return replacement
+
+    replacements = [
+        ("browser control", "浏览器控制"),
+        ("browser mode", "浏览器模式"),
+        ("workflow panels", "工作流面板"),
+        ("workflow panel", "工作流面板"),
+        ("workflow", "工作流"),
+        ("remote control", "远程控制"),
+        ("hidden capabilities", "隐藏能力"),
+        ("entrypoints", "入口"),
+        ("entrypoint", "入口"),
+        ("subagents", "子代理"),
+        ("permission boundaries", "权限边界"),
+        ("original x post", "原始 X 帖子"),
+        ("original x thread", "原始 X 线程"),
+        ("browser-captured image", "浏览器截取的配图"),
+        ("screenshot-backed", "带截图的"),
+        ("screenshot", "截图"),
+        ("thread", "线程"),
+        ("shown next to", "旁边就是"),
+        ("image", "配图"),
+    ]
+    translated = cleaned
+    for source, target in replacements:
+        translated = re.sub(source, target, translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\band\b", "和", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\babout\b", "关于", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bfrom\b", "来自", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bshown\b", "显示出", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\s+", " ", translated).strip(" .")
+    if has_cjk(translated) and image_caption_english_word_count(translated) <= 4:
+        if translated and not translated.endswith(("。", "！", "？")):
+            translated += "。"
+        return translated
+    if is_screenshot_role(role):
+        return synthesized_screenshot_caption({"source_name": source_name, "role": role}, language_mode="chinese")
+    if role == "post_media":
+        return "原始帖子里的配图，用来补充界面证据和上下文。"
+    return "关键来源配图。"
+
+
+def selected_image_identity(item: dict[str, Any]) -> str:
+    return normalize_local_path(item.get("path")) or clean_text(item.get("source_url"))
+
+
+def selected_image_role_priority(role: Any) -> int:
+    clean_role = clean_text(role)
+    if clean_role == "root_post_screenshot":
+        return 4
+    if clean_role == "article_page_screenshot":
+        return 3
+    if clean_role == "observation_screenshot":
+        return 2
+    if is_screenshot_role(clean_role):
+        return 1
+    return 0
+
+
+def merge_duplicate_image_candidate(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    merged = deepcopy(existing)
+    if selected_image_role_priority(incoming.get("role")) > selected_image_role_priority(existing.get("role")):
+        merged["role"] = clean_text(incoming.get("role")) or merged.get("role")
+    if clean_text(incoming.get("preferred_caption")) and not clean_text(merged.get("preferred_caption")):
+        merged["preferred_caption"] = clean_text(incoming.get("preferred_caption"))
+    if not clean_text(merged.get("path")) and clean_text(incoming.get("path")):
+        merged["path"] = clean_text(incoming.get("path"))
+    if not clean_text(merged.get("source_url")) and clean_text(incoming.get("source_url")):
+        merged["source_url"] = clean_text(incoming.get("source_url"))
+    if not clean_text(merged.get("summary")) and clean_text(incoming.get("summary")):
+        merged["summary"] = clean_text(incoming.get("summary"))
+    if not clean_text(merged.get("caption")) and clean_text(incoming.get("caption")):
+        merged["caption"] = clean_text(incoming.get("caption"))
+    if not clean_text(merged.get("alt_text")) and clean_text(incoming.get("alt_text")):
+        merged["alt_text"] = clean_text(incoming.get("alt_text"))
+    if not clean_text(merged.get("capture_method")) and clean_text(incoming.get("capture_method")):
+        merged["capture_method"] = clean_text(incoming.get("capture_method"))
+    return merged
+
+
 def build_selected_images(image_candidates: list[dict[str, Any]], request: dict[str, Any]) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
-    for item in image_candidates[: request.get("max_images", 3)]:
+    language_mode = clean_text(request.get("language_mode"))
+    max_images = int(request.get("max_images", 3) or 3)
+    ordered_candidates = [deepcopy(item) for item in image_candidates]
+    if (
+        request.get("draft_mode") == "image_first"
+        and ordered_candidates
+        and not is_screenshot_role(ordered_candidates[0].get("role"))
+    ):
+        first_screenshot_index = next(
+            (index for index, item in enumerate(ordered_candidates) if is_screenshot_role(item.get("role"))),
+            None,
+        )
+        if first_screenshot_index is not None:
+            ordered_candidates.insert(0, ordered_candidates.pop(first_screenshot_index))
+
+    unique_candidates: list[dict[str, Any]] = []
+    unique_indexes: dict[str, int] = {}
+    for item in ordered_candidates:
+        identity = selected_image_identity(item)
+        if identity and identity in unique_indexes:
+            unique_candidates[unique_indexes[identity]] = merge_duplicate_image_candidate(
+                unique_candidates[unique_indexes[identity]],
+                item,
+            )
+            continue
+        if len(unique_candidates) >= max_images:
+            continue
+        unique_candidates.append(deepcopy(item))
+        if identity:
+            unique_indexes[identity] = len(unique_candidates) - 1
+
+    for item in unique_candidates:
         path_text = clean_text(item.get("path"))
         source_url = clean_text(item.get("source_url"))
         access_mode = clean_text(item.get("access_mode"))
-        summary = clean_text(item.get("summary") or item.get("caption"))
+        summary = clean_text(item.get("preferred_caption") or item.get("summary") or item.get("caption"))
         alt_text = clean_text(item.get("alt_text"))
         capture_method = clean_text(item.get("capture_method"))
-        if summary:
+        role = clean_text(item.get("role"))
+        source_name = clean_text(item.get("source_name"))
+        summary = localized_image_caption_text(
+            summary,
+            language_mode=language_mode,
+            role=role,
+            source_name=source_name,
+        )
+        alt_text = localized_image_caption_text(
+            alt_text,
+            language_mode=language_mode,
+            role=role,
+            source_name=source_name,
+        )
+        if summary and not (is_screenshot_role(role) and looks_like_ui_capture_noise(summary)):
             caption = summary
         elif alt_text:
             caption = alt_text
         elif is_screenshot_role(item.get("role")) and access_mode == "blocked":
-            caption = "Source screenshot from a blocked page. Keep it as visual evidence only."
+            caption = "来源页面截图，仅作视觉证据。" if language_mode == "chinese" else "Source screenshot from a blocked page. Keep it as visual evidence only."
         elif item.get("role") == "post_media" and capture_method == "dom_clip":
-            caption = "Browser-captured image from the original X post."
+            caption = "从原始 X 帖子截取的配图。" if language_mode == "chinese" else "Browser-captured image from the original X post."
         elif is_screenshot_role(item.get("role")):
-            caption = "Source page screenshot."
+            caption = synthesized_screenshot_caption(item, language_mode=language_mode)
         else:
-            caption = "Key source image."
+            caption = "关键来源配图。" if language_mode == "chinese" else "Key source image."
         render_target = normalize_local_path(path_text) or source_url
         status = "local_ready" if path_exists(path_text) else "remote_only" if source_url else "missing"
         placement = {0: "after_lede", 1: "after_section_2", 2: "after_section_3"}.get(len(selected), "appendix")
@@ -589,6 +794,8 @@ def chinese_watch_item(text: str) -> str:
         return "中方后续表态、撤离安排和地区外交动作会不会出现新变化"
     if "炼化、化工和制造业利润" in cleaned:
         return "成本压力会不会继续往中下游利润表里传"
+    if any(token in cleaned for token in ("会不会", "是否", "哪一层", "怎么继续", "怎么落地")):
+        return cleaned
     return f"{cleaned}会不会继续扩大"
 
 
@@ -885,12 +1092,12 @@ def citation_channels_for_ids(citations: list[dict[str, Any]], citation_ids: lis
     return channels
 
 
-def join_with_semicolons(items: list[str], empty_text: str) -> str:
+def _legacy_v1_join_with_semicolons(items: list[str], empty_text: str) -> str:
     clean_items = [clean_text(item) for item in items if clean_text(item)]
     return "; ".join(clean_items) if clean_items else empty_text
 
 
-def strip_terminal_punctuation(text: str) -> str:
+def _legacy_v1_strip_terminal_punctuation(text: str) -> str:
     return clean_text(text).rstrip(" .;:")
 
 
@@ -954,9 +1161,20 @@ def image_sentence(images: list[dict[str, Any]]) -> str:
     parts = []
     for item in images[:3]:
         source_name = clean_text(item.get("source_name")) or "Unnamed source"
-        caption = short_excerpt(clean_text(item.get("caption")), limit=100) or "no machine-readable image summary"
+        caption = short_excerpt(clean_text(item.get("caption")), limit=100).rstrip("。.!?;；，,") or "no machine-readable image summary"
         parts.append(f"{source_name}: {caption}")
     return "Key images kept for the article: " + "; ".join(parts) + "."
+
+
+def image_sentence_zh(images: list[dict[str, Any]]) -> str:
+    if not images:
+        return "这次还没有能直接复用的配图。"
+    parts = []
+    for item in images[:3]:
+        source_name = clean_text(item.get("source_name")) or "未命名来源"
+        caption = short_excerpt(clean_text(item.get("caption")), limit=48) or "保留了一张来源截图"
+        parts.append(f"{source_name}：{caption}")
+    return "这次保留下来的图，主要是在补这几层现场感：" + "；".join(parts) + "。"
 
 
 def visual_evidence_sentence(images: list[dict[str, Any]]) -> str:
@@ -971,6 +1189,18 @@ def visual_evidence_sentence(images: list[dict[str, Any]]) -> str:
     return "Visual evidence layer: " + "; ".join(parts) + "."
 
 
+def visual_evidence_sentence_zh(images: list[dict[str, Any]]) -> str:
+    if not images:
+        return "这版暂时没有可复用的图，所以还撑不起真正的 image-first 写法。"
+    parts = []
+    for item in images[:3]:
+        role = clean_text(item.get("role")).replace("_", " ")
+        status = clean_text(item.get("status")) or "unknown"
+        caption = short_excerpt(clean_text(item.get("caption")), limit=54) or "暂无可读摘要"
+        parts.append(f"{role}：{caption}[{status}]")
+    return "图像层现在真正能支撑的，主要是：" + "；".join(parts) + "。"
+
+
 def apply_must_avoid(text: str, must_avoid: list[str]) -> str:
     updated = text
     for phrase in must_avoid:
@@ -978,7 +1208,7 @@ def apply_must_avoid(text: str, must_avoid: list[str]) -> str:
     return updated
 
 
-def derive_analysis_brief_from_digest(
+def _legacy_v1_derive_analysis_brief_from_digest(
     source_summary: dict[str, Any],
     evidence_digest: dict[str, Any],
     citations: list[dict[str, Any]],
@@ -1253,7 +1483,7 @@ def legacy_finalize_article_title(
     return legacy_apply_headline_hook(derived or title, request, source_summary)
 
 
-def build_public_lede(
+def _legacy_v1_build_public_lede(
     request: dict[str, Any],
     source_summary: dict[str, Any],
     analysis_brief: dict[str, Any],
@@ -1278,7 +1508,7 @@ def build_public_lede(
     return bilingual_text(zh, en, language_mode)
 
 
-def build_sections_from_brief(
+def _legacy_v1_build_sections_from_brief(
     request: dict[str, Any],
     source_summary: dict[str, Any],
     citations: list[dict[str, Any]],
@@ -1451,7 +1681,7 @@ def citation_channels_for_ids(citations: list[dict[str, Any]], citation_ids: lis
     return channels
 
 
-def join_with_semicolons(items: list[str], empty_text: str) -> str:
+def _legacy_v2_join_with_semicolons(items: list[str], empty_text: str) -> str:
     clean_items = [strip_terminal_punctuation(item) for item in items if strip_terminal_punctuation(item)]
     if not clean_items:
         return empty_text
@@ -1459,7 +1689,7 @@ def join_with_semicolons(items: list[str], empty_text: str) -> str:
     return separator.join(clean_items)
 
 
-def strip_terminal_punctuation(text: str) -> str:
+def _legacy_v2_strip_terminal_punctuation(text: str) -> str:
     return clean_text(text).rstrip(" .;:。；，、!?！？")
 
 
@@ -1556,6 +1786,24 @@ def image_sentence(images: list[dict[str, Any]]) -> str:
     return "Key images kept for the article: " + "; ".join(parts) + "."
 
 
+def image_sentence_zh(images: list[dict[str, Any]]) -> str:
+    if not images:
+        return "这次还没有能直接复用的配图。"
+    parts = []
+    for item in images[:3]:
+        source_name = clean_text(item.get("source_name")) or "未命名来源"
+        role = clean_text(item.get("role"))
+        caption = short_excerpt(clean_text(item.get("caption")), limit=48).rstrip("。.!?;；，,")
+        if not caption:
+            caption = (
+                synthesized_screenshot_caption(item, language_mode="chinese")
+                if is_screenshot_role(role)
+                else "保留了一张来源配图"
+            )
+        parts.append(f"{source_name}：{caption}")
+    return "这次保留下来的图，主要是在补这几层现场感：" + "；".join(parts) + "。"
+
+
 def visual_evidence_sentence(images: list[dict[str, Any]]) -> str:
     if not images:
         return "No reusable image asset is available, so this version cannot be image-first in practice."
@@ -1563,9 +1811,27 @@ def visual_evidence_sentence(images: list[dict[str, Any]]) -> str:
     for item in images[:3]:
         role = clean_text(item.get("role")).replace("_", " ")
         status = clean_text(item.get("status")) or "unknown"
-        caption = short_excerpt(clean_text(item.get("caption")), limit=110) or "no machine-readable summary"
+        caption = short_excerpt(clean_text(item.get("caption")), limit=110).rstrip("。.!?;；，,") or "no machine-readable summary"
         parts.append(f"{role}: {caption} [{status}]")
     return "Visual evidence layer: " + "; ".join(parts) + "."
+
+
+def visual_evidence_sentence_zh(images: list[dict[str, Any]]) -> str:
+    if not images:
+        return "这版暂时没有可复用的图，所以还撑不起真正的 image-first 写法。"
+    parts = []
+    for item in images[:3]:
+        role = clean_text(item.get("role")).replace("_", " ")
+        status = clean_text(item.get("status")) or "unknown"
+        caption = short_excerpt(clean_text(item.get("caption")), limit=54).rstrip("。.!?;；，,")
+        if not caption:
+            caption = (
+                synthesized_screenshot_caption(item, language_mode="chinese")
+                if is_screenshot_role(item.get("role"))
+                else "暂无可读摘要"
+            )
+        parts.append(f"{role}：{caption} [{status}]")
+    return "图像层现在真正能支撑的，主要是：" + "；".join(parts) + "。"
 
 
 def apply_must_avoid(text: str, must_avoid: list[str]) -> str:
@@ -1575,7 +1841,7 @@ def apply_must_avoid(text: str, must_avoid: list[str]) -> str:
     return updated
 
 
-def derive_analysis_brief_from_digest(
+def _legacy_v2_derive_analysis_brief_from_digest(
     source_summary: dict[str, Any],
     evidence_digest: dict[str, Any],
     citations: list[dict[str, Any]],
@@ -1785,7 +2051,7 @@ def framework_headings(framework: str) -> list[tuple[str, str]]:
     return heading_map.get(framework, heading_map["hot_comment"])
 
 
-def build_public_lede(
+def _legacy_v2_build_public_lede(
     request: dict[str, Any],
     source_summary: dict[str, Any],
     analysis_brief: dict[str, Any],
@@ -1833,7 +2099,7 @@ def build_public_lede(
     return bilingual_text(zh, en, language_mode)
 
 
-def build_sections_from_brief(
+def _legacy_v2_build_sections_from_brief(
     request: dict[str, Any],
     source_summary: dict[str, Any],
     citations: list[dict[str, Any]],
@@ -2046,7 +2312,7 @@ def preferred_brief_texts(
     ]
     return texts[:limit]
 
-
+# Canonical helper set used by the final public lede/section builders below.
 def derive_analysis_brief_from_digest(
     source_summary: dict[str, Any],
     evidence_digest: dict[str, Any],
@@ -2160,7 +2426,7 @@ def derive_analysis_brief_from_digest(
     }
 
 
-def build_public_lede(
+def _legacy_v3_build_public_lede(
     request: dict[str, Any],
     source_summary: dict[str, Any],
     analysis_brief: dict[str, Any],
@@ -2220,7 +2486,7 @@ def build_public_lede(
     return bilingual_text(zh, en, language_mode)
 
 
-def build_sections_from_brief(
+def _legacy_v3_build_sections_from_brief(
     request: dict[str, Any],
     source_summary: dict[str, Any],
     citations: list[dict[str, Any]],
@@ -2499,6 +2765,8 @@ def build_writer_risk_notes(analysis_brief: dict[str, Any], source_summary: dict
     notes = clean_string_list(analysis_brief.get("misread_risks"))
     if int(source_summary.get("blocked_source_count", 0) or 0) > 0:
         notes.append("Some sources were blocked, so the writer must avoid treating the package as fully checked.")
+    if safe_dict(source_summary.get("reddit_comment_review_gate")).get("required"):
+        notes.append("Reddit comment signals still need operator review and must stay shadow-only in the article.")
     if not notes:
         notes.append("The main remaining writer risk is sounding more certain than the evidence allows.")
     return notes[:5]
@@ -2651,6 +2919,24 @@ def refresh_article_package(
             images,
             safe_dict(render_context.get("analysis_brief")),
         )
+        if clean_text(request_context.get("language_mode")) == "chinese":
+            polished_sections: list[dict[str, Any]] = []
+            for section in sections:
+                polished_sections.append(
+                    {
+                        **section,
+                        "heading": polish_chinese_wechat_heading(section.get("heading")),
+                    "paragraph": polish_chinese_wechat_paragraph(
+                        section.get("paragraph"),
+                        request_context,
+                        safe_dict(render_context.get("source_summary")),
+                        safe_dict(render_context.get("analysis_brief")),
+                        allow_numbered_breaks=True,
+                        allow_breath_breaks=True,
+                    ),
+                }
+            )
+            sections = polished_sections
         article_package["sections"] = deepcopy(sections)
         article_package["body_sections"] = deepcopy(sections)
         article_package["lede"] = build_public_lede(
@@ -2658,6 +2944,14 @@ def refresh_article_package(
             safe_dict(render_context.get("source_summary")),
             safe_dict(render_context.get("analysis_brief")),
         )
+        if clean_text(request_context.get("language_mode")) == "chinese":
+            article_package["lede"] = polish_chinese_wechat_paragraph(
+                article_package.get("lede"),
+                request_context,
+                safe_dict(render_context.get("source_summary")),
+                safe_dict(render_context.get("analysis_brief")),
+                allow_numbered_breaks=False,
+            )
         article_package["body_markdown"] = apply_must_avoid(
             build_body_markdown(title, subtitle, sections),
             section_must_avoid,
@@ -3050,8 +3344,34 @@ def assemble_article_package(
     title = finalize_article_title(build_title(request, evidence_digest, selected_images), request, effective_analysis_brief, source_summary)
     subtitle = build_subtitle(request, source_summary, selected_images)
     sections = build_sections(request, source_summary, evidence_digest, citations, selected_images, effective_analysis_brief)
+    if clean_text(request.get("language_mode")) == "chinese":
+        polished_sections: list[dict[str, Any]] = []
+        for section in sections:
+            polished_sections.append(
+                {
+                    **section,
+                    "heading": polish_chinese_wechat_heading(section.get("heading")),
+                    "paragraph": polish_chinese_wechat_paragraph(
+                        section.get("paragraph"),
+                        request,
+                        source_summary,
+                        effective_analysis_brief,
+                        allow_numbered_breaks=True,
+                        allow_breath_breaks=True,
+                    ),
+                }
+            )
+        sections = polished_sections
     body_markdown = apply_must_avoid(build_body_markdown(title, subtitle, sections), request.get("must_avoid", []))
     lede = build_public_lede(request, source_summary, effective_analysis_brief)
+    if clean_text(request.get("language_mode")) == "chinese":
+        lede = polish_chinese_wechat_paragraph(
+            lede,
+            request,
+            source_summary,
+            effective_analysis_brief,
+            allow_numbered_breaks=False,
+        )
     article_markdown = apply_must_avoid(
         build_article_markdown(
             title,
@@ -3115,14 +3435,19 @@ def assemble_article_package(
                 "analysis_time": isoformat_or_blank(request.get("analysis_time")),
                 "angle": clean_text(request.get("angle")),
                 "angle_zh": clean_text(request.get("angle_zh")),
+                "target_length_chars": int(request.get("target_length_chars", 0) or 0),
+                "max_images": int(request.get("max_images", 0) or 0),
                 "must_include": clean_string_list(request.get("must_include")),
                 "must_avoid": clean_string_list(request.get("must_avoid")),
                 "human_signal_ratio": int(request.get("human_signal_ratio", 0) or 0),
                 "personal_phrase_bank": clean_string_list(request.get("personal_phrase_bank")),
                 "style_memory": style_memory_summary(request),
+                "image_strategy": clean_text(request.get("image_strategy")),
                 "draft_mode": clean_text(request.get("draft_mode")),
                 "language_mode": clean_text(request.get("language_mode")),
                 "article_framework": clean_text(request.get("article_framework")),
+                "headline_hook_mode": normalize_headline_hook_mode(request.get("headline_hook_mode")),
+                "headline_hook_prefixes": clean_string_list(request.get("headline_hook_prefixes")),
             },
             "source_summary": deepcopy(source_summary),
             "evidence_digest": deepcopy(evidence_digest),
@@ -3276,6 +3601,10 @@ def chinese_market_focus(text: str) -> str:
     lowered = cleaned.lower()
     if not cleaned:
         return ""
+    if any(token in cleaned for token in ("产品能力表面", "工具调用边界", "产品边界", "权限设计")):
+        return "产品边界、权限设计"
+    if any(token in cleaned for token in ("浏览器控制", "工作流编排", "多步开发者执行", "多步执行")):
+        return "浏览器控制、工作流编排"
     if "背景" in cleaned and "传导路径" in cleaned:
         return "事件背景、传导路径和后续影响"
     if "融资意愿" in cleaned or "订单能见度" in cleaned or "预算和采购" in cleaned or "预算投放" in cleaned:
@@ -3311,6 +3640,12 @@ def chinese_watch_item(text: str) -> str:
     cleaned = chinese_market_focus(text)
     if not cleaned:
         return ""
+    if cleaned == "产品边界、权限设计":
+        return "哪些入口真会放出来，哪些权限还是会卡着"
+    if cleaned == "浏览器控制、工作流编排":
+        return "浏览器协同这条线会不会真进日常开发"
+    if "能力边界" in cleaned and "开发者工作流" in cleaned:
+        return "这波讨论会不会从围观源码，走到团队到底会不会真用"
     if "事件背景、传导路径和后续影响" in cleaned:
         return "这波热度会不会继续往真实决策和行业判断上传导"
     if "融资意愿、订单能见度和预算投放" in cleaned:
@@ -3330,7 +3665,7 @@ def chinese_watch_item(text: str) -> str:
     return f"{cleaned}会不会继续扩大"
 
 
-def build_public_lede(
+def _legacy_v4_build_public_lede(
     request: dict[str, Any],
     source_summary: dict[str, Any],
     analysis_brief: dict[str, Any],
@@ -3409,7 +3744,7 @@ def build_public_lede(
     return bilingual_text(zh, en, language_mode)
 
 
-def build_sections_from_brief(
+def _legacy_v4_build_sections_from_brief(
     request: dict[str, Any],
     source_summary: dict[str, Any],
     citations: list[dict[str, Any]],
@@ -3644,7 +3979,7 @@ def normalized_chinese_focus_items(items: list[str], *, concrete_only: bool = Fa
     return normalized
 
 
-def chinese_focus_cluster(items: list[str], fallback: str = "更实的经营变量") -> str:
+def chinese_focus_cluster(items: list[str], fallback: str = "更实的后续变量") -> str:
     clean_items = unique_texts(items)
     if not clean_items:
         return fallback
@@ -3656,7 +3991,7 @@ def chinese_focus_cluster(items: list[str], fallback: str = "更实的经营变�
     return f"{clean_items[0]}、{clean_items[1]}，以及{clean_items[2]}这些更实的变量"
 
 
-def chinese_progression_phrase(items: list[str], fallback: str = "先看更实的经营变量会不会继续动") -> str:
+def chinese_progression_phrase(items: list[str], fallback: str = "先看更实的后续变量会不会继续动") -> str:
     clean_items = unique_texts(items)
     if not clean_items:
         return fallback
@@ -3670,6 +4005,42 @@ def chinese_progression_phrase(items: list[str], fallback: str = "先看更实�
 def looks_like_debate_text(text: str) -> bool:
     lowered = clean_text(text).lower()
     return any(hint in lowered or hint in text for hint in DEBATE_TEXT_HINTS)
+
+
+def looks_like_developer_tooling_focus(items: list[str]) -> bool:
+    joined = " ".join(clean_text(item).lower() for item in items if clean_text(item))
+    return any(
+        token in joined
+        for token in (
+            "产品能力表面",
+            "产品边界",
+            "工具调用边界",
+            "权限设计",
+            "浏览器控制",
+            "工作流编排",
+            "开发者执行",
+            "developer workflow",
+            "tool-calling",
+            "tool calling",
+            "permission",
+            "browser",
+            "chrome",
+            "playwright",
+            "mcp",
+            "subagent",
+            "claude code",
+        )
+    )
+
+
+def chinese_focus_resolution_label(items: list[str]) -> str:
+    return "开始进入真实能力边界" if looks_like_developer_tooling_focus(items) else "开始压到经营层"
+
+
+def chinese_focus_outcome_sentence(items: list[str]) -> str:
+    if looks_like_developer_tooling_focus(items):
+        return "这些变量一旦连续被验证，这件事就不再只是热度题，而会变成能力边界、权限设计和真实工作流要拿结果回答的问题"
+    return "这些变量一旦连续改善，这件事就不再只是热度题，而会变成经营层面要拿结果回答的问题"
 
 
 def looks_like_implication_text(text: str) -> bool:
@@ -3717,6 +4088,36 @@ def normalize_headline_hook_mode(value: Any) -> str:
     return "auto"
 
 
+FEATURE_ROUNDUP_HEADLINE_TOKENS = (
+    "秘密功能",
+    "隐藏功能",
+    "源码",
+    "盘点",
+    "拆解",
+    "值得看",
+    "功能",
+    "能力",
+    "feature",
+    "features",
+    "hidden",
+    "secret",
+    "source code",
+)
+
+
+def headline_topic_prefers_plain_title(request: dict[str, Any], source_summary: dict[str, Any]) -> bool:
+    text_parts = [
+        public_topic_text(request),
+        clean_text(request.get("title_hint_zh") or request.get("title_hint")),
+        clean_text(source_summary.get("topic")),
+        clean_text(source_summary.get("core_verdict")),
+    ]
+    lowered = " ".join(part.lower() for part in text_parts if clean_text(part))
+    if not lowered:
+        return False
+    return any(token in lowered for token in FEATURE_ROUNDUP_HEADLINE_TOKENS)
+
+
 def headline_hook_prefixes(request: dict[str, Any], *, mode: str) -> list[str]:
     custom_prefixes = clean_string_list(request.get("headline_hook_prefixes"))
     if custom_prefixes:
@@ -3738,11 +4139,28 @@ def title_has_headline_hook(title: Any) -> bool:
     return False
 
 
+def title_has_hanging_tail(title: Any) -> bool:
+    cleaned = clean_text(title).strip("，。！？；：,.!?;:、 ")
+    if not cleaned:
+        return False
+    allowed_endings = ("之后", "此前", "其后", "其中", "同时", "小时", "分钟", "里面", "里程")
+    if any(cleaned.endswith(item) for item in allowed_endings):
+        return False
+    return cleaned.endswith(("后", "前", "中", "里", "时"))
+
+
 def resolve_headline_hook_mode(request: dict[str, Any], source_summary: dict[str, Any]) -> str:
     configured_mode = normalize_headline_hook_mode(request.get("headline_hook_mode"))
+    plain_title_preferred = headline_topic_prefers_plain_title(request, source_summary)
     if configured_mode != "auto":
+        if plain_title_preferred and configured_mode in {"traffic", "aggressive"} and not clean_string_list(
+            request.get("headline_hook_prefixes")
+        ):
+            return "neutral"
         return configured_mode
     if clean_text(request.get("language_mode")) != "chinese":
+        return "neutral"
+    if plain_title_preferred:
         return "neutral"
     if resolve_article_framework(request, source_summary) in {"hot_comment", "deep_analysis", "story", "list", "opinion"}:
         return "traffic"
@@ -3763,6 +4181,10 @@ def apply_headline_hook(title: str, request: dict[str, Any], source_summary: dic
         return compact_title
     prefix = prefixes[0]
     hooked_title = compact_chinese_title(compact_title, limit=max(12, 30 - len(prefix))) or compact_title
+    if title_has_hanging_tail(hooked_title):
+        return compact_title
+    if len(hooked_title) < max(10, int(len(compact_title) * 0.72)):
+        return compact_title
     return f"{prefix}{hooked_title}"
 
 
@@ -3858,7 +4280,7 @@ def requested_focus_sentences(request: dict[str, Any], slot: str, *, mode: str) 
         if slot in {"lede", "impact"} and any(
             token in lowered for token in ("传导", "影响路径", "市场", "读者", "经营", "定价", "transmission", "market", "reader", "pricing", "budget", "order")
         ):
-            sentences.append("真正该看的，是后面那条会继续落到经营和定价上的线")
+            sentences.append("真正该看的，是后面那条会继续落到更实传导和决策上的线")
         if slot == "subtitle" and any(token in lowered for token in ("结论", "判断", "直说", "conclusion", "judgment")):
             sentences.append("先把最实的判断拎出来，再看后面的影响路径")
         if slot == "watch" and any(token in lowered for token in ("信号", "验证", "确认", "市场", "watch", "signal", "confirm", "market")):
@@ -4044,7 +4466,18 @@ def compact_chinese_title(text: Any, *, limit: int = 24) -> str:
     cleaned = re.sub(r"^真正稀缺的不再是概念，而是", "", cleaned)
     cleaned = re.sub(r"^围绕", "", cleaned)
     if "，" in cleaned and len(cleaned) > limit:
-        cleaned = clean_text(cleaned.split("，", 1)[0])
+        first_part, second_part = [clean_text(part) for part in cleaned.split("，", 1)]
+        if title_has_hanging_tail(first_part) and second_part:
+            subject = re.sub(
+                r"(泄露源码|源码泄露|讲话|演讲|表态|发布|上线|更新|出手|开战|空袭|回应|改口)后$",
+                "",
+                first_part,
+            ).strip()
+            stitched = clean_text(f"{subject} {second_part}".strip()) if subject else second_part
+            if stitched:
+                cleaned = stitched
+        else:
+            cleaned = first_part
     if "：" in cleaned and len(cleaned) > limit:
         cleaned = clean_text(cleaned.split("：", 1)[0])
     if len(cleaned) > limit:
@@ -4072,7 +4505,7 @@ def derive_chinese_title(request: dict[str, Any], analysis_brief: dict[str, Any]
     )
     focus_items = normalized_chinese_focus_items(relevance, concrete_only=True)
     if focus_items:
-        return compact_chinese_title(f"{focus_items[0]}开始压到经营层", limit=22)
+        return compact_chinese_title(f"{focus_items[0]}{chinese_focus_resolution_label(focus_items)}", limit=22)
     return ""
 
 
@@ -4099,6 +4532,179 @@ def finalize_article_title(
     return apply_headline_hook(derived or title, request, source_summary)
 
 
+DEVELOPER_TOOLING_TOPIC_TOKENS = (
+    "claude code",
+    "anthropic",
+    "subagent",
+    "subagents",
+    "chrome",
+    "browser",
+    "playwright",
+    "workflow",
+    "developer workflow",
+    "tool use",
+    "tooling",
+    "permission",
+    "permissions",
+    "remote control",
+    "remote debugging",
+    "mcp",
+    "source code",
+    "leak",
+    "cli",
+    "sdk",
+    "prompt",
+    "源码",
+    "泄露",
+    "权限",
+    "浏览器",
+    "工作流",
+    "子代理",
+    "远控",
+    "命令行",
+)
+
+
+def is_developer_tooling_article_topic(
+    request: dict[str, Any],
+    source_summary: dict[str, Any],
+    analysis_brief: dict[str, Any],
+) -> bool:
+    text_parts = [
+        public_topic_text(request),
+        clean_text(source_summary.get("topic")),
+        clean_text(source_summary.get("core_verdict")),
+        *clean_string_list(analysis_brief.get("market_or_reader_relevance")),
+        *clean_string_list(analysis_brief.get("market_or_reader_relevance_zh")),
+        *clean_string_list(analysis_brief.get("open_questions")),
+        *clean_string_list(analysis_brief.get("open_questions_zh")),
+    ]
+    lowered = " ".join(part.lower() for part in text_parts if clean_text(part))
+    return any(token in lowered for token in DEVELOPER_TOOLING_TOPIC_TOKENS)
+
+
+def polish_chinese_wechat_heading(text: Any) -> str:
+    heading = clean_text(text)
+    if not heading:
+        return ""
+    return heading.replace("评论文章", "正文")
+
+
+def split_chinese_numbered_paragraphs(text: str) -> str:
+    updated = str(text or "").strip()
+    matches = list(re.finditer(r"第[一二三四五六七八九十][，：]", updated))
+    if len(matches) < 2:
+        return updated
+    updated = re.sub(r"\s*(第[一二三四五六七八九十][，：])\s*", r"\n\1", updated)
+    updated = re.sub(r"^\n+", "", updated)
+    updated = re.sub(r"\n{2,}", "\n", updated)
+    return updated.strip()
+
+
+def split_chinese_wechat_breaths(text: str) -> str:
+    updated = str(text or "").strip()
+    if not updated or len(updated) < 140 or "\n\n" in updated:
+        return updated
+
+    markers = (
+        "问题在于",
+        "换句话说",
+        "说白了",
+        "再直白一点",
+        "更关键的是",
+        "反过来看",
+        "倒过来看",
+        "比起继续",
+        "真正把讨论撑住的",
+        "最容易误判的地方",
+        "判断有没有走到这一步",
+        "这里最容易看走眼的",
+        "到底有没有走到这一步",
+        "对开发者真正有影响的",
+        "对这类题材来说",
+        "多一张帖子配图的意义",
+        "像这种同时有截图和帖子配图的情况",
+        "说到底",
+        "要是下一轮",
+        "真要往前走",
+        "这东西就更像真要进日常开发了",
+        "这条闭环一旦开始补齐",
+        "文档、入口、权限这条线一旦开始补齐",
+        "要是一直补不齐",
+        "截图和帖子配图要是只剩热闹",
+        "只要这里面有两项",
+        "等到截图里的入口",
+        "只要截图里的入口",
+        "别只看",
+    )
+    marker_pattern = "|".join(re.escape(item) for item in markers)
+    updated = re.sub(rf"([。！？])\s*(?=({marker_pattern}))", r"\1\n\n", updated)
+    if "\n\n" not in updated:
+        sentence_parts = [item.strip() for item in re.findall(r"[^。！？]+[。！？]?", updated) if clean_text(item)]
+        if len(sentence_parts) >= 4:
+            split_at = 2 if len(sentence_parts) <= 5 else 3
+            head = "".join(sentence_parts[:split_at]).strip()
+            tail = "".join(sentence_parts[split_at:]).strip()
+            if len(head) >= 40 and len(tail) >= 40:
+                updated = f"{head}\n\n{tail}"
+    updated = re.sub(r"\n{3,}", "\n\n", updated)
+    return updated.strip()
+
+
+def polish_chinese_wechat_paragraph(
+    text: Any,
+    request: dict[str, Any],
+    source_summary: dict[str, Any],
+    analysis_brief: dict[str, Any],
+    *,
+    allow_numbered_breaks: bool = False,
+    allow_breath_breaks: bool = False,
+) -> str:
+    updated = str(text or "").strip()
+    if not updated:
+        return ""
+
+    replacements = [
+        ("更硬的变量", "更具体的变化"),
+        ("更实的变量", "更具体的东西"),
+        ("更实的变化", "更具体的变化"),
+        ("更实的传导和决策上的线", "真正会继续往下走的那条线"),
+        ("这事之所以值得继续写，不在于它又上了热度，而在于", "这事还值得写，不是因为它又上了热度，而是因为"),
+        ("现在更该分清的，不是立场，而是", "现在更该分清的，不是站队，而是"),
+        ("真正该写的，不是热度本身，而是", "真正该看的，不是热度本身，而是"),
+        ("最该盯的，是几件更实的变量", "最该盯的，是几件更具体的事"),
+        ("评论文章", "正文"),
+        ("如果你说的是", "如果你看到的是"),
+        ("图像素材能帮你把现场感补回来，但它更适合做补充，不适合替代判断。", "图像素材能把现场感补回来，但它最多是补充，替代不了判断。"),
+        ("这一步最重要的，不是把所有判断一次写满，而是先把已经落地的变化和还在路上的推演拆开。", "这一步最重要的，不是急着把结论一次说满，而是先把已经落地的变化和还在路上的推演拆开。"),
+        ("对这种同时有截图和帖子配图的 case", "像这种同时有截图和帖子配图的情况"),
+    ]
+    for source, target in replacements:
+        updated = updated.replace(source, target)
+
+    developer_tooling_topic = is_developer_tooling_article_topic(request, source_summary, analysis_brief)
+    if developer_tooling_topic:
+        developer_replacements = [
+            ("会不会继续往经营和定价上传", "会不会继续往更具体的产品和工作流变化上走"),
+            ("经营和定价", "产品边界和工作流"),
+            ("经营变量", "产品变量"),
+            ("经营层", "产品层"),
+            ("经营和投资判断题", "产品和工作流到底会怎么走"),
+            ("成本、行业或执行层面", "产品边界、权限设计或执行层面"),
+            ("后续决策、行业情绪和资源分配", "后续产品判断、权限取舍和工作流变化"),
+        ]
+        for source, target in developer_replacements:
+            updated = updated.replace(source, target)
+
+    updated = re.sub(r"([。！？])\s*(第[一二三四五六七八九十][，：])", r"\1\n\2", updated)
+    if allow_numbered_breaks:
+        updated = split_chinese_numbered_paragraphs(updated)
+    if allow_breath_breaks and developer_tooling_topic and requested_target_length_chars(request) >= 2400:
+        updated = split_chinese_wechat_breaths(updated)
+    updated = re.sub(r"\n{3,}", "\n\n", updated)
+    return updated.strip()
+
+# Canonical lede/section builders. Earlier generations above are retained as legacy variants.
 def build_public_lede(
     request: dict[str, Any],
     source_summary: dict[str, Any],
@@ -4127,7 +4733,7 @@ def build_public_lede(
             sentences.append(primary_fact)
             if concrete_focus:
                 sentences.append(
-                    f"这事之所以值得继续写，不在于它又上了热度，而在于后面连着{chinese_focus_cluster(concrete_focus[:3])}"
+                    f"这事之所以值得继续写，不在于它又上了热度，而在于后面连着{chinese_focus_cluster(concrete_focus[:3], flavor='two_tracks')}"
                 )
             elif implication_fact:
                 sentences.append(f"这事之所以值得继续写，不在于它又上了热度，而在于{implication_fact}")
@@ -4138,7 +4744,7 @@ def build_public_lede(
             if longform_mode:
                 if concrete_focus:
                     sentences.append(
-                        f"现在更该分清的，不是立场，而是{chinese_focus_cluster(concrete_focus[:2], fallback='后续传导变量')}里哪一条已经开始从讨论层往下走。"
+                        f"现在更该分清的，不是立场，而是{chinese_focus_cluster(concrete_focus[:2], fallback='后续传导变量', flavor='boundary_question')}。"
                     )
                 else:
                     sentences.append("写深这类题材的关键，是先把已经落地的变化、仍待验证的判断和后续传导变量分开。")
@@ -4161,12 +4767,15 @@ def build_public_lede(
 
         if concrete_focus:
             sentences.append(f"{topic}最近会被反复提起，不只是因为热度起来了")
-            sentences.append(f"更重要的是，它已经开始碰到{chinese_focus_cluster(concrete_focus[:3])}")
+            if looks_like_developer_tooling_focus(concrete_focus):
+                sentences.append("更重要的是，讨论已经开始从“还有什么隐藏能力”往“这些能力会怎么进入真实开发流程”上走")
+            else:
+                sentences.append(f"更重要的是，它已经开始碰到{chinese_focus_cluster(concrete_focus[:3])}")
             if boundary_claims:
                 sentences.append(f"不过像“{boundary_claims[0]}”这样的判断，现阶段还不能写成定论")
             if longform_mode:
                 sentences.append(
-                    f"写深这件事的关键，不是继续堆热度，而是看{chinese_focus_cluster(concrete_focus[:3])}里哪一条会先出现连续验证。"
+                    f"写深这件事的关键，不是继续堆热度，而是看{chinese_focus_cluster(concrete_focus[:3], flavor='hard_signal')}。"
                 )
             sentences = apply_slot_memory(
                 sentences,
@@ -4272,7 +4881,18 @@ def build_sections_from_brief(
         all_focus_items = normalized_chinese_focus_items(market_relevance_raw)
         concrete_focus = normalized_chinese_focus_items(market_relevance_raw, concrete_only=True)
         focus_for_progression = concrete_focus[:3] or all_focus_items[:3]
-        watch_list = unique_texts(watch_items)[:3]
+        developer_watch_mode = looks_like_developer_tooling_focus(all_focus_items) or looks_like_developer_tooling_focus(watch_items)
+        has_screenshot_visual = any(is_screenshot_role(item.get("role")) for item in images)
+        has_non_screenshot_visual = any(
+            not is_screenshot_role(item.get("role"))
+            for item in images
+            if clean_text(item.get("role")) or clean_text(item.get("path")) or clean_text(item.get("source_url"))
+        )
+        mixed_visual_mode = has_screenshot_visual and has_non_screenshot_visual
+        if developer_watch_mode:
+            watch_list = unique_texts([chinese_watch_item(item) for item in watch_items if chinese_watch_item(item)])[:3]
+        else:
+            watch_list = unique_texts(watch_items)[:3]
         core_source_count = int(source_summary.get("core_source_count", 0) or 0)
         shadow_source_count = int(source_summary.get("shadow_source_count", 0) or 0)
         section_count = target_section_count(
@@ -4284,8 +4904,11 @@ def build_sections_from_brief(
             relevance_count=len(market_relevance_raw),
             question_count=len(open_questions),
         )
+        target_length_chars = requested_target_length_chars(request)
         longform_mode = section_count >= 5
         max_longform_mode = section_count >= 6
+        dense_longform_mode = target_length_chars >= 2400
+        extended_longform_mode = target_length_chars >= 2800
 
         fact_sentences: list[str] = []
         if primary_fact:
@@ -4305,11 +4928,24 @@ def build_sections_from_brief(
             fact_sentences.append(f"更值得注意的是，{implication_fact}")
         elif concrete_focus:
             if primary_fact or meta_fact_texts:
-                fact_sentences.append(f"真正该往下看的，是{chinese_focus_cluster(concrete_focus[:3])}")
+                if looks_like_developer_tooling_focus(concrete_focus):
+                    fact_sentences.append(f"往下拆的时候，更该看的其实是{chinese_focus_cluster(concrete_focus[:3], flavor='workflow_shift')}")
+                else:
+                    fact_sentences.append(f"往下拆的时候，更该看的其实是{chinese_focus_cluster(concrete_focus[:3])}")
             else:
-                fact_sentences.append(f"眼下更该盯的，是{chinese_focus_cluster(concrete_focus[:3])}这几条传导线")
+                if looks_like_developer_tooling_focus(concrete_focus):
+                    fact_sentences.append(f"眼下更该盯的，是{chinese_focus_cluster(concrete_focus[:3], flavor='decision_fork')}")
+                else:
+                    fact_sentences.append(f"眼下更该盯的，是{chinese_focus_cluster(concrete_focus[:3])}这几条传导线")
         if longform_mode:
             fact_sentences.append("这一步最重要的，不是把所有判断一次写满，而是先把已经落地的变化和还在路上的推演拆开。")
+        if extended_longform_mode:
+            if looks_like_developer_tooling_focus(concrete_focus or all_focus_items):
+                fact_sentences.append("比起继续数彩蛋，更关键的是这些入口到底有没有对应到真实调用链、权限门槛和协同路径。")
+            elif concrete_focus:
+                fact_sentences.append(f"真正拉开差距的，不是再堆一个更大的判断，而是看{chinese_focus_cluster(concrete_focus[:2], fallback='前面那两条更具体的变化')}有没有继续被验证。")
+        if extended_longform_mode and looks_like_developer_tooling_focus(concrete_focus or all_focus_items):
+            fact_sentences.append("再往下一层看，真正关键的不是源码里有没有更多名字，而是这些名字有没有开始对应到公开入口、权限说明和可复现的调用链。")
         fact_sentences = apply_slot_memory(
             fact_sentences,
             request,
@@ -4334,10 +4970,19 @@ def build_sections_from_brief(
         if shadow_source_count > 0:
             spread_sentences.append(f"与此同时，还有{shadow_source_count}路更新更快但噪音也更大的信号在不断抬高情绪")
         spread_sentences.append(
-            f"所以你现在看到的，不只是一个标题在回潮，而是在看它会不会继续落到{chinese_focus_cluster(focus_for_progression[:2], fallback='更实的经营变量')}"
+            f"所以你现在看到的，不只是一个标题在回潮，而是在看{chinese_focus_cluster(focus_for_progression[:2], fallback='更具体的变化', flavor='story_test')}"
         )
         if longform_mode:
-            spread_sentences.append("换句话说，这里不是情绪在原地打转，而是不同来源在争夺哪条传导链会先被坐实。")
+            spread_sentences.append("说白了，这里不是情绪在原地打转，而是不同来源都在抢着证明哪条传导链会先被坐实。")
+        if extended_longform_mode:
+            if core_source_count > 0 and shadow_source_count > 0:
+                spread_sentences.append("这轮讨论能继续往下走，不是靠单一爆料，而是官方文档、recovered 代码和社区拆解开始互相补位。")
+                if looks_like_developer_tooling_focus(all_focus_items):
+                    spread_sentences.append("再直白一点，官方文档负责证明哪些入口已经摆上台面，源码和社区拆解则在提示台面后面还藏着多深的工作流层。")
+            elif trend_texts:
+                spread_sentences.append(f"也就是说，真正往前推它的，不是更响的口号，而是{trend_texts[0]}这条线开始被更多人反复验证。")
+        if extended_longform_mode and looks_like_developer_tooling_focus(all_focus_items):
+            spread_sentences.append("也正因为如此，这轮讨论才没有停在“又挖到几个彩蛋”，而是在逼近一个更实际的问题：团队会不会把这些能力真的用起来。")
         spread_sentences = apply_slot_memory(
             spread_sentences,
             request,
@@ -4355,15 +5000,27 @@ def build_sections_from_brief(
         impact_sentences: list[str] = []
         if focus_for_progression:
             impact_sentences.append(f"如果这波变化继续往下走，{chinese_progression_phrase(focus_for_progression)}")
-            impact_sentences.append("这些变量一旦连续改善，这件事就不再只是热度题，而会变成经营层面要拿结果回答的问题")
+            impact_sentences.append(chinese_focus_outcome_sentence(focus_for_progression))
         else:
             impact_sentences.append("真正值得盯的，不是表面热度，而是它会不会开始改变真实决策")
         if implication_fact and not sentence_is_redundant(implication_fact, fact_sentences):
             impact_sentences.append(implication_fact)
         if longform_mode and focus_for_progression:
             impact_sentences.append(
-                f"先看{chinese_focus_cluster(focus_for_progression[:2], fallback='这条传导链')}有没有从单点信号变成连续验证，再谈更大的结论才更稳。"
+                f"先看{chinese_focus_cluster(focus_for_progression[:2], fallback='这条传导链', flavor='hard_signal')}，再谈更大的结论才更稳。"
             )
+        if dense_longform_mode:
+            if looks_like_developer_tooling_focus(focus_for_progression):
+                impact_sentences.append("对开发者真正有影响的，不是多一个隐藏入口，而是浏览器代执行、权限回收和多步协作会不会慢慢变成日常动作。")
+            else:
+                impact_sentences.append(f"真正会改变判断的，不是口号本身，而是{chinese_focus_cluster(focus_for_progression[:2], fallback='这条传导链')}会不会开始持续改写后面的动作。")
+        if extended_longform_mode and focus_for_progression:
+            if looks_like_developer_tooling_focus(focus_for_progression):
+                impact_sentences.append("一旦文档、权限说明和可调用迹象开始连成线，团队对它的预期也会从“能不能做”转到“什么时候会被常态化用起来”。")
+            else:
+                impact_sentences.append(f"再往下一层看，真正决定叙事能不能站稳的，是{chinese_focus_cluster(focus_for_progression[:2], fallback='这条传导链')}会不会连续出现在后续动作里。")
+        if extended_longform_mode and looks_like_developer_tooling_focus(focus_for_progression):
+            impact_sentences.append("一旦团队真开始照着这套东西往下用，讨论的重心也会跟着变，从功能猎奇转到谁来开权限、谁来兜底执行、谁来审计整条调用链。")
         impact_sentences = apply_slot_memory(
             impact_sentences,
             request,
@@ -4380,13 +5037,23 @@ def build_sections_from_brief(
 
         watch_sentences: list[str] = []
         if watch_list:
-            watch_intro = "接下来最该盯的，是几件更实的变量"
+            watch_intro = "后面先看三处更实的落点"
             if not sentence_is_redundant(watch_intro, impact_sentences):
                 watch_sentences.append(watch_intro)
             labels = ("第一", "第二", "第三")
             for index, item in enumerate(watch_list):
                 watch_sentences.append(f"{labels[index]}，{item}")
-            watch_close = "这些点里只要两项开始连续被验证，叙事就会继续往前推；反过来，如果一项都落不了地，热度很快会回头"
+            if extended_longform_mode:
+                if developer_watch_mode:
+                    watch_sentences.append("别只看有没有新截图或新命名，更要看有没有新的公开文档、可调用迹象和权限边界说明。")
+                    watch_sentences.append("顺序最好也别看反：先看文档有没有补页，再看入口能不能调用，最后看权限边界是不是被写清。")
+                    watch_sentences.append("文档、入口、权限这条线一旦开始补齐。这东西就更像真要进日常开发了。")
+                    watch_sentences.append("要是一直补不齐，这事大概率还是停在挖源码、猜功能。")
+                    if mixed_visual_mode:
+                        watch_sentences.append("截图和帖子配图要是只剩热闹，对不上调用痕迹和权限说明，讨论也很难再往下沉。")
+                else:
+                    watch_sentences.append("别只看情绪有没有继续抬高，更要看这些点里有没有哪一项真正开始落地。")
+            watch_close = "只要这里面有两项开始连续被验证，叙事就还能往前走。要是一项都落不了地，热度很快会掉头。"
             if not sentence_is_redundant(watch_close, impact_sentences):
                 watch_sentences.append(watch_close)
         else:
@@ -4431,6 +5098,22 @@ def build_sections_from_brief(
             verification_sentences.append(f"第三层正在把讨论往前推的，是{trend_texts[0]}")
         elif watch_list:
             verification_sentences.append(f"真正会把这件事往前推的，不会是口号本身，而是{watch_list[0]}")
+        if extended_longform_mode and core_source_count > 0:
+            verification_sentences.append(f"能把这一层写进正文，不是因为说法够满，而是已经有{core_source_count}个核心来源把同一条线索往一起指。")
+        if dense_longform_mode:
+            if looks_like_developer_tooling_focus(all_focus_items):
+                verification_sentences.append("这里最容易看走眼的，是把 feature flag、命名和实验入口，直接当成已经公开承诺的产品路线图。")
+            else:
+                verification_sentences.append("最容易走偏的一步，不是没有判断，而是把仍然缺少第二层验证的推演写得比事实还满。")
+        if extended_longform_mode:
+            if looks_like_developer_tooling_focus(all_focus_items):
+                verification_sentences.append("更稳的写法，是把官方已经写明的能力、源码里只露出命名的入口、以及社区顺着这些入口做出的推演分开来写。")
+            else:
+                verification_sentences.append("更稳的写法，是把已经证实的动作、仍在观察的迹象和顺着迹象推出来的判断拆成三栏。")
+        if extended_longform_mode and looks_like_developer_tooling_focus(all_focus_items):
+            verification_sentences.append("到底有没有走到这一步，看三个点就够了：先看文档是不是继续补，接着看入口能不能稳定调，最后看权限边界是不是开始写细。")
+        if extended_longform_mode and mixed_visual_mode and looks_like_developer_tooling_focus(all_focus_items):
+            verification_sentences.append("对这种同时有截图和帖子配图的 case，最稳的不是单看哪张图更抓眼，而是看图像层、帖子文案和文档命名能不能指向同一件事。")
         verification_zh = join_chinese_sentences(unique_texts(verification_sentences))
         verification_en = (
             "Separate the layers before making the judgment: what is already on the record; what still needs boundary language; "
@@ -4439,14 +5122,27 @@ def build_sections_from_brief(
         judgment_sentences: list[str] = []
         if focus_for_progression:
             judgment_sentences.append(
-                f"把这件事再往前推一步看，真正的分水岭在于{chinese_focus_cluster(focus_for_progression[:3], fallback='后续传导变量')}里哪一条先出现连续信号。"
+                f"把这件事再往前推一步，分水岭其实不在口号，而在于{chinese_focus_cluster(focus_for_progression[:3], fallback='后续传导变量', flavor='decision_fork')}。"
             )
         if watch_list:
-            judgment_sentences.append(f"一旦{watch_list[0]}开始被连续验证，讨论就会从围观转向更强判断。")
+            if looks_like_developer_tooling_focus(focus_for_progression or all_focus_items):
+                judgment_sentences.append("如果接下来真的出现能证明团队会用起来的连续证据，讨论就会从围观转向更强判断。")
+            else:
+                judgment_sentences.append(f"一旦{watch_list[0]}开始被连续验证，讨论就会从围观转向更强判断。")
         if implication_fact and not sentence_is_redundant(implication_fact, judgment_sentences):
-            judgment_sentences.append(f"反过来看，{implication_fact}")
+            judgment_sentences.append(f"换个方向看，{implication_fact}")
         elif not_proven_texts:
             judgment_sentences.append(f"如果后面只剩“{not_proven_texts[0]}”这类大结论，却没有新的公开验证，这轮热度反而更容易回头。")
+        if extended_longform_mode:
+            if looks_like_developer_tooling_focus(focus_for_progression):
+                judgment_sentences.append("要是下一轮只是又多几个内部名词，这事很快还会回到挖源码、猜功能。")
+                judgment_sentences.append("真要往前走，还是得看新文档、调用痕迹和权限说明会不会一起补上。")
+            elif watch_list:
+                judgment_sentences.append(f"所以真正的分水岭，不是谁说得更满，而是像“{watch_list[0]}”这样的点会不会开始连续落地。")
+        if extended_longform_mode and looks_like_developer_tooling_focus(focus_for_progression):
+            judgment_sentences.append("说到底，下一阶段最关键的，不是再多几个内部名词，而是能不能出现一条完整的“文档、入口、调用、权限”闭环。")
+        if extended_longform_mode and mixed_visual_mode and looks_like_developer_tooling_focus(focus_for_progression or all_focus_items):
+            judgment_sentences.append("等到截图里的入口、配图里的强调点和后续文档更新能互相对上，讨论才会更快从彩蛋盘点走向团队到底会不会真用。")
         judgment_zh = join_chinese_sentences(unique_texts(judgment_sentences))
         judgment_en = (
             "The real divide is not between louder and quieter takes, but between signals that have started compounding and claims still waiting for proof."
@@ -4476,18 +5172,27 @@ def build_sections_from_brief(
         verification_paragraph = bilingual_text(verification_zh, verification_en, language_mode)
         judgment_paragraph = bilingual_text(judgment_zh, judgment_en, language_mode)
         image_paragraph = bilingual_text(
-            "图像素材能帮你把现场感补回来，但它更适合做补充，不适合替代判断。当前值得保留的视觉线索是：" + image_sentence(images),
+            "图像素材能帮你把现场感补回来，但它更适合做补充，不适合替代判断。" + image_sentence_zh(images),
             "Images can restore a sense of scene, but they should support the story instead of replacing the judgment. The strongest visual thread here is: "
             + image_sentence(images),
             language_mode,
         )
+        if extended_longform_mode and looks_like_developer_tooling_focus(all_focus_items) and image_paragraph:
+            image_paragraph = join_chinese_sentences(
+                [
+                    image_paragraph,
+                    "对这类题材来说，截图的价值不只是占位，而是把入口、页面状态和当时上下文一起保留下来。",
+                    "当截图和帖子配图能互相对上时，读者看到的就不再只是传闻，而是一组可以回放的现场证据。" if mixed_visual_mode else "",
+                    "多一张帖子配图的意义，不是把版面铺满，而是让截图里的入口、帖子里的强调点和当时的页面状态彼此校验。" if mixed_visual_mode else "",
+                ]
+            )
 
         if request.get("draft_mode") == "image_only":
             return [
                 {
                     "heading": bilingual_heading("图里能确认什么", "What The Images Show", language_mode),
                     "paragraph": bilingual_text(
-                        "先只说图像层真正能支撑的那部分：" + visual_evidence_sentence(images),
+                        visual_evidence_sentence_zh(images),
                         "Start with the part the image layer can genuinely support: " + visual_evidence_sentence(images),
                         language_mode,
                     ),
@@ -4659,6 +5364,375 @@ def build_sections_from_brief(
             },
         )
     return sections
+
+
+MACRO_CONFLICT_TOPIC_TOKENS = (
+    "war",
+    "iran",
+    "israel",
+    "trump",
+    "hormuz",
+    "shipping",
+    "oil tanker",
+    "oil",
+    "crude",
+    "brent",
+    "middle east",
+    "sanction",
+    "airstrike",
+    "strike",
+    "conflict",
+    "战争",
+    "冲突",
+    "伊朗",
+    "以色列",
+    "特朗普",
+    "霍尔木兹",
+    "航运",
+    "油轮",
+    "原油",
+    "布油",
+    "中东",
+    "制裁",
+    "空袭",
+    "打击",
+    "白宫",
+    "讲话",
+    "航母",
+)
+
+BUSINESS_OPERATING_TOPIC_TOKENS = (
+    "hiring",
+    "recruit",
+    "funding",
+    "financing",
+    "monetization",
+    "go to market",
+    "go-to-market",
+    "gtm",
+    "sales",
+    "pipeline",
+    "seat",
+    "arr",
+    "mrr",
+    "gmv",
+    "customer",
+    "order",
+    "pricing",
+    "budget",
+    "margin",
+    "revenue",
+    "retention",
+    "renewal",
+    "cash flow",
+    "startup",
+    "commercial",
+    "delivery",
+    "订单",
+    "预算",
+    "定价",
+    "客户",
+    "收入",
+    "利润",
+    "利润率",
+    "融资",
+    "招聘",
+    "销售",
+    "变现",
+    "续费",
+    "留存",
+    "客单价",
+    "现金流",
+    "商业化",
+    "交付",
+)
+
+BUSINESS_SHORTHAND_TOKENS = (
+    "预算",
+    "订单",
+    "定价",
+    "经营变量",
+    "经营层",
+    "经营和投资判断题",
+    "budget",
+    "order",
+    "pricing",
+    "operating layer",
+)
+
+
+def _topic_context_lines(request: dict[str, Any], context_lines: list[str] | None = None) -> list[str]:
+    lines = [
+        public_topic_text(request),
+        clean_text(request.get("topic")),
+        clean_text(request.get("title_hint")),
+        clean_text(request.get("title_hint_zh")),
+        clean_text(request.get("subtitle_hint")),
+        clean_text(request.get("subtitle_hint_zh")),
+        clean_text(request.get("angle")),
+        clean_text(request.get("angle_zh")),
+        *clean_string_list(request.get("audience_keywords")),
+        *clean_string_list(request.get("must_include")),
+        *(context_lines or []),
+    ]
+    return [clean_text(item) for item in lines if clean_text(item)]
+
+
+def contains_business_shorthand(text: Any) -> bool:
+    cleaned = clean_text(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return False
+    return any(token in cleaned or token in lowered for token in BUSINESS_SHORTHAND_TOKENS)
+
+
+def looks_like_macro_conflict_focus(items: list[str]) -> bool:
+    joined = " ".join(clean_text(item).lower() for item in items if clean_text(item))
+    if not joined:
+        return False
+    return any(token in joined for token in MACRO_CONFLICT_TOPIC_TOKENS)
+
+
+def looks_like_business_operating_focus(items: list[str]) -> bool:
+    joined = " ".join(clean_text(item).lower() for item in items if clean_text(item))
+    if not joined:
+        return False
+    if looks_like_macro_conflict_focus(items) or looks_like_developer_tooling_focus(items):
+        return False
+    return any(token in joined for token in BUSINESS_OPERATING_TOPIC_TOKENS)
+
+
+def topic_prefers_business_shorthand(request: dict[str, Any], context_lines: list[str] | None = None) -> bool:
+    topic_lines = _topic_context_lines(request, context_lines)
+    if looks_like_developer_tooling_focus(topic_lines) or looks_like_macro_conflict_focus(topic_lines):
+        return False
+    return looks_like_business_operating_focus(topic_lines)
+
+
+def build_subtitle(request: dict[str, Any], summary: dict[str, Any], selected_images: list[dict[str, Any]]) -> str:
+    language_mode = request.get("language_mode", "english")
+    subtitle_hint = clean_text(request.get("subtitle_hint"))
+    subtitle_hint_zh = clean_text(request.get("subtitle_hint_zh"))
+    if subtitle_hint or subtitle_hint_zh:
+        return bilingual_text(subtitle_hint_zh, subtitle_hint, language_mode)
+    custom_subtitles = style_memory_slot_lines(request, "subtitle")
+    if custom_subtitles:
+        candidate = custom_subtitles[0]
+        topic_lines = _topic_context_lines(request, [clean_text(summary.get("topic")), clean_text(summary.get("core_verdict"))])
+        if not (
+            contains_business_shorthand(candidate)
+            and (looks_like_developer_tooling_focus(topic_lines) or looks_like_macro_conflict_focus(topic_lines))
+        ):
+            return bilingual_text(candidate, candidate, language_mode)
+    if request.get("draft_mode") == "image_only":
+        return bilingual_text(
+            "先看图里能确认什么，再决定这件事该怎么写。",
+            "Start with what the images can genuinely support, then decide how far the story should go.",
+            language_mode,
+        )
+    framework = resolve_article_framework(request, summary)
+    if framework == "tutorial":
+        return bilingual_text(
+            "把问题拆开讲清楚，比堆观点更重要。",
+            "Clarity matters more than volume here, so the draft breaks the problem into practical steps.",
+            language_mode,
+        )
+    if framework == "story":
+        return bilingual_text(
+            "真正值得写的，不只是事件本身，而是它走到这一步的关键转折。",
+            "The value is not just the event itself, but the turning point that pushed it into focus.",
+            language_mode,
+        )
+    if framework == "list":
+        return bilingual_text(
+            "别急着下结论，先把最关键的几个观察点摆出来。",
+            "Before jumping to a verdict, put the few highest-signal observations on the table.",
+            language_mode,
+        )
+    if summary.get("source_kind") == "x_index" and selected_images:
+        return bilingual_text(
+            "热度会骗人，真正有用的是能落回公开信息和一手素材的那部分。",
+            "Heat can be misleading. What matters is the part of the story that still lands on public evidence and first-hand material.",
+            language_mode,
+        )
+    return bilingual_text(
+        "先把发生了什么说清楚，再看这件事为什么会继续发酵。",
+        "Start with what changed, then look at why the discussion is still gaining heat.",
+        language_mode,
+    )
+
+
+def split_chinese_numbered_paragraphs(text: str) -> str:
+    updated = str(text or "").strip()
+    if not updated:
+        return ""
+    patterns = (
+        r"(第[一二三四五六七八九十]+[，：])",
+        r"(首先[，：])",
+        r"(其次[，：])",
+        r"(最后[，：])",
+        r"(最重要的是[，：])",
+    )
+    for pattern in patterns:
+        updated = re.sub(rf"\s*{pattern}\s*", r"\n\1", updated)
+    updated = re.sub(r"^\n+", "", updated)
+    updated = re.sub(r"\n{2,}", "\n", updated)
+    return updated.strip()
+
+
+def developer_focus_variant(items: list[str], variant: str = "default") -> str:
+    clean_items = unique_texts(items)
+    boundary = clean_items[0] if clean_items else "产品边界、权限设计"
+    workflow = clean_items[1] if len(clean_items) > 1 else "浏览器控制、工作流编排"
+    joined = " ".join(clean_items)
+    boundary_story = "入口到底会放到哪、权限会怎么收口" if any(
+        token in joined for token in ("产品边界", "权限设计", "入口", "权限", "边界")
+    ) else boundary
+    workflow_story = "浏览器协同会不会真进日常开发" if any(
+        token in joined for token in ("浏览器", "工作流", "多步", "协作", "执行", "subagent")
+    ) else workflow
+    workflow_story_long = "浏览器代执行和多步协作会不会慢慢变成日常动作" if any(
+        token in joined for token in ("浏览器", "工作流", "多步", "协作", "执行", "subagent")
+    ) else workflow_story
+    variants = {
+        "default": "能力边界和真实开发流程",
+        "two_tracks": f"两条更实的线：一条是{boundary_story}，另一条是{workflow_story}",
+        "boundary_question": "哪些入口真会放出来，哪些权限还是会卡着",
+        "workflow_shift": "团队会不会真照着这波能力往下用",
+        "story_test": "它会不会从源码热闹，走到团队真的用起来",
+        "hard_signal": "哪些入口和协作动作会先变成能反复用的东西",
+        "decision_fork": "哪些能力会真放出来、哪些权限还会留在门里",
+        "progression": f"先看入口和权限怎么定，再看{workflow_story}会不会从展示走向常用",
+        "progression_long": f"先看入口和权限怎么定，接着看{workflow_story_long}能不能稳定落地，最后再看团队会不会真用起来",
+        "outcome": "这些变化一旦被连续验证，讨论就不再只是热度，而会变成这类工具会不会真进团队日常流程",
+        "requested": "真正该看的，不是热度本身，而是这些能力会不会真进团队日常开发",
+    }
+    return variants.get(variant, variants["default"])
+
+
+def chinese_focus_cluster(items: list[str], fallback: str = "更具体的变化", *, flavor: str = "default") -> str:
+    clean_items = unique_texts(items)
+    if not clean_items:
+        return fallback
+    if looks_like_developer_tooling_focus(clean_items):
+        return developer_focus_variant(clean_items, flavor)
+    if len(clean_items) == 1:
+        return clean_items[0]
+    if len(clean_items) == 2:
+        return f"{clean_items[0]}和{clean_items[1]}这两件更具体的事"
+    return f"{clean_items[0]}、{clean_items[1]}，以及{clean_items[2]}这几件更具体的事"
+
+
+def chinese_progression_phrase(items: list[str], fallback: str = "先看后面几件更具体的事会不会继续变化", *, flavor: str = "default") -> str:
+    clean_items = unique_texts(items)
+    if not clean_items:
+        return fallback
+    if looks_like_developer_tooling_focus(clean_items):
+        variant = "progression_long" if len(clean_items) >= 3 or flavor == "long" else "progression"
+        return developer_focus_variant(clean_items, variant)
+    if len(clean_items) == 1:
+        return f"先看{clean_items[0]}"
+    if len(clean_items) == 2:
+        return f"先看{clean_items[0]}，再看{clean_items[1]}"
+    return f"先看{clean_items[0]}，其次看{clean_items[1]}，最重要的是看{clean_items[2]}"
+
+
+def chinese_focus_resolution_label(items: list[str]) -> str:
+    if looks_like_developer_tooling_focus(items):
+        return "会不会继续改写工作流"
+    if looks_like_macro_conflict_focus(items):
+        return "会不会继续压到油价上"
+    if looks_like_business_operating_focus(items):
+        return "开始落到生意本身"
+    return "会不会继续往下走"
+
+
+def chinese_focus_outcome_sentence(items: list[str]) -> str:
+    if looks_like_developer_tooling_focus(items):
+        return developer_focus_variant(items, "outcome")
+    if looks_like_macro_conflict_focus(items):
+        return "这些变化一旦连续出现，讨论就不会只停在表态层，而会回到打击频率、航运风险和油价怎么重新定价"
+    if looks_like_business_operating_focus(items):
+        return "这些变化一旦连续出现，这件事就不再只是热度，而会变成生意到底有没有跟上的问题"
+    return "这些变化一旦连续出现，这件事就不再只是热度，而会变成后面几周到底怎么演变的问题"
+
+
+def requested_focus_sentences(request: dict[str, Any], slot: str, *, mode: str) -> list[str]:
+    guidance = clean_string_list(request.get("must_include"))
+    if not guidance:
+        return []
+    lowered = " ".join(item.lower() for item in guidance)
+    topic_lines = _topic_context_lines(request, guidance)
+    developer_focus = looks_like_developer_tooling_focus(topic_lines)
+    macro_focus = looks_like_macro_conflict_focus(topic_lines)
+    business_focus = topic_prefers_business_shorthand(request, guidance)
+    sentences: list[str] = []
+    if mode == "chinese":
+        if slot in {"lede", "facts"} and any(
+            token in lowered
+            for token in ("事实", "确认", "未证实", "边界", "fact", "confirmed", "unconfirmed", "inference", "boundary")
+        ):
+            sentences.append("先把已经确认的变化写清楚，再谈后面的判断")
+        if slot in {"lede", "impact"} and any(
+            token in lowered
+            for token in ("传导", "影响路径", "市场", "读者", "经营", "定价", "transmission", "market", "reader", "pricing", "budget", "order")
+        ):
+            if developer_focus:
+                sentences.append(developer_focus_variant(topic_lines, "requested"))
+            elif macro_focus:
+                sentences.append("真正要看的，不在于谁说得更狠，而是打击频率、航运风险和油价这条线会不会继续往下走")
+            elif business_focus:
+                sentences.append("真正该看的，是这波变化会不会继续落到订单、预算和定价上")
+            else:
+                sentences.append("真正该看的，是后面那几件更具体的事会不会继续变化")
+        if slot == "subtitle" and any(token in lowered for token in ("结论", "判断", "直说", "conclusion", "judgment")):
+            if macro_focus:
+                sentences.append("先把判断摆出来，再看接下来几周哪条线最先变化")
+            else:
+                sentences.append("先把最硬的判断摆出来，再看后面那条线会不会继续往下走")
+        if slot == "watch" and any(token in lowered for token in ("信号", "验证", "确认", "市场", "watch", "signal", "confirm", "market")):
+            sentences.append("接下来别急着站队，先盯那几个会把叙事坐实或打脸的硬信号")
+        return clean_string_list(sentences)
+    if slot in {"lede", "facts"} and any(token in lowered for token in ("fact", "confirmed", "unconfirmed", "boundary", "inference")):
+        sentences.append("Keep the confirmed facts steady before widening into inference.")
+    if slot in {"lede", "impact"} and any(token in lowered for token in ("transmission", "market", "reader", "pricing", "budget", "order")):
+        if developer_focus:
+            sentences.append("The useful angle is how product boundaries, permissions, and workflows actually change.")
+        elif macro_focus:
+            sentences.append("The useful angle is whether the strike cadence, shipping risk, and oil pricing keep changing.")
+        elif business_focus:
+            sentences.append("The useful angle is whether the story keeps moving into orders, budgets, and pricing.")
+        else:
+            sentences.append("The useful angle is the concrete change that keeps moving after the headline.")
+    if slot == "watch" and any(token in lowered for token in ("watch", "signal", "confirm", "market")):
+        sentences.append("Focus on the hard signals that would actually confirm or break the story.")
+    return clean_string_list(sentences)
+
+
+def style_line_is_topic_aligned(
+    line: str,
+    request: dict[str, Any],
+    context_lines: list[str] | None = None,
+    *,
+    mode: str,
+) -> bool:
+    if contains_business_shorthand(line) and not topic_prefers_business_shorthand(request, context_lines):
+        return False
+    line_terms = style_alignment_terms(line, mode=mode)
+    if not line_terms:
+        return False
+    anchors = _topic_context_lines(request, context_lines)
+    anchor_terms: set[str] = set()
+    for item in anchors:
+        anchor_terms.update(style_alignment_terms(item, mode=mode))
+    if not anchor_terms:
+        return False
+    shared = line_terms & anchor_terms
+    if not shared:
+        return False
+    if any(len(item) >= 4 or re.search(r"[A-Za-z0-9]", item) for item in shared):
+        return True
+    return len(shared) >= 2
 
 
 __all__ = [

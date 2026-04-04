@@ -27,6 +27,9 @@ The batch result gives you:
 - one first-draft article package per topic
 - one revision template per topic
 - one batch report showing the review queue
+- per-item `publication_readiness` / `manual_review_*` compatibility fields
+- per-item `workflow_publication_gate` so the Reddit review gate survives
+  queueing without inventing a second scoring layer
 
 Local helper:
 

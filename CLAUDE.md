@@ -83,6 +83,17 @@ For X post and thread collection, prefer:
 Do not start with public X page scraping when `x-index` plus a signed browser
 session can be used.
 
+Additional Windows defaults for X session handling:
+
+- reuse the last successful X workflow in the current workspace or continuing
+  thread before bootstrapping a fresh login-state path
+- prefer opening a new Edge window in the user's existing signed-in profile
+  when visible search/capture is enough
+- do not close the user's current Edge windows or pages by default just to get
+  login state
+- only use a close-and-relaunch remote-debug path after the user explicitly
+  approves that interruptive step
+
 ## Git Safety Rules
 
 - Never stage `.tmp/`, `.tmp-*`, root-level `tmp-*`, browser session/profile data, screenshots, caches, or database files unless the user explicitly asks to version them.

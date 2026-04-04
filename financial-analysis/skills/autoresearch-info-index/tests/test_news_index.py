@@ -14,7 +14,18 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from news_index_core import build_markdown_report, read_json, refresh_news_index, result_to_run_record, run_news_index
 from evaluate_info_index import build_result
-from x_index_runtime import FetchArtifact, build_chain_commands, extract_post_text, parse_request, prepare_session_context, run_x_index
+from x_index_runtime import (
+    FetchArtifact,
+    build_same_author_scan_queries,
+    build_chain_commands,
+    build_search_queries,
+    build_window_capture_hints,
+    extract_post_text,
+    fetch_thread_posts,
+    parse_request,
+    prepare_session_context,
+    run_x_index,
+)
 
 
 class NewsIndexTests(unittest.TestCase):
@@ -506,6 +517,45 @@ class NewsIndexTests(unittest.TestCase):
                         item.rmdir()
                 output_dir.rmdir()
 
+    @patch("x_index_runtime.probe_cdp_endpoint", return_value=(False, "connection refused"))
+    def test_prepare_session_context_remote_debugging_marks_unavailable_and_prefers_new_window(
+        self,
+        _mock_probe,
+    ) -> None:
+        request = parse_request(
+            {
+                "topic": "Remote debugging bootstrap",
+                "analysis_time": "2026-04-02T12:00:00+00:00",
+                "browser_session": {
+                    "strategy": "remote_debugging",
+                    "cdp_endpoint": "http://127.0.0.1:9222",
+                    "required": True,
+                },
+            }
+        )
+        context = prepare_session_context(request)
+        self.assertEqual(context["status"], "unavailable")
+        self.assertFalse(context["active"])
+        self.assertTrue(any("new Edge window" in note for note in context["notes"]))
+
+    def test_build_window_capture_hints_outputs_direct_x_search_urls(self) -> None:
+        request = parse_request(
+            {
+                "topic": "Morgan Stanley focus list screenshots",
+                "analysis_time": "2026-04-02T12:00:00+00:00",
+                "keywords": ["Morgan Stanley"],
+                "phrase_clues": ["Morgan Stanley China/HK Focus List"],
+                "entity_clues": ["601600.SS"],
+                "account_allowlist": ["LinQingV"],
+                "manual_urls": ["https://x.com/LinQingV/status/1234567890"],
+            }
+        )
+        hints = build_window_capture_hints(request)
+        self.assertTrue(hints["preferred"])
+        self.assertIn("https://x.com/LinQingV/status/1234567890", hints["manual_urls"])
+        self.assertTrue(any("from%3ALinQingV" in item["url"] or "from%3ALinQingV+" in item["url"] for item in hints["search_urls"]))
+        self.assertTrue(any("new Edge window" in note for note in hints["notes"]))
+
     def test_x_index_does_not_treat_scriptloadfailure_token_as_blocked_by_itself(self) -> None:
         result = run_x_index(
             {
@@ -648,6 +698,274 @@ class NewsIndexTests(unittest.TestCase):
             self.assertIn(post["access_mode"], {"public", "blocked"})
             self.assertTrue(any("remote debugging" in note.lower() for note in post["crawl_notes"]))
             self.assertEqual(result["session_bootstrap"]["health"], "degraded")
+        finally:
+            for item in sorted(output_dir.rglob("*"), reverse=True):
+                if item.is_file():
+                    item.unlink()
+                elif item.is_dir():
+                    item.rmdir()
+
+    def test_x_index_parse_request_derives_phrase_and_entity_clues_from_ocr_text(self) -> None:
+        request = parse_request(
+            {
+                "topic": "Morgan Stanley focus list screenshots",
+                "analysis_time": "2026-04-02T12:00:00+00:00",
+                "ocr_root_text": (
+                    "Exhibit 4: Morgan Stanley China/HK Focus List\n"
+                    "Exhibit 5: Morgan Stanley China A-share Thematic Focus List\n"
+                    "Aluminum Corp. of China Ltd. 601600.SS\n"
+                    "Data as of March 23, 2026."
+                ),
+            }
+        )
+        self.assertIn("Exhibit 4: Morgan Stanley China/HK Focus List", request["phrase_clues"])
+        self.assertIn("Morgan Stanley China/HK Focus List", request["phrase_clues"])
+        self.assertIn("601600.SS", request["entity_clues"])
+
+    def test_x_index_build_search_queries_uses_phrase_entity_and_allowlist_clues(self) -> None:
+        request = parse_request(
+            {
+                "topic": "Morgan Stanley focus list screenshots",
+                "analysis_time": "2026-04-02T12:00:00+00:00",
+                "keywords": ["Morgan Stanley"],
+                "phrase_clues": [
+                    "Morgan Stanley China/HK Focus List",
+                    "Morgan Stanley China A-share Thematic Focus List",
+                ],
+                "entity_clues": ["601600.SS", "Aluminum Corp. of China Ltd."],
+                "account_allowlist": ["LinQingV"],
+                "max_search_queries": 20,
+            }
+        )
+        queries = [item["query"] for item in build_search_queries(request)]
+        self.assertIn('site:x.com/LinQingV/status "Morgan Stanley China/HK Focus List"', queries)
+        self.assertTrue(any('"Morgan Stanley China/HK Focus List" "601600.SS"' in query for query in queries))
+        self.assertIn(
+            'site:x.com/LinQingV/status "Morgan Stanley" "Aluminum Corp. of China Ltd."',
+            queries,
+        )
+
+    def test_x_index_build_same_author_scan_queries_uses_author_and_ocr_clues(self) -> None:
+        request = parse_request(
+            {
+                "topic": "Morgan Stanley focus list screenshots",
+                "analysis_time": "2026-04-02T12:00:00+00:00",
+                "keywords": ["Morgan Stanley"],
+                "phrase_clues": ["Morgan Stanley China/HK Focus List"],
+                "entity_clues": ["601600.SS"],
+                "same_author_scan_limit": 8,
+            }
+        )
+        queries = [item["query"] for item in build_same_author_scan_queries({"author_handle": "LinQingV"}, request)]
+        self.assertIn('site:x.com/LinQingV/status "Morgan Stanley China/HK Focus List"', queries)
+        self.assertIn('site:x.com/LinQingV/status "601600.SS"', queries)
+        self.assertTrue(any('"Morgan Stanley China/HK Focus List" "601600.SS"' in query for query in queries))
+
+    @patch("x_index_runtime.discover_search_candidates", return_value=[])
+    @patch("x_index_runtime.fetch_page", side_effect=AssertionError("cached reuse should not refetch"))
+    def test_x_index_reuses_recent_cached_result_without_refetch(
+        self,
+        _mock_fetch_page,
+        _mock_discover_search,
+    ) -> None:
+        source_dir = self.examples / "tmp-x-reuse-source"
+        target_dir = self.examples / "tmp-x-reuse-target"
+        try:
+            first = run_x_index(
+                {
+                    "topic": "Morgan Stanley reusable cache probe",
+                    "analysis_time": "2026-04-02T12:00:00+00:00",
+                    "output_dir": str(source_dir),
+                    "account_allowlist": ["LinQingV"],
+                    "phrase_clues": ["Morgan Stanley China/HK Focus List"],
+                    "entity_clues": ["601600.SS"],
+                    "seed_posts": [
+                        {
+                            "post_url": "https://x.com/LinQingV/status/111",
+                            "html": """
+                                <html>
+                                  <head>
+                                    <meta property=\"og:title\" content=\"LinQingV on X\">
+                                    <meta property=\"og:description\" content=\"Morgan Stanley adds Aluminum Corp. of China to the focus list.\">
+                                  </head>
+                                </html>
+                            """,
+                            "author_handle": "LinQingV",
+                            "posted_at": "2026-03-24T10:00:00+00:00",
+                            "root_post_screenshot_path": "C:\\artifacts\\linqingv-root.png",
+                            "media_items": [
+                                {
+                                    "source_url": "https://pbs.twimg.com/media/example.jpg",
+                                    "local_artifact_path": "C:\\artifacts\\linqingv-media.jpg",
+                                    "ocr_text_raw": "Exhibit 4 Morgan Stanley China/HK Focus List",
+                                    "ocr_summary": "Morgan Stanley China/HK Focus List image.",
+                                }
+                            ],
+                            "used_browser_session": True,
+                            "session_source": "remote_debugging",
+                            "session_status": "ready",
+                        }
+                    ],
+                }
+            )
+            self.assertEqual(len(first["x_posts"]), 1)
+            self.assertTrue((source_dir / "x-index-result.json").exists())
+            self.assertTrue((source_dir / "x-index-report.md").exists())
+
+            second = run_x_index(
+                {
+                    "topic": "Morgan Stanley reusable cache probe",
+                    "analysis_time": "2026-04-02T12:05:00+00:00",
+                    "output_dir": str(target_dir),
+                    "account_allowlist": ["LinQingV"],
+                    "phrase_clues": ["Morgan Stanley China/HK Focus List"],
+                    "entity_clues": ["601600.SS"],
+                }
+            )
+            self.assertEqual(len(second["x_posts"]), 1)
+            self.assertGreaterEqual(second["reuse_summary"]["reused_posts"], 1)
+            self.assertTrue(second["x_posts"][0]["discovery_reason"].startswith("reused_recent_result:"))
+            self.assertEqual(second["x_posts"][0]["root_post_screenshot_path"], "C:\\artifacts\\linqingv-root.png")
+            self.assertIn("reused cached x-index output", " ".join(second["x_posts"][0]["crawl_notes"]))
+        finally:
+            for output_dir in (source_dir, target_dir):
+                if output_dir.exists():
+                    for item in sorted(output_dir.rglob("*"), reverse=True):
+                        if item.is_file():
+                            item.unlink()
+                        elif item.is_dir():
+                            item.rmdir()
+
+    @patch("x_index_runtime.fetch_page")
+    @patch("x_index_runtime.maybe_fetch_search_results")
+    def test_x_index_fetch_thread_posts_prefers_same_author_time_window_scan(
+        self,
+        mock_search_results,
+        mock_fetch_page,
+    ) -> None:
+        output_dir = self.examples / "tmp-thread-scan"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        def fake_search(query: str) -> list[str]:
+            if '"Morgan Stanley China/HK Focus List"' in query:
+                return [
+                    "https://x.com/LinQingV/status/112",
+                    "https://x.com/LinQingV/status/113",
+                    "https://x.com/LinQingV/status/999",
+                ]
+            return []
+
+        def fake_fetch(url: str, screenshot_path: Path, session_context=None) -> FetchArtifact:
+            posted_at_map = {
+                "https://x.com/LinQingV/status/112": "2026-03-24T09:58:00+00:00",
+                "https://x.com/LinQingV/status/113": "2026-03-24T10:04:00+00:00",
+                "https://x.com/LinQingV/status/999": "2026-03-30T10:04:00+00:00",
+            }
+            posted_at = posted_at_map[url]
+            status_id = url.rsplit("/", 1)[-1]
+            return FetchArtifact(
+                url=url,
+                final_url=url,
+                html=(
+                    f'<html><head><meta property="og:title" content="@LinQingV on X">'
+                    f'<meta property="article:published_time" content="{posted_at}">'
+                    f'<meta property="og:description" content="Thread update {status_id}"></head></html>'
+                ),
+                visible_text=f"Thread update {status_id}",
+                accessibility_text="",
+                links_text="",
+                screenshot_path="",
+                error="",
+                media_items=[],
+            )
+
+        mock_search_results.side_effect = fake_search
+        mock_fetch_page.side_effect = fake_fetch
+
+        try:
+            request = parse_request(
+                {
+                    "topic": "Morgan Stanley focus list screenshots",
+                    "analysis_time": "2026-04-02T12:00:00+00:00",
+                    "output_dir": str(output_dir),
+                    "phrase_clues": ["Morgan Stanley China/HK Focus List"],
+                    "entity_clues": ["601600.SS"],
+                    "same_author_scan_window_hours": 48,
+                    "same_author_scan_limit": 8,
+                }
+            )
+            posts = fetch_thread_posts(
+                {
+                    "author_handle": "LinQingV",
+                    "post_url": "https://x.com/LinQingV/status/111",
+                    "posted_at": "2026-03-24T10:00:00+00:00",
+                },
+                "",
+                request,
+                output_dir,
+                {"https://x.com/LinQingV/status/111"},
+            )
+            self.assertEqual([item["post_url"] for item in posts], [
+                "https://x.com/LinQingV/status/112",
+                "https://x.com/LinQingV/status/113",
+            ])
+            self.assertTrue(mock_search_results.called)
+        finally:
+            for item in sorted(output_dir.rglob("*"), reverse=True):
+                if item.is_file():
+                    item.unlink()
+                elif item.is_dir():
+                    item.rmdir()
+
+    @patch("x_index_runtime.fetch_page")
+    @patch("x_index_runtime.maybe_fetch_search_results", return_value=[])
+    def test_x_index_fetch_thread_posts_falls_back_to_same_author_links(
+        self,
+        _mock_search_results,
+        mock_fetch_page,
+    ) -> None:
+        output_dir = self.examples / "tmp-thread-fallback"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        mock_fetch_page.return_value = FetchArtifact(
+            url="https://x.com/LinQingV/status/121",
+            final_url="https://x.com/LinQingV/status/121",
+            html=(
+                '<html><head><meta property="og:title" content="@LinQingV on X">'
+                '<meta property="article:published_time" content="2026-03-24T10:05:00+00:00">'
+                '<meta property="og:description" content="Fallback thread post"></head></html>'
+            ),
+            visible_text="Fallback thread post",
+            accessibility_text="",
+            links_text="",
+            screenshot_path="",
+            error="",
+            media_items=[],
+        )
+
+        try:
+            request = parse_request(
+                {
+                    "topic": "Morgan Stanley focus list screenshots",
+                    "analysis_time": "2026-04-02T12:00:00+00:00",
+                    "output_dir": str(output_dir),
+                    "phrase_clues": ["Morgan Stanley China/HK Focus List"],
+                    "same_author_scan_window_hours": 48,
+                }
+            )
+            posts = fetch_thread_posts(
+                {
+                    "author_handle": "LinQingV",
+                    "post_url": "https://x.com/LinQingV/status/111",
+                    "posted_at": "2026-03-24T10:00:00+00:00",
+                },
+                "https://x.com/LinQingV/status/121 https://x.com/Other/status/222",
+                request,
+                output_dir,
+                {"https://x.com/LinQingV/status/111"},
+            )
+            self.assertEqual(len(posts), 1)
+            self.assertEqual(posts[0]["post_url"], "https://x.com/LinQingV/status/121")
         finally:
             for item in sorted(output_dir.rglob("*"), reverse=True):
                 if item.is_file():

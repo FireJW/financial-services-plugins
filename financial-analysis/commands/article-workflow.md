@@ -28,6 +28,20 @@ The workflow writes staged outputs for:
 - the article revision template
 - the workflow summary report
 
+The final workflow result also keeps the publication-side gate visible:
+
+- `manual_review`
+- `publication_readiness`
+- `workflow_publication_gate`
+
+That means Reddit-origin comment caution can stay visible for downstream
+publish, queueing, and WeChat readiness steps without turning Reddit into fact
+confirmation.
+
+Downstream `article-batch`, `article-auto-queue`, and publish-reuse flows wrap
+that same state into a shared `workflow_publication_gate` object so queueing
+and reuse do not need to reconstruct the gate from flat fields.
+
 Accepted inputs:
 
 - an existing indexed result JSON

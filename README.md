@@ -114,8 +114,9 @@ Preferred operator order:
 
 Example: for X / Twitter thread collection, use `/x-index` first. On Windows,
 prefer `browser_session.strategy = "remote_debugging"` with a real signed-in
-Edge or Chrome session. Use `cookie_file` only when remote debugging is not
-available.
+Edge or Chrome session. Reuse the last successful X workflow before starting a
+fresh login-state bootstrap, prefer a new Edge window over interrupting current
+Edge pages, and use `cookie_file` only when remote debugging is not available.
 
 ## MCP Integrations
 

@@ -41,6 +41,43 @@ def path_exists(value: Any) -> bool:
         return False
 
 
+def looks_like_ui_capture_noise(text: Any) -> bool:
+    cleaned = clean_text(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return False
+    markers = (
+        'link "',
+        "/url:",
+        "progressbar",
+        "banner - main",
+        "login",
+        "log in",
+        "sign in",
+        "sign up",
+        "new to x",
+        "加载中",
+        "登录",
+        "注册",
+        "抢先知道",
+        "main:",
+    )
+    return any(marker in lowered or marker in cleaned for marker in markers)
+
+
+def first_meaningful_text(*values: Any, fallback: str = "") -> str:
+    noisy_fallback = clean_text(fallback)
+    for value in values:
+        text = clean_text(value)
+        if not text:
+            continue
+        if not noisy_fallback:
+            noisy_fallback = text
+        if not looks_like_ui_capture_noise(text):
+            return text
+    return noisy_fallback
+
+
 def is_source_result(payload: dict[str, Any]) -> bool:
     return any(key in payload for key in ("x_posts", "evidence_pack", "retrieval_result", "observations", "verdict_output"))
 
@@ -98,6 +135,158 @@ def normalize_latest_signals(value: Any) -> list[dict[str, Any]]:
     return signals
 
 
+OPERATOR_REVIEW_PRIORITY_RANK = {
+    "high": 3,
+    "medium": 2,
+    "low": 1,
+    "none": 0,
+}
+
+
+def normalize_operator_review_priority_level(value: Any) -> str:
+    level = clean_text(value).lower()
+    return level if level in OPERATOR_REVIEW_PRIORITY_RANK else "none"
+
+
+def normalize_operator_review_queue_entry(item: dict[str, Any], **fallbacks: Any) -> dict[str, Any]:
+    priority_level = normalize_operator_review_priority_level(item.get("priority_level"))
+    review_required = bool(item.get("review_required")) or priority_level != "none"
+    if not review_required:
+        return {}
+    priority_score = max(0, int(item.get("priority_score", 0) or 0))
+    title = clean_text(item.get("title") or fallbacks.get("title") or item.get("topic_id") or item.get("url"))
+    source_name = clean_text(item.get("source_name") or fallbacks.get("source_name"))
+    url = clean_text(item.get("url") or fallbacks.get("url"))
+    topic_id = clean_text(item.get("topic_id") or fallbacks.get("topic_id"))
+    summary = clean_text(item.get("summary") or fallbacks.get("summary"))
+    recommended_action = clean_text(item.get("recommended_action") or fallbacks.get("recommended_action"))
+    return {
+        "title": title,
+        "source_name": source_name,
+        "url": url,
+        "topic_id": topic_id,
+        "priority_level": priority_level,
+        "priority_score": priority_score,
+        "summary": summary,
+        "recommended_action": recommended_action,
+        "review_required": review_required,
+    }
+
+
+def collect_reddit_operator_review_queue(source_result: dict[str, Any], runtime: dict[str, Any]) -> list[dict[str, Any]]:
+    queue: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def add(item: dict[str, Any], **fallbacks: Any) -> None:
+        normalized = normalize_operator_review_queue_entry(item, **fallbacks)
+        if not normalized:
+            return
+        key = (
+            clean_text(normalized.get("title")),
+            clean_text(normalized.get("source_name")),
+            clean_text(normalized.get("url")),
+            clean_text(normalized.get("topic_id")),
+        )
+        if key in seen:
+            return
+        seen.add(key)
+        queue.append(normalized)
+
+    for entry in safe_list(source_result.get("operator_review_queue")) + safe_list(runtime.get("operator_review_queue")):
+        if isinstance(entry, dict):
+            add(entry)
+
+    for topic in safe_list(source_result.get("ranked_topics")) + safe_list(runtime.get("ranked_topics")):
+        if not isinstance(topic, dict):
+            continue
+        operator_priority = safe_dict(topic.get("operator_review_priority"))
+        operator_review = safe_dict(topic.get("comment_operator_review"))
+        add(
+            operator_priority,
+            title=clean_text(topic.get("title")),
+            topic_id=clean_text(topic.get("topic_id")),
+            summary=clean_text(operator_priority.get("summary") or operator_review.get("summary")),
+            recommended_action=clean_text(operator_priority.get("recommended_action")),
+        )
+
+    for observation in safe_list(runtime.get("observations")):
+        if not isinstance(observation, dict):
+            continue
+        raw_metadata = safe_dict(observation.get("raw_metadata"))
+        operator_priority = safe_dict(raw_metadata.get("operator_review_priority"))
+        operator_review = safe_dict(raw_metadata.get("comment_operator_review"))
+        add(
+            operator_priority,
+            source_name=clean_text(observation.get("source_name")),
+            url=clean_text(observation.get("url")),
+            summary=clean_text(operator_priority.get("summary") or operator_review.get("summary")),
+            recommended_action=clean_text(operator_priority.get("recommended_action")),
+        )
+
+    queue.sort(
+        key=lambda item: (
+            OPERATOR_REVIEW_PRIORITY_RANK.get(clean_text(item.get("priority_level")), 0),
+            int(item.get("priority_score", 0) or 0),
+            clean_text(item.get("title") or item.get("source_name") or item.get("url")),
+        ),
+        reverse=True,
+    )
+    return queue
+
+
+def summarize_reddit_operator_review(source_result: dict[str, Any]) -> dict[str, Any]:
+    runtime = extract_runtime_result(source_result)
+    queue = collect_reddit_operator_review_queue(source_result, runtime)
+    import_summary = safe_dict(source_result.get("import_summary")) or safe_dict(runtime.get("import_summary"))
+    required_count = max(
+        len(queue),
+        int(import_summary.get("operator_review_required_count", 0) or 0),
+    )
+    high_priority_count = max(
+        sum(1 for item in queue if clean_text(item.get("priority_level")) == "high"),
+        int(import_summary.get("operator_review_high_priority_count", 0) or 0),
+    )
+    top_entry = safe_dict((queue or [{}])[0])
+    required = required_count > 0
+    priority_level = clean_text(top_entry.get("priority_level")) or ("high" if high_priority_count else "none")
+    priority_score = int(top_entry.get("priority_score", 0) or 0)
+    recommended_action = clean_text(top_entry.get("recommended_action"))
+    if not recommended_action and required:
+        recommended_action = (
+            "Review the queued Reddit comment signals before promotion or publication, and keep them shadow-only unless stronger sources confirm the claim."
+        )
+    if not recommended_action:
+        recommended_action = "No Reddit comment operator review action is required."
+    if required:
+        summary = (
+            f"Reddit comment operator review is required for {required_count} item(s); "
+            f"highest priority is {priority_level or 'unknown'}."
+        )
+    else:
+        summary = "No Reddit comment operator review items were detected."
+    gate = {
+        "required": required,
+        "status": "awaiting_reddit_operator_review" if required else "clear",
+        "publication_readiness": "blocked_by_reddit_operator_review" if required else "ready",
+        "priority_level": priority_level or "none",
+        "priority_score": priority_score,
+        "required_count": required_count,
+        "high_priority_count": high_priority_count,
+        "queue_size": len(queue),
+        "summary": summary,
+        "recommended_action": recommended_action,
+        "next_step": recommended_action,
+        "queue": deepcopy(queue[:5]),
+        "shadow_signal_policy": "Reddit comments stay in shadow/community context and cannot confirm claims by themselves.",
+    }
+    return {
+        "operator_review_required_count": required_count,
+        "operator_review_high_priority_count": high_priority_count,
+        "operator_review_queue": queue,
+        "reddit_comment_review_gate": gate,
+    }
+
+
 def build_source_summary_and_digest(source_result: dict[str, Any], request: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     runtime = extract_runtime_result(source_result)
     verdict = safe_dict(runtime.get("verdict_output"))
@@ -129,6 +318,7 @@ def build_source_summary_and_digest(source_result: dict[str, Any], request: dict
         "market_relevance": clean_string_list(verdict.get("market_relevance")),
         "market_relevance_zh": clean_string_list(source_request.get("market_relevance_zh")),
     }
+    summary.update(summarize_reddit_operator_review(source_result))
     digest = {
         "core_verdict": summary["core_verdict"],
         "confirmed": claim_texts(verdict.get("confirmed")),
@@ -159,27 +349,30 @@ def build_citations(source_result: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         seen.add(key)
         page_hints = resolve_observation_page_hints(observation)
-        excerpt = clean_text(
+        source_name = clean_text(observation.get("source_name")) or "Unknown source"
+        excerpt = first_meaningful_text(
             observation.get("combined_summary")
-            or observation.get("post_summary")
-            or observation.get("media_summary")
-            or observation.get("post_text_raw")
-            or observation.get("text_excerpt")
-            or page_hints.get("text_excerpt")
+            or observation.get("post_summary"),
+            observation.get("media_summary"),
+            observation.get("text_excerpt"),
+            page_hints.get("text_excerpt"),
+            observation.get("post_text_raw"),
+            fallback=source_name,
         )
-        title = clean_text(
+        title = first_meaningful_text(
             observation.get("post_summary")
-            or observation.get("combined_summary")
-            or observation.get("media_summary")
-            or page_hints.get("post_summary")
-            or observation.get("text_excerpt")
-            or observation.get("post_text_raw")
+            or observation.get("combined_summary"),
+            observation.get("media_summary"),
+            page_hints.get("post_summary"),
+            observation.get("text_excerpt"),
+            observation.get("post_text_raw"),
+            fallback=source_name,
         )
         citations.append(
             {
                 "citation_id": f"S{len(citations) + 1}",
                 "source_id": clean_text(observation.get("source_id")),
-                "source_name": clean_text(observation.get("source_name")) or "Unknown source",
+                "source_name": source_name,
                 "url": clean_text(observation.get("url")),
                 "source_tier": int(observation.get("source_tier", 3)),
                 "channel": clean_text(observation.get("channel")),
@@ -276,6 +469,36 @@ def observation_visual_summary(observation: dict[str, Any], page_hints: dict[str
     )
 
 
+def post_screenshot_summary(record: dict[str, Any], page_hints: dict[str, Any] | None = None) -> str:
+    hints = page_hints or {}
+    return clean_text(
+        record.get("post_summary")
+        or record.get("post_text_raw")
+        or record.get("combined_summary")
+        or record.get("text_excerpt")
+        or record.get("media_summary")
+        or hints.get("post_summary")
+        or hints.get("text_excerpt")
+        or hints.get("media_summary")
+    )
+
+
+def post_media_summary(media: dict[str, Any], owner: dict[str, Any] | None = None) -> str:
+    fallback = owner or {}
+    summary = clean_text(
+        media.get("ocr_summary")
+        or media.get("ocr_text_raw")
+        or media.get("summary")
+        or media.get("caption")
+        or meaningful_image_hint(media.get("alt_text"))
+    )
+    if summary:
+        return summary
+    if clean_text(media.get("capture_method")) == "dom_clip":
+        return ""
+    return clean_text(fallback.get("media_summary"))
+
+
 def observation_artifact_manifest(observation: dict[str, Any], page_hints: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
     direct_manifest = safe_list(observation.get("artifact_manifest"))
     if direct_manifest:
@@ -284,6 +507,15 @@ def observation_artifact_manifest(observation: dict[str, Any], page_hints: dict[
     if hinted_manifest:
         return hinted_manifest, "page_hints"
     return [], ""
+
+
+def resolve_artifact_role(artifact: dict[str, Any], *, access_mode: str = "") -> str:
+    explicit_role = clean_text(artifact.get("role"))
+    if explicit_role:
+        return explicit_role
+    if clean_text(artifact.get("kind")).lower() == "screenshot":
+        return "article_page_screenshot" if clean_text(access_mode) == "blocked" else "observation_screenshot"
+    return "post_media"
 
 
 def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any]) -> list[dict[str, Any]]:
@@ -301,6 +533,7 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
         source_tier: int,
         alt_text: str = "",
         capture_method: str = "",
+        preferred_caption: str = "",
     ) -> None:
         clean_path, clean_url = normalize_image_reference(path, source_url)
         if not clean_path and not clean_url:
@@ -318,6 +551,8 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
             score += 40
         elif is_screenshot_role(role):
             score += screenshot_role_score(role)
+        if role == "root_post_screenshot":
+            score += 18
         score += {"high": 20, "medium": 10, "low": 2}.get(clean_text(relevance), 5)
         score += {0: 12, 1: 10, 2: 6, 3: 0}.get(int(source_tier), 0)
         if clean_text(summary):
@@ -341,6 +576,10 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
                 score += 4
         if request.get("draft_mode") in {"image_first", "image_only"}:
             score += 10
+            if role == "root_post_screenshot":
+                score += 8
+        if request.get("image_strategy") == "screenshots_only" and role == "root_post_screenshot":
+            score += 8
 
         candidates.append(
             {
@@ -356,6 +595,7 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
                 "source_tier": int(source_tier),
                 "alt_text": clean_text(alt_text),
                 "capture_method": clean_text(capture_method),
+                "preferred_caption": clean_text(preferred_caption),
                 "score": score,
             }
         )
@@ -365,7 +605,7 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
             continue
         source_name = f"X @{clean_text(post.get('author_handle') or post.get('author_display_name') or 'post')}"
         access_mode = clean_text(post.get("access_mode")) or "public"
-        post_summary = clean_text(post.get("media_summary") or post.get("post_summary") or post.get("post_text_raw"))
+        post_summary = post_screenshot_summary(post)
         root_post_screenshot_path = clean_text(post.get("root_post_screenshot_path"))
         if root_post_screenshot_path:
             add(
@@ -386,7 +626,7 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
                 source_name,
                 clean_text(media.get("local_artifact_path")),
                 clean_text(media.get("source_url")),
-                clean_text(media.get("ocr_summary") or media.get("ocr_text_raw") or meaningful_image_hint(media.get("alt_text"))),
+                post_media_summary(media, post),
                 access_mode,
                 clean_text(media.get("image_relevance_to_post")) or "medium",
                 3,
@@ -405,26 +645,43 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
                 clean_text(item.get("source_name")) or "Artifact source",
                 root_post_screenshot_path,
                 "",
-                clean_text(item.get("media_summary") or item.get("post_summary") or item.get("combined_summary") or item.get("post_text_raw")),
+                post_screenshot_summary(item),
                 clean_text(item.get("access_mode")) or "public",
                 "medium",
                 int(item.get("source_tier", 3)),
             )
+        for media in safe_list(item.get("media_items")):
+            if not isinstance(media, dict):
+                continue
+            add(
+                "post_media",
+                clean_text(item.get("source_name")) or "Artifact source",
+                clean_text(media.get("local_artifact_path")),
+                clean_text(media.get("source_url")),
+                post_media_summary(media, item),
+                clean_text(item.get("access_mode")) or "public",
+                clean_text(media.get("image_relevance_to_post")) or "high",
+                int(item.get("source_tier", 3)),
+                meaningful_image_hint(media.get("alt_text")),
+                clean_text(media.get("capture_method")),
+            )
         for artifact in safe_list(item.get("artifact_manifest")):
             if not isinstance(artifact, dict):
                 continue
-            artifact_role = clean_text(artifact.get("role")) or "post_media"
+            artifact_role = resolve_artifact_role(artifact, access_mode=clean_text(item.get("access_mode")) or "public")
+            artifact_caption = clean_text(artifact.get("caption") or artifact.get("summary"))
             add(
-                "post_media" if artifact_role == "post_media" else artifact_role,
+                artifact_role,
                 clean_text(item.get("source_name")) or "Artifact source",
                 clean_text(artifact.get("path")),
                 clean_text(artifact.get("source_url")),
-                clean_text(artifact.get("summary") or item.get("media_summary") or item.get("post_summary") or item.get("combined_summary")),
+                artifact_caption or clean_text(item.get("media_summary") or item.get("post_summary") or item.get("combined_summary")),
                 clean_text(item.get("access_mode")) or "public",
                 "high" if artifact_role == "post_media" else "medium",
                 int(item.get("source_tier", 3)),
-                clean_text(artifact.get("summary")),
+                meaningful_image_hint(artifact_caption),
                 "artifact_manifest",
+                artifact_caption,
             )
 
     runtime = extract_runtime_result(source_result)
@@ -436,6 +693,7 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
         source_tier = int(observation.get("source_tier", 3))
         page_hints = resolve_observation_page_hints(observation)
         summary = observation_visual_summary(observation, page_hints)
+        root_summary = post_screenshot_summary(observation, page_hints)
 
         root_post_screenshot_path = clean_text(observation.get("root_post_screenshot_path"))
         if root_post_screenshot_path:
@@ -444,22 +702,38 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
                 source_name,
                 root_post_screenshot_path,
                 "",
-                summary,
+                root_summary,
                 access_mode,
                 "medium",
                 source_tier,
                 "",
                 "observation_screenshot",
             )
+        for media in safe_list(observation.get("media_items")):
+            if not isinstance(media, dict):
+                continue
+            add(
+                "post_media",
+                source_name,
+                clean_text(media.get("local_artifact_path")),
+                clean_text(media.get("source_url")),
+                post_media_summary(media, observation),
+                access_mode,
+                clean_text(media.get("image_relevance_to_post")) or "high",
+                source_tier,
+                meaningful_image_hint(media.get("alt_text")),
+                clean_text(media.get("capture_method")),
+            )
 
         artifact_manifest, capture_method = observation_artifact_manifest(observation, page_hints)
         for artifact in artifact_manifest:
             if not isinstance(artifact, dict):
                 continue
-            artifact_role = clean_text(artifact.get("role")) or "post_media"
-            artifact_summary = clean_text(artifact.get("summary")) or summary
+            artifact_role = resolve_artifact_role(artifact, access_mode=access_mode)
+            artifact_caption = clean_text(artifact.get("caption") or artifact.get("summary"))
+            artifact_summary = artifact_caption or summary
             add(
-                "post_media" if artifact_role == "post_media" else artifact_role,
+                artifact_role,
                 source_name,
                 clean_text(artifact.get("path")),
                 clean_text(artifact.get("source_url")),
@@ -467,8 +741,9 @@ def build_image_candidates(source_result: dict[str, Any], request: dict[str, Any
                 access_mode,
                 "high" if artifact_role == "post_media" else "medium",
                 source_tier,
-                meaningful_image_hint(artifact.get("summary")),
+                meaningful_image_hint(artifact_caption),
                 capture_method,
+                artifact_caption,
             )
 
     candidates.sort(key=candidate_sort_key, reverse=True)
@@ -500,10 +775,12 @@ __all__ = [
     "build_image_candidates",
     "build_shared_evidence_bundle",
     "build_source_summary_and_digest",
+    "collect_reddit_operator_review_queue",
     "citation_by_source_id",
     "clean_string_list",
     "clean_text",
     "extract_runtime_result",
     "safe_dict",
     "safe_list",
+    "summarize_reddit_operator_review",
 ]

@@ -7,12 +7,16 @@ the claim is credible.
 ## Default Routing
 
 1. Prefer the repository-native `x-index` workflow first.
-2. If a real signed-in browser session is already available, prefer that path
+2. Reuse the last successful X session flow, screenshots, and query path in the
+   current workspace or continuing thread before bootstrapping again.
+3. On Windows, prefer a new Edge window in the existing signed-in profile
+   before any path that closes current Edge pages.
+4. If a real signed-in browser session is already available, prefer that path
    over public-page scraping.
-3. If the repository-native path degrades or returns incomplete text, use the
+5. If the repository-native path degrades or returns incomplete text, use the
    logged-in gstack browser to directly read the visible text and capture a
    screenshot.
-4. OCR is a supplement for images and fallback for failed text extraction, not
+6. OCR is a supplement for images and fallback for failed text extraction, not
    the default source for post text.
 
 ## What To Extract
@@ -41,6 +45,8 @@ Always separate:
 - If the post is an article-format X post, say that explicitly.
 - If the reading path used a logged-in browser, say so.
 - If the repository-native path failed and gstack succeeded, note that clearly.
+- Do not close the user's current Edge windows unless the user explicitly
+  approves that interruptive step.
 
 ## Recommended Follow-On
 

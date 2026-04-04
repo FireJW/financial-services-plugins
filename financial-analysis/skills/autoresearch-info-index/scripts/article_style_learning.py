@@ -6,7 +6,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 
-STYLE_REQUEST_KEYS = ("language_mode", "tone", "draft_mode", "image_strategy", "max_images", "human_signal_ratio")
+STYLE_REQUEST_KEYS = ("author", "language_mode", "tone", "draft_mode", "image_strategy", "max_images", "human_signal_ratio")
 GUIDANCE_REQUEST_KEYS = ("must_include", "must_avoid", "personal_phrase_bank")
 FRAMING_REQUEST_KEYS = ("title_hint", "title_hint_zh", "subtitle_hint", "subtitle_hint_zh", "angle", "angle_zh")
 REQUEST_DIFF_KEYS = STYLE_REQUEST_KEYS + GUIDANCE_REQUEST_KEYS + FRAMING_REQUEST_KEYS + ("allow_auto_rewrite_after_manual",)
@@ -509,6 +509,14 @@ def add_proposed_default(proposed_defaults: dict[str, Any], key: str, value: Any
         merged = existing + [item for item in additions if item not in existing]
         if merged:
             proposed_defaults[key] = merged
+        return
+    if isinstance(value, str):
+        cleaned = clean_text(value)
+        if not cleaned:
+            return
+        proposed_defaults[key] = cleaned
+        return
+    if value in (None, "", []):
         return
     proposed_defaults[key] = deepcopy(value)
 

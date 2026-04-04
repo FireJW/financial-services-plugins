@@ -26,9 +26,20 @@ the recovered runtime until the wrapper layer proves out.
     preflight, runs the final verifier, and writes a per-run ledger/scorecard
   - writes a deterministic shaping plan before execution so oversized evidence
     packs can be trimmed or split before the first worker pass
+  - when shaping risk is `warning` or `danger`, also materializes
+    `shaping/execution-plan.{json,md}`, per-pass task/context overlays, and a
+    synthesis worker command so chunk-first runs become executable instead of
+    purely advisory
   - defaults to structured verifier mode, treats the JSON artifact as
     authoritative, and only reports success when the final verifier verdict is
     `PASS`
+- `scripts/runtime/real-task-runs.mjs`
+  - lists durable real-task run bundles under `runtime-state/real-task-runs/`
+  - inspects one saved run pack and surfaces the main artifacts plus replay
+    commands
+  - can replay `worker`, `verifier-preflight`, `verifier`, or the full flow
+    into an isolated `replays/<timestamp>/` directory instead of mutating the
+    original bundle in place
 - `scripts/runtime/route-request.mjs`
   - lightweight request router that turns a raw task request into a route plan
     with route id, profile, plugin dirs, native workflow references, and the
@@ -100,6 +111,82 @@ the recovered runtime until the wrapper layer proves out.
   - reports which real-task fixture packs currently exist and whether the core
     classic-case routes are all covered
 
+## Task-Specific Research Routes
+
+### Reddit Community Signal Route
+
+As of 2026-04-04, the repo exposes one bounded Reddit route under
+`financial-analysis/skills/autoresearch-info-index/`.
+
+Use the route in this order:
+
+- `agent-reach:reddit` when Reddit should join live cross-channel discovery and
+  compete inside `hot_topic_discovery`
+- `financial-analysis/commands/reddit-bridge.md` plus
+  `scripts/run_reddit_bridge.cmd` when you already have a saved Reddit payload,
+  `posts.csv`, or an export root such as `data/r_<subreddit>/posts.csv`
+
+Guardrails:
+
+- Reddit imports stay `channel=shadow` and `origin=reddit_bridge`
+- Reddit comment context is operator context only; it does not confirm claims
+  by itself
+- `x-index` remains the native X/Twitter route; do not replace it with Reddit
+  imports or public-page scraping
+- subreddit profiles, low-signal buckets, and score multipliers must stay
+  bounded and config-driven under
+  `financial-analysis/skills/autoresearch-info-index/references/`
+
+Comment metadata to preserve when present:
+
+- `top_comment_summary`, `top_comment_excerpt`, `top_comment_count`,
+  `top_comment_authors`, `top_comment_max_score`
+- `comment_duplicate_count` for exact duplicate snapshots that were collapsed
+- `comment_near_duplicate_count` for suspiciously similar comments that stay in
+  the sample and only add caution metadata
+- `comment_near_duplicate_same_author_count`,
+  `comment_near_duplicate_cross_author_count`, and
+  `comment_near_duplicate_level` when you need to tell author self-rephrasing
+  from community-wide repetition
+- `comment_near_duplicate_examples` when operator review needs one or two
+  retained example pairs instead of only counters
+- `comment_declared_count`, `comment_sample_coverage_ratio`,
+  `comment_count_mismatch`, and `comment_sample_status` for partial samples
+- `comment_operator_review` when downstream code wants one structured caution
+  block with `has_partial_sample`, duplicate / near-duplicate flags, bounded
+  review notes, and top-comment context
+- `operator_review_priority` and result-level `operator_review_queue` when
+  operators want pre-ranked manual-review work instead of reconstructing
+  severity from raw caution fields
+
+Downstream publication flow as of 2026-04-04:
+
+- `article_brief_runtime.py` surfaces the Reddit gate into `source_summary`
+  plus brief markdown
+- `article_workflow_runtime.py` and `macro_note_workflow_runtime.py` now carry
+  `manual_review`, `publication_readiness`, and a shared
+  `workflow_publication_gate`
+- `article_publish_runtime.py` passes the workflow gate into the publish
+  package, `article-publish-result.json`, automatic acceptance artifacts, and
+  publish report
+- `article_batch_workflow_runtime.py`, `article_auto_queue_runtime.py`, and
+  `article_publish_reuse_runtime.py` now surface a direct
+  `workflow_publication_gate` object on their item / candidate / result outputs
+  instead of dropping the gate during queueing or reuse
+- `wechat_push_readiness_runtime.py` now reports the workflow publication gate
+  explicitly so WeChat push audits can still see the Reddit operator context
+  even though Reddit remains shadow evidence
+- `wechat_draftbox_runtime.py` and the `article_publish` push-stage summary now
+  keep the same workflow gate in direct push results, so the context is still
+  visible even when an operator skips the standalone readiness audit
+- `article_publish_regression_check_runtime.py`,
+  `article_publish_reuse_runtime.py`, and `wechat_push_draft.py` now surface the
+  same workflow gate in regression reports, reuse reports, and CLI markdown
+  summaries so the Reddit review state survives the whole publish toolchain
+
+This route is useful for heat checks, clustering context, and operator review.
+It is not a replacement for primary-source verification.
+
 ## Recommended Workflow
 
 ### Fast Path: One Command For A Real Task
@@ -121,6 +208,9 @@ This runner:
 - writes a self-contained run directory
 - records `INTENT.md`, `INTENT-COMPACT.md`, `NOW.md`, and route guidance
 - records `shaping-plan.json` and `shaping-plan.md` before model execution
+- for oversized evidence packs, also writes `shaping/execution-plan.md`,
+  `shaping/passes/*-task.md`, `shaping/passes/*-context.md`, and
+  `shaping/*worker-command.txt`
 - persists worker and verifier artifacts plus an attempt ledger scorecard
 - fails closed unless the final verifier verdict is `PASS`
 
@@ -131,6 +221,46 @@ node scripts/runtime/run-real-task.mjs `
   ... `
   --fail-on-danger-budget
 ```
+
+### Durable Run Bundles: List, Inspect, Replay
+
+Once `run-real-task.mjs` has created one or more run packs, use the bundle
+helper instead of reconstructing file paths by hand:
+
+```powershell
+node scripts/runtime/real-task-runs.mjs `
+  --json
+```
+
+Inspect one run:
+
+```powershell
+node scripts/runtime/real-task-runs.mjs `
+  --run-dir runtime-state/real-task-runs/jenny-demo `
+  --json
+```
+
+Replay verifier preflight into an isolated replay directory:
+
+```powershell
+node scripts/runtime/real-task-runs.mjs `
+  --run-dir runtime-state/real-task-runs/jenny-demo `
+  --replay-stage verifier-preflight `
+  --json
+```
+
+Replay the final verifier without overwriting the original bundle:
+
+```powershell
+node scripts/runtime/real-task-runs.mjs `
+  --run-dir runtime-state/real-task-runs/jenny-demo `
+  --replay-stage verifier `
+  --json
+```
+
+If the run bundle includes `shaping/execution-plan.md`, use the generated pass
+commands first and only run the synthesis command after the chunk worker
+outputs exist.
 
 ### Manual Path: Step By Step
 

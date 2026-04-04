@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from article_evidence_bundle import build_shared_evidence_bundle
+from article_evidence_bundle import build_shared_evidence_bundle, summarize_reddit_operator_review
 from news_index_runtime import isoformat_or_blank, load_json, parse_datetime, short_excerpt, write_json
 
 
@@ -506,6 +506,8 @@ def build_voice_constraints(source_summary: dict[str, Any], not_proven: list[dic
         constraints.append("Do not treat blocked-page screenshots or inaccessible pages as proof by themselves.")
     if not_proven:
         constraints.append("Any strong thesis must explicitly acknowledge the highest-risk unresolved claim.")
+    if safe_dict(source_summary.get("reddit_comment_review_gate")).get("required"):
+        constraints.append("Treat Reddit comment-derived material as community context only until an operator reviews it.")
     constraints.append("Treat image or ship-tracking evidence as the last public indication, not literal real-time truth, when relevant.")
     return constraints
 
@@ -976,7 +978,7 @@ def build_source_summary(request: dict[str, Any], runtime: dict[str, Any]) -> di
         or safe_dict(request["source_result"].get("retrieval_request"))
         or safe_dict(runtime.get("request"))
     )
-    return {
+    summary = {
         "source_kind": "x_index" if safe_list(request["source_result"].get("x_posts")) or safe_dict(request["source_result"].get("evidence_pack")) else "news_index",
         "topic": request["topic"],
         "analysis_time": isoformat_or_blank(request["analysis_time"]),
@@ -990,6 +992,66 @@ def build_source_summary(request: dict[str, Any], runtime: dict[str, Any]) -> di
         "market_relevance": clean_string_list(verdict.get("market_relevance")),
         "market_relevance_zh": clean_string_list(source_request.get("market_relevance_zh")),
     }
+    summary.update(summarize_reddit_operator_review(request["source_result"]))
+    return summary
+
+
+def build_reddit_operator_review_manual_state(source_summary: dict[str, Any]) -> dict[str, Any]:
+    gate = safe_dict(source_summary.get("reddit_comment_review_gate"))
+    required = bool(gate.get("required"))
+    summary = clean_text(gate.get("summary"))
+    next_step = clean_text(gate.get("next_step") or gate.get("recommended_action"))
+    if not next_step and required:
+        next_step = (
+            "Review the queued Reddit comment signals before publication, and keep them in shadow/community context unless stronger sources confirm the claim."
+        )
+    if not next_step:
+        next_step = "No Reddit comment operator review action is required."
+    if not summary and required:
+        summary = "Queued Reddit comment signals still need operator review before publication."
+    if not summary:
+        summary = "No Reddit comment operator review items were detected."
+    return {
+        "gate_kind": "reddit_operator_review",
+        "required": required,
+        "approved": not required,
+        "status": "awaiting_reddit_operator_review" if required else "not_required",
+        "publication_readiness": clean_text(gate.get("publication_readiness")) or ("blocked_by_reddit_operator_review" if required else "ready"),
+        "priority_level": clean_text(gate.get("priority_level")) or "none",
+        "priority_score": int(gate.get("priority_score", 0) or 0),
+        "required_count": int(gate.get("required_count", source_summary.get("operator_review_required_count", 0)) or 0),
+        "high_priority_count": int(gate.get("high_priority_count", source_summary.get("operator_review_high_priority_count", 0)) or 0),
+        "summary": summary,
+        "next_step": next_step,
+        "queue": deepcopy(safe_list(source_summary.get("operator_review_queue"))[:5]),
+        "shadow_signal_policy": clean_text(gate.get("shadow_signal_policy"))
+        or "Reddit comments stay in shadow/community context and cannot confirm claims by themselves.",
+    }
+
+
+def looks_like_developer_tooling_relevance(topic: str, market_relevance_zh: list[str]) -> bool:
+    joined = " ".join([clean_text(topic), *[clean_text(item) for item in market_relevance_zh]]).lower()
+    return any(
+        token in joined
+        for token in (
+            "claude code",
+            "产品能力表面",
+            "工具调用边界",
+            "权限设计",
+            "浏览器控制",
+            "工作流编排",
+            "开发者执行",
+            "developer workflow",
+            "tool",
+            "browser",
+            "chrome",
+            "playwright",
+            "mcp",
+            "subagent",
+            "source code",
+            "leak",
+        )
+    )
 
 
 def build_open_questions_zh(
@@ -999,6 +1061,7 @@ def build_open_questions_zh(
     not_proven: list[dict[str, Any]],
 ) -> list[str]:
     questions: list[str] = []
+    developer_tooling = looks_like_developer_tooling_relevance(topic, market_relevance_zh)
     for item in market_relevance_zh:
         text = clean_text(item)
         if not text:
@@ -1006,9 +1069,14 @@ def build_open_questions_zh(
         if "融资意愿" in text or "订单能见度" in text:
             questions.append("融资意愿和订单能见度会不会继续改善，还是只是短期叙事回潮？")
         elif "背景" in text or "传导路径" in text:
-            questions.append("这波讨论会不会从热度题，真正转成经营和投资判断题？")
+            if developer_tooling:
+                questions.append("这波讨论会不会从热度题，真正转成能力边界和开发者工作流判断题？")
+            else:
+                questions.append("这波讨论会不会从热度题，真正转成经营和投资判断题？")
         elif "商品价格" in text or "风险偏好" in text or "传导" in text:
             questions.append("相关传导链会不会继续往成本、行业和企业决策层面压下来？")
+        elif developer_tooling and any(token in text for token in ("产品能力表面", "工具调用边界", "权限设计", "浏览器控制", "工作流编排", "开发者执行")):
+            questions.append(text.rstrip("。") + "接下来会先在哪一层被连续验证？")
         else:
             questions.append(text.rstrip("。") + "接下来会怎么继续传导？")
     if not questions and canonical_facts:
@@ -1035,9 +1103,10 @@ def build_story_angles_zh(topic: str, canonical_facts: list[dict[str, Any]], not
             }
         )
     elif lead_fact:
+        forward_path = "能力边界和真实工作流" if looks_like_developer_tooling_relevance(topic, [topic]) else "更实的经营变量"
         angles.append(
             {
-                "angle": f"“{lead_fact}”这件事已经够硬，后面更值得写的是它会不会继续往更实的经营变量上传导。",
+                "angle": f"“{lead_fact}”这件事已经够硬，后面更值得写的是它会不会继续往{forward_path}上传导。",
                 "risk": "如果只复述消息面，不往下拆影响，文章会显得像搬运。",
             }
         )
@@ -1169,6 +1238,7 @@ def build_analysis_brief_payload(request: dict[str, Any]) -> dict[str, Any]:
 def build_markdown_report(result: dict[str, Any]) -> str:
     summary = safe_dict(result.get("source_summary"))
     brief = safe_dict(result.get("analysis_brief"))
+    manual_review = build_reddit_operator_review_manual_state(summary)
     lines = [
         f"# Article Brief: {clean_text(summary.get('topic'))}",
         "",
@@ -1177,6 +1247,7 @@ def build_markdown_report(result: dict[str, Any]) -> str:
         f"- Observations: {int(summary.get('observation_count', 0) or 0)}",
         f"- Blocked sources: {int(summary.get('blocked_source_count', 0) or 0)}",
         f"- Confidence: {safe_list(summary.get('confidence_interval'))}",
+        f"- Reddit operator review: {clean_text(manual_review.get('status'))}",
         "",
         "## Recommended Thesis",
         "",
@@ -1217,6 +1288,23 @@ def build_markdown_report(result: dict[str, Any]) -> str:
             )
     else:
         lines.append("- None")
+    lines.extend(["", "## Reddit Operator Review", ""])
+    lines.append(f"- Publication readiness: {clean_text(manual_review.get('publication_readiness')) or 'ready'}")
+    lines.append(f"- Status: {clean_text(manual_review.get('status')) or 'not_required'}")
+    lines.append(f"- Required items: {int(manual_review.get('required_count', 0) or 0)}")
+    lines.append(f"- High-priority items: {int(manual_review.get('high_priority_count', 0) or 0)}")
+    lines.append(f"- Summary: {clean_text(manual_review.get('summary')) or 'None'}")
+    lines.append(f"- Next step: {clean_text(manual_review.get('next_step')) or 'None'}")
+    queue = safe_list(manual_review.get("queue"))
+    if queue:
+        for item in queue:
+            label = clean_text(item.get("title") or item.get("source_name") or item.get("url")) or "queued item"
+            lines.append(
+                f"- Queue: [{clean_text(item.get('priority_level')) or 'unknown'}] {label} | "
+                f"{clean_text(item.get('summary')) or 'operator review required'}"
+            )
+    else:
+        lines.append("- Queue: None")
     macro_fields = safe_dict(brief.get("macro_note_fields"))
     if macro_fields:
         one_line = safe_dict(macro_fields.get("one_line_judgment"))
@@ -1314,4 +1402,4 @@ def build_analysis_brief(raw_payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-__all__ = ["build_analysis_brief", "load_json", "write_json"]
+__all__ = ["build_analysis_brief", "build_reddit_operator_review_manual_state", "load_json", "write_json"]

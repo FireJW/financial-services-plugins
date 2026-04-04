@@ -614,7 +614,7 @@ def normalize_candidate(
         "claim_states": claim_states,
         "claim_texts": {claim_id: claim_texts.get(claim_id, "") for claim_id in claim_ids},
         "raw_metadata": deepcopy(candidate.get("raw_metadata")) if isinstance(candidate.get("raw_metadata"), dict) else {},
-        "artifact_manifest": clean_artifact_manifest(candidate.get("artifact_manifest")),
+        "artifact_manifest": artifact_manifest,
         "x_post_record": deepcopy(candidate.get("x_post_record")) if isinstance(candidate.get("x_post_record"), dict) else {},
         "post_text_raw": str(candidate.get("post_text_raw", "")).strip(),
         "post_text_source": str(candidate.get("post_text_source", "")).strip(),

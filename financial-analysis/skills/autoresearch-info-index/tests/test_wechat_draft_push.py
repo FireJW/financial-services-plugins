@@ -247,23 +247,174 @@ class WechatDraftPushTests(unittest.TestCase):
                 return json.dumps({"media_id": "draft-phase2"}).encode("utf-8")
             raise AssertionError(f"Unexpected URL: {url}")
 
-        with patch.dict(
-            os.environ,
-            {"WECHAT_ENV_FILE": "", "WECHAT_ENV_PATH": "", "WECHAT_APP_ID": "", "WECHAT_APP_SECRET": ""},
-            clear=False,
-        ):
+        with patch.dict(os.environ, {}, clear=True):
             with patch("wechat_draftbox_runtime.REPO_ROOT", self.temp_dir):
-                result = push_publish_package_to_wechat(
-                    {
-                        "publish_package": self.build_publish_package(),
-                        "human_review_approved": True,
-                        "human_review_approved_by": "Editor",
-                    },
-                    request_fn=fake_request,
-                )
+                with patch("wechat_draftbox_runtime.Path.cwd", return_value=self.temp_dir):
+                    result = push_publish_package_to_wechat(
+                        {
+                            "publish_package": self.build_publish_package(),
+                            "human_review_approved": True,
+                            "human_review_approved_by": "Editor",
+                        },
+                        request_fn=fake_request,
+                    )
 
         self.assertEqual(result["status"], "ok")
         self.assertIn("appid=wx-phase2-test", seen["token_url"])
+
+    def test_push_publish_package_browser_session_backend_builds_manifest_and_runs_runner(self) -> None:
+        package = self.build_publish_package()
+        remote_preview = "https://example.com/wechat/hero.png"
+        package["content_html"] = f'<article><h1>Agent hiring reset</h1><img src="{remote_preview}" alt="hero" /></article>'
+        package["draftbox_payload_template"]["articles"][0]["content"] = package["content_html"]
+        package["image_assets"][0]["source_url"] = remote_preview
+        package["image_assets"][0]["render_src"] = remote_preview
+
+        seen: dict[str, object] = {}
+
+        def fake_browser_runner(manifest_path: Path, session_context: dict[str, object], timeout_seconds: int) -> dict[str, object]:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            seen["manifest"] = manifest
+            seen["timeout_seconds"] = timeout_seconds
+            self.assertEqual(session_context["status"], "ready")
+            self.assertTrue(Path(manifest["cover_image_path"]).exists())
+            return {
+                "status": "ok",
+                "draft_media_id": "browser-draft-123",
+                "draft_url": "https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=edit",
+            }
+
+        ready_context = {
+            "requested": True,
+            "strategy": "remote_debugging",
+            "required": False,
+            "active": True,
+            "status": "ready",
+            "source": "remote_debugging",
+            "cdp_endpoint": "http://127.0.0.1:9222",
+            "browser_name": "edge",
+            "wait_ms": 8000,
+            "home_url": "https://mp.weixin.qq.com/",
+            "editor_url": "",
+            "notes": ["will attach to http://127.0.0.1:9222"],
+        }
+
+        with patch("wechat_draftbox_runtime.prepare_wechat_browser_session_context", return_value=ready_context):
+            result = push_publish_package_to_wechat(
+                {
+                    "publish_package": package,
+                    "push_backend": "browser_session",
+                    "human_review_approved": True,
+                    "browser_session": {
+                        "strategy": "remote_debugging",
+                        "cdp_endpoint": "http://127.0.0.1:9222",
+                    },
+                },
+                browser_runner=fake_browser_runner,
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["push_backend"], "browser_session")
+        self.assertEqual(result["draft_result"]["media_id"], "browser-draft-123")
+        self.assertTrue(Path(result["browser_session"]["manifest_path"]).exists())
+        self.assertTrue(Path(result["browser_session"]["result_path"]).exists())
+        self.assertEqual(seen["manifest"]["article"]["title"], "Agent hiring reset")
+        self.assertEqual(seen["timeout_seconds"], 30)
+
+    def test_push_publish_package_auto_falls_back_to_browser_session_on_api_error(self) -> None:
+        package = self.build_publish_package()
+        remote_preview = "https://example.com/wechat/hero.png"
+        package["content_html"] = f'<article><h1>Agent hiring reset</h1><img src="{remote_preview}" alt="hero" /></article>'
+        package["draftbox_payload_template"]["articles"][0]["content"] = package["content_html"]
+        package["image_assets"][0]["source_url"] = remote_preview
+        package["image_assets"][0]["render_src"] = remote_preview
+
+        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
+            if "cgi-bin/token" in url:
+                return json.dumps(
+                    {
+                        "errcode": 40164,
+                        "errmsg": "invalid ip 180.172.78.155, not in whitelist",
+                    }
+                ).encode("utf-8")
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        ready_context = {
+            "requested": True,
+            "strategy": "remote_debugging",
+            "required": False,
+            "active": True,
+            "status": "ready",
+            "source": "remote_debugging",
+            "cdp_endpoint": "http://127.0.0.1:9222",
+            "browser_name": "edge",
+            "wait_ms": 8000,
+            "home_url": "https://mp.weixin.qq.com/",
+            "editor_url": "",
+            "notes": ["will attach to http://127.0.0.1:9222"],
+        }
+
+        with patch("wechat_draftbox_runtime.prepare_wechat_browser_session_context", return_value=ready_context):
+            result = push_publish_package_to_wechat(
+                {
+                    "publish_package": package,
+                    "push_backend": "auto",
+                    "wechat_app_id": "wx-test",
+                    "wechat_app_secret": "secret-test",
+                    "allow_insecure_inline_credentials": True,
+                    "human_review_approved": True,
+                    "browser_session": {
+                        "strategy": "remote_debugging",
+                        "cdp_endpoint": "http://127.0.0.1:9222",
+                    },
+                },
+                request_fn=fake_request,
+                browser_runner=lambda manifest_path, session_context, timeout_seconds: {
+                    "status": "ok",
+                    "draft_media_id": "browser-draft-fallback",
+                    "draft_url": "https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=edit",
+                },
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["push_backend"], "browser_session")
+        self.assertTrue(result["fallback_used"])
+        self.assertIn("40164", result["api_error_message"])
+        self.assertEqual(result["draft_result"]["media_id"], "browser-draft-fallback")
+
+    def test_push_publish_package_browser_session_blocks_when_remote_inline_source_is_missing(self) -> None:
+        ready_context = {
+            "requested": True,
+            "strategy": "remote_debugging",
+            "required": False,
+            "active": True,
+            "status": "ready",
+            "source": "remote_debugging",
+            "cdp_endpoint": "http://127.0.0.1:9222",
+            "browser_name": "edge",
+            "wait_ms": 8000,
+            "home_url": "https://mp.weixin.qq.com/",
+            "editor_url": "",
+            "notes": ["will attach to http://127.0.0.1:9222"],
+        }
+
+        with patch("wechat_draftbox_runtime.prepare_wechat_browser_session_context", return_value=ready_context):
+            result = push_publish_package_to_wechat(
+                {
+                    "publish_package": self.build_publish_package(),
+                    "push_backend": "browser_session",
+                    "human_review_approved": True,
+                    "browser_session": {
+                        "strategy": "remote_debugging",
+                        "cdp_endpoint": "http://127.0.0.1:9222",
+                    },
+                },
+                browser_runner=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("runner should not be called")),
+            )
+
+        self.assertEqual(result["status"], "blocked_browser_session")
+        self.assertEqual(result["blocked_reason"], "browser_session_missing_remote_inline_images")
+        self.assertIn("hero-01", result["missing_remote_inline_asset_ids"])
 
     def test_push_publish_package_requires_human_review_approval(self) -> None:
         result = push_publish_package_to_wechat(
@@ -276,12 +427,57 @@ class WechatDraftPushTests(unittest.TestCase):
         self.assertEqual(result["status"], "blocked_review_gate")
         self.assertEqual(result["blocked_reason"], "human_review_not_approved")
         self.assertEqual(result["review_gate"]["status"], "awaiting_human_review")
+        self.assertEqual(result["workflow_publication_gate"]["publication_readiness"], "ready")
         self.assertIn("Human review approval is required", result["error_message"])
+
+    def test_push_publish_package_surfaces_workflow_publication_gate(self) -> None:
+        publish_package = self.build_publish_package()
+        publish_package["workflow_manual_review"] = {
+            "required": True,
+            "status": "awaiting_reddit_operator_review",
+            "required_count": 1,
+            "high_priority_count": 1,
+            "next_step": "Review the queued Reddit comment signals before publication.",
+        }
+        publish_package["publication_readiness"] = "blocked_by_reddit_operator_review"
+
+        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
+            if "cgi-bin/token" in url:
+                return json.dumps({"access_token": "token-123", "expires_in": 7200}).encode("utf-8")
+            if "media/uploadimg" in url:
+                return json.dumps({"url": "https://mmbiz.qpic.cn/inline/1.png"}).encode("utf-8")
+            if "material/add_material" in url:
+                return json.dumps({"media_id": "cover-123", "url": "https://mmbiz.qpic.cn/cover.png"}).encode("utf-8")
+            if "draft/add" in url:
+                return json.dumps({"media_id": "draft-456"}).encode("utf-8")
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        result = push_publish_package_to_wechat(
+            {
+                "publish_package": publish_package,
+                "wechat_app_id": "wx-test",
+                "wechat_app_secret": "secret-test",
+                "allow_insecure_inline_credentials": True,
+                "human_review_approved": True,
+            },
+            request_fn=fake_request,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["workflow_publication_gate"]["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertEqual(
+            result["workflow_publication_gate"]["manual_review"]["status"],
+            "awaiting_reddit_operator_review",
+        )
 
     def test_article_publish_records_push_stage_when_push_is_requested(self) -> None:
         fake_push_result = {
             "status": "ok",
             "review_gate": {"status": "approved"},
+            "workflow_publication_gate": {
+                "publication_readiness": "blocked_by_reddit_operator_review",
+                "manual_review": {"status": "awaiting_reddit_operator_review"},
+            },
             "draft_result": {"media_id": "draft-123"},
             "uploaded_cover": {"media_id": "cover-123"},
             "uploaded_inline_images": [{"asset_id": "hero-01", "inline_url": "https://mmbiz.qpic.cn/inline/1.png"}],
@@ -307,6 +503,8 @@ class WechatDraftPushTests(unittest.TestCase):
         self.assertTrue(result["push_stage"]["attempted"])
         self.assertEqual(result["push_stage"]["review_gate_status"], "approved")
         self.assertEqual(result["push_stage"]["push_readiness_status"], "ready_for_api_push")
+        self.assertEqual(result["push_stage"]["workflow_publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertEqual(result["push_stage"]["workflow_manual_review_status"], "awaiting_reddit_operator_review")
         self.assertEqual(result["push_stage"]["draft_media_id"], "draft-123")
         self.assertTrue(Path(result["push_stage"]["result_path"]).exists())
         self.assertIn("## WeChat Push", result["report_markdown"])

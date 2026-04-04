@@ -196,6 +196,30 @@ class WechatPushReadinessTests(unittest.TestCase):
         self.assertEqual(result["push_readiness"]["status"], "ready_for_api_push")
         self.assertEqual(result["push_readiness"]["cover_source"], "dedicated_cover_candidate")
 
+    def test_readiness_audit_surfaces_workflow_publication_gate(self) -> None:
+        publish_package = self.build_publish_package(asset_local_path=str(self.cover_path))
+        publish_package["workflow_manual_review"] = {
+            "required": True,
+            "status": "awaiting_reddit_operator_review",
+            "required_count": 1,
+            "high_priority_count": 1,
+            "next_step": "Review the queued Reddit comment signals before publication.",
+        }
+        publish_package["publication_readiness"] = "blocked_by_reddit_operator_review"
+
+        result = run_wechat_push_readiness_audit(
+            {
+                "publish_package": publish_package,
+                "human_review_approved": True,
+            }
+        )
+
+        self.assertEqual(result["workflow_publication_gate"]["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertEqual(result["workflow_publication_gate"]["manual_review"]["status"], "awaiting_reddit_operator_review")
+        self.assertIn("## Workflow Publication Gate", result["report_markdown"])
+        self.assertIn("blocked_by_reddit_operator_review", result["report_markdown"])
+        self.assertIn("awaiting_reddit_operator_review", result["report_markdown"])
+
     def test_readiness_scripts_compile_cleanly(self) -> None:
         for name in [
             "wechat_push_readiness_runtime.py",

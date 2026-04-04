@@ -1,0 +1,47 @@
+{
+  "topic": "Duplicate Reddit comments",
+  "analysis_time": "2026-04-04T04:00:00+00:00",
+  "questions": [
+    "Which comment snippets are real repeated exports versus distinct discussion?"
+  ],
+  "reddit_result": {
+    "posts": [
+      {
+        "id": "dup123",
+        "title": "Duplicate comment thread",
+        "subreddit": "stocks",
+        "permalink": "/r/stocks/comments/dup123/duplicate_comment_thread/",
+        "selftext": "Thread body is not the main point here.",
+        "score": 760,
+        "num_comments": 210,
+        "created_utc": "2026-04-04T03:00:00+00:00"
+      }
+    ],
+    "comments": [
+      {
+        "id": "dupc1",
+        "link_id": "t3_dup123",
+        "author": "repeatbull",
+        "score": 96,
+        "created_utc": "2026-04-04T03:12:00+00:00",
+        "body": "Capex discipline still matters more than headline excitement."
+      },
+      {
+        "id": "dupc1b",
+        "link_id": "t3_dup123",
+        "author": "repeatbull",
+        "score": 96,
+        "created_utc": "2026-04-04T03:12:10+00:00",
+        "body": "Capex discipline still matters more than headline excitement."
+      },
+      {
+        "id": "dupc2",
+        "link_id": "t3_dup123",
+        "author": "semicapwatch",
+        "score": 82,
+        "created_utc": "2026-04-04T03:18:00+00:00",
+        "body": "Packaging bottlenecks still cap upside through the quarter."
+      }
+    ]
+  }
+}

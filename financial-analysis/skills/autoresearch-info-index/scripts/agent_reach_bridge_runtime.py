@@ -266,6 +266,25 @@ def brand_for_host(host: str) -> str:
     return host.replace("www.", "") if host else ""
 
 
+def normalize_reddit_subreddit(value: Any) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    normalized = text.lstrip("/")
+    if normalized.lower().startswith("r/"):
+        return f"r/{normalized[2:].lstrip('/')}"
+    return f"r/{normalized}"
+
+
+def normalize_reddit_url(value: Any) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    if text.startswith("/"):
+        return urllib.parse.urljoin("https://www.reddit.com", text)
+    return text
+
+
 def state_store_path(path_value: Any = None) -> Path:
     if clean_text(path_value):
         return Path(clean_text(path_value)).expanduser().resolve()
@@ -390,6 +409,9 @@ def build_source_name(channel: str, url: str, item: dict[str, Any]) -> str:
     if channel == "youtube":
         author = clean_text(item.get("channel_name") or item.get("uploader") or item.get("channel"))
         return f"YouTube {author}".strip() or "YouTube"
+    if channel == "reddit":
+        subreddit = normalize_reddit_subreddit(item.get("subreddit_name_prefixed") or item.get("subreddit"))
+        return f"Reddit {subreddit}".strip() if subreddit else "Reddit"
     if channel == "x":
         author = clean_text(item.get("author_handle") or item.get("handle") or item.get("username"))
         return f"X @{author.lstrip('@')}" if author else "X"
@@ -402,6 +424,12 @@ def primary_title(channel: str, item: dict[str, Any]) -> str:
         return title
     if channel == "x":
         return clean_text(item.get("text") or item.get("content"))[:120]
+    if channel == "reddit":
+        subreddit = normalize_reddit_subreddit(item.get("subreddit_name_prefixed") or item.get("subreddit"))
+        body = clean_text(item.get("selftext") or item.get("body") or item.get("text") or item.get("content"))
+        if body:
+            prefix = f"{subreddit}: " if subreddit else ""
+            return f"{prefix}{body}"[:160]
     if channel == "github":
         repo_name = clean_text(item.get("full_name") or item.get("fullName") or item.get("nameWithOwner"))
         description = clean_text(item.get("description"))
@@ -412,16 +440,31 @@ def primary_title(channel: str, item: dict[str, Any]) -> str:
 def primary_url(channel: str, item: dict[str, Any]) -> str:
     url = clean_text(item.get("url") or item.get("html_url") or item.get("htmlUrl") or item.get("webpage_url") or item.get("permalink") or item.get("link") or item.get("post_url"))
     if url:
-        return url
+        return normalize_reddit_url(url) if channel == "reddit" else url
     if channel == "youtube":
         video_id = clean_text(item.get("id"))
         if video_id:
             return f"https://www.youtube.com/watch?v={video_id}"
+    if channel == "reddit":
+        subreddit = normalize_reddit_subreddit(item.get("subreddit_name_prefixed") or item.get("subreddit"))
+        post_id = clean_text(item.get("id") or item.get("post_id"))
+        if subreddit and post_id:
+            return f"https://www.reddit.com/{subreddit}/comments/{post_id}/"
     return ""
 
 
 def primary_summary(item: dict[str, Any], title: str) -> str:
-    return short_excerpt(item.get("summary") or item.get("snippet") or item.get("description") or item.get("text") or item.get("content") or title, limit=500)
+    return short_excerpt(
+        item.get("summary")
+        or item.get("snippet")
+        or item.get("description")
+        or item.get("selftext")
+        or item.get("body")
+        or item.get("text")
+        or item.get("content")
+        or title,
+        limit=500,
+    )
 
 
 def parse_jsonish_output(text: str) -> Any:
@@ -453,7 +496,7 @@ def flatten_channel_payload(channel: str, payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     if isinstance(payload, dict):
-        for key in ("entries", "items", "results", "tweets", "data"):
+        for key in ("entries", "items", "results", "tweets", "data", "posts"):
             if isinstance(payload.get(key), list):
                 return [item for item in payload[key] if isinstance(item, dict)]
         if primary_title(channel, payload) or primary_url(channel, payload):

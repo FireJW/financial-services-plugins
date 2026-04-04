@@ -89,6 +89,8 @@ class ArticleBatchOptimizationTests(unittest.TestCase):
         self.assertEqual(result["succeeded_items"], 1)
         self.assertEqual(result["items"][0]["candidate_index"], 7)
         self.assertEqual(result["items"][0]["source_request_path"], "")
+        self.assertEqual(result["items"][0]["workflow_publication_gate"]["publication_readiness"], "ready")
+        self.assertEqual(result["items"][0]["workflow_publication_gate"]["manual_review"]["status"], "not_required")
         self.assertTrue(Path(result["items"][0]["workflow_result_path"]).exists())
 
     def test_auto_queue_passes_selected_source_payloads_inline_without_temp_source_files(self) -> None:
@@ -116,6 +118,8 @@ class ArticleBatchOptimizationTests(unittest.TestCase):
         self.assertIn("payload", batch_request["items"][0])
         self.assertNotIn("request_path", batch_request["items"][0])
         self.assertEqual(batch_request["items"][0]["candidate_index"], result["ranked_candidates"][0]["index"])
+        self.assertEqual(result["ranked_candidates"][0]["workflow_publication_gate"]["publication_readiness"], "ready")
+        self.assertEqual(result["ranked_candidates"][0]["workflow_publication_gate"]["manual_review"]["status"], "not_required")
         self.assertFalse(list((auto_dir / "out" / "sources").glob("*source-result.json")))
 
 

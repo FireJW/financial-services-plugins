@@ -1,0 +1,81 @@
+{
+  "source_kind": "news_index",
+  "quality_gate": "pass",
+  "rewrite_mode": "no_rewrite_needed",
+  "pre_rewrite_quality_gate": "pass",
+  "publication_readiness": "ready",
+  "workflow_publication_gate": {
+    "publication_readiness": "ready",
+    "manual_review_status": "not_required"
+  },
+  "manual_review": {
+    "status": "not_required",
+    "required": false,
+    "required_count": 0,
+    "high_priority_count": 0
+  },
+  "draft_metrics": {
+    "char_count": 1085,
+    "section_count": 4,
+    "image_count": 0,
+    "citation_count": 2
+  },
+  "title": "Clear core fact",
+  "subtitle": "Lead with the harder variable before talking about heat.",
+  "lede": "put simply, indirect talks continue through intermediaries. What keeps this worth following is not the heat alone, but the way it can still change real decisions next.",
+  "section_headings": [
+    "What Changed",
+    "Why The Story Is Spreading",
+    "Why This Matters",
+    "What To Watch Next"
+  ],
+  "section_paragraphs": [
+    "more importantly, start with the points that can already stand on the record: Indirect talks continue through intermediaries. Hold those steady first, then widen the frame.",
+    "three things matter next, the discussion keeps moving not because the headline sounds louder, but because Recent core sources are concentrated in Oman Foreign Ministry, Reuters. Once the topic starts hitting costs, industry positioning, or execution, it stops being pure traffic.",
+    "three things matter next, the thing worth tracking is not the headline heat itself, but who it reaches and which decisions it changes next. The clearest read-through now is follow-on decisions, industry positioning, and resource allocation. That is where a topic stops being noise and becomes a variable.",
+    "three things matter next, the next useful checkpoints are Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim; Treat ship-tracking as last public indication, not live military truth; Watch for blocked or missing source families before calling the picture complete. Whichever of those gets verified first will move the story forward."
+  ],
+  "selected_images": [],
+  "style_effective_request": {
+    "language_mode": "english",
+    "draft_mode": "balanced",
+    "image_strategy": "mixed",
+    "target_length_chars": 1000,
+    "human_signal_ratio": 78,
+    "headline_hook_mode": "traffic",
+    "personal_phrase_bank": [
+      "put simply",
+      "more importantly",
+      "three things matter next"
+    ],
+    "style_memory": {
+      "target_band": "3.4",
+      "preferred_transitions": [
+        "put simply",
+        "more importantly",
+        "three things matter next"
+      ],
+      "slot_lines": {
+        "subtitle": [
+          "Lead with the harder variable before talking about heat."
+        ],
+        "watch": [
+          "Do not pick a side yet; wait for the hard signals."
+        ]
+      }
+    }
+  },
+  "feedback_profile_status": {
+    "global_exists": true,
+    "topic_exists": false,
+    "global_history_count": 0,
+    "topic_history_count": 0,
+    "global_style_memory_keys": [
+      "preferred_transitions",
+      "slot_lines",
+      "target_band"
+    ],
+    "topic_style_memory_keys": [],
+    "applied_paths_count": 1
+  }
+}

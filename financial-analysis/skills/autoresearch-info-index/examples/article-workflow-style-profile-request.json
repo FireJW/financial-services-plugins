@@ -1,0 +1,15 @@
+{
+  "source_result_path": "financial-analysis/skills/autoresearch-info-index/examples/news-index-realistic-offline-result.json",
+  "output_dir": ".tmp/article-workflow-style-profile-demo",
+  "feedback_profile_dir": "financial-analysis/skills/autoresearch-info-index/examples/fixtures/feedback-profile-english",
+  "language_mode": "english",
+  "draft_mode": "balanced",
+  "image_strategy": "mixed",
+  "headline_hook_mode": "traffic",
+  "human_signal_ratio": 78,
+  "personal_phrase_bank": [
+    "put simply",
+    "more importantly",
+    "three things matter next"
+  ]
+}

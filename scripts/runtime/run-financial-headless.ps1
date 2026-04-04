@@ -68,7 +68,7 @@ if ($AllPlugins) {
 }
 
 if ($IncludePartnerBuilt) {
-  foreach ($partnerDir in @("partner-built\lseg", "partner-built\spglobal")) {
+  foreach ($partnerDir in @("partner-built\lseg", "partner-built\spglobal", "partner-built\goldmansachs")) {
     $pluginDirs.Add((Join-Path $repoRoot $partnerDir))
   }
 }
