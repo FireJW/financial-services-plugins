@@ -46,16 +46,17 @@ PowerShell CLI session, or another coding environment.
 2. Use `prefs/review-checklist.md` for self-review and handoff review.
 3. Use `../CODEX_DEVELOPMENT_FLOW.md` as the repository-level operator guide.
 4. Keep branch-local notes in `current/branches/<branch>/session.log`.
-5. Use `templates/review-report-template.md` for structured review notes.
-6. Use `templates/handoff-template.md` when another CLI session needs to resume.
-7. Use branch-local status snapshots in `current/branches/<branch>/status.md`
+5. Keep branch-local commit checkpoints in `current/branches/<branch>/latest-commit.md`.
+6. Use `templates/review-report-template.md` for structured review notes.
+7. Use `templates/handoff-template.md` when another CLI session needs to resume.
+8. Use branch-local status snapshots in `current/branches/<branch>/status.md`
    as a resumable local checkpoint.
-8. Sync durable commit history into `history/` after meaningful workflow commits.
-9. Enrich important commit rows when raw git subjects are not enough context.
-10. Refresh `history/latest-summary.md` when recent change context should be
+9. Sync durable commit history into `history/` after meaningful workflow commits.
+10. Enrich important commit rows when raw git subjects are not enough context.
+11. Refresh `history/latest-summary.md` when recent change context should be
     easy to skim from CLI.
-11. Preserve durable decisions in `history/`.
-12. Treat this directory as repository infrastructure, not task output.
+12. Preserve durable decisions in `history/`.
+13. Treat this directory as repository infrastructure, not task output.
 
 ## Commit Boundaries
 

@@ -99,12 +99,16 @@ Before resuming after a pause, prefer:
 
 1. `scripts/codex-workflow-refresh.ps1 -Count 10 -HandoffPath ".\.claude\handoff\task-name.md"` when you need every checkpoint regenerated
 2. `scripts/codex-workflow-status.ps1` for a lighter snapshot refresh
-3. the active handoff under `.claude/handoff/`
-4. the branch-local session log under `.context/current/branches/<branch>/session.log`
+3. the branch-local commit checkpoint under `.context/current/branches/<branch>/latest-commit.md`
+4. the active handoff under `.claude/handoff/`
+5. the branch-local session log under `.context/current/branches/<branch>/session.log`
 
 The status helper writes a local snapshot under
 `.context/current/branches/<branch>/status.md` so the next CLI session can
 reopen one checkpoint before scanning multiple workflow docs.
+It also writes `.context/current/branches/<branch>/latest-commit.md` so the
+true local `HEAD` is readable even when versioned durable history is one refresh
+behind.
 
 ## Durable History Flow
 

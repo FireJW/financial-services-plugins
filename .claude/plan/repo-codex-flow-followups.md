@@ -40,6 +40,7 @@ from the desktop app and from Windows PowerShell CLI sessions.
 - [x] Commit enrichment can be updated from PowerShell without hand-editing JSONL
 - [x] A CLI-friendly recent summary can be regenerated from durable history
 - [x] A one-command refresh helper can rebuild history, summary, status, and handoff together
+- [x] The current local `HEAD` can be checkpointed outside versioned durable history
 - [x] Follow-up work is concrete enough to continue without rediscovery
 
 ## Target Files
@@ -61,6 +62,7 @@ from the desktop app and from Windows PowerShell CLI sessions.
 | `scripts/codex-commit-history-enrich.ps1` | enrich durable commit metadata | add |
 | `scripts/codex-release-summary.ps1` | regenerate recent summary from durable history | add |
 | `scripts/codex-workflow-refresh.ps1` | rerun the default checkpoint refresh chain | add |
+| `.context/current/branches/<branch>/latest-commit.md` | local-only HEAD checkpoint when durable history lags | add |
 
 ## Execution Steps
 
@@ -73,7 +75,8 @@ from the desktop app and from Windows PowerShell CLI sessions.
 7. Add a durable commit-history enrichment helper.
 8. Add a CLI-friendly recent summary helper.
 9. Add a one-command workflow refresh helper.
-10. Refresh the handoff so the next session can continue without rediscovery.
+10. Add a local-only current-HEAD checkpoint.
+11. Refresh the handoff so the next session can continue without rediscovery.
 
 ## Verification
 
@@ -89,6 +92,7 @@ from the desktop app and from Windows PowerShell CLI sessions.
 | `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-enrich.ps1 -Commit 2f29ff3 -ContextId "repo-codex-flow-followups"` | verify durable history enrichment works | the matching commit row is updated in `.context/history/commits.jsonl` |
 | `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-release-summary.ps1 -Count 10` | verify recent summary helper works | `.context/history/latest-summary.md` is refreshed |
 | `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 10 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md` | verify the default checkpoint refresh chain works | history, summary, status, and handoff are all refreshed in one command |
+| `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1` followed by `Get-Content .\.context\current\branches\main\latest-commit.md` | verify local HEAD checkpoint works | the local checkpoint shows current `HEAD` and whether durable history is synced or lagging |
 | manual doc read-through | catch stale filenames or commands | docs match actual files |
 
 ## Risks

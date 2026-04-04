@@ -10,16 +10,17 @@ PowerShell CLI sessions can continue without rediscovering process context.
 - Status: plan, review, and handoff scaffolding now exist on disk, and the
   workflow layer now includes a branch-local operator status board plus durable
   commit-history sync, commit enrichment, and a CLI-readable recent-summary
-  helper plus a one-command workflow refresh entrypoint so a CLI session can
-  resume from one generated checkpoint and a repo-local change ledger instead
-  of reading raw git history first.
+  helper plus a one-command workflow refresh entrypoint and a local-only
+  current-HEAD checkpoint so a CLI session can resume from one generated
+  checkpoint and a repo-local change ledger instead of reading raw git history
+  first.
 - Scope boundary: repo-level workflow only. No plugin behavior or quant logic
   was changed.
 
 ## Managed Snapshot
 
 <!-- codex:handoff-meta:start -->
-- Last updated: 2026-04-04T14:50:06.1749794+08:00
+- Last updated: 2026-04-04T14:58:09.3931618+08:00
 - Branch: main
 - Working directory: C:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins
 <!-- codex:handoff-meta:end -->
@@ -52,8 +53,10 @@ PowerShell CLI sessions can continue without rediscovering process context.
 - reviewed:
   - `.context/current/reviews/workflow-review-smoke-2-review.md`
 - still pending:
-  - review the exact workflow-only diff before any staging
-  - decide the exact commit boundary for the workflow-only files
+  - decide whether the local HEAD checkpoint should stay implicit inside
+    `codex-workflow-status.ps1` or later graduate into its own helper
+  - decide whether the active handoff template should explicitly mention
+    `latest-commit.md` for post-commit continuation
 
 ## Verification Already Run
 
@@ -106,6 +109,13 @@ PowerShell CLI sessions can continue without rediscovering process context.
 - command:
   `git commit --no-verify -m "feat(workflow): add codex resume checkpoint helpers"`
   result: created local commit `40ce727` on `main`
+- command:
+  `git commit --no-verify -m "docs(workflow): document windows hook fallback"`
+  result: created local commit `b8898a6` on `main`
+- command:
+  `& 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1`
+  result: refreshed `.context/current/branches/main/latest-commit.md` and
+  surfaced that durable history is lagging the current `HEAD` by 2 commits
 
 ## Decisions
 
@@ -142,6 +152,11 @@ PowerShell CLI sessions can continue without rediscovering process context.
   on `--no-verify`
   reason: the guard logic still matters, but Git for Windows can fail before
   the PowerShell guard script even starts
+- decision: solve post-commit durable-history lag with a local-only
+  `latest-commit.md` checkpoint instead of forcing versioned history files to
+  self-reference the commit they live inside
+  reason: tracked `commits.jsonl` and `latest-summary.md` cannot describe the
+  commit that introduces them without recursive refresh churn
 
 ## Risks / Open Questions
 
@@ -153,16 +168,17 @@ PowerShell CLI sessions can continue without rediscovering process context.
   task-specific handoffs should pass an explicit `-HandoffPath`.
 - Durable history snapshots are still based on the last explicit refresh, so
   the committed `commits.jsonl`/`latest-summary.md` may lag newer commits until
-  operators rerun the refresh flow.
+  operators rerun the refresh flow, even though the local checkpoint now makes
+  that lag visible.
 
 ## Next Steps
 
-1. Decide whether the durable history files should intentionally remain
-   one-refresh behind commits, or move to a local-only checkpoint surface.
-2. If keeping the current model, document when operators should rerun refresh
-   after commit versus before pause.
-3. If changing the model, do it as a thin increment without collapsing the
-   current script split.
+1. Decide whether `latest-commit.md` should remain an implicit side effect of
+   `codex-workflow-status.ps1` or get a dedicated helper for narrower use.
+2. Decide whether the handoff template and docs should explicitly tell post-
+   commit operators to open `latest-commit.md` before reading versioned history.
+3. Keep future changes thin and avoid collapsing the current split between
+   durable history, local checkpoint, and handoff refresh.
 
 ## Git Snapshot
 
@@ -170,6 +186,8 @@ PowerShell CLI sessions can continue without rediscovering process context.
 ```text
  M .claude-plugin/marketplace.json
  M .claude/handoff/repo-codex-flow-current.md
+ M .claude/plan/repo-codex-flow-followups.md
+ M .context/README.md
  M .context/prefs/workflow.md
  M AGENTS.md
  M CLAUDE.md
@@ -202,6 +220,7 @@ PowerShell CLI sessions can continue without rediscovering process context.
  M financial-analysis/skills/autoresearch-info-index/tests/test_news_index.py
  M financial-analysis/skills/autoresearch-info-index/tests/test_wechat_draft_push.py
  M financial-analysis/skills/classic-case-router/references/x-post-evidence.md
+ M scripts/codex-workflow-status.ps1
  M scripts/runtime/run-financial-headless.ps1
 ?? .claude/handoff/stock-analysis-thread-413-migration.md
 ?? .tmp-chrome-cookies.db
@@ -248,6 +267,7 @@ Get-Content .\.claude\handoff\repo-codex-flow-current.md
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-context-show.ps1
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-refresh.ps1 -Count 10 -HandoffPath .\.claude\handoff\repo-codex-flow-current.md
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-workflow-status.ps1
+Get-Content .\.context\current\branches\main\latest-commit.md
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-sync.ps1 -Count 5
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-commit-history-enrich.ps1 -Commit 2f29ff3 -ContextId 'repo-codex-flow-followups' -Decisions 'why this changed' -Risk 'what could drift'
 & 'C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-release-summary.ps1 -Count 5

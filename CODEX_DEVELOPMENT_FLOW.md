@@ -133,6 +133,15 @@ This updates durable metadata for an already-synced commit without hand-editing
 This writes `.context/history/latest-summary.md` so the next CLI session can
 skim recent durable changes without reading the full commit ledger first.
 
+### Read The Local Commit Checkpoint
+
+```powershell
+Get-Content .\.context\current\branches\main\latest-commit.md
+```
+
+This local-only file is refreshed by `codex-workflow-status.ps1` and shows
+whether versioned durable history is synced with the current `HEAD` or lagging.
+
 ## Repo-Specific Defaults
 
 - Prefer repository-native workflows over generic scraping.
@@ -179,5 +188,7 @@ If you are extending this system later, do it in this order:
 8. enrich important commit rows when raw subjects are not enough context
 9. regenerate `.context/history/latest-summary.md` when recent change context
    should be resumable from CLI
-10. use structured review reports when a change needs explicit sign-off
-11. only then consider more automation
+10. use `.context/current/branches/<branch>/latest-commit.md` when you need the
+    true local `HEAD` checkpoint and the versioned history snapshot may lag
+11. use structured review reports when a change needs explicit sign-off
+12. only then consider more automation
