@@ -1,0 +1,18 @@
+{
+  "task": "platform_probe",
+  "config_path": "D:\\career-ops-local\\config\\china_portal_adapter.local.json",
+  "platforms": ["boss", "liepin", "job51", "zhilian"],
+  "session_mode": "existing_local_only",
+  "browser_executable_paths": [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+  ],
+  "browser_profile_paths": [
+    "C:\\Users\\rickylu\\AppData\\Local\\Google\\Chrome\\User Data",
+    "C:\\Users\\rickylu\\AppData\\Local\\Microsoft\\Edge\\User Data",
+    "D:\\career-ops-local\\portal-sessions"
+  ],
+  "fixture": {
+    "enabled": false
+  }
+}

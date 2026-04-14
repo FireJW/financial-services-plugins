@@ -66,6 +66,13 @@ Local helpers:
 
 - `financial-analysis\skills\autoresearch-info-index\scripts\run_reddit_bridge.cmd [request.json] [--file <result-path-or-directory>] [--topic <query>] [--output <result.json>] [--markdown-output <report.md>]`
 
+Automatic companions:
+
+- `reddit-bridge-completion-check.json`
+- `reddit-bridge-completion-check.md`
+- `reddit-bridge-operator-summary.json`
+- `reddit-bridge-operator-summary.md`
+
 Suggested use cases:
 
 - import a `posts.csv` export from a separate Reddit scraper
@@ -102,3 +109,8 @@ Useful request knobs:
   - `recency_then_score` when you care more about the freshest reaction
   - `hybrid` when you want fresher high-quality replies to outrank slightly
     older comments with only a small score edge
+- `subreddit`, `user`, `export_target`
+  - use these when one export root contains multiple `r_*` or `u_*` targets
+- `result_path` or `input_path`
+  - use these when you want the runtime to infer where companion completion and
+    operator-summary artifacts should be written

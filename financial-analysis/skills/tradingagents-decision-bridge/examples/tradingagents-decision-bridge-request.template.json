@@ -1,0 +1,32 @@
+{
+  "ticker": "601600.SS",
+  "enabled": false,
+  "mode": "optional",
+  "cost_budget_tokens": 50000,
+  "timeout_seconds": 120,
+  "version_guard": "0.2.",
+  "thesis": {
+    "thesis_id": "china-aluminum-overreaction-2026-04-05",
+    "summary": "China Aluminum may be lagging the global aluminum trade despite improving external pricing signals."
+  },
+  "evidence": [
+    {
+      "claim_id": "claim-aluminum-lag",
+      "summary": "The stock has lagged U.S. aluminum-linked names over the same window."
+    }
+  ],
+  "catalysts": [
+    {
+      "date": "2026-04-30",
+      "summary": "Upcoming operating update or monthly production disclosure."
+    }
+  ],
+  "market_context": {
+    "benchmark_symbol": "000300.SS"
+  },
+  "fixture": {
+    "enabled": false,
+    "root": "tests/fixtures/tradingagents-decision-bridge",
+    "response": "basic-success.json"
+  }
+}

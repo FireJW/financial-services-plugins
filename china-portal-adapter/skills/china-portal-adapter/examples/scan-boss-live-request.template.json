@@ -1,0 +1,38 @@
+{
+  "task": "scan_jobs",
+  "config_path": "D:\\career-ops-local\\config\\china_portal_adapter.local.json",
+  "platforms": ["boss"],
+  "keywords": ["ai", "platform"],
+  "cities": ["Shanghai"],
+  "salary_filters": {
+    "minimum_monthly_rmb": 30000
+  },
+  "blacklist_companies": [],
+  "blacklist_recruiters": [],
+  "fixture": {
+    "enabled": false
+  },
+  "live_scan": {
+    "enabled": true,
+    "timeout_ms": 15000,
+    "max_jobs": 20,
+    "platforms": {
+      "boss": {
+        "url": "https://www.zhipin.com/web/geek/job?query=AI%20产品经理&city=101020100",
+        "selectors": {
+          "card": ".job-card-wrapper, .job-card-box, .job-card-body",
+          "title": ".job-title, .job-name",
+          "company": ".company-name, .company-text",
+          "level": ".job-labels span",
+          "location": ".job-area, .job-area-wrapper",
+          "summary": ".job-info-desc, .info-desc",
+          "salary": ".salary, .job-salary",
+          "link": "a",
+          "recruiter_name": ".boss-info-attr, .boss-name",
+          "recruiter_type": "",
+          "raw_text": ""
+        }
+      }
+    }
+  }
+}

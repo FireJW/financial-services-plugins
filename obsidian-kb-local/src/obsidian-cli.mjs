@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+const DEFAULT_OBSIDIAN_COMMAND_TIMEOUT_MS = 8000;
+
 const COMMON_OBSIDIAN_COMMANDS = [
   "obsidian",
   "Obsidian",
@@ -17,6 +19,22 @@ const COMMON_OBSIDIAN_EXECUTABLES = [
   "Obsidian.com",
   "obsidian.com"
 ];
+const WRITE_LIKE_COMMANDS = new Set([
+  "append",
+  "base:create",
+  "bookmark",
+  "create",
+  "daily:append",
+  "daily:prepend",
+  "delete",
+  "move",
+  "prepend",
+  "property:remove",
+  "property:set",
+  "rename",
+  "template:insert",
+  "unique"
+]);
 
 function firstConfiguredCandidate(candidates) {
   return candidates.find(
@@ -81,6 +99,25 @@ function inferInstallPathCandidates(options = {}) {
   }
 
   return uniqueStrings(candidates);
+}
+
+function detectRunningObsidianProcess(options = {}) {
+  const injected = options.hasRunningObsidianProcess;
+  if (typeof injected === "function") {
+    return Boolean(injected());
+  }
+
+  const result = spawnSync("tasklist", ["/FI", "IMAGENAME eq Obsidian.exe"], {
+    encoding: "utf8",
+    stdio: "pipe"
+  });
+
+  if (result.status !== 0) {
+    return false;
+  }
+
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+  return /Obsidian\.exe/i.test(output);
 }
 
 function normalizePath(candidate) {
@@ -167,16 +204,27 @@ function resolveCliMode(cliCommand, exePath) {
 export function resolveObsidianEnvironment(config, options = {}) {
   const exePath = chooseExeCandidate(config, options);
   const cliCommand = chooseCliCandidate(config, options);
+  const appRunning = detectRunningObsidianProcess(options);
 
   return {
     cliCommand,
     exePath,
-    cliMode: resolveCliMode(cliCommand, exePath)
+    cliMode: resolveCliMode(cliCommand, exePath),
+    appRunning
   };
 }
 
 export function buildObsidianArgs(config, commandArgs) {
   return [`vault=${config.vaultName}`, ...commandArgs];
+}
+
+export function inferObsidianStdio(commandArgs, options = {}) {
+  if (options.stdio) {
+    return options.stdio;
+  }
+
+  const command = Array.isArray(commandArgs) ? String(commandArgs[0] || "").trim() : "";
+  return WRITE_LIKE_COMMANDS.has(command) ? "ignore" : "pipe";
 }
 
 export function runObsidian(config, commandArgs, options = {}) {
@@ -191,12 +239,25 @@ export function runObsidian(config, commandArgs, options = {}) {
   }
 
   const args = buildObsidianArgs(config, commandArgs);
+  const timeoutMs =
+    Number.isFinite(options.timeoutMs) && options.timeoutMs >= 0
+      ? options.timeoutMs
+      : DEFAULT_OBSIDIAN_COMMAND_TIMEOUT_MS;
   const result = spawnSync(env.cliCommand, args, {
     encoding: "utf8",
-    stdio: options.stdio ?? "pipe"
+    stdio: inferObsidianStdio(commandArgs, options),
+    timeout: timeoutMs
   });
 
   if (result.error) {
+    if (result.error.code === "ETIMEDOUT") {
+      const timeoutError = new Error(
+        `Obsidian CLI timed out after ${timeoutMs}ms: ${env.cliCommand}`
+      );
+      timeoutError.code = "OBSIDIAN_CLI_TIMEOUT";
+      throw timeoutError;
+    }
+
     throw result.error;
   }
 

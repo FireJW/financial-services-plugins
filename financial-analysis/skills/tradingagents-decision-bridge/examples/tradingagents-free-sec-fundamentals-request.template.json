@@ -1,0 +1,32 @@
+{
+  "ticker": "NVDA",
+  "enabled": false,
+  "mode": "optional",
+  "analysis_profile": "free_sec_fundamentals",
+  "cost_budget_tokens": 50000,
+  "timeout_seconds": 120,
+  "version_guard": "0.2.3",
+  "thesis": {
+    "thesis_id": "free-sec-profile-example-2026-04-06",
+    "summary": "Use a fundamentals-only SEC-backed profile for U.S. names when paid market-data vendors are unavailable."
+  },
+  "evidence": [
+    {
+      "claim_id": "free-sec-profile-example-claim-001",
+      "summary": "This is a reduced-call control request for validating the SEC companyfacts profile."
+    }
+  ],
+  "catalysts": [
+    {
+      "summary": "Upcoming earnings or management guidance update."
+    }
+  ],
+  "market_context": {
+    "benchmark_symbol": "SOXX"
+  },
+  "fixture": {
+    "enabled": false,
+    "root": "tests/fixtures/tradingagents-decision-bridge",
+    "response": "basic-success.json"
+  }
+}

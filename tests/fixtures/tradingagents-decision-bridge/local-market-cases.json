@@ -1,0 +1,32 @@
+[
+  {
+    "raw": "601600",
+    "normalized": "601600.SS",
+    "market": "CN_SH"
+  },
+  {
+    "raw": "601600.SH",
+    "normalized": "601600.SS",
+    "market": "CN_SH"
+  },
+  {
+    "raw": "002837",
+    "normalized": "002837.SZ",
+    "market": "CN_SZ"
+  },
+  {
+    "raw": "300750",
+    "normalized": "300750.SZ",
+    "market": "CN_SZ"
+  },
+  {
+    "raw": "700.HK",
+    "normalized": "00700.HK",
+    "market": "HK"
+  },
+  {
+    "raw": "nvda",
+    "normalized": "NVDA",
+    "market": "US"
+  }
+]

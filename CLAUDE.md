@@ -127,3 +127,56 @@ When a task changes process, architecture, or handoff expectations, log the deci
 For Windows CLI continuation, use explicit commands like
 `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-plan-init.ps1 -Name "task-name"`
 instead of assuming `pwsh` is available.
+
+## Workspace Safety
+
+- Do not use `.gemini/antigravity/scratch/` as the canonical home for this repo.
+- The canonical working copy for this repo should be:
+  - `D:\Users\rickylu\dev\financial-services-plugins`
+- WSL remains optional, but if used, keep the canonical repo inside the Linux filesystem, not `/mnt/c/...`.
+- Do not change the user's active C-drive Codex home/config unless they explicitly ask for a Codex configuration migration.
+- Before risky recovery or agent-heavy work, run:
+  - `.\scripts\check-workspace-safety.ps1`
+  - `.\scripts\repo-snapshot.ps1 -BackupRoot "D:\Users\rickylu\repo-safety-backups\financial-services-plugins" -MirrorLatest -IncludeGit`
+- To prepare a stable non-scratch working copy, use:
+  - `.\scripts\prepare-safe-workspace.ps1 -TargetRoot "D:\Users\rickylu\dev" -IncludeGit -IncludeTmp -Execute`
+- To lift the main lines into focused sibling workspaces, use:
+  - `.\scripts\promote-mainlines.ps1 -Execute`
+- Full guidance lives in:
+  - `docs/runtime/workspace-safety.md`
+
+## Large File Handling Rules
+
+> **Hard Rule**: 行数超过 400 行的代码文件或大型文件，会导致模型调用卡住（token 溢出、写入超时、上下文截断等）。**严禁一口气写入或提交所有内容。**
+
+### 必须遵守的操作规范
+
+1. **拆分为多次步骤（Incremental Steps）**
+   - 将大文件的创建/修改拆分为多个独立的、可验证的步骤
+   - 每次写入/编辑控制在 **200-300 行以内**
+   - 每步完成后验证结果再进行下一步
+
+2. **使用 Sub-agents 并行处理**
+   - 对于独立的代码模块，使用 `Agent` 工具分派给子代理并行完成
+   - 每个子代理负责一个明确的、范围有限的子任务
+   - 子代理完成后，主代理负责整合和验证
+
+3. **禁止的操作**
+   - ❌ 一次性 `Write` 超过 400 行的完整文件
+   - ❌ 一次性 `Edit` 涉及超过 300 行变更的大范围替换
+   - ❌ 在单个 `git commit` 中包含未经分步验证的大量新增代码
+
+4. **推荐的工作流程**
+   ```
+   Step 1: 创建文件骨架（imports、类/函数签名、导出）
+   Step 2: 逐个填充核心函数实现
+   Step 3: 添加辅助函数和工具方法
+   Step 4: 补充错误处理和边界情况
+   Step 5: 验证完整性并提交
+   ```
+
+5. **适用场景**
+   - 新建大型源代码文件
+   - 大规模重构现有文件
+   - 批量生成配置文件、测试文件
+   - 任何预估产出超过 400 行的任务

@@ -1,25 +1,30 @@
-#!/usr/bin/env python3
-from __future__ import annotations
-
-from typing import Any
-
-
-def clean_text(value: Any) -> str:
-    return " ".join(str(value or "").split()).strip()
-
-
-def safe_dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def build_workflow_publication_gate(payload: dict[str, Any]) -> dict[str, Any]:
-    manual_review = safe_dict(payload.get("workflow_manual_review") or payload.get("manual_review"))
-    return {
-        "publication_readiness": clean_text(
-            payload.get("publication_readiness") or manual_review.get("publication_readiness") or "ready"
-        ),
-        "manual_review": manual_review,
-    }
-
-
-__all__ = ["build_workflow_publication_gate"]
+g.northwoodsoft.com^
+||mktg.rocklandmfg.com^
+||mktg.rtx.travel^
+||mktg.schlage.com^
+||mktg.senneca.com^
+||mktg.ummhealth.org^
+||mktg.xeniumhr.com^
+||mm.morrellinc.com^
+||mmarkhigh.actonservice.com^
+||mmc-ltd.actonservice.com^
+||moldex.actonservice.com^
+||more.socialflow.com^
+||moreinfo.onnowdigital.com^
+||moreinfo.powerpro360.com^
+||moreinfo.sdmyers.com^
+||morganfranklin.actonservice.com^
+||motion.kollmorgen.com^
+||motista.actonservice.com^
+||motorsports.locktonaffinity.net^
+||moxtra.actonservice.com^
+||mpc-co.actonservice.com^
+||mri.iradimed.com^
+||msbainfo.fbe.hku.hk^
+||mshs.actonservice.com^
+||msi.msigts.com^
+||msigbs.actonservice.com^
+||msitec.actonservice.com^
+||msufcu.actonservice.com^
+||mtracking.mhequipment.com^
+||multimedia.netplu

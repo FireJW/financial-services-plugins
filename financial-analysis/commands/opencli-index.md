@@ -46,6 +46,8 @@ Recommended v1 usage:
 
 - `opencli.result_path` for a deterministic offline import
 - `opencli.result` when a previous step already produced the payload in memory
+- `financial-analysis\skills\autoresearch-info-index\examples\opencli-bridge-request.template.json`
+  for the bridge contract itself
 - start from `financial-analysis\skills\autoresearch-info-index\examples\opencli-source-profile.template.json`
   when you need a reviewed source-policy stub for a new site profile
 
@@ -58,6 +60,23 @@ Opt-in live runner:
   for the runner contract
 - runner failures are surfaced in `runner_summary`; they do not silently
   masquerade as a low-signal success
+- if the runner writes a result file, that `result_path` is preserved into the
+  bridge report and companion artifacts for traceability
+
+Automatic companions:
+
+- `opencli-bridge-completion-check.json`
+- `opencli-bridge-completion-check.md`
+- `opencli-bridge-operator-summary.json`
+- `opencli-bridge-operator-summary.md`
+
+Operator note:
+
+- `opencli-index` is best treated as a capture adapter, not a source of final
+  judgment
+- use it to get authenticated or dynamic material into the repo's evidence
+  pipeline, then let `news-index`, `completion-check`, and `operator-summary`
+  decide whether the capture is actually usable
 
 Request example:
 

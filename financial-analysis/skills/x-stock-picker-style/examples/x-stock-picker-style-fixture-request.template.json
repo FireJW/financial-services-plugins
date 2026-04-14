@@ -1,0 +1,39 @@
+{
+  "analysis_time": "2026-04-10T08:00:00+00:00",
+  "analysis_date": "2026-04-10",
+  "subject_url": "https://x.com/twikejin",
+  "score_mode": "off",
+  "candidate_names": [
+    "卓郎智能",
+    "泰坦股份",
+    "中国巨石",
+    "国际复材",
+    "中材科技",
+    "宏和科技"
+  ],
+  "theme_aliases": {
+    "electronic_cloth": ["电子布", "织布机", "CCL", "覆铜板"]
+  },
+  "ticker_resolution_by_name": {},
+  "history_by_ticker": {},
+  "timeline_scan": {
+    "scanned_at": "2026-04-09T13:03:50.074Z",
+    "pages": [
+      {
+        "handle": "twikejin",
+        "page": "posts",
+        "url": "https://x.com/twikejin",
+        "articles": [
+          {
+            "author_handle": "twikejin",
+            "status_url": "https://x.com/twikejin/status/2042086801285034245",
+            "datetime": "2026-04-09T03:46:48.000Z",
+            "text": "AI server electronic cloth bottleneck sits in high-end weaving machines.",
+            "quoted_text": ""
+          }
+        ]
+      }
+    ]
+  },
+  "max_source_items": 40
+}

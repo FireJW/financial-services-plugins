@@ -1,0 +1,48 @@
+{
+  "session_mode": "existing_local_only",
+  "platforms": ["boss", "liepin", "job51", "zhilian"],
+  "browser_executable_paths": [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+  ],
+  "browser_profile_paths": [
+    "C:\\Users\\rickylu\\AppData\\Local\\Google\\Chrome\\User Data",
+    "C:\\Users\\rickylu\\AppData\\Local\\Microsoft\\Edge\\User Data",
+    "D:\\career-ops-local\\portal-sessions",
+    "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\.tmp-x-chrome-profile",
+    "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\.tmp-x-edge-profile",
+    "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\.tmp-x-session"
+  ],
+  "salary_filters": {
+    "minimum_monthly_rmb": 0,
+    "maximum_monthly_rmb": 0
+  },
+  "blacklist_companies": [],
+  "blacklist_recruiters": [],
+  "notifications": {
+    "enabled": false
+  },
+  "live_scan": {
+    "enabled": false,
+    "timeout_ms": 15000,
+    "max_jobs": 20,
+    "platforms": {
+      "boss": {
+        "url": "",
+        "selectors": {
+          "card": ".job-card-wrapper, .job-card-box, .job-card-body",
+          "title": ".job-title, .job-name",
+          "company": ".company-name, .company-text",
+          "level": ".job-labels span",
+          "location": ".job-area, .job-area-wrapper",
+          "summary": ".job-info-desc, .info-desc",
+          "salary": ".salary, .job-salary",
+          "link": "a",
+          "recruiter_name": ".boss-info-attr, .boss-name",
+          "recruiter_type": "",
+          "raw_text": ""
+        }
+      }
+    }
+  }
+}

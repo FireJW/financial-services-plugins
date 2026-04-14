@@ -112,6 +112,99 @@ Preferred operator order:
 2. follow the linked skill/runtime path
 3. use generic browser automation only when the repo does not provide a better native path
 
+## Workspace Safety
+
+Do not keep the canonical working copy of this repository under an agent
+scratch path such as `.gemini/antigravity/scratch/`.
+
+Recommended stable homes:
+
+- `D:\Users\rickylu\dev\financial-services-plugins`
+- WSL Linux home, for example `/home/<you>/dev/financial-services-plugins`
+
+The repository location can move to D drive without changing the user's active
+Codex home/config on C drive. Do not treat repo migration and Codex config
+migration as the same task.
+
+Useful local safety commands:
+
+```powershell
+.\scripts\check-workspace-safety.ps1
+.\scripts\repo-snapshot.ps1 -BackupRoot "D:\Users\rickylu\repo-safety-backups\financial-services-plugins" -MirrorLatest -IncludeGit
+.\scripts\prepare-safe-workspace.ps1 -TargetRoot "D:\Users\rickylu\dev" -IncludeGit -IncludeTmp -Execute
+.\scripts\promote-mainlines.ps1 -Execute
+```
+
+See `docs/runtime/workspace-safety.md` for the full workflow.
+
+## Local Obsidian KB Capture
+
+This repo also carries a local Obsidian KB sink under `obsidian-kb-local/`.
+
+When a user explicitly asks to persist a result into the local Obsidian KB
+using phrases such as:
+
+- `落进本地obsidian知识库`
+- `同步到obsidian知识库`
+- `记到obsidian`
+- `落到raw`
+- `存进本地知识库`
+
+the default behavior is:
+
+1. capture the current user request plus the assistant's final substantive answer
+2. write a manual raw note into `08-AI知识库/10-raw/manual/`
+3. use `node scripts/capture-codex-thread.mjs`
+4. prefer an explicit `codex://threads/...` source URI when available
+5. otherwise fall back to `codex://threads/current-thread`
+6. default to `--compile` for reusable knowledge-bearing content
+
+Canonical workflow details live in `CODEX_DEVELOPMENT_FLOW.md`.
+
+The live system view for this workflow is:
+
+- `08-AI知识库/30-views/00-System/08-Codex Thread Capture Status.md`
+- `08-AI知识库/30-views/00-System/09-Codex Thread Recovery Queue.md`
+- `08-AI知识库/30-views/00-System/10-Codex Thread Audit Log.md`
+
+Refresh it with:
+
+```powershell
+node .\obsidian-kb-local\scripts\refresh-wiki-views.mjs
+```
+
+The refresh script now defaults to "try Obsidian CLI first, then fall back to
+filesystem writes if the CLI stalls or fails". Use `--force-cli` only if you
+explicitly want strict CLI-only behavior.
+
+That status view now also includes the most recent `verify` and `reconcile`
+history, so missed thread captures are easier to spot from inside Obsidian.
+
+For a terminal summary, run:
+
+```powershell
+node .\obsidian-kb-local\scripts\codex-thread-audit-report.mjs
+node .\obsidian-kb-local\scripts\codex-thread-audit-doctor.mjs
+```
+
+To archive expired synthetic/demo audit entries:
+
+```powershell
+node .\obsidian-kb-local\scripts\backfill-codex-thread-audit-run-ids.mjs
+node .\obsidian-kb-local\scripts\backfill-codex-thread-audit-run-ids.mjs --apply
+node .\obsidian-kb-local\scripts\prune-codex-thread-audit-logs.mjs --days 7
+node .\obsidian-kb-local\scripts\prune-codex-thread-audit-logs.mjs --days 7 --apply
+```
+
+For historical multi-thread imports, use the batch manifest route:
+
+```powershell
+node .\obsidian-kb-local\scripts\init-codex-thread-batch.mjs --output-dir ".\obsidian-kb-local\.tmp-codex-thread-handoff-batch" --thread-id "019d5746-28de-7631-ad1c-d35ca5815b94" --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab" --topic "历史 Codex 线程沉淀" --title-prefix "历史线程待整理"
+node .\obsidian-kb-local\scripts\capture-codex-thread-batch.mjs --manifest ".\obsidian-kb-local\examples\codex-thread-batch.template.json" --compile --timeout-ms 240000
+node .\obsidian-kb-local\scripts\verify-codex-thread-capture.mjs --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab"
+node .\obsidian-kb-local\scripts\reconcile-codex-thread-capture.mjs --output-dir ".\obsidian-kb-local\.tmp-codex-thread-reconcile-smoke" --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab" --thread-id "019d-missing-demo-thread" --topic "历史 Codex 线程补录" --title-prefix "待补录线程"
+```
+
 Example: for X / Twitter thread collection, use `/x-index` first. On Windows,
 prefer `browser_session.strategy = "remote_debugging"` with a real signed-in
 Edge or Chrome session. Reuse the last successful X workflow before starting a

@@ -1,1320 +1,1074 @@
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
-import { repoRoot } from "./runtime-report-lib.mjs";
-
-export const WORKER_REQUIRED_SECTIONS = [
-  "Conclusion",
-  "Confirmed",
-  "Unconfirmed",
-  "Risks",
-  "Next Step",
-];
-
-export const STRUCTURED_VERIFIER_SCHEMA_VERSION = "structured-verifier-v1";
-
-export const INTENT_REQUIRED_SECTIONS = [
-  "User Intent",
-  "Hard Constraints",
-  "Non-goals",
-];
-
-export const COMPACTION_REQUIRED_SECTIONS = [
-  ...INTENT_REQUIRED_SECTIONS,
-  "Current State",
-  "Next Step",
-];
-
-export const NOW_TEMPLATE_SECTIONS = [
-  {
-    title: "Goal",
-    key: "goal",
-    tokenBudget: 120,
-    fallback: "- State the active objective.",
-  },
-  {
-    title: "Current State",
-    key: "currentState",
-    tokenBudget: 180,
-    fallback: "- Summarize the latest implementation state.",
-  },
-  {
-    title: "Confirmed Facts",
-    key: "confirmedFacts",
-    tokenBudget: 180,
-    fallback: "- None.",
-  },
-  {
-    title: "Unresolved Questions",
-    key: "unresolvedQuestions",
-    tokenBudget: 140,
-    fallback: "- None.",
-  },
-  {
-    title: "Next Step",
-    key: "nextStep",
-    tokenBudget: 80,
-    fallback: "- Define the next concrete action.",
-  },
-  {
-    title: "Risks / Invalidation",
-    key: "risks",
-    tokenBudget: 120,
-    fallback: "- None.",
-  },
-];
-
-export const NOW_REQUIRED_SECTIONS = NOW_TEMPLATE_SECTIONS.map((section) => section.title);
-
-export const TASK_PROFILES_PATH = path.join(
-  repoRoot,
-  "scripts",
-  "runtime",
-  "task-profiles.json",
-);
-
-const DEFAULT_RUNTIME_PLUGIN_DIRS = [
-  "financial-analysis",
-  "equity-research",
-];
-
-const OPTIONAL_RUNTIME_PLUGIN_DIRS = [
-  "investment-banking",
-  "private-equity",
-  "wealth-management",
-];
-
-const PARTNER_RUNTIME_PLUGIN_DIRS = [
-  "partner-built/lseg",
-  "partner-built/spglobal",
-];
-
-const NON_GOAL_PATTERNS = [
-  /\bdo not implement\b/i,
-  /\bdo not build\b/i,
-  /\bout of scope\b/i,
-  /\bnon-goal\b/i,
-  /\bnon goal\b/i,
-  /\bskip\b/i,
-  /\bexclude\b/i,
-  /\bavoid\b/i,
-  /^do not\b/i,
-  /^don't\b/i,
-  /^不要\b/u,
-  /^别\b/u,
-  /^先别\b/u,
-  /^不做\b/u,
-  /^无需\b/u,
-  /^不需要\b/u,
-  /^不应\b/u,
-];
-
-const HARD_CONSTRAINT_PATTERNS = [
-  /\bmust\b/i,
-  /\bmust not\b/i,
-  /\bhighest priority\b/i,
-  /\btop priority\b/i,
-  /\bhard constraint\b/i,
-  /\bdo not break\b/i,
-  /\bensure\b/i,
-  /\bonly\b/i,
-  /\bcannot\b/i,
-  /\bnever\b/i,
-  /最高优先级/u,
-  /铁律/u,
-  /必须/u,
-  /务必/u,
-  /不能/u,
-  /不可/u,
-  /不要破坏/u,
-];
-
-const MULTILINGUAL_NON_GOAL_PATTERNS = [
-  /\bdo not start\b/i,
-  /\bdo not producti[sz]e\b/i,
-  /\bnot in this step\b/i,
-  /\bnot part of this step\b/i,
-  /^\s*(?:\u4e0d\u8981|\u522b|\u5148\u522b)\s*(?:\u5b9e\u73b0|\u505a|\u5f00\u59cb|\u4ea7\u54c1\u5316|\u5f15\u5165|\u6269\u5c55|\u4e0a)/u,
-  /^\s*(?:\u4e0d\u8981|\u522b|\u5148\u522b)\s*(?:\u5728(?:\u8fd9|\u672c)\u4e00\u6b65\s*)?(?:\u5b9e\u73b0|\u505a|\u5f00\u59cb|\u4ea7\u54c1\u5316|\u5f15\u5165|\u6269\u5c55|\u4e0a)/u,
-  /^\s*(?:\u4e0d\u7528|\u65e0\u9700|\u4e0d\u9700\u8981|\u6682\u4e0d)/u,
-  /\u975e\u76ee\u6807/u,
-  /\u4e0d\u5728(?:\u8fd9|\u672c)\u4e00\u6b65/u,
-  /\u8df3\u8fc7/u,
-  /\u6392\u9664/u,
-  /\u907f\u514d/u,
-];
-
-const MULTILINGUAL_HARD_CONSTRAINT_PATTERNS = [
-  /^\s*only\b/i,
-  /\bfile safety\b/i,
-  /\bdisk safety\b/i,
-  /\bexact as-of date\b/i,
-  /\u6700\u9ad8\u4f18\u5148\u7ea7/u,
-  /\u9876\u7ea7\u4f18\u5148\u7ea7/u,
-  /\u786c\u7ea6\u675f/u,
-  /\u94c1\u5f8b/u,
-  /\u5fc5\u987b/u,
-  /\u52a1\u5fc5/u,
-  /\u4e0d\u80fd/u,
-  /\u4e0d\u53ef/u,
-  /\u786e\u4fdd/u,
-  /\u4fdd\u6301/u,
-  /\u53ea\u80fd/u,
-  /\u6587\u4ef6\u5b89\u5168/u,
-  /\u78c1\u76d8\u5b89\u5168/u,
-  /^\s*(?:\u4e0d\u8981|\u522b|\u5148\u522b)\s*(?:\u7834\u574f|\u52a8|\u4e71\u5206\u6790|\u8d8a\u754c|\u5220|\u4fee\u6539)/u,
-];
-
-export function resolveRepoPath(maybeRelativePath) {
-  if (!maybeRelativePath) {
-    return null;
-  }
-
-  return path.isAbsolute(maybeRelativePath)
-    ? path.normalize(maybeRelativePath)
-    : path.join(repoRoot, maybeRelativePath);
-}
-
-export function parseMarkdownSections(markdown) {
-  const normalized = stripUtf8Bom(`${markdown ?? ""}`).replace(/\r\n/g, "\n");
-  const lines = normalized.split("\n");
-  const sections = [];
-  let currentSection = null;
-
-  for (const line of lines) {
-    const headingMatch = /^##\s+(.+?)\s*$/.exec(line);
-    if (headingMatch) {
-      currentSection = {
-        title: headingMatch[1].trim(),
-        lines: [],
-      };
-      sections.push(currentSection);
-      continue;
-    }
-
-    if (currentSection) {
-      currentSection.lines.push(line);
-    }
-  }
-
-  return sections.map((section) => ({
-    title: section.title,
-    content: section.lines.join("\n").trim(),
-  }));
-}
-
-export function validateWorkerOutput(markdown) {
-  return validateStructuredMarkdown(markdown, WORKER_REQUIRED_SECTIONS, {
-    listLikeSections: ["Confirmed", "Unconfirmed", "Risks"],
-  });
-}
-
-export function validateCompactionSummary(markdown) {
-  return validateStructuredMarkdown(markdown, COMPACTION_REQUIRED_SECTIONS, {
-    listLikeSections: INTENT_REQUIRED_SECTIONS,
-  });
-}
-
-export function validateNowMarkdown(markdown) {
-  return validateStructuredMarkdown(markdown, NOW_REQUIRED_SECTIONS, {
-    listLikeSections: [
-      "Confirmed Facts",
-      "Unresolved Questions",
-      "Risks / Invalidation",
-    ],
-  });
-}
-
-export function buildSessionStateMarkdown(input = {}) {
-  const lines = ["# NOW", ""];
-
-  for (const section of NOW_TEMPLATE_SECTIONS) {
-    const renderedBody = renderSectionBody(input[section.key], section.fallback);
-    const clampedBody = clampSectionBody(renderedBody, section.tokenBudget);
-    lines.push(`## ${section.title}`);
-    lines.push(`<!-- token-budget: ${section.tokenBudget} -->`);
-    lines.push(clampedBody);
-    lines.push("");
-  }
-
-  return `${lines.join("\n").trimEnd()}\n`;
-}
-
-export function buildSessionStatePayload(input = {}) {
-  const markdown = buildSessionStateMarkdown(input);
-
-  return {
-    markdown,
-    validation: validateNowMarkdown(markdown),
-    sections: parseMarkdownSections(markdown),
-  };
-}
-
-export function normalizeIntentMarkdown(rawText) {
-  const normalizedText = `${rawText ?? ""}`.trim();
-  if (!normalizedText) {
-    return buildIntentMarkdownFromSections({
-      userIntent: ["Clarify the current user request."],
-      hardConstraints: ["None specified."],
-      nonGoals: ["None specified."],
-    });
-  }
-
-  const parsedSections = parseMarkdownSections(normalizedText);
-  const sectionMap = new Map(parsedSections.map((section) => [section.title, section.content]));
-  const hasStructuredIntent = INTENT_REQUIRED_SECTIONS.every((title) => sectionMap.has(title));
-
-  if (hasStructuredIntent) {
-    return buildIntentMarkdownFromSections({
-      userIntent: toBulletItems(sectionMap.get("User Intent")),
-      hardConstraints: toBulletItems(sectionMap.get("Hard Constraints")),
-      nonGoals: toBulletItems(sectionMap.get("Non-goals")),
-    });
-  }
-
-  return buildIntentMarkdownFromSections(extractIntentSections(normalizedText));
-}
-
-export function buildIntentPayload(rawText, options = {}) {
-  const intentMarkdown = normalizeIntentMarkdown(rawText);
-  const compactSummary = buildCompactionSummaryFromIntent(intentMarkdown, options);
-
-  return {
-    intentMarkdown,
-    intentValidation: validateStructuredMarkdown(intentMarkdown, INTENT_REQUIRED_SECTIONS, {
-      listLikeSections: INTENT_REQUIRED_SECTIONS,
-    }),
-    compactSummary,
-    compactValidation: validateCompactionSummary(compactSummary),
-  };
-}
-
-export function buildCompactionSummaryFromIntent(intentMarkdown, options = {}) {
-  const parsed = parseMarkdownSections(intentMarkdown);
-  const sectionMap = new Map(parsed.map((section) => [section.title, section.content]));
-  const missingSections = INTENT_REQUIRED_SECTIONS.filter((title) => {
-    const content = sectionMap.get(title);
-    return !content || !content.trim();
-  });
-
-  if (missingSections.length > 0) {
-    throw new Error(
-      `Intent file is missing required sections: ${missingSections.join(", ")}`,
-    );
-  }
-
-  const lines = ["# Compact Summary", ""];
-  for (const title of INTENT_REQUIRED_SECTIONS) {
-    lines.push(`## ${title}`);
-    lines.push(sectionMap.get(title));
-    lines.push("");
-  }
-  lines.push("## Current State");
-  lines.push(renderSectionBody(options.currentState, "- None."));
-  lines.push("");
-  lines.push("## Next Step");
-  lines.push(renderSectionBody(options.nextStep, "- None."));
-  lines.push("");
-
-  return `${lines.join("\n").trimEnd()}\n`;
-}
-
-export function loadTaskProfiles() {
-  return JSON.parse(readFileSync(TASK_PROFILES_PATH, "utf8"));
-}
-
-export function getTaskProfile(profileName) {
-  const config = loadTaskProfiles();
-  const profile = config?.profiles?.[profileName];
-
-  if (!profile) {
-    const availableProfiles = Object.keys(config?.profiles ?? {}).sort();
-    throw new Error(
-      `Unknown task profile "${profileName}". Available: ${availableProfiles.join(", ")}`,
-    );
-  }
-
-  return profile;
-}
-
-export function resolveTaskProfile(profileName) {
-  const config = loadTaskProfiles();
-  const profile = getTaskProfile(profileName);
-
-  return {
-    ...profile,
-    baseCliArgs: [...(config.baseCliArgs ?? [])],
-    contractPath: resolveRepoPath(profile.contractPath),
-    checklistPath: resolveRepoPath(profile.checklistPath),
-    appendSystemPromptFile: resolveRepoPath(profile.appendSystemPromptFile),
-  };
-}
-
-export function getRuntimePluginDirs(options = {}) {
-  const requestedPluginDirs = options.pluginDirs ?? [];
-  const explicitDirs = requestedPluginDirs
-    .map((pluginDir) => resolveRepoPath(pluginDir))
-    .filter(Boolean);
-
-  const candidateDirs =
-    explicitDirs.length > 0
-      ? explicitDirs
-      : DEFAULT_RUNTIME_PLUGIN_DIRS.map((pluginDir) => resolveRepoPath(pluginDir));
-
-  if (explicitDirs.length === 0 && options.allPlugins) {
-    for (const pluginDir of OPTIONAL_RUNTIME_PLUGIN_DIRS) {
-      candidateDirs.push(resolveRepoPath(pluginDir));
-    }
-  }
-
-  if (options.includePartnerBuilt) {
-    for (const pluginDir of PARTNER_RUNTIME_PLUGIN_DIRS) {
-      candidateDirs.push(resolveRepoPath(pluginDir));
-    }
-  }
-
-  return dedupeExistingPaths(candidateDirs);
-}
-
-export function buildRuntimeCliArgs(profileName, options = {}) {
-  const profile = resolveTaskProfile(profileName);
-  const pluginDirs = getRuntimePluginDirs(options);
-  const forwardedArgs = options.forwardedArgs ?? [];
-  const cliArgs = [...profile.baseCliArgs];
-  const modelOverride = profile.modelEnv ? process.env[profile.modelEnv] : null;
-
-  for (const pluginDir of pluginDirs) {
-    cliArgs.push("--plugin-dir", pluginDir);
-  }
-
-  if (profile.appendSystemPromptFile) {
-    cliArgs.push("--append-system-prompt-file", profile.appendSystemPromptFile);
-  }
-
-  if (
-    modelOverride &&
-    !forwardedArgs.includes("--model") &&
-    !cliArgs.includes("--model")
-  ) {
-    cliArgs.push("--model", modelOverride);
-  }
-
-  cliArgs.push(...(profile.defaultCliArgs ?? []));
-  cliArgs.push(...forwardedArgs);
-
-  return {
-    profile,
-    pluginDirs,
-    cliArgs,
-  };
-}
-
-export function buildTaskProfilePreview(profileName, options = {}) {
-  const { profile, pluginDirs, cliArgs } = buildRuntimeCliArgs(profileName, options);
-
-  return {
-    profile: {
-      name: profile.name,
-      description: profile.description ?? profile.purpose ?? "",
-      purpose: profile.purpose ?? "",
-      modelTier: profile.modelTier,
-      modelEnv: profile.modelEnv ?? null,
-      thinkingBudget: profile.thinkingBudget,
-      maxTurns: profile.maxTurns,
-      requiresContract: profile.requiresContract,
-      verificationOnly: profile.verificationOnly,
-      contractPath: profile.contractPath ?? null,
-      checklistPath: profile.checklistPath ?? null,
-      notes: profile.notes ?? [],
-    },
-    invocation: {
-      pluginDirs,
-      cliArgs,
-    },
-  };
-}
-
-export function buildWorkerPrompt(options) {
-  const task = `${options.task ?? ""}`.trim();
-  if (!task) {
-    throw new Error("Worker prompt requires a task.");
-  }
-
-  const lines = [];
-  lines.push("You are executing through the runtime worker wrapper.");
-  lines.push(
-    "Produce the final answer as markdown that follows the required worker contract exactly.",
-  );
-  lines.push(
-    "Keep verified facts in Confirmed, unresolved items in Unconfirmed, and failure modes in Risks.",
-  );
-  lines.push("Do not add any preamble, commentary, or separator before `## Conclusion`.");
-  lines.push("");
-  lines.push("## Active Task");
-  lines.push(task);
-  lines.push("");
-
-  appendOptionalMarkdownSection(lines, "Intent Snapshot", options.intentMarkdown);
-  appendOptionalMarkdownSection(lines, "Session Snapshot", options.nowMarkdown);
-
-  for (const contextItem of options.contextItems ?? []) {
-    appendOptionalMarkdownSection(lines, contextItem.label, contextItem.content);
-  }
-
-  lines.push("## Required Output Shape");
-  lines.push("- Return markdown only.");
-  lines.push("- Use these headings exactly once and in order:");
-  lines.push("- `## Conclusion`");
-  lines.push("- `## Confirmed`");
-  lines.push("- `## Unconfirmed`");
-  lines.push("- `## Risks`");
-  lines.push("- `## Next Step`");
-  lines.push("- Use bullets for Confirmed, Unconfirmed, and Risks.");
-  lines.push("- If a list section has nothing to report, write `- None.`");
-  lines.push("");
-
-  return `${lines.join("\n").trimEnd()}\n`;
-}
-
-export function buildVerifierPrompt(options) {
-  const originalTask = `${options.originalTask ?? ""}`.trim();
-  const workerOutput = `${options.workerOutput ?? ""}`.trim();
-
-  if (!originalTask) {
-    throw new Error("Verifier prompt requires the original task.");
-  }
-
-  if (!workerOutput) {
-    throw new Error("Verifier prompt requires the worker output.");
-  }
-
-  const lines = [];
-  lines.push("You are executing through the runtime verifier wrapper.");
-  lines.push("Review the worker output independently and fail closed.");
-  lines.push(
-    "Use the appended verification checklist and end with a literal verdict line: `VERDICT: PASS`, `VERDICT: FAIL`, or `VERDICT: PARTIAL`.",
-  );
-  lines.push(
-    "Every substantive check must include `### Check:`, `Command run:`, `Output observed:`, and `Result:` fields.",
-  );
-  lines.push(
-    "Include at least one adversarial probe, such as overclaim detection, missing-risk detection, or invalidation analysis.",
-  );
-  lines.push("Do not add any preamble before the first `### Check:` block.");
-  lines.push("End with the verdict line and nothing after it.");
-  lines.push("");
-  lines.push("## Original Task");
-  lines.push(originalTask);
-  lines.push("");
-  lines.push("## Worker Output");
-  lines.push(workerOutput);
-  lines.push("");
-  lines.push("## Files Changed");
-  lines.push(renderSectionBody(options.filesChanged, "- None provided."));
-  lines.push("");
-  lines.push("## Approach");
-  lines.push(renderSectionBody(options.approach, "- None provided."));
-  lines.push("");
-
-  if (options.planPath) {
-    lines.push("## Plan Path");
-    lines.push(`${options.planPath}`);
-    lines.push("");
-  }
-
-  appendOptionalMarkdownSection(lines, "Intent Snapshot", options.intentMarkdown);
-  appendOptionalMarkdownSection(lines, "Session Snapshot", options.nowMarkdown);
-
-  if (options.preflightReport) {
-    appendOptionalMarkdownSection(lines, "Deterministic Preflight", options.preflightReport);
-  }
-
-  lines.push("## Minimum Verification Coverage");
-  lines.push("- Check whether the worker output satisfies the required worker contract.");
-  lines.push("- Check whether Confirmed, Unconfirmed, and Risks are classified honestly.");
-  lines.push("- Check whether the conclusion drifts beyond the task that was asked.");
-  lines.push("- Include one adversarial probe focused on overclaim, omission, or invalidation.");
-  lines.push("");
-
-  return `${lines.join("\n").trimEnd()}\n`;
-}
-
-export function buildStructuredVerifierPrompt(options) {
-  const originalTask = `${options.originalTask ?? ""}`.trim();
-  const workerOutput = `${options.workerOutput ?? ""}`.trim();
-
-  if (!originalTask) {
-    throw new Error("Structured verifier prompt requires the original task.");
-  }
-
-  if (!workerOutput) {
-    throw new Error("Structured verifier prompt requires the worker output.");
-  }
-
-  const lines = [];
-  lines.push("You are executing through the runtime structured verifier wrapper.");
-  lines.push("Review the worker output independently and fail closed.");
-  lines.push("Return JSON only. Do not add markdown fences, commentary, or prose before or after the JSON object.");
-  lines.push(`Use schemaVersion = "${STRUCTURED_VERIFIER_SCHEMA_VERSION}".`);
-  lines.push("The JSON object must contain:");
-  lines.push('- `schemaVersion`: exact string');
-  lines.push('- `verdict`: `PASS`, `FAIL`, or `PARTIAL`');
-  lines.push('- `hasAdversarialProbe`: boolean');
-  lines.push("- `checks`: array of one or more objects");
-  lines.push("Each `checks` entry must contain:");
-  lines.push('- `title`: string');
-  lines.push('- `commandRun`: string');
-  lines.push('- `outputObserved`: string');
-  lines.push('- `result`: `PASS`, `FAIL`, or `PARTIAL`');
-  lines.push('- `isAdversarialProbe`: boolean');
-  lines.push("At least one check must be an adversarial probe and `hasAdversarialProbe` must match that fact.");
-  lines.push("");
-  lines.push("## Original Task");
-  lines.push(originalTask);
-  lines.push("");
-  lines.push("## Worker Output");
-  lines.push(workerOutput);
-  lines.push("");
-  lines.push("## Files Changed");
-  lines.push(renderSectionBody(options.filesChanged, "- None provided."));
-  lines.push("");
-  lines.push("## Approach");
-  lines.push(renderSectionBody(options.approach, "- None provided."));
-  lines.push("");
-
-  if (options.planPath) {
-    lines.push("## Plan Path");
-    lines.push(`${options.planPath}`);
-    lines.push("");
-  }
-
-  appendOptionalMarkdownSection(lines, "Intent Snapshot", options.intentMarkdown);
-  appendOptionalMarkdownSection(lines, "Session Snapshot", options.nowMarkdown);
-
-  if (options.preflightReport) {
-    appendOptionalMarkdownSection(lines, "Deterministic Preflight", options.preflightReport);
-  }
-
-  lines.push("## Minimum Verification Coverage");
-  lines.push("- Check whether the worker output satisfies the required worker contract.");
-  lines.push("- Check whether Confirmed, Unconfirmed, and Risks are classified honestly.");
-  lines.push("- Check whether the conclusion drifts beyond the task that was asked.");
-  lines.push("- Include one adversarial probe focused on overclaim, omission, or invalidation.");
-  lines.push("");
-  lines.push("## JSON Example");
-  lines.push("```json");
-  lines.push(JSON.stringify({
-    schemaVersion: STRUCTURED_VERIFIER_SCHEMA_VERSION,
-    verdict: "PASS",
-    hasAdversarialProbe: true,
-    checks: [
-      {
-        title: "Contract scan",
-        commandRun: "local contract validation",
-        outputObserved: "All required sections are present.",
-        result: "PASS",
-        isAdversarialProbe: false,
-      },
-      {
-        title: "Adversarial overclaim probe",
-        commandRun: "compare Confirmed and Unconfirmed certainty levels",
-        outputObserved: "No unsupported upgrade from uncertainty to certainty.",
-        result: "PASS",
-        isAdversarialProbe: true,
-      },
-    ],
-  }, null, 2));
-  lines.push("```");
-  lines.push("");
-
-  return `${lines.join("\n").trimEnd()}\n`;
-}
-
-export function normalizeWorkerOutputForVerification(markdown) {
-  const normalized = stripUtf8Bom(`${markdown ?? ""}`).trim();
-  if (!normalized) {
-    return "";
-  }
-
-  const headingIndex = normalized.indexOf("## Conclusion");
-  if (headingIndex === -1) {
-    return normalized;
-  }
-
-  return `${normalized.slice(headingIndex).trim()}\n`;
-}
-
-export function buildRetryPrompt(basePrompt, options = {}) {
-  const lines = [`${basePrompt ?? ""}`.trimEnd(), "", "## Retry Directive"];
-  lines.push(`- Attempt: ${options.attempt ?? 2}`);
-  lines.push(`- Reason: ${options.reason ?? "previous attempt did not satisfy the wrapper contract"}`);
-
-  if (options.kind === "verifier") {
-    if (options.structuredOutput) {
-      lines.push("- Return JSON only.");
-      lines.push("- Do not wrap the JSON in markdown fences.");
-      lines.push(`- Use \`schemaVersion: "${STRUCTURED_VERIFIER_SCHEMA_VERSION}"\`.`);
-      lines.push("- Include `verdict`, `hasAdversarialProbe`, and a non-empty `checks` array.");
-      lines.push("- Each check must include `title`, `commandRun`, `outputObserved`, `result`, and `isAdversarialProbe`.");
-      lines.push("- At least one check must be an adversarial probe.");
-    } else {
-      lines.push("- Start immediately with `### Check:`.");
-      lines.push("- Every check must include `**Command run:**`, `**Output observed:**`, and `**Result:**`.");
-      lines.push("- Include at least one adversarial probe.");
-      lines.push("- End with `VERDICT: PASS`, `VERDICT: FAIL`, or `VERDICT: PARTIAL` and nothing after it.");
-    }
-  } else {
-    lines.push("- Start immediately with `## Conclusion`.");
-    lines.push("- Return markdown only.");
-    lines.push("- Keep the required worker headings exactly once and in order.");
-  }
-
-  if (options.detail) {
-    lines.push(`- Previous failure detail: ${options.detail}`);
-  }
-
-  lines.push("");
-
-  return `${lines.join("\n").trimEnd()}\n`;
-}
-
-export function getMaxTurnsFromCliArgs(cliArgs = []) {
-  const index = getLastFlagIndex(cliArgs, "--max-turns");
-  if (index === -1 || index === cliArgs.length - 1) {
-    return null;
-  }
-
-  const parsed = Number.parseInt(cliArgs[index + 1] ?? "", 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-export function bumpMaxTurnsCliArgs(cliArgs = [], nextMaxTurns) {
-  const resolvedMaxTurns = Number.isFinite(nextMaxTurns) && nextMaxTurns > 0 ? Math.trunc(nextMaxTurns) : 8;
-  const nextArgs = [...cliArgs];
-  const index = getLastFlagIndex(nextArgs, "--max-turns");
-
-  if (index === -1) {
-    nextArgs.push("--max-turns", `${resolvedMaxTurns}`);
-    return nextArgs;
-  }
-
-  if (index === nextArgs.length - 1) {
-    nextArgs.push(`${resolvedMaxTurns}`);
-    return nextArgs;
-  }
-
-  nextArgs[index + 1] = `${resolvedMaxTurns}`;
-  return nextArgs;
-}
-
-function getLastFlagIndex(argv, flagName) {
-  for (let index = argv.length - 1; index >= 0; index -= 1) {
-    if (argv[index] === flagName) {
-      return index;
-    }
-  }
-
-  return -1;
-}
-
-export function parseVerifierOutput(reportText) {
-  const normalized = stripVerifierTrailer(reportText);
-  const verdictMatch = normalized.match(/^VERDICT:\s+(PASS|FAIL|PARTIAL)\s*$/m);
-  const checks = [];
-  const missingFields = [];
-  const checkRegex = /^### Check:\s*(.+?)\r?\n([\s\S]*?)(?=^### Check:|^VERDICT:|\Z)/gm;
-  let match;
-
-  while ((match = checkRegex.exec(normalized)) !== null) {
-    const body = match[2].trim();
-    const check = {
-      title: match[1].trim(),
-      body,
-      hasCommandRun: /\*\*Command run:\*\*/i.test(body),
-      hasOutputObserved: /\*\*Output observed:\*\*/i.test(body),
-      hasResult: hasVerifierResultField(body),
-      isAdversarialProbe: /(adversarial|probe|boundary|idempotency|orphan|overclaim|invalidat|concurrency)/i.test(
-        `${match[1]}\n${body}`,
-      ),
-    };
-
-    if (!check.hasCommandRun) {
-      missingFields.push(`${check.title}: Command run`);
-    }
-    if (!check.hasOutputObserved) {
-      missingFields.push(`${check.title}: Output observed`);
-    }
-    if (!check.hasResult) {
-      missingFields.push(`${check.title}: Result`);
-    }
-
-    checks.push(check);
-  }
-
-  const hasAdversarialProbe = checks.some((check) => check.isAdversarialProbe);
-  const ok =
-    Boolean(verdictMatch) &&
-    checks.length > 0 &&
-    missingFields.length === 0 &&
-    hasAdversarialProbe;
-
-  return {
-    ok,
-    verdict: verdictMatch?.[1] ?? null,
-    checks,
-    missingFields,
-    hasAdversarialProbe,
-    raw: normalized,
-  };
-}
-
-export function validateStructuredVerifierReport(input) {
-  const normalized = normalizeStructuredVerifierText(input);
-  const missingFields = [];
-  const invalidFields = [];
-  const checklist = [];
-  let parsedReport = null;
-  let parseError = null;
-
-  try {
-    parsedReport = typeof normalized === "string" ? JSON.parse(normalized) : normalized;
-  } catch (error) {
-    parseError = error instanceof Error ? error.message : `${error}`;
-  }
-
-  const schemaVersionOk =
-    !parseError &&
-    typeof parsedReport?.schemaVersion === "string" &&
-    parsedReport.schemaVersion === STRUCTURED_VERIFIER_SCHEMA_VERSION;
-  if (!parseError && !schemaVersionOk) {
-    invalidFields.push(
-      `schemaVersion: expected "${STRUCTURED_VERIFIER_SCHEMA_VERSION}"`,
-    );
-  }
-
-  const verdictOk =
-    !parseError &&
-    typeof parsedReport?.verdict === "string" &&
-    ["PASS", "FAIL", "PARTIAL"].includes(parsedReport.verdict);
-  if (!parseError && !verdictOk) {
-    invalidFields.push("verdict");
-  }
-
-  const checks = !parseError && Array.isArray(parsedReport?.checks) ? parsedReport.checks : [];
-  const checksPresentOk = !parseError && checks.length > 0;
-  if (!parseError && !checksPresentOk) {
-    invalidFields.push("checks");
-  }
-
-  const derivedAdversarialProbe = checks.some(
-    (check) => check && typeof check === "object" && check.isAdversarialProbe === true,
-  );
-  const hasAdversarialProbeOk =
-    !parseError &&
-    typeof parsedReport?.hasAdversarialProbe === "boolean" &&
-    parsedReport.hasAdversarialProbe === derivedAdversarialProbe &&
-    derivedAdversarialProbe;
-  if (!parseError && typeof parsedReport?.hasAdversarialProbe !== "boolean") {
-    missingFields.push("hasAdversarialProbe");
-  } else if (!parseError && !hasAdversarialProbeOk) {
-    invalidFields.push("hasAdversarialProbe");
-  }
-
-  const checkFieldFailures = [];
-  for (const [index, check] of checks.entries()) {
-    if (!check || typeof check !== "object") {
-      checkFieldFailures.push(`checks[${index}]`);
-      continue;
-    }
-
-    if (typeof check.title !== "string" || !check.title.trim()) {
-      checkFieldFailures.push(`checks[${index}].title`);
-    }
-    if (typeof check.commandRun !== "string" || !check.commandRun.trim()) {
-      checkFieldFailures.push(`checks[${index}].commandRun`);
-    }
-    if (typeof check.outputObserved !== "string" || !check.outputObserved.trim()) {
-      checkFieldFailures.push(`checks[${index}].outputObserved`);
-    }
-    if (
-      typeof check.result !== "string" ||
-      !["PASS", "FAIL", "PARTIAL"].includes(check.result)
-    ) {
-      checkFieldFailures.push(`checks[${index}].result`);
-    }
-    if (typeof check.isAdversarialProbe !== "boolean") {
-      checkFieldFailures.push(`checks[${index}].isAdversarialProbe`);
-    }
-  }
-  invalidFields.push(...checkFieldFailures);
-
-  checklist.push(
-    buildChecklistItem(
-      "json_parse",
-      !parseError,
-      !parseError ? "Structured verifier JSON parsed successfully." : `JSON parse error: ${parseError}`,
-    ),
-  );
-  checklist.push(
-    buildChecklistItem(
-      "schema_version",
-      schemaVersionOk,
-      schemaVersionOk
-        ? `schemaVersion matches ${STRUCTURED_VERIFIER_SCHEMA_VERSION}.`
-        : `Expected schemaVersion ${STRUCTURED_VERIFIER_SCHEMA_VERSION}.`,
-    ),
-  );
-  checklist.push(
-    buildChecklistItem(
-      "verdict",
-      verdictOk,
-      verdictOk ? "Verdict is present and valid." : "Verdict is missing or invalid.",
-    ),
-  );
-  checklist.push(
-    buildChecklistItem(
-      "checks",
-      checksPresentOk,
-      checksPresentOk ? "Structured verifier includes one or more checks." : "Structured verifier checks are missing or empty.",
-    ),
-  );
-  checklist.push(
-    buildChecklistItem(
-      "check_fields",
-      checkFieldFailures.length === 0,
-      checkFieldFailures.length === 0
-        ? "All structured verifier checks include required fields."
-        : `Invalid or missing check fields: ${checkFieldFailures.join(", ")}`,
-    ),
-  );
-  checklist.push(
-    buildChecklistItem(
-      "adversarial_probe",
-      hasAdversarialProbeOk,
-      hasAdversarialProbeOk
-        ? "Structured verifier includes a consistent adversarial probe."
-        : "Structured verifier adversarial probe flag is missing, inconsistent, or false.",
-    ),
-  );
-
-  const ok = checklist.every((item) => item.ok);
-
-  return {
-    ok,
-    verdict: verdictOk ? parsedReport.verdict : null,
-    schemaVersion:
-      typeof parsedReport?.schemaVersion === "string" ? parsedReport.schemaVersion : null,
-    parseError,
-    checks: checksPresentOk ? checks : [],
-    missingFields,
-    invalidFields,
-    hasAdversarialProbe: derivedAdversarialProbe,
-    raw: typeof normalized === "string" ? normalized : JSON.stringify(normalized, null, 2),
-    report: parsedReport,
-    checklist,
-  };
-}
-
-export function renderStructuredVerifierMarkdown(reportInput) {
-  const validation = validateStructuredVerifierReport(reportInput);
-  if (!validation.ok) {
-    throw new Error("Cannot render markdown sidecar from an invalid structured verifier report.");
-  }
-
-  const lines = [];
-  for (const check of validation.checks) {
-    lines.push(`### Check: ${check.title}`);
-    lines.push(renderStructuredVerifierField("Command run", check.commandRun));
-    lines.push("");
-    lines.push(renderStructuredVerifierField("Output observed", check.outputObserved));
-    lines.push("");
-    lines.push(`**Result:** ${check.result}`);
-    lines.push("");
-    lines.push("---");
-    lines.push("");
-  }
-  lines.push(`VERDICT: ${validation.verdict}`);
-
-  return `${lines.join("\n").trimEnd()}\n`;
-}
-
-export function renderDeterministicPreflight(report) {
-  const lines = [];
-  lines.push(`VERDICT: ${report.verdict}`);
-  for (const item of report.checklist) {
-    lines.push(`- ${item.name}: ${item.ok ? "PASS" : "FAIL"} - ${item.detail}`);
-  }
-  return lines.join("\n");
-}
-
-function validateStructuredMarkdown(markdown, requiredSections, options = {}) {
-  const parsedSections = parseMarkdownSections(markdown);
-  const sectionTitles = parsedSections.map((section) => section.title);
-  const sectionMap = new Map(parsedSections.map((section) => [section.title, section.content]));
-  const missingSections = requiredSections.filter((title) => !sectionMap.has(title));
-  const emptySections = requiredSections.filter((title) => {
-    const content = sectionMap.get(title);
-    return sectionMap.has(title) && !content?.trim();
-  });
-  const outOfOrderSections = getOutOfOrderSections(sectionTitles, requiredSections);
-  const listLikeFailures = (options.listLikeSections ?? []).filter((title) => {
-    const content = sectionMap.get(title);
-    return content && !hasListLikeContent(content);
-  });
-  const checklist = [
-    buildChecklistItem(
-      "required_sections",
-      missingSections.length === 0,
-      missingSections.length === 0
-        ? "All required sections are present."
-        : `Missing sections: ${missingSections.join(", ")}`,
-    ),
-    buildChecklistItem(
-      "section_order",
-      outOfOrderSections.length === 0,
-      outOfOrderSections.length === 0
-        ? "Required sections are in the expected order."
-        : `Out-of-order sections: ${outOfOrderSections.join(", ")}`,
-    ),
-    buildChecklistItem(
-      "non_empty_sections",
-      emptySections.length === 0,
-      emptySections.length === 0
-        ? "Required sections are non-empty."
-        : `Empty sections: ${emptySections.join(", ")}`,
-    ),
-    buildChecklistItem(
-      "list_like_sections",
-      listLikeFailures.length === 0,
-      listLikeFailures.length === 0
-        ? "List-like sections contain bullets or explicit none markers."
-        : `Sections must use bullets or explicit none markers: ${listLikeFailures.join(", ")}`,
-    ),
-  ];
-
-  return {
-    verdict: checklist.every((item) => item.ok) ? "PASS" : "FAIL",
-    ok: checklist.every((item) => item.ok),
-    requiredSections,
-    sectionOrder: sectionTitles,
-    missingSections,
-    emptySections,
-    outOfOrderSections,
-    listLikeFailures,
-    checklist,
-  };
-}
-
-function extractIntentSections(rawText) {
-  const lines = rawText
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => stripIntentBullet(line))
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !/^#+\s+/.test(line))
-    .filter((line) => !/^user intent brief$/i.test(line));
-
-  const sentences = lines
-    .flatMap((line) => splitIntentSentences(line))
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const userIntent = [];
-  const hardConstraints = [];
-  const nonGoals = [];
-
-  for (const line of sentences) {
-    if (INTENT_REQUIRED_SECTIONS.some((title) => title.toLowerCase() === line.toLowerCase())) {
-      continue;
-    }
-
-    const normalizedLine = normalizeIntentSentence(line);
-    if (isHardConstraintIntentLine(normalizedLine)) {
-      hardConstraints.push(normalizedLine);
-      continue;
-    }
-
-    if (isNonGoalIntentLine(normalizedLine)) {
-      nonGoals.push(normalizedLine);
-      continue;
-    }
-
-    userIntent.push(normalizedLine);
-  }
-
-  if (userIntent.length === 0 && sentences.length > 0) {
-    userIntent.push(normalizeIntentSentence(sentences[0]));
-  }
-
-  if (hardConstraints.length === 0) {
-    hardConstraints.push("None specified.");
-  }
-
-  if (nonGoals.length === 0) {
-    nonGoals.push("None specified.");
-  }
-
-  return {
-    userIntent,
-    hardConstraints,
-    nonGoals,
-  };
-}
-
-function hasVerifierResultField(body) {
-  const patterns = [
-    /\*\*Result:\s*(PASS|FAIL|PARTIAL)\*\*/i,
-    /\*\*Result:\*\*\s*(PASS|FAIL|PARTIAL)/i,
-    /^Result:\s*(PASS|FAIL|PARTIAL)\s*$/im,
-  ];
-
-  return patterns.some((pattern) => pattern.test(body));
-}
-
-function stripUtf8Bom(text) {
-  return text.replace(/^\uFEFF/, "");
-}
-
-function buildIntentMarkdownFromSections(sections) {
-  const lines = ["# User Intent Brief", ""];
-  lines.push("## User Intent");
-  lines.push(renderSectionBody(sections.userIntent, "- Clarify the user request."));
-  lines.push("");
-  lines.push("## Hard Constraints");
-  lines.push(renderSectionBody(sections.hardConstraints, "- None specified."));
-  lines.push("");
-  lines.push("## Non-goals");
-  lines.push(renderSectionBody(sections.nonGoals, "- None specified."));
-  lines.push("");
-
-  return `${lines.join("\n").trimEnd()}\n`;
-}
-
-function getOutOfOrderSections(sectionTitles, requiredSections) {
-  const positions = requiredSections
-    .map((title) => ({
-      title,
-      position: sectionTitles.indexOf(title),
-    }))
-    .filter((entry) => entry.position !== -1);
-
-  const outOfOrder = [];
-  for (let index = 1; index < positions.length; index += 1) {
-    if (positions[index].position < positions[index - 1].position) {
-      outOfOrder.push(positions[index].title);
-    }
-  }
-
-  return outOfOrder;
-}
-
-function hasListLikeContent(content) {
-  return (
-    /^\s*-\s+/m.test(content) ||
-    /^\s*\d+\.\s+/m.test(content) ||
-    /^\s*None(?:\s+specified)?\.?\s*$/im.test(content) ||
-    /^\s*No(?:\s+\w+){0,3}\.\s*$/im.test(content)
-  );
-}
-
-function buildChecklistItem(name, ok, detail) {
-  return { name, ok, detail };
-}
-
-function renderSectionBody(value, fallback) {
-  if (Array.isArray(value)) {
-    const items = value.map((entry) => `${entry}`.trim()).filter(Boolean);
-    return items.length > 0 ? items.map((entry) => toBulletLine(entry)).join("\n") : fallback;
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return fallback;
-    }
-    if (hasListLikeContent(trimmed)) {
-      return trimmed;
-    }
-    return trimmed;
-  }
-
-  return fallback;
-}
-
-function clampSectionBody(body, tokenBudget) {
-  const normalizedBody = `${body ?? ""}`.trim();
-  const maxChars = Math.max(120, tokenBudget * 4);
-
-  if (normalizedBody.length <= maxChars) {
-    return normalizedBody;
-  }
-
-  const lines = normalizedBody.split("\n").map((line) => line.trim()).filter(Boolean);
-  if (lines.every((line) => hasListLikeContent(line))) {
-    const truncatedLines = [];
-    let consumed = 0;
-    for (const line of lines) {
-      const nextLength = consumed + line.length + 1;
-      if (nextLength > maxChars - 24) {
-        break;
-      }
-      truncatedLines.push(line);
-      consumed = nextLength;
-    }
-
-    if (truncatedLines.length === 0) {
-      return `${normalizedBody.slice(0, maxChars - 16).trimEnd()}... [truncated]`;
-    }
-
-    if (truncatedLines.join("\n") !== normalizedBody) {
-      truncatedLines.push("- Truncated for budget.");
-    }
-    return truncatedLines.join("\n");
-  }
-
-  return `${normalizedBody.slice(0, maxChars - 16).trimEnd()}... [truncated]`;
-}
-
-function appendOptionalMarkdownSection(lines, title, content) {
-  const trimmedContent = `${content ?? ""}`.trim();
-  if (!trimmedContent) {
-    return;
-  }
-
-  lines.push(`## ${title}`);
-  lines.push(trimmedContent);
-  lines.push("");
-}
-
-function toBulletItems(content) {
-  if (!content) {
-    return [];
-  }
-
-  return content
-    .split("\n")
-    .map((line) => stripIntentBullet(line).trim())
-    .filter(Boolean)
-    .map((line) => normalizeIntentSentence(line));
-}
-
-function stripIntentBullet(line) {
-  return `${line ?? ""}`.replace(/^\s*(?:[-*]|\d+[.)]|\d+、|[（(]\d+[)）])\s+/, "");
-}
-
-function normalizeIntentSentence(line) {
-  const trimmed = `${line ?? ""}`.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-
-  if (/[.!?;:。！？；：]$/.test(trimmed)) {
-    return trimmed;
-  }
-
-  return containsCjkCharacters(trimmed) ? `${trimmed}。` : `${trimmed}.`;
-}
-
-function isNonGoalIntentLine(line) {
-  return (
-    [...MULTILINGUAL_NON_GOAL_PATTERNS, ...NON_GOAL_PATTERNS].some((pattern) => pattern.test(line)) &&
-    !/\bdo not break\b/i.test(line) &&
-    !/^\s*(?:\u4e0d\u8981|\u522b|\u5148\u522b)\s*\u7834\u574f/u.test(line)
-  );
-}
-
-function isHardConstraintIntentLine(line) {
-  return [...MULTILINGUAL_HARD_CONSTRAINT_PATTERNS, ...HARD_CONSTRAINT_PATTERNS].some((pattern) =>
-    pattern.test(line),
-  );
-}
-
-function containsCjkCharacters(value) {
-  return /[\u3400-\u9fff]/u.test(`${value ?? ""}`);
-}
-
-function splitIntentSentences(line) {
-  return (`${line ?? ""}`.match(/[^.!?;:。！？；：]+(?:[.!?;:。！？；：]+|$)/gu) ?? [])
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-function stripBullet(line) {
-  return `${line ?? ""}`.replace(/^\s*(?:[-*]|\d+\.)\s+/, "");
-}
-
-function toBulletLine(line) {
-  const trimmed = `${line}`.trim();
-  return /^[*-]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed) ? trimmed : `- ${trimmed}`;
-}
-
-function normalizeSentence(line) {
-  const trimmed = `${line ?? ""}`.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-
-  return /[.!?。；;]$/.test(trimmed) ? trimmed : `${trimmed}.`;
-}
-
-function isNonGoalLine(line) {
-  return NON_GOAL_PATTERNS.some((pattern) => pattern.test(line)) && !/\bdo not break\b/i.test(line);
-}
-
-function isHardConstraintLine(line) {
-  return HARD_CONSTRAINT_PATTERNS.some((pattern) => pattern.test(line));
-}
-
-function dedupeExistingPaths(paths) {
-  const seen = new Set();
-  const resolved = [];
-
-  for (const candidate of paths) {
-    if (!candidate) {
-      continue;
-    }
-
-    const normalized = path.normalize(candidate);
-    if (!existsSync(normalized) || seen.has(normalized)) {
-      continue;
-    }
-
-    seen.add(normalized);
-    resolved.push(normalized);
-  }
-
-  return resolved;
-}
-
-function stripVerifierTrailer(reportText) {
-  return `${reportText ?? ""}`
-    .replace(/\r\n/g, "\n")
-    .replace(/\n<usage>[\s\S]*$/m, "")
-    .trim();
-}
-
-function normalizeStructuredVerifierText(input) {
-  if (input && typeof input === "object") {
-    return input;
-  }
-
-  const normalized = stripVerifierTrailer(`${input ?? ""}`).replace(/^\uFEFF/, "");
-  const fencedMatch = normalized.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return fencedMatch ? fencedMatch[1].trim() : normalized.trim();
-}
-
-function renderStructuredVerifierField(label, value) {
-  const normalizedValue = `${value ?? ""}`.trim();
-  if (!normalizedValue.includes("\n")) {
-    return `**${label}:** ${normalizedValue}`;
-  }
-
-  return `**${label}:**\n${normalizedValue}`;
-}
-
-function splitIntoSentences(line) {
-  return `${line ?? ""}`
-    .split(/(?<=[.!?。！？])\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
+{
+   "alert_popup_filter_enabled_desc": {
+      "message": "%filter_name% je bil smodejno aktiviran."
+   },
+   "alert_popup_filter_enabled_title": {
+      "message": "Samodejno aktiviranje filtrov"
+   },
+   "background_tab_title": {
+      "message": "Zavihek v ozadju"
+   },
+   "blocking_pages_advanced_button": {
+      "message": "Napredno"
+   },
+   "blocking_pages_btn_go_back": {
+      "message": "Pojdi nazaj"
+   },
+   "blocking_pages_btn_proceed": {
+      "message": "Vseeno nadaljuj"
+   },
+   "blocking_pages_malware": {
+      "message": "Ta spletna stran v \u003Cstrong>%host%\u003C/strong> je bila prijavljena kot stran z zlonamernimi programi in je bila onemogočena glede na vaše varnostne nastavitve."
+   },
+   "blocking_pages_more_info_button": {
+      "message": "Več podatkov"
+   },
+   "blocking_pages_page_title": {
+      "message": "Dostop zavrnjen"
+   },
+   "blocking_pages_phishing": {
+      "message": "Ta spletna stran v \u003Cstrong>%host%\u003C/strong> je bila prijavljena kot lažna stran in je bila onemogočena glede na vaše varnostne nastavitve."
+   },
+   "blocking_pages_rule_content_title": {
+      "message": "AdGuard je preprečil nalaganje te strani zaradi naslednjega pravila filtriranja"
+   },
+   "blocking_pages_rule_header_title": {
+      "message": "Onemogočeno z AdGuardom"
+   },
+   "blocking_pages_safe_header_title": {
+      "message": "AdGuard je onemogočil dostop do te strani"
+   },
+   "clear_button_title": {
+      "message": "Počisti"
+   },
+   "close_button_title": {
+      "message": "Zapri"
+   },
+   "context_block_site_ads": {
+      "message": "Blokiraj oglase ročno"
+   },
+   "context_complaint_website": {
+      "message": "Prijavi težavo"
+   },
+   "context_disable_protection": {
+      "message": "Začasno zaustavi AdGuardovo zaščito"
+   },
+   "context_enable_protection": {
+      "message": "Nadaljuj z AdGuardovo zaščito"
+   },
+   "context_open_log": {
+      "message": "Dnevnik filtriranja"
+   },
+   "context_open_settings": {
+      "message": "Nastavitve AdGuarda"
+   },
+   "context_security_report": {
+      "message": "Preveri varnost spletne strani"
+   },
+   "context_site_exception": {
+      "message": "Ta spletna stran je med izjemami"
+   },
+   "context_site_filtering_disabled": {
+      "message": "AdGuard ne more filtrirati te strani"
+   },
+   "context_site_filtering_off": {
+      "message": "Onemogoči filtriranje na tej spletni strani"
+   },
+   "context_site_filtering_on": {
+      "message": "Omogoči filtriranje na tej spletni strani"
+   },
+   "context_site_protection_disabled": {
+      "message": "AdGuardova zaščita je začasno zaustavljena"
+   },
+   "context_update_antibanner_filters": {
+      "message": "Preveri obstoj posodobitev filtra"
+   },
+   "description": {
+      "description": "TEXT MAX LENGTH: 132",
+      "message": "Neujemajoča se razširitev za zaviranje oglasov. Zavira oglase na Facebooku, YouTubeu in vseh drugih spletnih straneh."
+   },
+   "filtering_clear_log_events": {
+      "message": "Počisti dnevnik"
+   },
+   "filtering_log_assumed_rule_description": {
+      "message": "To je predpostavljeno pravilo. Za podrobnosti si oglejte našo \u003Ca>bazo znanja\u003C/a>"
+   },
+   "filtering_log_badge_tooltip_http_req_method": {
+      "message": "Metoda zahteve HTTP"
+   },
+   "filtering_log_badge_tooltip_http_status_code": {
+      "message": "Koda stanja HTTP"
+   },
+   "filtering_log_badge_tooltip_third_party": {
+      "message": "Zahteve druge stranke"
+   },
+   "filtering_log_details_modal_back_button": {
+      "message": "Nazaj na zahtevo"
+   },
+   "filtering_log_details_modal_beautify_button": {
+      "message": "Polepšaj"
+   },
+   "filtering_log_details_modal_try_again": {
+      "message": "Poskusi znova"
+   },
+   "filtering_log_filter_allowed": {
+      "message": "Dovoljeno"
+   },
+   "filtering_log_filter_blocked": {
+      "message": "Onemogočeno"
+   },
+   "filtering_log_filter_modified": {
+      "message": "Spremenjeno"
+   },
+   "filtering_log_filter_regular": {
+      "message": "Redno"
+   },
+   "filtering_log_filter_user_rules": {
+      "message": "Uporabniška pravila"
+   },
+   "filtering_log_hide_referrer": {
+      "message": "Napotitelj skrit pred tretjim istranmi"
+   },
+   "filtering_log_hide_search_queries": {
+      "message": "Vaše iskalne poizvedbe so skrite"
+   },
+   "filtering_log_in_allowlist": {
+      "message": "Stran je dovoljena"
+   },
+   "filtering_log_modified_rules": {
+      "message": "Spremenjena pravila: %rules_count%"
+   },
+   "filtering_log_preserve_log_modal_confirm": {
+      "message": "Da, ohrani"
+   },
+   "filtering_log_preserve_log_modal_description": {
+      "message": "Ta možnost lahko znatno poveča porabo pomnilnika"
+   },
+   "filtering_log_preserve_log_modal_title": {
+      "message": "Ohrani dnevnik?"
+   },
+   "filtering_log_preserve_log_off": {
+      "message": "Ne ohrani dnevnika"
+   },
+   "filtering_log_preserve_log_on": {
+      "message": "Ohrani dnevnik"
+   },
+   "filtering_log_preserve_log_skip_modal_in_future": {
+      "message": "Ne prikaži znova"
+   },
+   "filtering_log_privacy_applied_rules": {
+      "message": "Zaščita proti sledenju uporabljena"
+   },
+   "filtering_log_remove_client_data": {
+      "message": "Glava X-Client-Podatki je skrita"
+   },
+   "filtering_log_search_string": {
+      "message": "Filtriraj zapise dnevnika"
+   },
+   "filtering_log_search_tabs_placeholder": {
+      "message": "Poišči v zavihkih"
+   },
+   "filtering_log_send_not_track": {
+      "message": "Glava Do-Not-Track je skrita"
+   },
+   "filtering_log_status_allowed": {
+      "message": "Dovoljeno"
+   },
+   "filtering_log_status_blocked": {
+      "message": "Onemogočeno"
+   },
+   "filtering_log_status_modified": {
+      "message": "Spremenjeno"
+   },
+   "filtering_log_status_processed": {
+      "message": "Obdelano"
+   },
+   "filtering_log_stealth_rules": {
+      "message": "Pravila za zaščito proti sledenju: %rules_count%"
+   },
+   "filtering_log_tag_request_source": {
+      "message": "Vir zahteve"
+   },
+   "filtering_log_tag_request_status": {
+      "message": "Stanje zahteve"
+   },
+   "filtering_log_tag_request_type": {
+      "message": "Vrsta zahteve"
+   },
+   "filtering_log_tag_tooltip_allowed": {
+      "message": "Samo dovoljene in znova omogočene zahteve"
+   },
+   "filtering_log_tag_tooltip_blocked": {
+      "message": "Blokirane zahteve"
+   },
+   "filtering_log_tag_tooltip_css": {
+      "message": "Slogi listov"
+   },
+   "filtering_log_tag_tooltip_first_party": {
+      "message": "Zahteve prve stranke"
+   },
+   "filtering_log_tag_tooltip_html": {
+      "message": "Dokumenti in poddokumenti"
+   },
+   "filtering_log_tag_tooltip_img": {
+      "message": "Slike"
+   },
+   "filtering_log_tag_tooltip_js": {
+      "message": "Skripti"
+   },
+   "filtering_log_tag_tooltip_media": {
+      "message": "Medij"
+   },
+   "filtering_log_tag_tooltip_modified": {
+      "message": "Samo spremenjene zahteve"
+   },
+   "filtering_log_tag_tooltip_other": {
+      "message": "Pisave, pingi, WebRTC, WebSocket..."
+   },
+   "filtering_log_tag_tooltip_regular": {
+      "message": "Samo zahteve, obdelane brez filtriranja"
+   },
+   "filtering_log_tag_tooltip_third_party": {
+      "message": "Zahteve druge stranke"
+   },
+   "filtering_log_tag_tooltip_user_rules": {
+      "message": "Zahteve, ki jih vplivajo uporabniška pravila"
+   },
+   "filtering_log_tag_tooltip_xhr": {
+      "message": "XML Http zahteve in pridobivanje zahtev"
+   },
+   "filtering_log_title": {
+      "message": "Dnevnik filtriranja"
+   },
+   "filtering_modal_add_rule": {
+      "message": "Dodaj pravilo"
+   },
+   "filtering_modal_add_title": {
+      "message": "Dodajanje pravila"
+   },
+   "filtering_modal_applied_rules": {
+      "description": "WARNING: correct number of plural forms is required",
+      "message": "| Uporabljeno pravilo: | Uporabljena pravila: | Uporabljena pravila: | Uporabljena pravila:"
+   },
+   "filtering_modal_apply_domains": {
+      "message": "Uporabi pravilo za vse strani"
+   },
+   "filtering_modal_assumed_rules": {
+      "description": "WARNING: correct number of plural forms is required",
+      "message": "| Predpostavljeno pravilo: | Predpostavljena pravila: | Predpostavljena pravila: | Predpostavljena pravila:"
+   },
+   "filtering_modal_block": {
+      "message": "Onemogoči"
+   },
+   "filtering_modal_block_again": {
+      "message": "Onemogoči znova"
+   },
+   "filtering_modal_converted_to": {
+      "message": "Pretvorjeno v:"
+   },
+   "filtering_modal_cookie": {
+      "message": "Piškotek:"
+   },
+   "filtering_modal_copied": {
+      "message": "Kopirano"
+   },
+   "filtering_modal_copy_to_clipboard": {
+      "message": "Kopiraj v odložišče"
+   },
+   "filtering_modal_declarative_rule": {
+      "message": "Pravilo DNR:"
+   },
+   "filtering_modal_element": {
+      "message": "Element:"
+   },
+   "filtering_modal_exception_title": {
+      "message": "Dodaj izjemo"
+   },
+   "filtering_modal_filter": {
+      "message": "Filter:"
+   },
+   "filtering_modal_filtering_status_text_desc": {
+      "message": "Stanje filtriranja:"
+   },
+   "filtering_modal_hide_full_element": {
+      "message": "Skrij celoten element"
+   },
+   "filtering_modal_hide_full_rule": {
+      "message": "Skrij celotno pravilo"
+   },
+   "filtering_modal_hide_full_url": {
+      "message": "Skrij celoten URL"
+   },
+   "filtering_modal_important": {
+      "message": "Dodeli pravilu višjo prioriteto"
+   },
+   "filtering_modal_info_title": {
+      "message": "Podrobnosti o zahtevi"
+   },
+   "filtering_modal_open_in_new_tab": {
+      "message": "Odpri v novem zavihku"
+   },
+   "filtering_modal_options_desc": {
+      "message": "Možnosti:"
+   },
+   "filtering_modal_original_rules": {
+      "description": "WARNING: correct number of plural forms is required",
+      "message": "| Izvirno pravilo: | Izvirna pravila: | Izvirna pravila: | Izvirna pravila:"
+   },
+   "filtering_modal_patterns_desc": {
+      "message": "Vzorci:"
+   },
+   "filtering_modal_preview_request_button": {
+      "message": "Predogled"
+   },
+   "filtering_modal_preview_title": {
+      "message": "Predogled"
+   },
+   "filtering_modal_privacy": {
+      "message": "Zaščita proti sledenju:"
+   },
+   "filtering_modal_remove_allowlist": {
+      "message": "Odstrani s seznama dovoljenih"
+   },
+   "filtering_modal_remove_param": {
+      "message": "Odstrani parametre poizvedbe"
+   },
+   "filtering_modal_remove_user": {
+      "message": "Izbriši pravilo"
+   },
+   "filtering_modal_rule": {
+      "message": "Pravilo:"
+   },
+   "filtering_modal_rule_text_desc": {
+      "message": "Besedilo pravila:"
+   },
+   "filtering_modal_rules": {
+      "message": "Pravila:"
+   },
+   "filtering_modal_show_full_element": {
+      "message": "Prikaži celoten element"
+   },
+   "filtering_modal_show_full_rule": {
+      "message": "Prikaži celotno pravilo"
+   },
+   "filtering_modal_show_full_url": {
+      "message": "Prikaži celoten URL"
+   },
+   "filtering_modal_source": {
+      "message": "Vir:"
+   },
+   "filtering_modal_status_text_desc": {
+      "message": "Stanje:"
+   },
+   "filtering_modal_status_text_error": {
+      "message": "Nalaganje predogleda ni uspelo. Prosimo, poskusite znova"
+   },
+   "filtering_modal_status_text_loading": {
+      "message": "Nalaganje..."
+   },
+   "filtering_modal_third_party": {
+      "message": "Uporabi samo za zahteve tretjih strani"
+   },
+   "filtering_modal_type": {
+      "message": "Vrsta:"
+   },
+   "filtering_modal_unblock": {
+      "message": "Omogoči"
+   },
+   "filtering_refresh_tab_short": {
+      "message": "Osveži"
+   },
+   "filtering_table_action": {
+      "message": "Dejanje"
+   },
+   "filtering_table_empty_reload_page_desc": {
+      "message": "Nič ni bilo najdeno. \u003Creset>Onemogoči filtre\u003C/reset> ali \u003Crefresh>osveži stran\u003C/refresh> za ogled zapisov dnevnika."
+   },
+   "filtering_table_filter": {
+      "message": "Filter"
+   },
+   "filtering_table_open_details": {
+      "message": "Odpri podrobnosti"
+   },
+   "filtering_table_rule": {
+      "message": "Pravilo filtriranja"
+   },
+   "filtering_table_source": {
+      "message": "Vir"
+   },
+   "filtering_table_status": {
+      "message": "Stanje"
+   },
+   "filtering_table_type": {
+      "message": "Vrsta"
+   },
+   "filtering_type_all": {
+      "message": "Vse"
+   },
+   "filtering_type_other": {
+      "message": "Drugo"
+   },
+   "filters_download_loading": {
+      "message": "Počakajte, da se naloži zbirka podatkov filtrov..."
+   },
+   "filters_download_title": {
+      "message": "Nalaganje zbirke podatkov filtrov..."
+   },
+   "fullscreen_user_rules_title": {
+      "message": "Uporabniška pravila"
+   },
+   "group_description_adblocking": {
+      "message": "Tukaj nastavite zaviranje oglasov, da boste enkrat za vselej odpravili nadležne pasice, pojavna okna, video oglase in podobno"
+   },
+   "group_description_annoyances": {
+      "message": "Odstranite pojavna okna in druga nadležna obvestila, kot so obvestila o piškotkih"
+   },
+   "group_description_custom": {
+      "message": "Ustvarite lastne filtre za fino nastavitev spletnega filtriranja po svojih željah."
+   },
+   "group_description_lang": {
+      "message": "Ne omejajte se — onemogočite oglase na spletnih straneh v vseh jezikih"
+   },
+   "group_description_miscellaneous": {
+      "message": "Več nastavitev za nadaljnje nastavljanje spletnega brskanja z AdGuard"
+   },
+   "group_description_security": {
+      "message": "Obvarujte se pred zlonamernimi programi, lažnim predstavljanjem in drugimi spletnimi grožnjami"
+   },
+   "group_description_social": {
+      "message": "Skrijte neželene gumbe 'Všeč mi je'/'Deli' in druge pripomočke na družbenih omrežjih"
+   },
+   "group_description_stealth": {
+      "message": "Obvarujte svojo identiteto in občutljive osebne podatke iz tisočih spletnih sledilnikov z zaviranjem vseh znanih priljubljenih metod sledenja"
+   },
+   "name": {
+      "message": "AdGuard Zaviralec oglasov"
+   },
+   "options_about": {
+      "message": "Vizitka"
+   },
+   "options_about_libs": {
+      "message": "Uporabljene knjižnice"
+   },
+   "options_about_title": {
+      "message": "AdGuard Razširitev brskalnika"
+   },
+   "options_about_version": {
+      "message": "Različica"
+   },
+   "options_acknowledgment": {
+      "message": "Zahvale"
+   },
+   "options_add_custom_filter": {
+      "message": "Dodaj filter po meri"
+   },
+   "options_add_custom_filter_modal_add_button": {
+      "message": "Dodaj"
+   },
+   "options_add_custom_filter_modal_checking_filter": {
+      "message": "Preverjanje vašega filtra..."
+   },
+   "options_add_custom_filter_modal_error_subtitle": {
+      "message": "Poskusite znova ali se obrnite na podporo"
+   },
+   "options_add_custom_filter_modal_error_title": {
+      "message": "Ni uspelo dodati filtra po meri"
+   },
+   "options_add_custom_filter_modal_filter_name": {
+      "message": "Ime filtra:"
+   },
+   "options_add_custom_filter_modal_filter_trusted": {
+      "message": "Zaupanja vreden"
+   },
+   "options_add_custom_filter_modal_filter_trusted_description": {
+      "message": "Zaupanja vredni filtri lahko uporabljajo zmogljive spreminjevalce pravil – poskrbite, da boste uporabili filter zaupanja vrednih razvijalcev"
+   },
+   "options_add_custom_filter_modal_title": {
+      "message": "Dodaj filter po  meri"
+   },
+   "options_all_limits_exceeded_warning": {
+      "message": "Dosegli ste omejitev aktivnih vgrajenih filtrov. Brskalnik je spremenil seznam aktivnih vgrajenih filtrov. Število omogočenih filtrov se je spremenilo iz %expected% na %current%."
+   },
+   "options_all_limits_exceeded_warning_browser": {
+      "message": "Dosegli ste omejitev aktivnih vgrajenih pravil vašega brskalnika. Vaš brskalnik je zmanjšal seznam aktivnih vgrajenih filtrov s %expected% na %current%"
+   },
+   "options_allow_user_scripts_required": {
+      "description": "Note: \u003Csettings-link> and \u003Cexternal-link> are just \u003Ca> tags, so it would be rendered as a link.",
+      "message": "Vaš brskalnik omejuje \u003Cexternal-link>nekatere vrste pravil\u003C/external-link>. Če želite uporabiti vsa pravila, omogočite \u003Cb>Dovoli uporabniške skripte\u003C/b> v nastavitvah razširitve \u003Csettings-link>vašega brskalnika\u003C/settings-link>"
+   },
+   "options_allowlist": {
+      "message": "Seznam dovoljenih"
+   },
+   "options_allowlist_alert_invert": {
+      "message": "Seznam dovoljenih je obrnjen. Oglasi so blokirani samo na spletnih straneh na katerih so dodani. \u003Ca>Onemogoči\u003C/a>"
+   },
+   "options_allowlist_desc": {
+      "message": "AdGuard ne blokira oglasov in sledilcev na spletnih straneh s seznama"
+   },
+   "options_allowlist_invert": {
+      "message": "Obrni seznam dovoljenih"
+   },
+   "options_allowlist_invert_desc": {
+      "message": "Blokira oglase in sledilce samo na spletnih straneh s seznama dovoljenih"
+   },
+   "options_allowlist_leave_subtitle": {
+      "message": "Vaše spremembe na seznamu dovoljenih bodo izgubljene"
+   },
+   "options_anonymized_usage_data_description": {
+      "message": "Pošlje anonimno statistiko o uporabi razširitve AdGuardu. \u003Cbutton>Več o tem\u003C/button>"
+   },
+   "options_anonymized_usage_data_modal_got_it_button": {
+      "message": "Razumem"
+   },
+   "options_anonymized_usage_data_modal_intro": {
+      "message": "Ti podatki vključujejo:"
+   },
+   "options_anonymized_usage_data_modal_list_item_buttons": {
+      "message": "Imena gumbov, ki jih kliknete"
+   },
+   "options_anonymized_usage_data_modal_list_item_screens": {
+      "message": "Imena zaslonov, s katerimi komunicirate"
+   },
+   "options_anonymized_usage_data_modal_list_item_session_ids": {
+      "message": "Identifikatorji sej"
+   },
+   "options_anonymized_usage_data_modal_privacy_note": {
+      "message": "Ti podatki so anonimni in se uporabljajo samo interno. Nikoli jih ne delimo s tretjimi osebami"
+   },
+   "options_anonymized_usage_data_modal_reason": {
+      "message": "Te informacije potrebujemo, da analiziramo in izboljšamo funkcionalnost AdGuard"
+   },
+   "options_anonymized_usage_data_modal_title": {
+      "message": "Podatki o uporabi razširitve"
+   },
+   "options_anonymized_usage_data_title": {
+      "message": "Pošlji anonimizirane podatke o uporabi razširitve"
+   },
+   "options_antibanner_custom_filter_already_exists": {
+      "message": "Ta filter po meri je že bil dodan"
+   },
+   "options_antibanner_custom_group": {
+      "message": "Po meri"
+   },
+   "options_antibanner_custom_group_description": {
+      "message": "Omogoča dodajanje filtrov iz datoteke ali URL naslova"
+   },
+   "options_antibanner_rules_count": {
+      "message": "Število pravil filtriranja: %rules_count%"
+   },
+   "options_block_acceptable_ads": {
+      "message": "Onemogoči iskalne oglase in samopromocijo spletnih strani"
+   },
+   "options_block_acceptable_ads_desc": {
+      "message": "Blokira oglase v rezultatih iskanja in samopromocijo spletnih mest. \u003Ca>Več o tem\u003C/a>"
+   },
+   "options_block_cookies_lifetime": {
+      "message": "Za blokiranje piškotkov nastavite življenjsko dobo na 0"
+   },
+   "options_block_known_trackers_description": {
+      "message": "Onemogoča sledilnike in spletno analitiko z uporabo filtra AdGuard Zaščita pred sledenjem"
+   },
+   "options_block_known_trackers_title": {
+      "message": "Onemogoči sledilce"
+   },
+   "options_check_update_progress": {
+      "message": "Preverjanje..."
+   },
+   "options_clear_stats_confirm_modal_clear_button": {
+      "message": "Počisti"
+   },
+   "options_clear_stats_confirm_modal_title": {
+      "message": "Počistim statistiko?"
+   },
+   "options_clipboard_permission_warning": {
+      "message": "Za kopiranje in lepljenje pravil dovolite AdGuardu dostop do odložišča. \u003Ca>Dovoli\u003C/a>"
+   },
+   "options_collect_hit_stats_desc": {
+      "message": "Pošlje anonimne statistike o uporabi filtrov oglasov AdGuardu. \u003Ca>Več o tem\u003C/a>"
+   },
+   "options_collect_hit_stats_title": {
+      "message": "Pomagajte razvijati filtre AdGuard"
+   },
+   "options_coming_soon": {
+      "message": "Prihaja kmalu"
+   },
+   "options_confirm_modal_cancel_button": {
+      "message": "Prekliči"
+   },
+   "options_copyright": {
+      "message": "Vse pravice so pridržane."
+   },
+   "options_custom_group_allow_user_scripts_required": {
+      "description": "Note: \u003Csettings-link> and \u003Cexternal-link> are just \u003Ca> tags, so it would be rendered as a link.",
+      "message": "Če želite uporabljati filtre po meri, omogočite \u003Cb>Dovoli uporabniške skripte\u003C/b> v nastavitvah razširitve \u003Csettings-link>vašega brskalnika\u003C/settings-link>"
+   },
+   "options_custom_group_developer_mode_required": {
+      "description": "Note: \u003Csettings-link> and \u003Cexternal-link> are just \u003Ca> tags, so it would be rendered as a link.",
+      "message": "Če želite uporabljati filtre po meri, omogočite \u003Cb>Način za razvijalce\u003C/b> v nastavitvah razširitve \u003Csettings-link>vašega brskalnika\u003C/settings-link>"
+   },
+   "options_developer_mode_required": {
+      "description": "Note: \u003Csettings-link> and \u003Cexternal-link> are just \u003Ca> tags, so it would be rendered as a link.",
+      "message": "Vaš brskalnik omejuje \u003Cexternal-link>nekatere vrste pravil\u003C/external-link>. Če želite uporabiti vsa pravila, omogočite \u003Cb>Način za razvijalce\u003C/b> v nastavitvah razširitve \u003Csettings-link>vašega brskalnika\u003C/settings-link>"
+   },
+   "options_disable_webrtc_desc": {
+      "message": "Blokira WebRTC, ki lahko razkrije vaš pravi naslov IP, tudi če uporabljate namestniški trežnik ali VPN. Nekateri sporočilniki, pretočne platforme ali igre morda ne bodo delovali pravilno"
+   },
+   "options_disable_webrtc_title": {
+      "message": "Onemogoči WebRTC"
+   },
+   "options_discuss": {
+      "message": "Pogovor z AdGuardom"
+   },
+   "options_do_you_like_question": {
+      "message": "Ali vam je všeč AdGuard?"
+   },
+   "options_editor_close_fullscreen_button_tooltip": {
+      "message": "Zapri način okna"
+   },
+   "options_editor_indicator_saved": {
+      "message": "Shranjeno"
+   },
+   "options_editor_indicator_saving": {
+      "message": "Shranjevanje..."
+   },
+   "options_editor_leave_cancel": {
+      "message": "Nazaj k urejanju"
+   },
+   "options_editor_leave_confirm": {
+      "message": "Da, odidi"
+   },
+   "options_editor_leave_title": {
+      "message": "Odidi brez shranjevanja?"
+   },
+   "options_editor_open_fullscreen_button_tooltip": {
+      "message": "Odpri urejevalnik v novem oknu"
+   },
+   "options_editor_save": {
+      "message": "Shrani"
+   },
+   "options_empty_custom_filter": {
+      "message": "Nimate še nobenih filtrov po meri"
+   },
+   "options_enable_autodetect_filter": {
+      "message": "Samodejno aktiviraj najprimernejše filtre"
+   },
+   "options_enable_autodetect_filter_desc": {
+      "message": "Zazna jezik spletnega mesta in aktivira ustrezne filtre"
+   },
+   "options_export_settings": {
+      "message": "Izvozi nastavitve"
+   },
+   "options_filters": {
+      "message": "Filtri"
+   },
+   "options_filters_annoyances_consent_description": {
+      "message": "Omogočili boste enega ali več filtrov motenj. Blokirajo elemente, ki niso povezani z vsebino spletne strani ali so povezani, vendar so moteči za vašo uporabniško izkušnjo. Lastniki spletnih strani lahko te elemente obravnavajo kot obvezne: če jih blokirate, morda kršite njihove pogoje; nekatere funkcionalnosti spletnih strani morda ne bodo na voljo ali ne bodo pravilno delovale. Razumete in se strinjate, da ste sami odgovorni za upoštevanje pogojev uporabe spletnih strani, ki jih obiščete, in da AdGuard ni odgovoren za vaše upoštevanje pogojev uporabe spletnih strani, ki jih obiščete z uporabo naših izdelkov."
+   },
+   "options_filters_annoyances_consent_enable_button": {
+      "message": "Omogoči"
+   },
+   "options_filters_annoyances_consent_filter_homepage_tooltip": {
+      "message": "Domača stran"
+   },
+   "options_filters_annoyances_consent_filter_policy": {
+      "message": "Za podrobnosti o tem, kaj AdGuardovi filtri motenj blokirajo, glejte \u003Ca>Politika filtra\u003C/a>"
+   },
+   "options_filters_annoyances_consent_question": {
+      "message": "Želite omogočiti ta filter?"
+   },
+   "options_filters_annoyances_consent_title": {
+      "message": "Pozorno preberite, preden omogočite filtre za motnje"
+   },
+   "options_filters_back_button": {
+      "message": "Pojdi nazaj"
+   },
+   "options_filters_empty_title": {
+      "message": "Nič ni bilo najdeno"
+   },
+   "options_filters_enabled": {
+      "message": "Omogočeno:"
+   },
+   "options_filters_enabled_and_last": {
+      "message": "%enabled% in %last%"
+   },
+   "options_filters_enabled_and_more": {
+      "message": "%enabled% in %more% več"
+   },
+   "options_filters_enabled_per_group": {
+      "message": "Omogočeno: %current% od %total%"
+   },
+   "options_filters_filter_link": {
+      "message": "Pojdi na domačo stran"
+   },
+   "options_filters_filter_tags": {
+      "message": "Oznake filtra"
+   },
+   "options_filters_filter_trusted_tag_desc": {
+      "message": "Izbrali ste, da zaupate temu filtru."
+   },
+   "options_filters_filter_updated": {
+      "message": "posodobljen:"
+   },
+   "options_filters_filter_version": {
+      "message": "različica:"
+   },
+   "options_filters_info_mv3_total_rules": {
+      "message": "Vsa pravila: %num%"
+   },
+   "options_filters_list_search_display_option_all_filters": {
+      "message": "Vsi filtri"
+   },
+   "options_filters_list_search_display_option_disabled": {
+      "message": "Onemogočeno"
+   },
+   "options_filters_list_search_display_option_enabled": {
+      "message": "Omogočeno"
+   },
+   "options_filters_no_enabled": {
+      "message": "Noben filter ni omogočen"
+   },
+   "options_filters_of_group": {
+      "message": "Filtri skupine »%groupName%«"
+   },
+   "options_filters_search": {
+      "message": "Poišči"
+   },
+   "options_filters_search_filter": {
+      "message": "Poišči filter"
+   },
+   "options_first_party_block_cookies_warning": {
+      "message": "Če te Piškotek popolnoma onemogočite, se lahko nekatere spletne strani pokvarijo ali prenehajo delovati"
+   },
+   "options_first_party_desc": {
+      "message": "Spletnim stranem preprečuje, da bi si zapomnile vaše podatke, kot so vaši prijavni podatki in jezikovne nastavitve, tako da omeji življenjsko dobo piškotkov prva stranka"
+   },
+   "options_first_party_title": {
+      "message": "Izbriši first-party piškotke (ni priporočeno)"
+   },
+   "options_footer_like_us_cta": {
+      "message": "Ocenite ga!"
+   },
+   "options_general_settings": {
+      "message": "Splošno"
+   },
+   "options_github": {
+      "message": "GitHub"
+   },
+   "options_hide_referrer_desc": {
+      "message": "Preprečite tretjim osebam, da vedo, katero spletno stran obiskujete"
+   },
+   "options_hide_referrer_title": {
+      "message": " Skrij napotitelja iz tretjih straneh"
+   },
+   "options_hide_search_queries_desc": {
+      "message": "Skrije vaša iskanja pred spletnimi stranmi, ki jih obiščete prek rezultatov iskalnika"
+   },
+   "options_hide_search_queries_title": {
+      "message": "Skriti iskalne poizvedbe"
+   },
+   "options_import_settings": {
+      "message": "Uvozi nastavitve"
+   },
+   "options_leave_feedback": {
+      "message": "Pošlji povratne informacije"
+   },
+   "options_lifetime_minutes": {
+      "message": "Življenjska doba, minute"
+   },
+   "options_limits_warning_dynamic_regex_rules": {
+      "message": "Dosegli ste omejitev uporabniško dodanih pravil regularnega izraza. %maximum% od %current% pravil regularnih izrazov je omogočenih."
+   },
+   "options_limits_warning_dynamic_regex_rules_hint": {
+      "message": "Dosegli ste omejitev regex pravil, dodanih s strani uporabnika. Omogočenih je %maximum% od %current% pravil. Za dodajanje novih regex pravil odstranite nekaj obstoječih"
+   },
+   "options_limits_warning_dynamic_rules": {
+      "message": "Dosegli ste omejitev uporabniško dodanih pravil. %maximum% od %current% pravil je omogočenih."
+   },
+   "options_limits_warning_dynamic_rules_hint": {
+      "message": "Dosegli ste omejitev pravil, dodanih s strani uporabnika. Omogočenih je %maximum% od %current% pravil. Za dodajanje novih pravil odstranite nekaj obstoječih"
+   },
+   "options_limits_warning_dynamic_unsafe_rules": {
+      "message": "Dosegli ste limit uporabniško dodanih nenačrtovanih pravil. %maximum% od %current% nenačrtovanih pravil je omogočenih."
+   },
+   "options_limits_warning_static_filters": {
+      "message": "Dosegli ste omejitev aktivnih vgrajenih filtrov. %maximum% od %current% filtrov je omogočenih. Za aktiviranje novih pravil onemogočite nekatere vgrajene filtre."
+   },
+   "options_limits_warning_static_filters_browser": {
+      "message": "Dosegli ste omejitev aktivnih vgrajenih filtrov vašega brskalnika. Omogočenih je %maximum% od %current% filtrov. Za aktiviranje novih filtrov onemogočite nekatere vgrajene"
+   },
+   "options_limits_warning_static_regex_rules": {
+      "message": "Dosegli ste omejitev aktivnih vgrajenih pravil regularnega izraza. %maximum% od %current% pravil regularnega izraza je omogočenih. Za aktiviranje novih pravil onemogočite nekatere vgrajene filtre."
+   },
+   "options_limits_warning_static_regex_rules_no_counter": {
+      "message": "Dosegli ste omejitev aktivnih vgrajenih regex pravil. Za aktiviranje novih pravil onemogočite nekatere vgrajene filtre"
+   },
+   "options_limits_warning_static_rules": {
+      "message": "Dosegli ste omejitev aktivnih vgrajenih pravil. %maximum% od %current% pravil je omogočenih. Za aktiviranje novih pravil onemogočite nekatere vgrajene filtre."
+   },
+   "options_limits_warning_static_rules_browser": {
+      "message": "Dosegli ste omejitev aktivnih vgrajenih pravil vašega brskalnika. Za aktiviranje novih pravil onemogočite nekatere vgrajene filtre"
+   },
+   "options_loader_applying_changes": {
+      "message": "Uveljavitev sprememb..."
+   },
+   "options_miscellaneous_settings": {
+      "message": "Razno"
+   },
+   "options_modified_first_party_cookie": {
+      "message": "Piškotek za prvo stran je spremenjen"
+   },
+   "options_modified_third_party_cookie": {
+      "message": "Piškotek za tretjo stran je spremenjen"
+   },
+   "options_nav_better_than_extension": {
+      "message": "Zakaj je aplikacija AdGuard boljša od razširitve?"
+   },
+   "options_nav_compare": {
+      "message": "Primerjaj"
+   },
+   "options_navigation": {
+      "message": "Navigacija"
+   },
+   "options_open_changelog": {
+      "message": "Dnevnik sprememb"
+   },
+   "options_open_log": {
+      "message": "Dnevnik filtriranja"
+   },
+   "options_popup_call_to_action": {
+      "message": "V zgornje polje vnesite veljaven URL ali pot datoteke v filter."
+   },
+   "options_popup_check_false_description": {
+      "message": "Napaka pri dodajanju vašega filtra po meri."
+   },
+   "options_popup_check_false_title": {
+      "message": "Napaka"
+   },
+   "options_popup_checking_filter": {
+      "message": "Preverjanje vašega filtra"
+   },
+   "options_popup_description": {
+      "message": "Na ta filter boste naročeni."
+   },
+   "options_popup_filter_description": {
+      "message": "Opis:"
+   },
+   "options_popup_filter_homepage": {
+      "message": "Domača stran:"
+   },
+   "options_popup_filter_rules_count": {
+      "message": "Število pravil:"
+   },
+   "options_popup_filter_title": {
+      "message": "Naslov:"
+   },
+   "options_popup_filter_url": {
+      "message": "URL:"
+   },
+   "options_popup_filter_version": {
+      "message": "Različica:"
+   },
+   "options_popup_import_error_file_description": {
+      "message": "Nekaj je šlo narobe."
+   },
+   "options_popup_import_error_required_privacy_permission": {
+      "message": "Če želite uvoziti to datoteko z nastavitvami, dovolite AdGuardu, da spremeni vaše nastavitve, povezane z zasebnostjo."
+   },
+   "options_popup_import_error_title": {
+      "message": "Izvoz nastavitev ni uspel"
+   },
+   "options_popup_import_settings_wrong_file_ext": {
+      "message": "Končnica datoteke mora biti %extension%"
+   },
+   "options_popup_import_success_title": {
+      "message": "Nastavitve uvožene"
+   },
+   "options_popup_next_button": {
+      "message": "Naprej"
+   },
+   "options_popup_subscribe_button": {
+      "message": "Naroči se"
+   },
+   "options_popup_title_placeholder": {
+      "message": "Vnesite ime filtra"
+   },
+   "options_popup_trusted_filter_description": {
+      "message": "Pri zaupanja vrednim filtrom lahko uporabite modifikatorje pravil filtriranja, ki so lahko nevarni v napačnih rokah. Ne označujte tega polja, razen če mu popolnoma zaupate."
+   },
+   "options_popup_trusted_filter_title": {
+      "message": "Zaupanja vreden"
+   },
+   "options_popup_try_again_button": {
+      "message": "Poskusi znova"
+   },
+   "options_popup_update_error": {
+      "message": "Posodobitev ni uspela. Prosimo poskusite kasneje."
+   },
+   "options_popup_update_filter": {
+      "message": "je bilo posodobljeno."
+   },
+   "options_popup_update_filters": {
+      "message": "so bili posodobljeni."
+   },
+   "options_popup_update_not_found": {
+      "message": "Ni najdenih posodobitev"
+   },
+   "options_popup_update_title_error": {
+      "message": "Napaka pri posodabljanju filtrov"
+   },
+   "options_popup_updating_filters": {
+      "message": "Posodabljanje filtrov..."
+   },
+   "options_popup_url_placeholder": {
+      "message": "Vnesite URL ali pot"
+   },
+   "options_popup_url_title": {
+      "message": "Nova naročnina filtra"
+   },
+   "options_popup_version_update_changelog_text": {
+      "message": "Kaj je novega v tej različici?"
+   },
+   "options_popup_version_update_description_major": {
+      "message": "To je velika nadgradnja razširitve, ki prinaša veliko novih funkcij in izboljšav."
+   },
+   "options_popup_version_update_description_minor": {
+      "message": "Ta različica večinoma vsebuje popravke napak in manjše izboljšave."
+   },
+   "options_popup_version_update_disable_notification": {
+      "message": "Onemogočite obvestila"
+   },
+   "options_popup_version_update_offer": {
+      "message": "Ali ste vedeli, da zmogljivosti AdGuarda niso omejene na ta brskalnik?"
+   },
+   "options_popup_version_update_offer_button_text": {
+      "message": "VEČ O TEM"
+   },
+   "options_popup_version_update_title_text": {
+      "message": "Razširitev AdGuard je bila posodobljena na različico %current_version%"
+   },
+   "options_privacy": {
+      "message": "Zaščita pred sledenjem"
+   },
+   "options_privacy_desc": {
+      "message": "Ščiti vašo spletno dejavnost in osebne podatke pred spletnimi sledilci"
+   },
+   "options_privacy_policy": {
+      "message": "Politika zasebnosti"
+   },
+   "options_privacy_title": {
+      "message": "Zaščita pred sledenjem"
+   },
+   "options_remove_client_data_desc": {
+      "message": "Preprečite Google Chromu pošiljanje podatkov o različicah in spremembah Googlovim domenam"
+   },
+   "options_remove_client_data_title": {
+      "message": "Odstrani glavo X-Client-Data"
+   },
+   "options_remove_filter_confirm_modal_ok_button": {
+      "message": "Odstrani"
+   },
+   "options_remove_filter_confirm_modal_title": {
+      "message": "Odstranim ta filter?"
+   },
+   "options_report_bug": {
+      "message": "Prijavi napako"
+   },
+   "options_reset_settings": {
+      "message": "Ponastavi nastavitve"
+   },
+   "options_reset_settings_confirm_modal_clear_button": {
+      "message": "Ponastavi"
+   },
+   "options_reset_settings_confirm_modal_title": {
+      "message": "Ponastavim nastavitve?"
+   },
+   "options_reset_settings_done": {
+      "message": "Nastavitve so bile ponastavljene"
+   },
+   "options_reset_settings_error": {
+      "message": "Napaka pri ponastavitvi nastavitev"
+   },
+   "options_reset_stats": {
+      "message": "Počisti statistiko"
+   },
+   "options_reset_stats_done": {
+      "message": "Statistika je bila ponastavljena"
+   },
+   "options_rule_limits": {
+      "message": "Omejitve pravil"
+   },
+   "options_rule_limits_description": {
+      "message": "Chrome omejuje število pravil, ki jih je mogoče uporabiti"
+   },
+   "options_rule_limits_dynamic": {
+      "message": "Dinamična pravila"
+   },
+   "options_rule_limits_dynamic_regex": {
+      "message": "Pravila regex - vključena v pravila, ki jih je dodal uporabnik"
+   },
+   "options_rule_limits_dynamic_unsafe": {
+      "description": "Note: First dollar sign is used to escape the second one, so eventually only one dollar sign will be displayed",
+      "message": "Nevarna dinamična pravila (uporabljajo se za nekatere napredne modifikatorje, kot je $$redirect ali $$cookie) — vključena v pravila, ki jih doda uporabnik"
+   },
+   "options_rule_limits_dynamic_user_rules": {
+      "message": "Uporabniško dodana pravila, kot so \u003Cuser_rules>Uporabniška pravila\u003C/user_rules>, \u003Callowlist>spletne strani na seznamu dovoljenih\u003C/allowlist> in \u003Ccustom_filters>filtri po meri\u003C/custom_filters>"
+   },
+   "options_rule_limits_dynamic_user_rules_no_custom_filters": {
+      "message": "Pravila, ki jih dodajo uporabniki, kot so uporabniška pravila \u003Cuser_rules>\u003C/user_rules> in \u003Callowlist>dovoljena spletna mesta\u003C/allowlist>"
+   },
+   "options_rule_limits_numbers": {
+      "message": "%current% od %maximum%"
+   },
+   "options_rule_limits_static_rules": {
+      "message": "Statična pravila"
+   },
+   "options_rule_limits_static_rules_all": {
+      "message": "Pravila iz \u003Ca>vgrajenih filtrov\u003C/a>"
+   },
+   "options_rule_limits_static_rules_regex": {
+      "message": "Regex pravila - vključena zgoraj"
+   },
+   "options_rule_limits_static_rulesets": {
+      "message": "Statični nizi pravil"
+   },
+   "options_rule_limits_static_rulesets_builtin": {
+      "message": "\u003Ca>Vgrajeni filtri\u003C/a>, kot so blokiranje nadlegovanja ali filtri, specifični za jezik"
+   },
+   "options_rule_limits_warning_actions_close_warning_multiple_filters": {
+      "message": "Možnost 3. Če ste zadovoljni s trenutno omogočenimi privzetimi filtri, \u003Ca>zaprite to opozorilo.\u003C/a>"
+   },
+   "options_rule_limits_warning_actions_close_warning_one_filter": {
+      "message": "Možnost 3. Če ste zadovoljni s trenutno omogočenimi privzetimi filtri, \u003Ca>zaprite to opozorilo.\u003C/a>"
+   },
+   "options_rule_limits_warning_actions_delete_filters": {
+      "message": "Možnost 1. Iz brskalnika izbrišite nepotrebne razširitve zaviralcev oglasov. Za ponovno aktiviranje filtrov, omenjene v razdelku 'Filtri, omogočeni pred posodobitvijo', kliknite \u003Ca>znova aktiviraj filtre.\u003C/a>"
+   },
+   "options_rule_limits_warning_actions_install_app": {
+      "message": "Možnost 2. Namestite aplikacijo AdGuard Zaviralec oglasov: ta nima omejitev glede pravil filtriranja. \u003Ca>Prenesi AdGuard Zaviralec oglasov\u003C/a>"
+   },
+   "options_rule_limits_warning_actions_title": {
+      "message": "Vaša možna dejanja"
+   },
+   "options_rule_limits_warning_explanation_description": {
+      "message": "Omejitev aktivnih vgrajenih pravil je bila presežena po posodobitvi ali dodajanju nove razširitve. Glede na Manifest V3 se je vaš brskalnik Chrome odzval tako, da je onemogočil vse vgrajene filtre razširitve, razen privzetih."
+   },
+   "options_rule_limits_warning_explanation_title": {
+      "message": "Kaj se je zgodilo?"
+   },
+   "options_rule_limits_warning_list_enabled_before_title": {
+      "message": "Filtri omogočeni pred posodobitvijo"
+   },
+   "options_rule_limits_warning_list_enabled_now_title": {
+      "message": "Filtri so zdaj omogočeni"
+   },
+   "options_rule_limits_warning_title": {
+      "message": "Brskalnik je spremenil seznam aktivnih filtrov"
+   },
+   "options_rule_syntax": {
+      "message": "Sintaksa pravila"
+   },
+   "options_safebrowsing_enabled": {
+      "message": "Varstvo pred lažnim predstavljanjem in škodljivimi programi"
+   },
+   "options_safebrowsing_enabled_desc": {
+      "message": "Opozarja na

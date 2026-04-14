@@ -1,100 +1,212 @@
-#!/usr/bin/env python3
-from __future__ import annotations
+# TURN API Reference
 
-import argparse
-import json
-import sys
-from pathlib import Path
+Complete API documentation for Cloudflare TURN service credentials and key management.
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+## Authentication
 
-from article_draft_flow_runtime import build_article_draft, load_json, write_json
+All endpoints require Cloudflare API token with "Calls Write" permission.
 
+Base URL: `https://api.cloudflare.com/client/v4`
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build an article draft package from an indexed evidence result.")
-    parser.add_argument("input", help="Path to a source result JSON file or article-draft request JSON")
-    parser.add_argument("--output", help="Optional path to save the result JSON")
-    parser.add_argument("--markdown-output", help="Optional path to save the markdown report")
-    parser.add_argument("--title-hint", help="Optional title override")
-    parser.add_argument("--subtitle-hint", help="Optional subtitle override")
-    parser.add_argument("--angle", help="Optional article angle")
-    parser.add_argument("--tone", help="Optional tone")
-    parser.add_argument("--target-length", type=int, help="Target article length in characters")
-    parser.add_argument("--max-images", type=int, help="Maximum number of image blocks to keep")
-    parser.add_argument("--human-signal-ratio", type=int, help="How strong the human-written voice should feel on a 0-100 scale")
-    parser.add_argument("--personal-phrase", action="append", default=[], help="Reusable personal phrase to weave into the article voice")
-    parser.add_argument("--image-strategy", choices=["mixed", "prefer_images", "screenshots_only"], help="Image priority mode")
-    parser.add_argument("--draft-mode", choices=["balanced", "image_first", "image_only"], help="Composition mode")
-    parser.add_argument(
-        "--headline-hook-mode",
-        choices=["auto", "neutral", "traffic", "aggressive"],
-        help="Optional Chinese headline prefix strategy for generated titles",
-    )
-    parser.add_argument(
-        "--headline-hook-prefixes",
-        nargs="+",
-        help="Optional ordered Chinese headline prefixes, e.g. 刚刚， 突发！",
-    )
-    parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON output")
-    return parser.parse_args()
+## TURN Key Management
 
+### List TURN Keys
 
-def build_payload(args: argparse.Namespace) -> dict:
-    payload = load_json(Path(args.input).resolve())
-    if not isinstance(payload, dict):
-        raise ValueError("Input file must contain a JSON object")
-    if not any(key in payload for key in ("source_result", "source_result_path")) and any(
-        key in payload for key in ("x_posts", "evidence_pack", "retrieval_result", "observations", "verdict_output")
-    ):
-        payload = {"source_result": payload}
-    if args.title_hint:
-        payload["title_hint"] = args.title_hint
-    if args.subtitle_hint:
-        payload["subtitle_hint"] = args.subtitle_hint
-    if args.angle:
-        payload["angle"] = args.angle
-    if args.tone:
-        payload["tone"] = args.tone
-    if args.target_length is not None:
-        payload["target_length_chars"] = args.target_length
-    if args.max_images is not None:
-        payload["max_images"] = args.max_images
-    if getattr(args, "human_signal_ratio", None) is not None:
-        payload["human_signal_ratio"] = args.human_signal_ratio
-    if getattr(args, "personal_phrase", None):
-        payload["personal_phrase_bank"] = args.personal_phrase
-    if args.image_strategy:
-        payload["image_strategy"] = args.image_strategy
-    if args.draft_mode:
-        payload["draft_mode"] = args.draft_mode
-    if args.headline_hook_mode:
-        payload["headline_hook_mode"] = args.headline_hook_mode
-    if args.headline_hook_prefixes is not None:
-        payload["headline_hook_prefixes"] = args.headline_hook_prefixes
-    return payload
+```
+GET /accounts/{account_id}/calls/turn_keys
+```
 
+### Get TURN Key Details
 
-def main() -> None:
-    args = parse_args()
-    try:
-        payload = build_payload(args)
-        result = build_article_draft(payload)
-        if not args.quiet:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        if args.output:
-            write_json(Path(args.output).resolve(), result)
-        if args.markdown_output:
-            output_path = Path(args.markdown_output).resolve()
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(result.get("report_markdown", ""), encoding="utf-8")
-        sys.exit(0)
-    except Exception as exc:
-        print(json.dumps({"status": "ERROR", "message": str(exc)}, indent=2, ensure_ascii=False), file=sys.stderr)
-        sys.exit(1)
+```
+GET /accounts/{account_id}/calls/turn_keys/{key_id}
+```
 
+### Create TURN Key
 
-if __name__ == "__main__":
-    main()
+```
+POST /accounts/{account_id}/calls/turn_keys
+Content-Type: application/json
+
+{
+  "name": "my-turn-key"
+}
+```
+
+**Response includes**:
+- `uid`: Key identifier
+- `key`: The actual secret key (only returned on creation—save immediately)
+- `name`: Human-readable name
+- `created`: ISO 8601 timestamp
+- `modified`: ISO 8601 timestamp
+
+### Update TURN Key
+
+```
+PUT /accounts/{account_id}/calls/turn_keys/{key_id}
+Content-Type: application/json
+
+{
+  "name": "updated-name"
+}
+```
+
+### Delete TURN Key
+
+```
+DELETE /accounts/{account_id}/calls/turn_keys/{key_id}
+```
+
+## Generate Temporary Credentials
+
+```
+POST https://rtc.live.cloudflare.com/v1/turn/keys/{key_id}/credentials/generate
+Authorization: Bearer {key_secret}
+Content-Type: application/json
+
+{
+  "ttl": 86400
+}
+```
+
+### Credential Constraints
+
+| Parameter | Min | Max | Default | Notes |
+|-----------|-----|-----|---------|-------|
+| ttl | 1 | 172800 (48hrs) | varies | API rejects values >172800 |
+
+**CRITICAL**: Maximum TTL is 48 hours (172800 seconds). API will reject requests exceeding this limit.
+
+### Response Schema
+
+```json
+{
+  "iceServers": {
+    "urls": [
+      "stun:stun.cloudflare.com:3478",
+      "turn:turn.cloudflare.com:3478?transport=udp",
+      "turn:turn.cloudflare.com:3478?transport=tcp",
+      "turn:turn.cloudflare.com:53?transport=udp",
+      "turn:turn.cloudflare.com:80?transport=tcp",
+      "turns:turn.cloudflare.com:5349?transport=tcp",
+      "turns:turn.cloudflare.com:443?transport=tcp"
+    ],
+    "username": "1738035200:user123",
+    "credential": "base64encodedhmac=="
+  }
+}
+```
+
+**Port 53 Warning**: Filter port 53 URLs for browser clients—blocked by Chrome/Firefox. See [gotchas.md](./gotchas.md#using-port-53-in-browsers).
+
+## Revoke Credentials
+
+```
+POST https://rtc.live.cloudflare.com/v1/turn/keys/{key_id}/credentials/revoke
+Authorization: Bearer {key_secret}
+Content-Type: application/json
+
+{
+  "username": "1738035200:user123"
+}
+```
+
+**Response**: 204 No Content
+
+Billing stops immediately. Active connection drops after short delay (~seconds).
+
+## TypeScript Types
+
+```typescript
+interface CloudflareTURNConfig {
+  keyId: string;
+  keySecret: string;
+  ttl?: number; // Max 172800 (48 hours)
+}
+
+interface TURNCredentialsRequest {
+  ttl?: number; // Max 172800 seconds
+}
+
+interface TURNCredentialsResponse {
+  iceServers: {
+    urls: string[];
+    username: string;
+    credential: string;
+  };
+}
+
+interface RTCIceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+  credentialType?: "password";
+}
+
+interface TURNKeyResponse {
+  uid: string;
+  key: string; // Only present on creation
+  name: string;
+  created: string;
+  modified: string;
+}
+```
+
+## Validation Function
+
+```typescript
+function validateRTCIceServer(obj: unknown): obj is RTCIceServer {
+  if (!obj || typeof obj !== 'object') {
+    return false;
+  }
+
+  const server = obj as Record<string, unknown>;
+
+  if (typeof server.urls !== 'string' && !Array.isArray(server.urls)) {
+    return false;
+  }
+
+  if (server.username && typeof server.username !== 'string') {
+    return false;
+  }
+
+  if (server.credential && typeof server.credential !== 'string') {
+    return false;
+  }
+
+  return true;
+}
+```
+
+## Type-Safe Credential Generation
+
+```typescript
+async function fetchTURNServers(
+  config: CloudflareTURNConfig
+): Promise<RTCIceServer[]> {
+  // Validate TTL constraint
+  const ttl = config.ttl ?? 3600;
+  if (ttl > 172800) {
+    throw new Error('TTL cannot exceed 172800 seconds (48 hours)');
+  }
+
+  const response = await fetch(
+    `https://rtc.live.cloudflare.com/v1/turn/keys/${config.keyId}/credentials/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.keySecret}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ ttl })
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`TURN credential generation failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  // Filter port 53 for browser clients
+  const filter

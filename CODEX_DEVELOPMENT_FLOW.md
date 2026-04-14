@@ -4,7 +4,7 @@ This document translates the useful parts of the `.ccg` system into a repository
 
 ## Why This Exists
 
-The `.ccg` setup under `C:\Users\rickylu\.claude\.ccg` has strong ideas:
+The `.ccg` setup under `%USERPROFILE%\.claude\.ccg` has strong ideas:
 
 - role-based analysis and review
 - explicit plan and execute phases
@@ -29,6 +29,203 @@ Instead, we keep the reusable parts here in lightweight form.
 6. Handoff
    Update prompts, handoff docs, and exact commands when future sessions depend on them.
 
+## Local Obsidian KB Capture Contract
+
+This file is the canonical workflow contract for persisting Codex conversation
+results into the local Obsidian KB.
+
+### Trigger Phrases
+
+When the user says any of the following, treat it as a direct execution request
+to persist the current exchange into the local Obsidian KB:
+
+- `落进本地obsidian知识库`
+- `同步到obsidian知识库`
+- `记到obsidian`
+- `落到raw`
+- `存进本地知识库`
+- close paraphrases with the same intent
+
+### What To Capture
+
+Default capture unit:
+
+1. the current user request
+2. the assistant's final substantive answer
+3. optional `Key Artifacts` if there are commands, files, logs, note paths, or
+   generated outputs worth preserving
+
+Default body shape:
+
+```md
+## User Request
+
+...
+
+## Assistant Response
+
+...
+
+## Key Artifacts
+
+- ...
+```
+
+### Where It Goes
+
+Default sink:
+
+- raw lane: `08-AI知识库/10-raw/manual/`
+- native command:
+  `node scripts/capture-codex-thread.mjs`
+
+Default source provenance:
+
+1. if the conversation already contains an explicit `codex://threads/...` URI,
+   use it
+2. otherwise use the runtime-safe fallback
+   `codex://threads/current-thread`
+
+### Default Execution Rule
+
+Use the native command:
+
+```powershell
+@'
+...captured markdown body...
+'@ | node scripts/capture-codex-thread.mjs --thread-uri "codex://threads/current-thread" --topic "specific topic" --title "YYYY-MM-DD specific title" --source-label "Codex thread capture" --compile --timeout-ms 240000
+```
+
+Execution defaults:
+
+- choose a specific topic, not a vague umbrella topic
+- use a date-prefixed title
+- default to `--compile` for reusable knowledge-bearing content
+- skip compile only for trivial chatter or content with no durable value
+- after capture, keep links/views refreshed
+
+### Batch Import
+
+When multiple historical Codex threads need to be imported together, use the
+batch manifest route instead of repeating the single-thread command manually:
+
+1. generate a skeleton manifest plus body templates:
+
+```powershell
+node scripts/init-codex-thread-batch.mjs --output-dir ".tmp-codex-thread-handoff-batch" --thread-id "019d5746-28de-7631-ad1c-d35ca5815b94" --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab" --topic "历史 Codex 线程沉淀" --title-prefix "历史线程待整理"
+```
+
+2. fill the generated `bodies/*.md`
+3. run the batch import:
+
+```powershell
+node scripts/capture-codex-thread-batch.mjs --manifest ".\obsidian-kb-local\examples\codex-thread-batch.template.json" --compile --timeout-ms 240000
+```
+
+Batch rules:
+
+- manifest entries may use either inline `body` or relative `body_file`
+- an explicit `codex://threads/...` URI is preferred when known
+- `thread_id` is acceptable and will be normalized into a thread URI
+- if neither is present, the single-thread runtime fallback still resolves to
+  `codex://threads/current-thread`
+- links/views should be refreshed once at the end of the batch, not once per
+  entry
+
+### Verification
+
+To verify whether one or more Codex threads actually landed in the local
+Obsidian KB, use the verifier:
+
+```powershell
+node scripts/verify-codex-thread-capture.mjs --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab"
+node scripts/verify-codex-thread-capture.mjs --manifest ".\obsidian-kb-local\.tmp-codex-thread-handoff-batch\manifest.json"
+```
+
+The verifier reports:
+
+- whether each thread was captured at all
+- matching raw notes
+- matching wiki notes
+- a final summary of captured vs missing threads
+
+The live Obsidian panel for this workflow is:
+
+- `08-AI知识库/30-views/00-System/08-Codex Thread Capture Status.md`
+- `08-AI知识库/30-views/00-System/09-Codex Thread Recovery Queue.md`
+- `08-AI知识库/30-views/00-System/10-Codex Thread Audit Log.md`
+
+It is refreshed by the normal `refresh-wiki-views` flow and summarizes tracked
+thread URIs, recent raw captures, derived wiki notes, and the most recent
+`verify` / `reconcile` runs.
+
+For a terminal-side snapshot of the same audit surface, use:
+
+```powershell
+node scripts/codex-thread-audit-report.mjs
+node scripts/codex-thread-audit-doctor.mjs
+```
+
+To archive expired synthetic/demo audit entries into `logs/archive/`:
+
+```powershell
+node scripts/backfill-codex-thread-audit-run-ids.mjs
+node scripts/backfill-codex-thread-audit-run-ids.mjs --apply
+node scripts/prune-codex-thread-audit-logs.mjs --days 7
+node scripts/prune-codex-thread-audit-logs.mjs --days 7 --apply
+```
+
+On 2026-04-08 the refresh script was hardened so it now defaults to:
+
+1. try the Obsidian CLI first
+2. fall back to direct filesystem writes if the CLI stalls or fails
+3. stop retrying the CLI for the remaining view notes after the first CLI
+   fallback in the same run
+
+Use `node scripts/refresh-wiki-views.mjs --force-cli` only when you explicitly
+want strict CLI-only behavior.
+
+### Reconciliation / Missing Recovery
+
+When you already have a target set of threads and want to auto-generate a
+recovery package for only the missing ones, use:
+
+```powershell
+node scripts/reconcile-codex-thread-capture.mjs --output-dir ".tmp-codex-thread-reconcile-smoke" --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab" --thread-id "019d-missing-demo-thread" --topic "历史 Codex 线程补录" --title-prefix "待补录线程"
+```
+
+This writes:
+
+- `verification-report.json`
+- `missing-manifest.json`
+- `bodies/*.md` templates for only the missing threads
+
+### When To Compile By Default
+
+Compile by default for:
+
+- research results
+- market / trading analysis
+- planning documents
+- workflow and tooling changes
+- KB operating rules
+- implementation notes with durable reuse value
+
+Usually skip compile for:
+
+- greetings
+- tiny one-off logistics
+- content that would only create noise in the KB
+
+### Sync Rule
+
+When KB capture behavior changes:
+
+1. update this file first
+2. keep the short trigger rules in `AGENTS.md` aligned
+3. keep the short trigger rules in `CLAUDE.md` aligned
+4. update `obsidian-kb-local` usage docs if the command surface changed
+
 ## Where To Put What
 
 | Artifact | Where it belongs |
@@ -46,7 +243,7 @@ Instead, we keep the reusable parts here in lightweight form.
 ### Preflight
 
 ```powershell
-Set-Location 'C:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins'
+Set-Location '<repo-root>'
 Get-Content .\AGENTS.md
 Get-Content .\CLAUDE.md
 Get-Content .\.context\prefs\workflow.md

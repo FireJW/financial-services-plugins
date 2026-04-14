@@ -1,114 +1,32 @@
----
-description: Build an evidence pack from X posts and bridge it into news-index
-argument-hint: "[request-json]"
----
-
-# X Index Command
-
-Use this command when the user wants to collect X posts as source-traceable
-evidence before analysis or article writing.
-
-The output should prioritize:
-
-- direct main-post text extraction
-- same-author thread text when available
-- image OCR as supplemental evidence only
-- screenshots and source links for review
-
-Default behavior:
-
-1. discover candidate X post URLs from manual URLs, keywords, or allowlisted accounts
-2. fetch each post and try to read visible post text before any OCR fallback
-3. save the root-post screenshot plus media artifacts when available
-4. when `ocr_root_text` is present, derive phrase / entity clues and turn them into narrower X search queries
-5. for a kept root post, try a same-author time-window scan before falling back to same-author links on the page
-6. build `post_summary`, `media_summary`, and `combined_summary`
-7. bridge the kept posts into `news-index` as `social` observations
-
-Local helper:
-
-- `financial-analysis\skills\autoresearch-info-index\scripts\run_x_index.cmd "<request.json>" [--output <result.json>] [--markdown-output <report.md>]`
-
-For the local helper path, pass an `x-index` request JSON file. The helper
-prints JSON to stdout by default and writes the human-readable Markdown report
-only when `--markdown-output` is provided.
-
-Routing note:
-
-- If the task is specifically about X / Twitter posts, threads, screenshots, or
-  outbound links, start with `x-index` before using generic browser tooling.
-- `x-index` is the repository's native signed-session workflow for X evidence
-  collection and should be preferred over public-page scraping.
-
-Browser session options:
-
-- `browser_session.strategy = "remote_debugging"` attaches to an already running
-  Chrome/Edge instance with a remote debugging port. This is the preferred
-  Windows path when you need a real signed-in browser session.
-- `browser_session.strategy = "cookie_file"` imports a Playwright-style cookie
-  JSON file into the headless browse session before each fetch.
-
-Session priority on Windows:
-
-1. `remote_debugging` (preferred)
-   - best fit for a real signed-in X session
-   - preferred when thread completeness, cards, media, and outbound links matter
-2. `cookie_file` (fallback)
-   - use when a stable Playwright cookie export already exists
-3. public access
-   - last resort only
-   - expect missing thread context, blocked content, or incomplete card data
-
-Operator defaults on Windows:
-
-1. reuse an already running signed-session path or the latest successful
-   `x-index` artifacts in the current workspace before bootstrapping again
-2. prefer a new Edge window in the user's existing signed-in profile when a
-   visible search/capture step is enough
-3. do not close the user's current Edge windows or pages by default just to get
-   X login state
-4. only use an interruptive close-and-relaunch remote-debug flow after the user
-   explicitly approves it
-
-Anti-pattern:
-
-- Do not start by scraping public X pages when a signed browser session is
-  available through `remote_debugging`.
-- Do not treat "close all Edge windows" as the default first move in a new
-  thread when a prior successful flow or a new-window path can be reused.
-
-Remote debugging quick start on Windows:
-
-1. First check whether a reusable `http://127.0.0.1:9222` session or recent
-   `x-index` capture already exists in the current workspace.
-2. If not, prefer a new Edge window in the user's signed-in profile for visible
-   search/capture before asking for any interruptive relaunch.
-3. Only when the user explicitly approves a close-and-relaunch step, run:
-   - `financial-analysis\skills\autoresearch-info-index\scripts\launch_edge_remote_debug.cmd`
-4. Add this to the request JSON:
-   - `"browser_session": { "strategy": "remote_debugging", "cdp_endpoint": "http://127.0.0.1:9222", "required": true }`
-
-The helper above assumes the signed-in Edge profile can be relaunched for CDP
-access. It is not the default first move for a continuing workspace or thread.
-
-Cookie file quick start:
-
-- Place a cookie JSON file inside the workspace or an output directory and add:
-  - `"browser_session": { "strategy": "cookie_file", "cookie_file": "C:\\path\\to\\cookies.json" }`
-
-Request example:
-
-```json
-{
-  "topic": "Morgan Stanley focus list screenshot",
-  "manual_urls": ["https://x.com/example/status/123"],
-  "ocr_root_text": "Exhibit 4: Morgan Stanley China/HK Focus List\nAluminum Corp. of China Ltd. 601600.SS",
-  "same_author_scan_window_hours": 48,
-  "same_author_scan_limit": 12,
-  "browser_session": {
-    "strategy": "remote_debugging",
-    "cdp_endpoint": "http://127.0.0.1:9222",
-    "required": true
-  }
-}
-```
+ent=15 maxxmit=1 (FDFA17:173)
+04-14 18:32:55.795 5272 I lyra-ipc: IpcManager::OnReceived config.type = 1, param.handle = 1 (7CBF92:327)
+04-14 18:32:55.795 5272 I lyra-ipc: IpcManagerHelper::OnReceived  (314453:129)
+04-14 18:32:55.795 5272 I lyra-ipc_binder: IpcBinder::Recv msg_id = 730, type = 0, data_len = 13 (B34DD6:351)
+04-14 18:32:55.795 9944 I lyra-ipc_binder: IpcBinder::HandleSend deal func_type = 133, data_len = 3 (B34DD6:284)
+04-14 18:32:55.795 9944 I lyra-ipc_rtm: MyContinuityInterfaceService::DestroyChannel channel_id:184, (DDFBE9:1008)
+04-14 18:32:55.795 12548 I continuity-channel: DestroyChannel::<lambda_6edc8cd767024fe4cc9e1d387535f76a>::operator channel_id=184 (064FF6:284)
+04-14 18:32:55.795 12548 I continuity-channel: PayloadManager::SendRequestOfReleaseProxyChannel peer_channel_id=76 (9AF89D:272)
+04-14 18:32:55.795 12548 I continuity-channel: PayloadManager::Send connection_id=F0D1471F, data_len=18 (9AF89D:74)
+04-14 18:32:55.795 12548 I lyra-conn-mgr: ConnectionManager::SendPayload conn_id=F0D1471F, options={restrict=1/2}, data.len=18 (E0521F:414)
+04-14 18:32:55.795 12548 I lyra-micont-ch: RtmChannelListenerAdapter::NtbsOnChannelRelease ctx=0000014E3AE4F810, chid=184, errmsg=unknown (9D837D:89)
+04-14 18:32:55.795 12548 I continuity-channel: ChannelManager::CheckForDisconnection release server connection_id=F0D1471F (064FF6:737)
+04-14 18:32:55.795 12548 I continuity-conn: DisconnectService::<lambda_5e27c28bcb24964f11c981400b2888fc>::operator connection_id:F0D1471F (6E5FE8:97)
+04-14 18:32:55.795 12548 I lyra-conn-mgr: ConnectionManager::CloseConnection conn_id=F0D1471F (E0521F:199)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnHandler::DoLogiSendPayloadFrame logi_conn_id=F0D1471F, phys_conn_id=A254E1, data_size=18, conn_state=2 (CE1A96:301)
+04-14 18:32:55.795 9600 I lyra-conn-phys: PhysConnHandler::SendPayload phys_conn_id=A254E1, device_id=738621C7, medium_type=100, options={type=4(payload), timeout=0, restrict=1/2}, data={hash=656154637, len=47} (8AB3EF:83)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnManager::CloseConnection logi_conn_id=F0D1471F (1944B4:204)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnClient::CloseConnectionHandler logi_conn_id=F0D1471F, handler=0000014E3B042620 (BE3694:136)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnHandler::DisposeDisconnectHandler logi_conn_id=F0D1471F, phys_conn_id=A254E1, code=15024, reason="logical conn connection manual disconnect" (CE1A96:215)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnHandler::DoLogiConnDisconnected logi_conn_id=F0D1471F, phys_conn_id=A254E1, logi_disconn_info={logi_conn_id=f0d1471f,device_id=738621C7,service_name=com.milink.service:distributedHardware,medium_type=80(wifi_lan),err_code=15024,err_msg="logical conn connection manual disconnect"} (CE1A96:515)
+04-14 18:32:55.795 9600 I lyra-conn-mgr: ConnectionManager::OnLogiConnClientDisconnected server_name=com.milink.service:distributedHardware, conn_id=F0D1471F, device_id=738621C7, medium_type=80(wifi_lan), err_code=15024, err_msg="logical conn connection manual disconnect" (E0521F:873)
+04-14 18:32:55.795 9600 W lyra-conn-mgr: ConnectionManager::CheckClientConnProxy no client proxy, conn_id=F0D1471F (E0521F:949)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiStateDisconnectRequest::OnStateEnter logi_conn_id=F0D1471F, disconnect. err_code=15024 err_msg="logical conn connection manual disconnect" (4F81A8:78)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnHandler::DoLogiSendProtocolFrame logi_conn_id=F0D1471F, phys_conn_id=A254E1, upgrade=1 frame_type=LOGI_CONN_DISCONNECT (CE1A96:272)
+04-14 18:32:55.795 9600 I lyra-conn-phys: PhysConnHandler::SendPayload phys_conn_id=A254E1, device_id=738621C7, medium_type=100, options={type=2(logical), timeout=2000, restrict=1/1}, data={hash=686598848, len=23} (8AB3EF:83)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnHandler::DoLogiConnDestroy logi_conn_id=F0D1471F, phys_conn_id=A254E1, service_name=com.milink.service:distributedHardware (CE1A96:543)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnClient::OnLogiConnClientHandlerDestroy logi_conn_id=F0D1471F (BE3694:383)
+04-14 18:32:55.795 9600 I lyra-conn-mgr: CloseConnection::<lambda_10320837a0e611f4ebc11c412620f61e>::operator finish, conn_id=F0D1471F, code=0, msg=success (E0521F:229)
+04-14 18:32:55.795 9600 I continuity-conn: AssembleRemoveResultCallback::<lambda_11893afdaee00fab095a081c6ab40297>::operator code = 0 msg = success (DFEE9C:483)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnPhysReuse::CloseLogiConnOnPhys logi_conn_id=F0D1471F, phys_conn_id=A254E1 check close, remain_count 1, send_count=10, sent_count=8 (4AC14C:678)
+04-14 18:32:55.795 9600 I lyra-conn-logi: LogiConnPhysReuse::CloseLogiConnOnPhys logi_conn_id=F0D1471F, phys_conn_id=A254E1, mode=0(normal) (4AC14C:684)
+04-14 18:32:55.795 9600 I lyra-s

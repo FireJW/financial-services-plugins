@@ -27,6 +27,31 @@ INFO_INDEX_SCRIPT_DIR = (
 )
 if str(INFO_INDEX_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(INFO_INDEX_SCRIPT_DIR))
+OPENALICE_MARKET_DATA_SCRIPT_DIR = (
+    DEFAULT_REPO_ROOT
+    / "financial-analysis"
+    / "skills"
+    / "openalice-market-data"
+    / "scripts"
+)
+if str(OPENALICE_MARKET_DATA_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(OPENALICE_MARKET_DATA_SCRIPT_DIR))
+TRADINGAGENTS_DECISION_BRIDGE_SCRIPT_DIR = (
+    DEFAULT_REPO_ROOT
+    / "financial-analysis"
+    / "skills"
+    / "tradingagents-decision-bridge"
+    / "scripts"
+)
+if str(TRADINGAGENTS_DECISION_BRIDGE_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(TRADINGAGENTS_DECISION_BRIDGE_SCRIPT_DIR))
+DEFAULT_OBSIDIAN_X_SOURCE_WHITELIST_PATH = (
+    DEFAULT_REPO_ROOT
+    / "obsidian-kb-local"
+    / "config"
+    / "x-source-whitelist.json"
+)
+DEFAULT_REDDIT_EXPORT_ROOT = DEFAULT_REPO_ROOT / ".tmp" / "reddit-universal-scraper" / "data"
 
 from news_index_runtime import (
     build_claim_evidence,
@@ -58,6 +83,36 @@ except ModuleNotFoundError:  # OpenCLI bridge is optional for the nightly watchl
 
     def resolve_opencli_payload(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], str, str, dict[str, Any]]:
         raise ModuleNotFoundError("opencli_bridge_runtime")
+try:
+    from agent_reach_bridge_runtime import run_agent_reach_bridge
+except ModuleNotFoundError:  # Agent Reach bridge is optional for the nightly watchlist path.
+    def run_agent_reach_bridge(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ModuleNotFoundError("agent_reach_bridge_runtime")
+try:
+    from openalice_market_data_runtime import run_openalice_market_data
+except ModuleNotFoundError:  # OpenAlice bridge is optional for the nightly watchlist path.
+    def run_openalice_market_data(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ModuleNotFoundError("openalice_market_data_runtime")
+try:
+    from x_index_runtime import run_x_index
+except ModuleNotFoundError:  # X index is optional for the nightly watchlist path.
+    def run_x_index(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ModuleNotFoundError("x_index_runtime")
+try:
+    from reddit_bridge_runtime import run_reddit_bridge
+except ModuleNotFoundError:  # Reddit bridge is optional for the nightly watchlist path.
+    def run_reddit_bridge(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ModuleNotFoundError("reddit_bridge_runtime")
+try:
+    from reddit_browser_export_runtime import run_reddit_browser_export
+except ModuleNotFoundError:  # Reddit browser export is optional for the nightly watchlist path.
+    def run_reddit_browser_export(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ModuleNotFoundError("reddit_browser_export_runtime")
+try:
+    from tradingagents_decision_bridge_runtime import run_tradingagents_decision_bridge
+except ModuleNotFoundError:  # TradingAgents bridge is optional for the nightly watchlist path.
+    def run_tradingagents_decision_bridge(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ModuleNotFoundError("tradingagents_decision_bridge_runtime")
 from fred_macro_chart import generate_gold_pricing_chart
 
 
@@ -83,6 +138,16 @@ GS_QUANT_COMMAND_ORDER = (
 GS_QUANT_DEFAULT_ARTIFACT_STAGE = "full"
 GS_QUANT_DEFAULT_BENCHMARK = "000300.SH"
 GS_QUANT_DEFAULT_STYLE_HEDGE = "512100.SS"
+OPENALICE_DEFAULT_BENCHMARK = "000300.SS"
+OPENALICE_CAPABILITIES = ("quote", "history", "indicator_bundle", "benchmark")
+TRADINGAGENTS_DEFAULT_ANALYSIS_PROFILE = "smart_free"
+OPENALICE_TERMINAL_ERRORS = {
+    "sidecar_unavailable",
+    "sidecar_not_configured",
+    "sidecar_unhealthy",
+    "unsupported_capability",
+    "requested_symbol_missing",
+}
 DRIVER_BASELINE_SOURCE_IDS = {
     "driver-keywords",
     "watch-items",
@@ -377,9 +442,24 @@ def load_refresh_config(paths: dict[str, Path]) -> dict[str, Any]:
         "generate_nightly_summary": True,
         "ingest_to_backtest": False,
         "generate_gs_quant_workflows": True,
+        "use_agent_reach": False,
+        "require_agent_reach": False,
+        "agent_reach": {},
         "use_opencli": False,
         "require_opencli": False,
         "opencli": {},
+        "use_openalice": False,
+        "require_openalice": False,
+        "openalice": {},
+        "use_tradingagents": False,
+        "require_tradingagents": False,
+        "tradingagents": {},
+        "use_x_feeds": False,
+        "require_x_feeds": False,
+        "x_feeds": {},
+        "use_reddit_feeds": False,
+        "require_reddit_feeds": False,
+        "reddit_feeds": {},
         "output_language": DEFAULT_OUTPUT_LANGUAGE,
     }
 
@@ -418,6 +498,149 @@ def resolve_opencli_required(config: dict[str, Any]) -> bool:
         return bool(config.get("require_opencli"))
     opencli_config = resolve_opencli_config(config)
     return bool(opencli_config.get("required"))
+
+
+def resolve_agent_reach_config(config: dict[str, Any]) -> dict[str, Any]:
+    for key in ("agent_reach", "agent_reach_config"):
+        value = config.get(key)
+        if isinstance(value, dict):
+            return deepcopy(value)
+    return {}
+
+
+def resolve_agent_reach_enabled(config: dict[str, Any]) -> bool:
+    if "use_agent_reach" in config:
+        return bool(config.get("use_agent_reach"))
+    agent_reach_config = resolve_agent_reach_config(config)
+    if "enabled" in agent_reach_config:
+        return bool(agent_reach_config.get("enabled"))
+    return bool(agent_reach_config)
+
+
+def resolve_agent_reach_required(config: dict[str, Any]) -> bool:
+    if "require_agent_reach" in config:
+        return bool(config.get("require_agent_reach"))
+    agent_reach_config = resolve_agent_reach_config(config)
+    return bool(agent_reach_config.get("required"))
+
+
+def resolve_openalice_config(config: dict[str, Any]) -> dict[str, Any]:
+    for key in ("openalice", "openalice_config"):
+        value = config.get(key)
+        if isinstance(value, dict):
+            return deepcopy(value)
+    return {}
+
+
+def resolve_openalice_enabled(config: dict[str, Any]) -> bool:
+    if "use_openalice" in config:
+        return bool(config.get("use_openalice"))
+    openalice_config = resolve_openalice_config(config)
+    if "enabled" in openalice_config:
+        return bool(openalice_config.get("enabled"))
+    return bool(openalice_config)
+
+
+def resolve_openalice_required(config: dict[str, Any]) -> bool:
+    if "require_openalice" in config:
+        return bool(config.get("require_openalice"))
+    openalice_config = resolve_openalice_config(config)
+    return bool(openalice_config.get("required")) or clean_text(openalice_config.get("mode")).lower() == "required"
+
+
+def resolve_tradingagents_config(config: dict[str, Any]) -> dict[str, Any]:
+    for key in ("tradingagents", "tradingagents_config"):
+        value = config.get(key)
+        if isinstance(value, dict):
+            return deepcopy(value)
+    return {}
+
+
+def resolve_tradingagents_enabled(config: dict[str, Any]) -> bool:
+    if "use_tradingagents" in config:
+        return bool(config.get("use_tradingagents"))
+    tradingagents_config = resolve_tradingagents_config(config)
+    if "enabled" in tradingagents_config:
+        return bool(tradingagents_config.get("enabled"))
+    return bool(tradingagents_config)
+
+
+def resolve_tradingagents_required(config: dict[str, Any]) -> bool:
+    if "require_tradingagents" in config:
+        return bool(config.get("require_tradingagents"))
+    tradingagents_config = resolve_tradingagents_config(config)
+    return bool(tradingagents_config.get("required")) or clean_text(tradingagents_config.get("mode")).lower() == "required"
+
+
+def resolve_x_feeds_config(config: dict[str, Any]) -> dict[str, Any]:
+    for key in ("x_feeds", "x_index_feeds", "x_index"):
+        value = config.get(key)
+        if isinstance(value, dict):
+            return deepcopy(value)
+    return {}
+
+
+def resolve_x_feeds_enabled(config: dict[str, Any]) -> bool:
+    if "use_x_feeds" in config:
+        return bool(config.get("use_x_feeds"))
+    x_config = resolve_x_feeds_config(config)
+    if "enabled" in x_config:
+        return bool(x_config.get("enabled"))
+    return bool(x_config)
+
+
+def resolve_x_feeds_required(config: dict[str, Any]) -> bool:
+    if "require_x_feeds" in config:
+        return bool(config.get("require_x_feeds"))
+    x_config = resolve_x_feeds_config(config)
+    return bool(x_config.get("required"))
+
+
+def resolve_reddit_feeds_config(config: dict[str, Any]) -> dict[str, Any]:
+    for key in ("reddit_feeds", "reddit_bridge", "reddit"):
+        value = config.get(key)
+        if isinstance(value, dict):
+            return deepcopy(value)
+    return {}
+
+
+def resolve_reddit_feeds_enabled(config: dict[str, Any]) -> bool:
+    if "use_reddit_feeds" in config:
+        return bool(config.get("use_reddit_feeds"))
+    reddit_config = resolve_reddit_feeds_config(config)
+    if "enabled" in reddit_config:
+        return bool(reddit_config.get("enabled"))
+    return bool(reddit_config)
+
+
+def resolve_reddit_feeds_required(config: dict[str, Any]) -> bool:
+    if "require_reddit_feeds" in config:
+        return bool(config.get("require_reddit_feeds"))
+    reddit_config = resolve_reddit_feeds_config(config)
+    return bool(reddit_config.get("required"))
+
+
+def load_obsidian_x_allowlist(repo_root: Path) -> list[str]:
+    candidate_paths = [
+        repo_root / "obsidian-kb-local" / "config" / "x-source-whitelist.json",
+        DEFAULT_OBSIDIAN_X_SOURCE_WHITELIST_PATH,
+    ]
+    for path in candidate_paths:
+        try:
+            payload = load_json(path)
+        except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        authors = safe_list(safe_dict(payload).get("authors"))
+        handles = unique_strings(
+            [
+                clean_text(safe_dict(item).get("handle")).lstrip("@")
+                for item in authors
+                if clean_text(safe_dict(item).get("status")).lower() == "allowlisted"
+            ]
+        )
+        if handles:
+            return handles
+    return []
 
 
 def load_tracked_stocks(paths: dict[str, Path]) -> list[dict[str, Any]]:
@@ -681,20 +904,325 @@ def build_opencli_capture_payload(stock: dict[str, Any], analysis_time: datetime
     }
 
 
-def merge_request_with_opencli_candidates(request_payload: dict[str, Any], bridge_result: dict[str, Any]) -> dict[str, Any]:
-    merged_payload = deepcopy(request_payload)
-    imported_candidates = [
-        deepcopy(item)
-        for item in safe_list(safe_dict(bridge_result.get("retrieval_request")).get("candidates"))
-        if isinstance(item, dict)
+def build_agent_reach_capture_payload(
+    stock: dict[str, Any],
+    analysis_time: datetime,
+    config: dict[str, Any],
+    case_dir: Path,
+) -> dict[str, Any]:
+    agent_reach_config = resolve_agent_reach_config(config)
+    aliases = unique_strings([stock_name(stock), clean_text(stock.get("ticker")), *safe_list(stock.get("aliases"))])
+    driver_keywords = unique_strings(safe_list(stock.get("driver_keywords")))
+    watch_items = unique_strings(safe_list(stock.get("watch_items")))
+    payload: dict[str, Any] = {
+        "topic": f"{stock_name(stock)} ({clean_text(stock.get('ticker'))}) stock-watch secondary discovery",
+        "analysis_time": isoformat(analysis_time),
+        "questions": [
+            (
+                f"What fresh secondary discovery outside the primary repo-native paths mentions {stock_name(stock)} "
+                f"or its direct driver context?"
+            )
+        ],
+        "use_case": clean_text(agent_reach_config.get("use_case")) or "tracked-stock-agent-reach-secondary",
+        "source_preferences": deepcopy(safe_list(agent_reach_config.get("source_preferences")))
+        or ["major_news", "official", "blog", "social"],
+        "mode": clean_text(agent_reach_config.get("mode")) or "generic",
+        "windows": deepcopy(safe_list(agent_reach_config.get("windows"))) or ["24h", "7d"],
+        "market_relevance": unique_strings(
+            [
+                f"{stock_name(stock)} secondary discovery",
+                *aliases[:4],
+                *driver_keywords[:4],
+                *watch_items[:4],
+            ]
+        ),
+        "expected_source_families": deepcopy(safe_list(agent_reach_config.get("expected_source_families"))),
+        "dedupe_store_path": str(case_dir / "results" / "agent-reach" / "agent-reach-dedupe-store.json"),
+    }
+    for key in (
+        "pseudo_home",
+        "channels",
+        "timeout_per_channel",
+        "max_results_per_channel",
+        "dedupe_window_hours",
+        "rss_feeds",
+        "channel_payloads",
+        "channel_result_paths",
+        "channel_commands",
+    ):
+        value = agent_reach_config.get(key)
+        if value not in (None, "", [], {}):
+            payload[key] = deepcopy(value)
+    return payload
+
+
+def build_x_feed_capture_payload(
+    stock: dict[str, Any],
+    analysis_time: datetime,
+    config: dict[str, Any],
+    case_dir: Path,
+    repo_root: Path,
+    *,
+    execution_mode_requested: str = DEFAULT_EXECUTION_MODE,
+) -> dict[str, Any]:
+    x_config = resolve_x_feeds_config(config)
+    explicit_allowlist = unique_strings(
+        [clean_text(item).lstrip("@") for item in safe_list(x_config.get("account_allowlist")) if clean_text(item)]
+    )
+    account_allowlist = explicit_allowlist or load_obsidian_x_allowlist(repo_root)
+    aliases = unique_strings([stock_name(stock), clean_text(stock.get("ticker")), *safe_list(stock.get("aliases"))])
+    driver_keywords = unique_strings(safe_list(stock.get("driver_keywords")))
+    watch_items = unique_strings(safe_list(stock.get("watch_items")))
+    keywords = unique_strings([*aliases[:4], *driver_keywords[:4], *watch_items[:4]])
+    entity_clues = unique_strings([clean_text(stock.get("ticker")), *aliases])
+    payload: dict[str, Any] = {
+        "topic": f"{stock_name(stock)} ({clean_text(stock.get('ticker'))}) stock-watch x signal capture",
+        "analysis_time": isoformat(analysis_time),
+        "account_allowlist": account_allowlist,
+        "keywords": keywords,
+        "entity_clues": entity_clues,
+        "phrase_clues": unique_strings(watch_items[:4]),
+        "market_relevance": unique_strings(
+            [
+                f"{stock_name(stock)} market commentary",
+                *driver_keywords[:4],
+                *watch_items[:4],
+            ]
+        ),
+        "output_dir": str(case_dir / "results" / "x-feeds"),
+        "max_kept_posts": int(x_config.get("max_kept_posts", 4) or 4),
+        "max_candidates": int(x_config.get("max_candidates", 8) or 8),
+        "same_author_scan_window_hours": int(x_config.get("same_author_scan_window_hours", 72) or 72),
+        "same_author_scan_limit": int(x_config.get("same_author_scan_limit", 4) or 4),
+        "reuse_recent_runs": bool(x_config.get("reuse_recent_runs", True)),
+        "reuse_recent_hours": int(x_config.get("reuse_recent_hours", 168) or 168),
+        "topic_relevance_required": bool(x_config.get("topic_relevance_required", True)),
+        "min_topic_relevance_score": int(x_config.get("min_topic_relevance_score", 6) or 6),
+        "filter_low_signal_reply_noise": bool(x_config.get("filter_low_signal_reply_noise", True)),
+        "filter_ambiguous_short_alias_noise": bool(x_config.get("filter_ambiguous_short_alias_noise", True)),
+        "max_post_age_hours": int(x_config.get("max_post_age_hours", 168) or 168),
+        "filter_same_author_scan_by_relevance": bool(x_config.get("filter_same_author_scan_by_relevance", True)),
+        "allowlist_source": "x_feeds_config" if explicit_allowlist else ("obsidian_kb_local_whitelist" if account_allowlist else "none"),
+    }
+    if should_force_live_auxiliary_execution(execution_mode_requested):
+        payload["reuse_recent_runs"] = False
+    browser_session = safe_dict(x_config.get("browser_session"))
+    if browser_session:
+        payload["browser_session"] = browser_session
+    fieldtheory = safe_dict(x_config.get("fieldtheory"))
+    if fieldtheory:
+        payload["fieldtheory"] = fieldtheory
+    manual_urls = [clean_text(item) for item in safe_list(x_config.get("manual_urls")) if clean_text(item)]
+    if manual_urls:
+        payload["manual_urls"] = manual_urls
+    return payload
+
+
+def resolve_repo_relative_path(repo_root: Path, value: Any) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    candidate = Path(text).expanduser()
+    if not candidate.is_absolute():
+        candidate = (repo_root / candidate).resolve()
+    return str(candidate)
+
+
+def resolve_reddit_source_path(config: dict[str, Any], repo_root: Path) -> str:
+    reddit_config = resolve_reddit_feeds_config(config)
+    explicit_candidates = [
+        reddit_config.get("source_path"),
+        reddit_config.get("input_path"),
+        reddit_config.get("result_path"),
     ]
+    for value in explicit_candidates:
+        resolved = resolve_repo_relative_path(repo_root, value)
+        if resolved:
+            return resolved
+    for candidate in (
+        repo_root / ".tmp" / "reddit-universal-scraper" / "data",
+        DEFAULT_REDDIT_EXPORT_ROOT,
+    ):
+        if candidate.exists():
+            return str(candidate.resolve())
+    return ""
+
+
+def resolve_explicit_reddit_source_path(config: dict[str, Any], repo_root: Path) -> str:
+    reddit_config = resolve_reddit_feeds_config(config)
+    for value in (
+        reddit_config.get("source_path"),
+        reddit_config.get("input_path"),
+        reddit_config.get("result_path"),
+    ):
+        resolved = resolve_repo_relative_path(repo_root, value)
+        if resolved:
+            return resolved
+    return ""
+
+
+def resolve_reddit_browser_session_strategy(config: dict[str, Any]) -> str:
+    reddit_config = resolve_reddit_feeds_config(config)
+    browser_session = safe_dict(reddit_config.get("browser_session"))
+    strategy = clean_text(browser_session.get("strategy")).lower()
+    if strategy:
+        return strategy
+    if clean_text(browser_session.get("cdp_endpoint")):
+        return "remote_debugging"
+    return ""
+
+
+def should_auto_export_reddit_feeds(config: dict[str, Any]) -> bool:
+    return resolve_reddit_browser_session_strategy(config) == "remote_debugging"
+
+
+def build_reddit_browser_export_payload(
+    stock: dict[str, Any],
+    analysis_time: datetime,
+    config: dict[str, Any],
+    case_dir: Path,
+) -> dict[str, Any]:
+    reddit_config = resolve_reddit_feeds_config(config)
+    aliases = unique_strings(
+        [
+            stock_name(stock),
+            clean_text(stock.get("ticker")),
+            ticker_digits(clean_text(stock.get("ticker"))),
+            *safe_list(stock.get("aliases")),
+        ]
+    )
+    driver_keywords = unique_strings(safe_list(stock.get("driver_keywords")))
+    watch_items = unique_strings(safe_list(stock.get("watch_items")))
+    payload: dict[str, Any] = {
+        "topic": f"{stock_name(stock)} ({clean_text(stock.get('ticker'))}) stock-watch reddit browser export",
+        "analysis_time": isoformat(analysis_time),
+        "ticker": clean_text(stock.get("ticker")),
+        "aliases": aliases,
+        "driver_keywords": driver_keywords,
+        "watch_items": watch_items,
+        "market_relevance": unique_strings(
+            [
+                f"{stock_name(stock)} reddit community signal",
+                *driver_keywords[:4],
+                *watch_items[:4],
+            ]
+        ),
+        "output_dir": str(case_dir / "results" / "reddit-feeds" / "browser-export"),
+        "max_search_queries": int(reddit_config.get("max_search_queries", 8) or 8),
+        "max_posts_per_query": int(reddit_config.get("max_posts_per_query", 6) or 6),
+        "max_posts_total": int(reddit_config.get("max_posts_total", 10) or 10),
+        "max_comments_per_post": int(reddit_config.get("max_comments_per_post", 8) or 8),
+    }
+    preferred_subreddits = unique_strings(safe_list(reddit_config.get("preferred_subreddits") or reddit_config.get("subreddit_scopes")))
+    if preferred_subreddits:
+        payload["preferred_subreddits"] = preferred_subreddits
+    if reddit_config.get("max_post_age_days") is not None:
+        payload["max_post_age_days"] = int(reddit_config.get("max_post_age_days") or 60)
+    browser_session = safe_dict(reddit_config.get("browser_session"))
+    if browser_session:
+        payload["browser_session"] = browser_session
+    queries = unique_strings(safe_list(reddit_config.get("queries") or reddit_config.get("query_overrides")))
+    if queries:
+        payload["queries"] = queries
+    return payload
+
+
+def build_reddit_feed_capture_payload(
+    stock: dict[str, Any],
+    analysis_time: datetime,
+    config: dict[str, Any],
+    case_dir: Path,
+    repo_root: Path,
+) -> dict[str, Any]:
+    reddit_config = resolve_reddit_feeds_config(config)
+    source_path = resolve_reddit_source_path(config, repo_root)
+    driver_keywords = unique_strings(safe_list(stock.get("driver_keywords")))
+    watch_items = unique_strings(safe_list(stock.get("watch_items")))
+    payload: dict[str, Any] = {
+        "topic": f"{stock_name(stock)} ({clean_text(stock.get('ticker'))}) stock-watch reddit signal capture",
+        "analysis_time": isoformat(analysis_time),
+        "questions": [
+            f"What current Reddit discussions or post exports materially mention {stock_name(stock)} or its core driver context?"
+        ],
+        "use_case": "tracked-stock-reddit-capture",
+        "source_preferences": ["social", "major_news", "official"],
+        "mode": clean_text(reddit_config.get("mode") or "generic"),
+        "windows": ["24h", "7d"],
+        "market_relevance": unique_strings(
+            [
+                f"{stock_name(stock)} reddit community signal",
+                *driver_keywords[:4],
+                *watch_items[:4],
+            ]
+        ),
+        "expected_source_families": ["social"],
+        "output_path": str(case_dir / "results" / "reddit-feeds" / "reddit-bridge.result.json"),
+    }
+    if source_path:
+        payload["source_path"] = source_path
+        payload["result_path"] = source_path
+    for key in ("subreddit", "user", "export_target", "comment_sort_strategy"):
+        value = reddit_config.get(key)
+        if clean_text(value):
+            payload[key] = clean_text(value)
+    return payload
+
+
+def build_skipped_reddit_feeds_result(
+    request_payload: dict[str, Any],
+    *,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "status": "skipped",
+        "workflow_kind": "reddit_bridge",
+        "topic": clean_text(request_payload.get("topic")),
+        "fetched_at": clean_text(request_payload.get("analysis_time")),
+        "request": deepcopy(request_payload),
+        "import_summary": {
+            "payload_source": "missing_source_path",
+            "source_path": clean_text(request_payload.get("source_path") or request_payload.get("result_path")),
+            "imported_candidate_count": 0,
+            "skipped_invalid_count": 0,
+            "comment_sort_strategy": clean_text(request_payload.get("comment_sort_strategy")) or "score_then_recency",
+            "comment_sample_count": 0,
+            "posts_with_comment_context": 0,
+            "comment_count_mismatch_count": 0,
+            "comment_duplicate_count_total": 0,
+            "comment_near_duplicate_count_total": 0,
+            "comment_near_duplicate_same_author_count_total": 0,
+            "comment_near_duplicate_cross_author_count_total": 0,
+            "comment_near_duplicate_example_count_total": 0,
+            "operator_review_required_count": 0,
+            "operator_review_high_priority_count": 0,
+        },
+        "operator_review_queue": [],
+        "retrieval_request": {"candidates": []},
+        "retrieval_result": {},
+        "report_markdown": f"# Reddit Bridge Report: {clean_text(request_payload.get('topic'))}\n\nSkipped: {reason}\n",
+    }
+
+
+def merge_request_with_candidates(request_payload: dict[str, Any], imported_candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    merged_payload = deepcopy(request_payload)
     existing_candidates = [
         deepcopy(item)
         for item in safe_list(merged_payload.get("candidates") or merged_payload.get("source_candidates"))
         if isinstance(item, dict)
     ]
-    merged_payload["candidates"] = existing_candidates + imported_candidates
+    merged_payload["candidates"] = existing_candidates + [
+        deepcopy(item) for item in imported_candidates if isinstance(item, dict)
+    ]
     return merged_payload
+
+
+def merge_request_with_opencli_candidates(request_payload: dict[str, Any], bridge_result: dict[str, Any]) -> dict[str, Any]:
+    imported_candidates = [
+        deepcopy(item)
+        for item in safe_list(safe_dict(bridge_result.get("retrieval_request")).get("candidates"))
+        if isinstance(item, dict)
+    ]
+    return merge_request_with_candidates(request_payload, imported_candidates)
 
 
 def normalize_projected_claim_state(value: Any) -> str:
@@ -772,6 +1300,111 @@ def build_opencli_bridge_result_for_request(shared_bridge_result: dict[str, Any]
     return result
 
 
+def summarize_agent_reach_stage(
+    bridge_result: dict[str, Any],
+    *,
+    required: bool,
+    status: str = "ok",
+    error: str = "",
+) -> dict[str, Any]:
+    resolved_status = clean_text(status) or clean_text(bridge_result.get("status")) or "ok"
+    return {
+        "enabled": True,
+        "required": required,
+        "status": resolved_status,
+        "error": clean_text(error),
+        "channels_attempted": deepcopy(safe_list(bridge_result.get("channels_attempted"))),
+        "channels_succeeded": deepcopy(safe_list(bridge_result.get("channels_succeeded"))),
+        "channels_failed": deepcopy(safe_list(bridge_result.get("channels_failed"))),
+        "imported_candidate_count": int(bridge_result.get("observations_imported", 0) or 0),
+        "skipped_duplicate_count": int(bridge_result.get("observations_skipped_duplicate", 0) or 0),
+        "result_path": clean_text(bridge_result.get("result_path")),
+        "report_path": clean_text(bridge_result.get("report_path")),
+    }
+
+
+def summarize_x_feeds_stage(x_result: dict[str, Any], *, required: bool, status: str = "ok", error: str = "") -> dict[str, Any]:
+    discovery_summary = safe_dict(x_result.get("discovery_summary"))
+    workflow_artifacts = safe_dict(x_result.get("workflow_artifacts"))
+    session_bootstrap = safe_dict(x_result.get("session_bootstrap"))
+    diagnostics = diagnose_x_feeds_runtime(x_result, default_status=status)
+    return {
+        "enabled": True,
+        "required": required,
+        "status": diagnostics["status"],
+        "error": clean_text(error),
+        "kept_posts": int(discovery_summary.get("kept_posts", len(safe_list(x_result.get("x_posts")))) or 0),
+        "attempted_candidates": int(discovery_summary.get("attempted_candidates", 0) or 0),
+        "blocked_candidate_count": diagnostics["blocked_candidate_count"],
+        "blocker_codes": deepcopy(diagnostics["blocker_codes"]),
+        "blocked_reason_samples": deepcopy(diagnostics["blocked_reason_samples"]),
+        "result_path": clean_text(workflow_artifacts.get("result_json")),
+        "report_path": clean_text(workflow_artifacts.get("report_markdown")),
+        "session_strategy": clean_text(session_bootstrap.get("strategy")),
+        "session_status": clean_text(session_bootstrap.get("status")),
+        "session_health": clean_text(session_bootstrap.get("health")),
+        "reused_cached_run": any(
+            "reused cached x-index output" in clean_text(note).lower()
+            for post in safe_list(x_result.get("x_posts"))
+            for note in safe_list(safe_dict(post).get("crawl_notes"))
+        ),
+    }
+
+
+def summarize_reddit_feeds_stage(
+    reddit_result: dict[str, Any],
+    *,
+    required: bool,
+    status: str = "ok",
+    error: str = "",
+) -> dict[str, Any]:
+    import_summary = safe_dict(reddit_result.get("import_summary"))
+    workflow_artifacts = safe_dict(reddit_result.get("workflow_artifacts"))
+    resolved_status = clean_text(status) or clean_text(reddit_result.get("status")) or "ok"
+    return {
+        "enabled": True,
+        "required": required,
+        "status": resolved_status,
+        "error": clean_text(error),
+        "imported_candidate_count": int(import_summary.get("imported_candidate_count", 0) or 0),
+        "comment_sample_count": int(import_summary.get("comment_sample_count", 0) or 0),
+        "operator_review_required_count": int(import_summary.get("operator_review_required_count", 0) or 0),
+        "payload_source": clean_text(import_summary.get("payload_source")),
+        "source_path": clean_text(import_summary.get("source_path")),
+        "result_path": clean_text(workflow_artifacts.get("result_json")),
+        "report_path": clean_text(workflow_artifacts.get("report_markdown")),
+    }
+
+
+def diagnose_x_feeds_runtime(x_result: dict[str, Any], *, default_status: str = "ok") -> dict[str, Any]:
+    discovery_summary = safe_dict(x_result.get("discovery_summary"))
+    session_bootstrap = safe_dict(x_result.get("session_bootstrap"))
+    blocked_candidates = [
+        safe_dict(item)
+        for item in safe_list(discovery_summary.get("blocked_candidates"))
+        if isinstance(item, dict)
+    ]
+    blocked_reason_samples = unique_strings(
+        [clean_text(item.get("blocked_reason")) for item in blocked_candidates if clean_text(item.get("blocked_reason"))]
+    )[:3]
+    session_status = clean_text(session_bootstrap.get("status"))
+    blocker_codes: list[str] = []
+    if session_status in {"unavailable", "failed"}:
+        blocker_codes.append("session_unavailable")
+    if blocked_candidates:
+        blocker_codes.append("candidate_discovery_blocked")
+    kept_posts = int(discovery_summary.get("kept_posts", len(safe_list(x_result.get("x_posts")))) or 0)
+    resolved_status = clean_text(default_status) or clean_text(x_result.get("status")) or "ok"
+    if resolved_status == "ok" and not kept_posts and blocker_codes:
+        resolved_status = "degraded"
+    return {
+        "status": resolved_status,
+        "blocked_candidate_count": len(blocked_candidates),
+        "blocker_codes": blocker_codes,
+        "blocked_reason_samples": blocked_reason_samples,
+    }
+
+
 def summarize_opencli_stage(bridge_result: dict[str, Any], *, required: bool, status: str = "ok", error: str = "") -> dict[str, Any]:
     import_summary = safe_dict(bridge_result.get("import_summary"))
     runner_summary = safe_dict(bridge_result.get("runner_summary"))
@@ -784,6 +1417,370 @@ def summarize_opencli_stage(bridge_result: dict[str, Any], *, required: bool, st
         "payload_source": clean_text(import_summary.get("payload_source")),
         "imported_candidate_count": int(import_summary.get("imported_candidate_count", 0) or 0),
         "runner_status": clean_text(runner_summary.get("status")),
+    }
+
+
+def normalize_openalice_symbol(value: Any) -> str:
+    text = clean_text(value).upper()
+    if text.endswith(".SH"):
+        return f"{text[:-3]}.SS"
+    return text
+
+
+def resolve_openalice_request_params(openalice_config: dict[str, Any], capability: str) -> dict[str, Any]:
+    raw_params = safe_dict(openalice_config.get("request_params"))
+    capability_params = safe_dict(raw_params.get(capability))
+    shared_params = {
+        key: deepcopy(value)
+        for key, value in raw_params.items()
+        if key not in OPENALICE_CAPABILITIES
+    }
+    if capability_params:
+        shared_params.update(deepcopy(capability_params))
+    return shared_params
+
+
+def build_openalice_request_payload(
+    stock: dict[str, Any],
+    capability: str,
+    *,
+    benchmark_symbol: str,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    openalice_config = resolve_openalice_config(config)
+    request: dict[str, Any] = {
+        "capability": capability,
+        "requested_symbol": normalize_openalice_symbol(stock.get("ticker")),
+        "mode": "required" if resolve_openalice_required(config) else "optional",
+    }
+    for key in ("base_url", "timeout_ms", "provider_hint"):
+        if key in openalice_config:
+            request[key] = deepcopy(openalice_config.get(key))
+    fixture_config = safe_dict(openalice_config.get("fixture"))
+    if fixture_config:
+        request["fixture"] = deepcopy(fixture_config)
+    request_params = resolve_openalice_request_params(openalice_config, capability)
+    if capability == "history":
+        request_params.setdefault("interval", "1d")
+        request_params.setdefault("limit", 20)
+    elif capability == "indicator_bundle":
+        request_params.setdefault("interval", "1d")
+        request_params.setdefault("limit", 30)
+        indicator_bundle = safe_dict(openalice_config.get("indicator_bundle"))
+        if indicator_bundle:
+            request["indicator_bundle"] = deepcopy(indicator_bundle)
+    elif capability == "benchmark":
+        request["requested_symbol"] = normalize_openalice_symbol(benchmark_symbol)
+        request["subject_symbol"] = normalize_openalice_symbol(stock.get("ticker"))
+        request["benchmark_symbol"] = normalize_openalice_symbol(benchmark_symbol)
+        request_params.setdefault("interval", "1d")
+        request_params.setdefault("limit", 20)
+    if request_params:
+        request["request_params"] = request_params
+    return request
+
+
+def build_openalice_market_context_report(payload: dict[str, Any], output_language: str = DEFAULT_OUTPUT_LANGUAGE) -> str:
+    language = normalize_output_language(output_language)
+    summary = safe_dict(payload.get("summary"))
+    contexts = safe_dict(payload.get("contexts"))
+    attempts = safe_list(payload.get("attempts"))
+    lines = [
+        localized_text(language, zh_cn="# OpenAlice 辅助市场上下文", en="# OpenAlice Auxiliary Market Context"),
+        "",
+        f"- {localized_text(language, zh_cn='状态', en='Status')}: `{clean_text(payload.get('status')) or 'unknown'}`",
+        f"- {localized_text(language, zh_cn='标的代码', en='Subject symbol')}: `{clean_text(payload.get('requested_symbol')) or 'n/a'}`",
+        f"- {localized_text(language, zh_cn='基准代码', en='Benchmark symbol')}: `{clean_text(payload.get('benchmark_symbol')) or 'n/a'}`",
+        f"- {localized_text(language, zh_cn='边界', en='Boundary')}: auxiliary market context only, not evidence.",
+        f"- {localized_text(language, zh_cn='已附加能力', en='Attached capabilities')}: `{', '.join(safe_list(summary.get('attached_capabilities'))) or 'none'}`",
+        f"- {localized_text(language, zh_cn='覆盖统计', en='Coverage counts')}: `full={int(summary.get('full_count', 0) or 0)}` / `partial={int(summary.get('partial_count', 0) or 0)}` / `missing={int(summary.get('missing_count', 0) or 0)}` / `error={int(summary.get('error_count', 0) or 0)}`",
+    ]
+    for capability in OPENALICE_CAPABILITIES:
+        context = safe_dict(contexts.get(capability))
+        if not context:
+            continue
+        lines.extend(
+            [
+                "",
+                f"## {capability}",
+                f"- {localized_text(language, zh_cn='覆盖', en='Coverage')}: `{clean_text(context.get('coverage_status')) or 'unknown'}`",
+                f"- {localized_text(language, zh_cn='提供方', en='Provider')}: `{clean_text(context.get('provider')) or 'n/a'}`",
+                f"- {localized_text(language, zh_cn='观察时间', en='Observed at')}: `{clean_text(context.get('observed_at')) or 'n/a'}`",
+            ]
+        )
+        quote_snapshot = safe_dict(context.get("quote_snapshot"))
+        history = safe_list(context.get("history"))
+        indicator_values = safe_dict(safe_dict(context.get("indicators")).get("values"))
+        benchmark_context = safe_dict(context.get("benchmark_context"))
+        if quote_snapshot:
+            lines.append(f"- {localized_text(language, zh_cn='价格快照', en='Quote snapshot')}: `{quote_snapshot.get('price')}`")
+        if history:
+            lines.append(f"- {localized_text(language, zh_cn='历史K线', en='History bars')}: `{len(history)}`")
+        if indicator_values:
+            lines.append(f"- {localized_text(language, zh_cn='指标', en='Indicators')}: `{', '.join(indicator_values.keys())}`")
+        if benchmark_context:
+            lines.append(
+                f"- {localized_text(language, zh_cn='对比标的', en='Comparison subject')}: `{clean_text(benchmark_context.get('subject_symbol')) or 'n/a'}`"
+            )
+    failed_attempts = [
+        item for item in attempts if clean_text(safe_dict(item.get("market_context")).get("coverage_status")) in {"error", "missing"}
+    ]
+    if failed_attempts:
+        lines.extend(["", localized_text(language, zh_cn="## 未完整附加的能力", en="## Unattached or incomplete capabilities")])
+        for item in failed_attempts:
+            market_context = safe_dict(item.get("market_context"))
+            error = safe_dict(market_context.get("error"))
+            message = clean_text(error.get("message")) or localized_text(
+                language,
+                zh_cn="无可用覆盖。",
+                en="No usable coverage.",
+            )
+            lines.append(
+                f"- `{clean_text(item.get('capability'))}`: `{clean_text(market_context.get('coverage_status')) or 'unknown'}` / {message}"
+            )
+    return "\n".join(lines) + "\n"
+
+
+def collect_openalice_market_context(
+    stock: dict[str, Any],
+    *,
+    config: dict[str, Any],
+    output_language: str = DEFAULT_OUTPUT_LANGUAGE,
+) -> dict[str, Any]:
+    benchmark_symbol = normalize_openalice_symbol(
+        resolve_openalice_config(config).get("benchmark_symbol") or OPENALICE_DEFAULT_BENCHMARK
+    )
+    requested_symbol = normalize_openalice_symbol(stock.get("ticker"))
+    attempts: list[dict[str, Any]] = []
+    contexts: dict[str, Any] = {}
+    coverage_by_capability: dict[str, str] = {}
+    warning_count = 0
+    for capability in OPENALICE_CAPABILITIES:
+        request_payload = build_openalice_request_payload(
+            stock,
+            capability,
+            benchmark_symbol=benchmark_symbol,
+            config=config,
+        )
+        result = run_openalice_market_data(request_payload)
+        market_context = deepcopy(safe_dict(result.get("market_context")))
+        coverage_status = clean_text(market_context.get("coverage_status")) or "missing"
+        coverage_by_capability[capability] = coverage_status
+        warning_count += len(safe_list(market_context.get("warnings")))
+        attempts.append(
+            {
+                "capability": capability,
+                "status": clean_text(result.get("status")) or "unknown",
+                "request": deepcopy(safe_dict(result.get("request"))),
+                "market_context": market_context,
+                "transport": deepcopy(safe_dict(result.get("transport"))),
+            }
+        )
+        if coverage_status in {"full", "partial"}:
+            contexts[capability] = deepcopy(market_context)
+        error_code = clean_text(safe_dict(market_context.get("error")).get("code"))
+        if error_code in OPENALICE_TERMINAL_ERRORS:
+            break
+    coverage_counts = Counter(coverage_by_capability.values())
+    if int(coverage_counts.get("error", 0) or 0) and not contexts:
+        status = "error"
+    elif any(int(coverage_counts.get(key, 0) or 0) for key in ("partial", "missing", "error")):
+        status = "partial"
+    else:
+        status = "ok"
+    payload = {
+        "enabled": True,
+        "required": resolve_openalice_required(config),
+        "status": status,
+        "boundary": "auxiliary_market_context_only",
+        "requested_symbol": requested_symbol,
+        "benchmark_symbol": benchmark_symbol,
+        "summary": {
+            "requested_capabilities": list(OPENALICE_CAPABILITIES),
+            "attempted_capabilities": [clean_text(item.get("capability")) for item in attempts],
+            "attached_capabilities": [clean_text(key) for key in contexts.keys()],
+            "coverage_by_capability": coverage_by_capability,
+            "full_count": int(coverage_counts.get("full", 0) or 0),
+            "partial_count": int(coverage_counts.get("partial", 0) or 0),
+            "missing_count": int(coverage_counts.get("missing", 0) or 0),
+            "error_count": int(coverage_counts.get("error", 0) or 0),
+            "warning_count": warning_count,
+        },
+        "contexts": contexts,
+        "attempts": attempts,
+    }
+    payload["report_markdown"] = build_openalice_market_context_report(payload, output_language=output_language)
+    return payload
+
+
+def summarize_openalice_stage(
+    payload: dict[str, Any],
+    *,
+    required: bool,
+    status: str | None = None,
+    error: str = "",
+) -> dict[str, Any]:
+    summary = safe_dict(payload.get("summary"))
+    attempts = safe_list(payload.get("attempts"))
+    attempt_error = ""
+    for item in attempts:
+        attempt_error = clean_text(safe_dict(safe_dict(item.get("market_context")).get("error")).get("message"))
+        if attempt_error:
+            break
+    resolved_status = clean_text(status) or clean_text(payload.get("status")) or "unknown"
+    return {
+        "enabled": True,
+        "required": required,
+        "status": resolved_status,
+        "error": clean_text(error) or attempt_error,
+        "entry_count": len(safe_list(payload.get("attempts"))),
+        "attached_context_count": len(safe_list(summary.get("attached_capabilities"))),
+        "attached_capabilities": deepcopy(safe_list(summary.get("attached_capabilities"))),
+        "coverage_by_capability": deepcopy(safe_dict(summary.get("coverage_by_capability"))),
+        "full_count": int(summary.get("full_count", 0) or 0),
+        "partial_count": int(summary.get("partial_count", 0) or 0),
+        "missing_count": int(summary.get("missing_count", 0) or 0),
+        "error_count": int(summary.get("error_count", 0) or 0),
+        "warning_count": int(summary.get("warning_count", 0) or 0),
+    }
+
+
+def build_tradingagents_request_payload(
+    stock: dict[str, Any],
+    *,
+    config: dict[str, Any],
+    execution_mode_requested: str = DEFAULT_EXECUTION_MODE,
+) -> dict[str, Any]:
+    tradingagents_config = resolve_tradingagents_config(config)
+    ticker = normalize_openalice_symbol(stock.get("ticker"))
+    benchmark_symbol = normalize_openalice_symbol(
+        tradingagents_config.get("benchmark_symbol") or OPENALICE_DEFAULT_BENCHMARK
+    )
+    driver_keywords = unique_strings(safe_list(stock.get("driver_keywords")))[:4]
+    watch_items = unique_strings(safe_list(stock.get("watch_items")))[:4]
+    thesis_id = f"stock-watch-{clean_text(stock.get('slug')) or safe_slug_token(clean_text(stock.get('ticker')))}-advisory"
+    request: dict[str, Any] = {
+        "ticker": ticker,
+        "enabled": True,
+        "mode": "required" if resolve_tradingagents_required(config) else "optional",
+        "analysis_profile": clean_text(tradingagents_config.get("analysis_profile")) or TRADINGAGENTS_DEFAULT_ANALYSIS_PROFILE,
+        "cost_budget_tokens": int(tradingagents_config.get("cost_budget_tokens", 50000) or 50000),
+        "timeout_seconds": int(tradingagents_config.get("timeout_seconds", 120) or 120),
+        "version_guard": clean_text(tradingagents_config.get("version_guard")) or "0.2.3",
+        "prefer_cached_recovery": bool(tradingagents_config.get("prefer_cached_recovery", True)),
+        "thesis": {
+            "thesis_id": thesis_id,
+            "summary": (
+                f"Provide a bounded advisory challenge memo for {stock_name(stock)} ({ticker}) using the current watchlist framing, "
+                f"sector context, and the stock's tracked driver set."
+            ),
+        },
+        "evidence": [
+            {
+                "claim_id": f"{thesis_id}-drivers",
+                "summary": (
+                    f"Tracked drivers: {', '.join(driver_keywords) or 'no explicit driver keywords configured'}."
+                ),
+            },
+            {
+                "claim_id": f"{thesis_id}-watch-items",
+                "summary": (
+                    f"Current watch items: {', '.join(watch_items) or 'no explicit watch items configured'}."
+                ),
+            },
+        ],
+        "catalysts": [
+            {"summary": item}
+            for item in (watch_items or [f"Next official update for {stock_name(stock)}."])
+        ],
+        "market_context": {
+            "benchmark_symbol": benchmark_symbol,
+        },
+    }
+    for key in (
+        "llm_provider",
+        "backend_url",
+        "deep_think_llm",
+        "quick_think_llm",
+        "min_evidence_count",
+        "min_catalyst_count",
+    ):
+        value = tradingagents_config.get(key)
+        if value not in {None, ""}:
+            request[key] = deepcopy(value)
+    fixture_config = safe_dict(tradingagents_config.get("fixture"))
+    if fixture_config:
+        request["fixture"] = deepcopy(fixture_config)
+    if should_force_live_auxiliary_execution(execution_mode_requested):
+        request["prefer_cached_recovery"] = False
+    return request
+
+
+def collect_tradingagents_advisory_context(
+    stock: dict[str, Any],
+    *,
+    config: dict[str, Any],
+    execution_mode_requested: str = DEFAULT_EXECUTION_MODE,
+) -> dict[str, Any]:
+    request_payload = build_tradingagents_request_payload(
+        stock,
+        config=config,
+        execution_mode_requested=execution_mode_requested,
+    )
+    bridge_result = run_tradingagents_decision_bridge(request_payload)
+    decision_memo = deepcopy(safe_dict(bridge_result.get("decision_memo")))
+    warnings = safe_list(decision_memo.get("warnings"))
+    payload = {
+        "enabled": True,
+        "required": resolve_tradingagents_required(config),
+        "status": clean_text(bridge_result.get("status")) or "unknown",
+        "boundary": "auxiliary_decision_advisory_only",
+        "requested_symbol": clean_text(decision_memo.get("normalized_ticker")) or clean_text(request_payload.get("ticker")),
+        "benchmark_symbol": clean_text(safe_dict(request_payload.get("market_context")).get("benchmark_symbol")),
+        "analysis_profile": clean_text(request_payload.get("analysis_profile")) or TRADINGAGENTS_DEFAULT_ANALYSIS_PROFILE,
+        "request": request_payload,
+        "decision_memo": decision_memo,
+        "summary": {
+            "memo_status": clean_text(decision_memo.get("status")) or "unknown",
+            "action": clean_text(safe_dict(decision_memo.get("decision")).get("action")) or "no_opinion",
+            "conviction": clean_text(safe_dict(decision_memo.get("decision")).get("conviction")) or "low",
+            "warning_count": len(warnings),
+            "bull_point_count": len(safe_list(safe_dict(decision_memo.get("bull_case")).get("key_arguments"))),
+            "risk_count": len(safe_list(safe_dict(decision_memo.get("risk_assessment")).get("key_risks"))),
+            "used_market_snapshot_fallback": any(
+                "local market snapshot fallback" in clean_text(item).lower() or "market-data-only" in clean_text(item).lower()
+                for item in warnings
+            ),
+        },
+        "bridge_result": bridge_result,
+        "report_markdown": str(bridge_result.get("report_markdown", "")),
+    }
+    return payload
+
+
+def summarize_tradingagents_stage(
+    payload: dict[str, Any],
+    *,
+    required: bool,
+    status: str | None = None,
+    error: str = "",
+) -> dict[str, Any]:
+    summary = safe_dict(payload.get("summary"))
+    decision_memo = safe_dict(payload.get("decision_memo"))
+    resolved_status = clean_text(status) or clean_text(payload.get("status")) or "unknown"
+    return {
+        "enabled": True,
+        "required": required,
+        "status": resolved_status,
+        "error": clean_text(error),
+        "analysis_profile": clean_text(payload.get("analysis_profile")) or TRADINGAGENTS_DEFAULT_ANALYSIS_PROFILE,
+        "memo_status": clean_text(summary.get("memo_status")) or clean_text(decision_memo.get("status")) or "unknown",
+        "action": clean_text(summary.get("action")) or clean_text(safe_dict(decision_memo.get("decision")).get("action")) or "no_opinion",
+        "conviction": clean_text(summary.get("conviction")) or clean_text(safe_dict(decision_memo.get("decision")).get("conviction")) or "low",
+        "warning_count": int(summary.get("warning_count", len(safe_list(decision_memo.get("warnings")))) or 0),
+        "bull_point_count": int(summary.get("bull_point_count", 0) or 0),
+        "risk_count": int(summary.get("risk_count", 0) or 0),
+        "used_market_snapshot_fallback": bool(summary.get("used_market_snapshot_fallback")),
     }
 
 
@@ -865,6 +1862,10 @@ def choose_execution_mode(requested_mode: str, config: dict[str, Any], result_pa
     if config.get("prefer_news_refresh", True) and result_path.exists():
         return "news_refresh"
     return "news_index"
+
+
+def should_force_live_auxiliary_execution(requested_mode: str) -> bool:
+    return str(requested_mode or "").strip().lower() == "full"
 
 
 def build_source_delta(previous_result: dict[str, Any] | None, current_result: dict[str, Any] | None) -> dict[str, Any]:
@@ -1950,7 +2951,12 @@ def build_run_result(
     report_path: Path,
     result: dict[str, Any] | None,
     source_delta: dict[str, Any] | None = None,
+    agent_reach_stage: dict[str, Any] | None = None,
+    x_feeds_stage: dict[str, Any] | None = None,
+    reddit_stage: dict[str, Any] | None = None,
     opencli_stage: dict[str, Any] | None = None,
+    market_context_stage: dict[str, Any] | None = None,
+    tradingagents_stage: dict[str, Any] | None = None,
     error: str = "",
 ) -> dict[str, Any]:
     observed_at = ""
@@ -1977,7 +2983,12 @@ def build_run_result(
         "captured_new_external_sources": bool(source_delta.get("captured_new_external_sources")),
         "captured_only_baseline_sources": bool(source_delta.get("captured_only_baseline_sources")),
         "summary": summary,
+        "agent_reach_stage": deepcopy(agent_reach_stage) if agent_reach_stage else {},
+        "x_feeds_stage": deepcopy(x_feeds_stage) if x_feeds_stage else {},
+        "reddit_stage": deepcopy(reddit_stage) if reddit_stage else {},
         "opencli_stage": deepcopy(opencli_stage) if opencli_stage else {},
+        "market_context_stage": deepcopy(market_context_stage) if market_context_stage else {},
+        "tradingagents_stage": deepcopy(tradingagents_stage) if tradingagents_stage else {},
         "stdout_tail": stdout_tail,
         "stderr_tail": "",
         "error": error,
@@ -2011,6 +3022,11 @@ def write_latest_update(
     run_results: list[dict[str, Any]],
     updated_at: str,
     output_language: str = DEFAULT_OUTPUT_LANGUAGE,
+    auxiliary_agent_reach: dict[str, Any] | None = None,
+    auxiliary_x_feeds: dict[str, Any] | None = None,
+    auxiliary_reddit_feeds: dict[str, Any] | None = None,
+    auxiliary_market_context: dict[str, Any] | None = None,
+    auxiliary_decision_memo: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     language = normalize_output_language(output_language)
     workflow_summary = build_stock_workflow_summary(
@@ -2029,6 +3045,23 @@ def write_latest_update(
         "workflow_summary": workflow_summary,
         "run_results": run_results,
     }
+    if auxiliary_agent_reach:
+        payload["auxiliary_agent_reach"] = deepcopy(auxiliary_agent_reach)
+    if auxiliary_x_feeds:
+        x_payload = deepcopy(auxiliary_x_feeds)
+        x_diagnostics = diagnose_x_feeds_runtime(x_payload, default_status=clean_text(x_payload.get("status")) or "ok")
+        x_payload["status"] = x_diagnostics["status"]
+        x_payload["blocked_candidate_count"] = x_diagnostics["blocked_candidate_count"]
+        x_payload["blocker_codes"] = deepcopy(x_diagnostics["blocker_codes"])
+        x_payload["blocked_reason_samples"] = deepcopy(x_diagnostics["blocked_reason_samples"])
+        payload["auxiliary_x_feeds"] = x_payload
+        auxiliary_x_feeds = x_payload
+    if auxiliary_reddit_feeds:
+        payload["auxiliary_reddit_feeds"] = deepcopy(auxiliary_reddit_feeds)
+    if auxiliary_market_context:
+        payload["auxiliary_market_context"] = deepcopy(auxiliary_market_context)
+    if auxiliary_decision_memo:
+        payload["auxiliary_decision_memo"] = deepcopy(auxiliary_decision_memo)
     write_json(case_dir / "latest_update.json", payload)
     summary_lines = [
         f"- {localized_text(language, zh_cn='请求执行模式', en='Requested execution mode')}: `{workflow_summary.get('execution_mode_requested', DEFAULT_EXECUTION_MODE)}`",
@@ -2062,9 +3095,164 @@ def write_latest_update(
         "",
     ]
     lines.extend(summary_lines)
+    agent_reach_payload = safe_dict(auxiliary_agent_reach)
+    if agent_reach_payload:
+        failed_channels = ", ".join(
+            clean_text(safe_dict(item).get("channel"))
+            for item in safe_list(agent_reach_payload.get("channels_failed"))
+            if clean_text(safe_dict(item).get("channel"))
+        )
+        lines.extend(
+            [
+                "",
+                localized_text(language, zh_cn="## Agent Reach 二级补充发现", en="## Agent Reach Secondary Discovery"),
+                "",
+                f"- {localized_text(language, zh_cn='状态', en='Status')}: `{clean_text(agent_reach_payload.get('status')) or 'unknown'}`",
+                f"- {localized_text(language, zh_cn='导入候选', en='Imported candidates')}: `{int(agent_reach_payload.get('observations_imported', 0) or 0)}`",
+                f"- {localized_text(language, zh_cn='去重跳过', en='Skipped duplicates')}: `{int(agent_reach_payload.get('observations_skipped_duplicate', 0) or 0)}`",
+                f"- {localized_text(language, zh_cn='成功通道', en='Channels succeeded')}: `{', '.join(safe_list(agent_reach_payload.get('channels_succeeded'))) or 'none'}`",
+                f"- {localized_text(language, zh_cn='失败通道', en='Channels failed')}: `{failed_channels or 'none'}`",
+            ]
+        )
+        if agent_reach_payload.get("result_path"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='结果文件', en='result')}: `{agent_reach_payload.get('result_path')}`"
+            )
+        if agent_reach_payload.get("report_path"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='报告文件', en='report')}: `{agent_reach_payload.get('report_path')}`"
+            )
+    x_feeds_payload = safe_dict(auxiliary_x_feeds)
+    if x_feeds_payload:
+        x_diagnostics = diagnose_x_feeds_runtime(x_feeds_payload, default_status=clean_text(x_feeds_payload.get("status")) or "ok")
+        x_status = x_diagnostics["status"]
+        discovery_summary = safe_dict(x_feeds_payload.get("discovery_summary"))
+        session_bootstrap = safe_dict(x_feeds_payload.get("session_bootstrap"))
+        reuse_summary = safe_dict(x_feeds_payload.get("reuse_summary"))
+        reuse_enabled = reuse_summary.get("enabled")
+        if reuse_enabled is None:
+            reuse_enabled = safe_dict(x_feeds_payload.get("request")).get("reuse_recent_runs")
+        lines.extend(
+            [
+                "",
+                localized_text(language, zh_cn="## X 账户信号源", en="## X Feed Signals"),
+                "",
+                f"- {localized_text(language, zh_cn='状态', en='Status')}: `{x_status}`",
+                f"- {localized_text(language, zh_cn='保留帖子', en='Kept posts')}: `{safe_dict(x_feeds_payload.get('discovery_summary')).get('kept_posts', len(safe_list(x_feeds_payload.get('x_posts'))))}`",
+                f"- {localized_text(language, zh_cn='候选数', en='Attempted candidates')}: `{safe_dict(x_feeds_payload.get('discovery_summary')).get('attempted_candidates', 0)}`",
+            ]
+        )
+        if x_diagnostics["blocked_candidate_count"]:
+            lines.append(
+                f"- {localized_text(language, zh_cn='被拦截候选数', en='Blocked candidates')}: `{x_diagnostics['blocked_candidate_count']}`"
+            )
+        if x_diagnostics["blocker_codes"]:
+            lines.append(
+                f"- {localized_text(language, zh_cn='硬阻塞', en='Blockers')}: `{', '.join(x_diagnostics['blocker_codes'])}`"
+            )
+        session_bootstrap = safe_dict(x_feeds_payload.get("session_bootstrap"))
+        if session_bootstrap:
+            lines.append(
+                f"- {localized_text(language, zh_cn='浼氳瘽鐘舵€?', en='Session status')}: `{clean_text(session_bootstrap.get('status')) or 'unknown'}`"
+            )
+        reuse_summary = safe_dict(x_feeds_payload.get("reuse_summary"))
+        if "enabled" in reuse_summary:
+            lines.append(
+                f"- {localized_text(language, zh_cn='鏄惁鍚敤 reuse', en='Reuse enabled')}: `{localized_text(language, zh_cn='鏄?', en='yes') if reuse_summary.get('enabled') else localized_text(language, zh_cn='鍚?', en='no')}`"
+            )
+        workflow_artifacts = safe_dict(x_feeds_payload.get("workflow_artifacts"))
+        if workflow_artifacts.get("result_json"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='结果文件', en='result')}: `{workflow_artifacts.get('result_json')}`"
+            )
+        if workflow_artifacts.get("report_markdown"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='报告文件', en='report')}: `{workflow_artifacts.get('report_markdown')}`"
+            )
+    reddit_payload = safe_dict(auxiliary_reddit_feeds)
+    if reddit_payload:
+        reddit_summary = safe_dict(reddit_payload.get("import_summary"))
+        lines.extend(
+            [
+                "",
+                localized_text(language, zh_cn="## Reddit 社区信号", en="## Reddit Community Signals"),
+                "",
+                f"- {localized_text(language, zh_cn='状态', en='Status')}: `{clean_text(reddit_payload.get('status')) or 'unknown'}`",
+                f"- {localized_text(language, zh_cn='导入候选', en='Imported candidates')}: `{reddit_summary.get('imported_candidate_count', 0)}`",
+                f"- {localized_text(language, zh_cn='评论样本', en='Comment samples')}: `{reddit_summary.get('comment_sample_count', 0)}`",
+            ]
+        )
+        if reddit_summary.get("source_path"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='源路径', en='Source path')}: `{reddit_summary.get('source_path')}`"
+            )
+        if reddit_payload.get("result_path"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='结果文件', en='result')}: `{reddit_payload.get('result_path')}`"
+            )
+        if reddit_payload.get("report_path"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='报告文件', en='report')}: `{reddit_payload.get('report_path')}`"
+            )
+    market_context_payload = safe_dict(auxiliary_market_context)
+    if market_context_payload:
+        market_context_summary = safe_dict(market_context_payload.get("summary"))
+        lines.extend(
+            [
+                "",
+                localized_text(language, zh_cn="## OpenAlice 辅助市场上下文", en="## OpenAlice Auxiliary Market Context"),
+                "",
+                f"- {localized_text(language, zh_cn='状态', en='Status')}: `{clean_text(market_context_payload.get('status')) or 'unknown'}`",
+                f"- {localized_text(language, zh_cn='边界', en='Boundary')}: auxiliary market context only, not evidence.",
+                f"- {localized_text(language, zh_cn='已附加能力', en='Attached capabilities')}: `{', '.join(safe_list(market_context_summary.get('attached_capabilities'))) or 'none'}`",
+                f"- {localized_text(language, zh_cn='覆盖统计', en='Coverage counts')}: `full={int(market_context_summary.get('full_count', 0) or 0)}` / `partial={int(market_context_summary.get('partial_count', 0) or 0)}` / `missing={int(market_context_summary.get('missing_count', 0) or 0)}` / `error={int(market_context_summary.get('error_count', 0) or 0)}`",
+            ]
+        )
+        benchmark_context = safe_dict(safe_dict(market_context_payload.get("contexts")).get("benchmark"))
+        if benchmark_context:
+            lines.append(
+                f"- {localized_text(language, zh_cn='基准上下文', en='Benchmark context')}: `{clean_text(safe_dict(benchmark_context.get('benchmark_context')).get('benchmark_symbol')) or clean_text(market_context_payload.get('benchmark_symbol')) or 'n/a'}`"
+            )
+        if market_context_payload.get("result_path"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='结果文件', en='result')}: `{market_context_payload.get('result_path')}`"
+            )
+        if market_context_payload.get("report_path"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='报告文件', en='report')}: `{market_context_payload.get('report_path')}`"
+            )
+    tradingagents_payload = safe_dict(auxiliary_decision_memo)
+    if tradingagents_payload:
+        tradingagents_summary = safe_dict(tradingagents_payload.get("summary"))
+        lines.extend(
+            [
+                "",
+                localized_text(language, zh_cn="## TradingAgents 辅助判断", en="## TradingAgents Advisory Layer"),
+                "",
+                f"- {localized_text(language, zh_cn='状态', en='Status')}: `{clean_text(tradingagents_payload.get('status')) or 'unknown'}` / {localized_text(language, zh_cn='memo', en='memo')} `{clean_text(tradingagents_summary.get('memo_status')) or 'unknown'}`",
+                f"- {localized_text(language, zh_cn='模式', en='Profile')}: `{clean_text(tradingagents_payload.get('analysis_profile')) or TRADINGAGENTS_DEFAULT_ANALYSIS_PROFILE}`",
+                f"- {localized_text(language, zh_cn='动作', en='Action')}: `{clean_text(tradingagents_summary.get('action')) or 'no_opinion'}` / `{clean_text(tradingagents_summary.get('conviction')) or 'low'}`",
+                f"- {localized_text(language, zh_cn='看多观点', en='Bull points')}: `{tradingagents_summary.get('bull_point_count', 0)}` / {localized_text(language, zh_cn='风险点', en='risk points')} `{tradingagents_summary.get('risk_count', 0)}`",
+                f"- {localized_text(language, zh_cn='警告数', en='Warning count')}: `{tradingagents_summary.get('warning_count', 0)}`",
+                f"- {localized_text(language, zh_cn='是否命中 market snapshot fallback', en='Used market snapshot fallback')}: `{localized_text(language, zh_cn='是', en='yes') if tradingagents_summary.get('used_market_snapshot_fallback') else localized_text(language, zh_cn='否', en='no')}`",
+            ]
+        )
+        if tradingagents_payload.get("result_path"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='结果文件', en='result')}: `{tradingagents_payload.get('result_path')}`"
+            )
+        if tradingagents_payload.get("report_path"):
+            lines.append(
+                f"- {localized_text(language, zh_cn='报告文件', en='report')}: `{tradingagents_payload.get('report_path')}`"
+            )
     lines.extend(["", localized_text(language, zh_cn="## 运行结果", en="## Run Results"), ""])
     for item in run_results:
+        agent_reach_stage = safe_dict(item.get("agent_reach_stage"))
+        x_feeds_stage = safe_dict(item.get("x_feeds_stage"))
+        reddit_stage = safe_dict(item.get("reddit_stage"))
         opencli_stage = safe_dict(item.get("opencli_stage"))
+        market_context_stage = safe_dict(item.get("market_context_stage"))
+        tradingagents_stage = safe_dict(item.get("tradingagents_stage"))
         lines.extend(
             [
                 f"- `{item['request_name']}`: `{item['status']}` {localized_text(language, zh_cn='通过', en='via')} `{item['mode']}`",
@@ -2074,6 +3262,18 @@ def write_latest_update(
                 f"  - {localized_text(language, zh_cn='报告文件', en='report')}: `{item['report_path']}`",
             ]
         )
+        if agent_reach_stage:
+            lines.append(
+                f"  - Agent Reach: `{agent_reach_stage.get('status', 'unknown')}` / imported `{agent_reach_stage.get('imported_candidate_count', 0)}` / channels `{', '.join(safe_list(agent_reach_stage.get('channels_succeeded'))) or 'none'}`"
+            )
+        if x_feeds_stage:
+            lines.append(
+                f"  - X feeds: `{x_feeds_stage.get('status', 'unknown')}` / kept `{x_feeds_stage.get('kept_posts', 0)}` / candidates `{x_feeds_stage.get('attempted_candidates', 0)}` / session `{x_feeds_stage.get('session_status', '') or 'not-used'}`"
+            )
+        if reddit_stage:
+            lines.append(
+                f"  - Reddit feeds: `{reddit_stage.get('status', 'unknown')}` / imported `{reddit_stage.get('imported_candidate_count', 0)}` / comments `{reddit_stage.get('comment_sample_count', 0)}`"
+            )
         if opencli_stage:
             lines.append(
                 f"  - OpenCLI: `{opencli_stage.get('status', 'unknown')}` / imported `{opencli_stage.get('imported_candidate_count', 0)}` / runner `{opencli_stage.get('runner_status', '') or 'not-run'}`"
@@ -2082,6 +3282,14 @@ def write_latest_update(
                 lines.append(f"  - OpenCLI bridge result: `{opencli_stage['result_path']}`")
             if opencli_stage.get("report_path"):
                 lines.append(f"  - OpenCLI bridge report: `{opencli_stage['report_path']}`")
+        if market_context_stage:
+            lines.append(
+                f"  - OpenAlice: `{market_context_stage.get('status', 'unknown')}` / attached `{market_context_stage.get('attached_context_count', 0)}` / partial `{market_context_stage.get('partial_count', 0)}` / errors `{market_context_stage.get('error_count', 0)}`"
+            )
+        if tradingagents_stage:
+            lines.append(
+                f"  - TradingAgents: `{tradingagents_stage.get('status', 'unknown')}` / memo `{tradingagents_stage.get('memo_status', 'unknown')}` / action `{tradingagents_stage.get('action', 'no_opinion')}` / warnings `{tradingagents_stage.get('warning_count', 0)}`"
+            )
         if item.get("error"):
             lines.append(f"  - {localized_text(language, zh_cn='错误', en='error')}: `{item['error']}`")
     write_report(case_dir / "latest_update.md", "\n".join(lines) + "\n")
@@ -2110,9 +3318,42 @@ def refresh_single_stock(
     run_results: list[dict[str, Any]] = []
     opencli_enabled = resolve_opencli_enabled(config)
     opencli_required = resolve_opencli_required(config)
+    agent_reach_enabled = resolve_agent_reach_enabled(config)
+    agent_reach_required = resolve_agent_reach_required(config)
+    openalice_enabled = resolve_openalice_enabled(config)
+    openalice_required = resolve_openalice_required(config)
+    x_feeds_enabled = resolve_x_feeds_enabled(config)
+    x_feeds_required = resolve_x_feeds_required(config)
+    reddit_feeds_enabled = resolve_reddit_feeds_enabled(config)
+    reddit_feeds_required = resolve_reddit_feeds_required(config)
+    tradingagents_enabled = resolve_tradingagents_enabled(config)
+    tradingagents_required = resolve_tradingagents_required(config)
     opencli_capture: dict[str, Any] = {}
     opencli_capture_error = ""
     shared_opencli_bridge_result: dict[str, Any] = {}
+    agent_reach_payload: dict[str, Any] = {}
+    agent_reach_stage: dict[str, Any] = {}
+    agent_reach_error = ""
+    x_feeds_payload: dict[str, Any] = {}
+    x_feeds_stage: dict[str, Any] = {}
+    x_feeds_error = ""
+    reddit_feeds_payload: dict[str, Any] = {}
+    reddit_feeds_stage: dict[str, Any] = {}
+    reddit_feeds_error = ""
+    openalice_payload: dict[str, Any] = {}
+    openalice_stage: dict[str, Any] = {}
+    openalice_error = ""
+    tradingagents_payload: dict[str, Any] = {}
+    tradingagents_stage: dict[str, Any] = {}
+    tradingagents_error = ""
+    agent_reach_result_path = case_dir / "results" / "agent-reach.result.json"
+    agent_reach_report_path = case_dir / "reports" / "agent-reach.report.md"
+    openalice_result_path = case_dir / "results" / "openalice.market-context.result.json"
+    openalice_report_path = case_dir / "reports" / "openalice.market-context.report.md"
+    reddit_result_path = case_dir / "results" / "reddit-feeds" / "reddit-bridge.result.json"
+    reddit_report_path = case_dir / "results" / "reddit-feeds" / "reddit-bridge.report.md"
+    tradingagents_result_path = case_dir / "results" / "tradingagents.decision.result.json"
+    tradingagents_report_path = case_dir / "reports" / "tradingagents.decision.report.md"
     if opencli_enabled:
         try:
             opencli_payload, payload_source, resolved_result_path, runner_summary = resolve_opencli_payload(
@@ -2133,6 +3374,243 @@ def refresh_single_stock(
             )
         except Exception as exc:
             opencli_capture_error = str(exc)
+    if agent_reach_enabled:
+        try:
+            agent_reach_request = build_agent_reach_capture_payload(stock, analysis_time, config, case_dir)
+            agent_reach_payload = run_agent_reach_bridge(agent_reach_request)
+            agent_reach_payload["result_path"] = str(agent_reach_result_path)
+            agent_reach_payload["report_path"] = str(agent_reach_report_path)
+            write_json(agent_reach_result_path, agent_reach_payload)
+            write_report(agent_reach_report_path, str(agent_reach_payload.get("report_markdown", "")))
+            agent_reach_stage = summarize_agent_reach_stage(
+                agent_reach_payload,
+                required=agent_reach_required,
+                status=clean_text(agent_reach_payload.get("status")) or "ok",
+            )
+            agent_reach_stage["result_path"] = str(agent_reach_result_path)
+            agent_reach_stage["report_path"] = str(agent_reach_report_path)
+        except Exception as exc:
+            agent_reach_error = str(exc)
+            agent_reach_payload = {
+                "status": "error",
+                "channels_attempted": [],
+                "channels_succeeded": [],
+                "channels_failed": [],
+                "observations_imported": 0,
+                "observations_skipped_duplicate": 0,
+                "retrieval_request": {"candidates": []},
+                "report_markdown": "",
+                "result_path": str(agent_reach_result_path),
+                "report_path": str(agent_reach_report_path),
+            }
+            write_json(agent_reach_result_path, agent_reach_payload)
+            write_report(agent_reach_report_path, str(agent_reach_payload.get("report_markdown", "")))
+            agent_reach_stage = summarize_agent_reach_stage(
+                {},
+                required=agent_reach_required,
+                status="error",
+                error=agent_reach_error,
+            )
+            agent_reach_stage["result_path"] = str(agent_reach_result_path)
+            agent_reach_stage["report_path"] = str(agent_reach_report_path)
+    if x_feeds_enabled:
+        try:
+            x_feeds_payload = run_x_index(
+                build_x_feed_capture_payload(
+                    stock,
+                    analysis_time,
+                    config,
+                    case_dir,
+                    repo_root,
+                    execution_mode_requested=execution_mode_requested,
+                )
+            )
+            x_feeds_stage = summarize_x_feeds_stage(x_feeds_payload, required=x_feeds_required)
+        except Exception as exc:
+            x_feeds_error = str(exc)
+            x_feeds_stage = summarize_x_feeds_stage({}, required=x_feeds_required, status="error", error=x_feeds_error)
+    if reddit_feeds_enabled:
+        try:
+            reddit_request = build_reddit_feed_capture_payload(stock, analysis_time, config, case_dir, repo_root)
+            explicit_source_path = resolve_explicit_reddit_source_path(config, repo_root)
+            legacy_source_path = clean_text(reddit_request.get("source_path"))
+            source_path = explicit_source_path if explicit_source_path and Path(explicit_source_path).exists() else ""
+            browser_export_payload: dict[str, Any] = {}
+            browser_export_result: dict[str, Any] = {}
+            if not source_path and should_auto_export_reddit_feeds(config):
+                browser_export_payload = build_reddit_browser_export_payload(stock, analysis_time, config, case_dir)
+                browser_export_result = run_reddit_browser_export(browser_export_payload)
+                exported_candidate_count = int(
+                    safe_dict(browser_export_result.get("export_summary")).get("exported_post_count", 0) or 0
+                )
+                exported_source_path = clean_text(browser_export_result.get("source_path") or browser_export_result.get("output_dir"))
+                if exported_candidate_count > 0 and exported_source_path and Path(exported_source_path).exists():
+                    source_path = exported_source_path
+            if not source_path and legacy_source_path and Path(legacy_source_path).exists():
+                source_path = legacy_source_path
+            if source_path:
+                reddit_request["source_path"] = source_path
+                reddit_request["result_path"] = source_path
+                reddit_feeds_payload = run_reddit_bridge(reddit_request)
+            else:
+                skipped_reason = "No Reddit export source is available for this run."
+                if browser_export_result:
+                    skipped_reason = "Reddit browser export did not produce a usable posts.csv source."
+                reddit_feeds_payload = build_skipped_reddit_feeds_result(
+                    reddit_request,
+                    reason=skipped_reason,
+                )
+            if browser_export_payload:
+                reddit_feeds_payload["browser_export_request"] = deepcopy(browser_export_payload)
+            if browser_export_result:
+                reddit_feeds_payload["browser_export"] = deepcopy(browser_export_result)
+            reddit_feeds_payload["result_path"] = str(reddit_result_path)
+            reddit_feeds_payload["report_path"] = str(reddit_report_path)
+            reddit_feeds_payload["workflow_artifacts"] = {
+                "result_json": str(reddit_result_path),
+                "report_markdown": str(reddit_report_path),
+            }
+            write_json(reddit_result_path, reddit_feeds_payload)
+            write_report(reddit_report_path, str(reddit_feeds_payload.get("report_markdown", "")))
+            reddit_feeds_stage = summarize_reddit_feeds_stage(
+                reddit_feeds_payload,
+                required=reddit_feeds_required,
+                status=clean_text(reddit_feeds_payload.get("status")) or "ok",
+            )
+        except Exception as exc:
+            reddit_feeds_error = str(exc)
+            reddit_feeds_payload = {
+                "status": "error",
+                "import_summary": {
+                    "payload_source": "",
+                    "source_path": "",
+                    "imported_candidate_count": 0,
+                    "comment_sample_count": 0,
+                    "operator_review_required_count": 0,
+                },
+                "retrieval_request": {"candidates": []},
+                "report_markdown": "",
+                "result_path": str(reddit_result_path),
+                "report_path": str(reddit_report_path),
+                "workflow_artifacts": {
+                    "result_json": str(reddit_result_path),
+                    "report_markdown": str(reddit_report_path),
+                },
+            }
+            write_json(reddit_result_path, reddit_feeds_payload)
+            write_report(reddit_report_path, str(reddit_feeds_payload.get("report_markdown", "")))
+            reddit_feeds_stage = summarize_reddit_feeds_stage({}, required=reddit_feeds_required, status="error", error=reddit_feeds_error)
+    if openalice_enabled:
+        try:
+            openalice_payload = collect_openalice_market_context(
+                stock,
+                config=config,
+                output_language=output_language,
+            )
+            openalice_stage = summarize_openalice_stage(
+                openalice_payload,
+                required=openalice_required,
+            )
+            openalice_payload["result_path"] = str(openalice_result_path)
+            openalice_payload["report_path"] = str(openalice_report_path)
+            openalice_stage["result_path"] = str(openalice_result_path)
+            openalice_stage["report_path"] = str(openalice_report_path)
+            write_json(openalice_result_path, openalice_payload)
+            write_report(openalice_report_path, str(openalice_payload.get("report_markdown", "")))
+        except Exception as exc:
+            openalice_error = str(exc)
+            openalice_payload = {
+                "enabled": True,
+                "required": openalice_required,
+                "status": "error",
+                "boundary": "auxiliary_market_context_only",
+                "requested_symbol": normalize_openalice_symbol(stock.get("ticker")),
+                "benchmark_symbol": normalize_openalice_symbol(
+                    resolve_openalice_config(config).get("benchmark_symbol") or OPENALICE_DEFAULT_BENCHMARK
+                ),
+                "summary": {
+                    "requested_capabilities": list(OPENALICE_CAPABILITIES),
+                    "attempted_capabilities": [],
+                    "attached_capabilities": [],
+                    "coverage_by_capability": {},
+                    "full_count": 0,
+                    "partial_count": 0,
+                    "missing_count": 0,
+                    "error_count": 0,
+                    "warning_count": 0,
+                },
+                "contexts": {},
+                "attempts": [],
+            }
+            openalice_payload["report_markdown"] = build_openalice_market_context_report(
+                openalice_payload,
+                output_language=output_language,
+            )
+            openalice_payload["result_path"] = str(openalice_result_path)
+            openalice_payload["report_path"] = str(openalice_report_path)
+            openalice_stage = summarize_openalice_stage(openalice_payload, required=openalice_required, status="error", error=openalice_error)
+            openalice_stage["result_path"] = str(openalice_result_path)
+            openalice_stage["report_path"] = str(openalice_report_path)
+            write_json(openalice_result_path, openalice_payload)
+            write_report(openalice_report_path, str(openalice_payload.get("report_markdown", "")))
+    if tradingagents_enabled:
+        try:
+            tradingagents_payload = collect_tradingagents_advisory_context(
+                stock,
+                config=config,
+                execution_mode_requested=execution_mode_requested,
+            )
+            tradingagents_stage = summarize_tradingagents_stage(
+                tradingagents_payload,
+                required=tradingagents_required,
+            )
+            tradingagents_payload["result_path"] = str(tradingagents_result_path)
+            tradingagents_payload["report_path"] = str(tradingagents_report_path)
+            tradingagents_stage["result_path"] = str(tradingagents_result_path)
+            tradingagents_stage["report_path"] = str(tradingagents_report_path)
+            write_json(tradingagents_result_path, tradingagents_payload)
+            write_report(tradingagents_report_path, str(tradingagents_payload.get("report_markdown", "")))
+        except Exception as exc:
+            tradingagents_error = str(exc)
+            request_payload = build_tradingagents_request_payload(
+                stock,
+                config=config,
+                execution_mode_requested=execution_mode_requested,
+            )
+            tradingagents_payload = {
+                "enabled": True,
+                "required": tradingagents_required,
+                "status": "error",
+                "boundary": "auxiliary_decision_advisory_only",
+                "requested_symbol": clean_text(request_payload.get("ticker")),
+                "benchmark_symbol": clean_text(safe_dict(request_payload.get("market_context")).get("benchmark_symbol")),
+                "analysis_profile": clean_text(request_payload.get("analysis_profile")) or TRADINGAGENTS_DEFAULT_ANALYSIS_PROFILE,
+                "request": request_payload,
+                "decision_memo": {},
+                "summary": {
+                    "memo_status": "error",
+                    "action": "no_opinion",
+                    "conviction": "low",
+                    "warning_count": 0,
+                    "bull_point_count": 0,
+                    "risk_count": 0,
+                    "used_market_snapshot_fallback": False,
+                },
+                "bridge_result": {},
+                "report_markdown": "",
+            }
+            tradingagents_payload["result_path"] = str(tradingagents_result_path)
+            tradingagents_payload["report_path"] = str(tradingagents_report_path)
+            tradingagents_stage = summarize_tradingagents_stage(
+                tradingagents_payload,
+                required=tradingagents_required,
+                status="error",
+                error=tradingagents_error,
+            )
+            tradingagents_stage["result_path"] = str(tradingagents_result_path)
+            tradingagents_stage["report_path"] = str(tradingagents_report_path)
+            write_json(tradingagents_result_path, tradingagents_payload)
+            write_report(tradingagents_report_path, str(tradingagents_payload.get("report_markdown", "")))
     for spec in REQUEST_SPECS:
         base_request = build_request(spec, stock, repo_root=repo_root, analysis_time=analysis_time, refresh=False)
         refresh_request = build_request(spec, stock, repo_root=repo_root, analysis_time=analysis_time, refresh=True)
@@ -2160,7 +3638,12 @@ def refresh_single_stock(
                 result_path=result_path,
                 report_path=report_path,
                 result=None,
+                agent_reach_stage=agent_reach_stage,
+                x_feeds_stage=x_feeds_stage,
+                reddit_stage=reddit_feeds_stage,
                 opencli_stage=opencli_stage,
+                market_context_stage=openalice_stage,
+                tradingagents_stage=tradingagents_stage,
             )
             run_results.append(item)
             append_jsonl(paths["observations"], item)
@@ -2168,6 +3651,67 @@ def refresh_single_stock(
 
         try:
             executed_request = refresh_request if effective_mode == "news_refresh" else base_request
+            if agent_reach_enabled:
+                if agent_reach_error and agent_reach_required:
+                    raise ValueError(agent_reach_error)
+                elif clean_text(agent_reach_stage.get("status")) == "error" and agent_reach_required:
+                    raise ValueError(clean_text(agent_reach_stage.get("error")) or "Agent Reach secondary discovery failed")
+                imported_agent_reach_candidates = project_opencli_candidates_for_request(
+                    safe_list(safe_dict(agent_reach_payload.get("retrieval_request")).get("candidates")),
+                    executed_request,
+                )
+                if imported_agent_reach_candidates:
+                    executed_request = merge_request_with_candidates(executed_request, imported_agent_reach_candidates)
+                    if effective_mode == "news_refresh":
+                        refresh_request = executed_request
+                        write_json(refresh_request_path, refresh_request)
+                    else:
+                        base_request = executed_request
+                        write_json(request_path, base_request)
+            if x_feeds_enabled:
+                if x_feeds_error and x_feeds_required:
+                    raise ValueError(x_feeds_error)
+                imported_x_candidates = project_opencli_candidates_for_request(
+                    safe_list(safe_dict(x_feeds_payload.get("retrieval_request")).get("candidates")),
+                    executed_request,
+                )
+                if imported_x_candidates:
+                    executed_request = merge_request_with_candidates(executed_request, imported_x_candidates)
+                    if effective_mode == "news_refresh":
+                        refresh_request = executed_request
+                        write_json(refresh_request_path, refresh_request)
+                    else:
+                        base_request = executed_request
+                        write_json(request_path, base_request)
+            if reddit_feeds_enabled:
+                if reddit_feeds_error and reddit_feeds_required:
+                    raise ValueError(reddit_feeds_error)
+                elif clean_text(reddit_feeds_stage.get("status")) in {"error", "skipped"} and reddit_feeds_required:
+                    raise ValueError(clean_text(reddit_feeds_stage.get("error")) or "Reddit feeds stage failed")
+                imported_reddit_candidates = project_opencli_candidates_for_request(
+                    safe_list(safe_dict(reddit_feeds_payload.get("retrieval_request")).get("candidates")),
+                    executed_request,
+                )
+                if imported_reddit_candidates:
+                    executed_request = merge_request_with_candidates(executed_request, imported_reddit_candidates)
+                    if effective_mode == "news_refresh":
+                        refresh_request = executed_request
+                        write_json(refresh_request_path, refresh_request)
+                    else:
+                        base_request = executed_request
+                        write_json(request_path, base_request)
+            if openalice_enabled:
+                if openalice_error:
+                    if openalice_required:
+                        raise ValueError(openalice_error)
+                elif clean_text(openalice_stage.get("status")) == "error" and openalice_required:
+                    raise ValueError(clean_text(openalice_stage.get("error")) or "OpenAlice market context failed")
+            if tradingagents_enabled:
+                if tradingagents_error:
+                    if tradingagents_required:
+                        raise ValueError(tradingagents_error)
+                elif clean_text(tradingagents_stage.get("status")) == "error" and tradingagents_required:
+                    raise ValueError(clean_text(tradingagents_stage.get("error")) or "TradingAgents advisory stage failed")
             if opencli_enabled:
                 if opencli_capture_error:
                     opencli_stage = summarize_opencli_stage({}, required=opencli_required, status="error", error=opencli_capture_error)
@@ -2225,7 +3769,12 @@ def refresh_single_stock(
                 report_path=report_path,
                 result=result,
                 source_delta=source_delta,
+                agent_reach_stage=agent_reach_stage,
+                x_feeds_stage=x_feeds_stage,
+                reddit_stage=reddit_feeds_stage,
                 opencli_stage=opencli_stage,
+                market_context_stage=openalice_stage,
+                tradingagents_stage=tradingagents_stage,
             )
         except Exception as exc:
             item = build_run_result(
@@ -2237,13 +3786,29 @@ def refresh_single_stock(
                 result_path=result_path,
                 report_path=report_path,
                 result=None,
+                agent_reach_stage=agent_reach_stage,
+                x_feeds_stage=x_feeds_stage,
+                reddit_stage=reddit_feeds_stage,
                 opencli_stage=opencli_stage,
+                market_context_stage=openalice_stage,
+                tradingagents_stage=tradingagents_stage,
                 error=str(exc),
             )
         run_results.append(item)
         append_jsonl(paths["observations"], item)
 
-    latest_update = write_latest_update(case_dir, stock, run_results, isoformat(now_utc()), output_language=output_language)
+    latest_update = write_latest_update(
+        case_dir,
+        stock,
+        run_results,
+        isoformat(now_utc()),
+        output_language=output_language,
+        auxiliary_agent_reach=agent_reach_payload if agent_reach_enabled and agent_reach_payload else None,
+        auxiliary_x_feeds=x_feeds_payload if x_feeds_enabled and x_feeds_payload else None,
+        auxiliary_reddit_feeds=reddit_feeds_payload if reddit_feeds_enabled and reddit_feeds_payload else None,
+        auxiliary_market_context=openalice_payload if openalice_enabled and openalice_payload else None,
+        auxiliary_decision_memo=tradingagents_payload if tradingagents_enabled and tradingagents_payload else None,
+    )
     maybe_ingest_observations(repo_root, config, paths["observations"])
     return latest_update
 

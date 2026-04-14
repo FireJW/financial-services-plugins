@@ -1,135 +1,291 @@
----
-description: Run the autoresearch improvement loop for a repeatable task
-argument-hint: "[task type] [goal]"
----
-
-# Autoresearch Loop Command
-
-Use the `autoresearch-loop` skill when the user wants Codex to get better at a
-repeatable workflow over time instead of just finishing a one-off task.
-
-Route by task type:
-
-- If the user is improving bug fixing, debugging, or regression handling, use
-  the **code-fix** profile.
-- If the user is improving document cleanup, restructuring, or consolidation,
-  use the **doc-workflow** profile.
-- If the user is improving equity or stock analysis output quality, use the
-  **stock-template** profile.
-- If the user is improving fast-moving news indexing, signal extraction, or
-  source-traceable event notes, use the **info-index** profile.
-
-Before iterating:
-
-1. Define the task boundary.
-2. Define the scorecard and hard failure conditions.
-3. Define how a failed attempt will be rolled back.
-4. Use absolute dates for any time-sensitive market or company data.
-
-For local phase 1 `code-fix` work in this repo:
-
-- use `financial-analysis\skills\autoresearch-code-fix\scripts\python-local.cmd`
-  as the workspace-local Python entrypoint
-- use `financial-analysis\skills\autoresearch-code-fix\scripts\run_phase1_demo.cmd`
-  as the single-sample demo entry for the local phase 1 path
-- use
-  `financial-analysis\skills\autoresearch-code-fix\scripts\run_phase1_batch_demo.cmd`
-  as the full-sample demo entry for the local batch phase 1 path
-- use `financial-analysis\skills\autoresearch-code-fix\scripts\run_init_run_record.cmd`
-  to turn one bug sample into a starter run record
-- use
-  `financial-analysis\skills\autoresearch-code-fix\scripts\run_init_all_run_records.cmd`
-  to generate starter run records for the full fixed bug set in one pass
-- use `financial-analysis\skills\autoresearch-code-fix\scripts\run_evaluate_code_fix.cmd`
-  to score one run record
-- use
-  `financial-analysis\skills\autoresearch-code-fix\scripts\run_evaluate_all_run_records.cmd`
-  to score a full run-record directory into a separate evaluated output
-  directory
-- use `financial-analysis\skills\autoresearch-code-fix\scripts\build_run_report.py`
-  to summarize evaluated result JSON files into one Markdown report
-- use `financial-analysis\skills\autoresearch-code-fix\sample-pool\`
-  as the fixed bug sample set for phase 1
-
-Recommended local phase 1 flow:
-
-1. choose whether you want a single-sample walkthrough or a full-batch walkthrough
-2. use `run_phase1_demo.cmd` for the single-sample path, or
-   `run_phase1_batch_demo.cmd` for the full-sample path
-3. otherwise choose whether to generate one starter run record or a full batch
-4. use `run_init_run_record.cmd` for one bug, or
-   `run_init_all_run_records.cmd` for the full sample set
-5. fill in real baseline and candidate scores
-6. evaluate one run record with `run_evaluate_code_fix.cmd`, or run batch
-   evaluation into a dedicated evaluated output directory
-7. point `build_run_report.py` at that evaluated results directory to produce
-   the Markdown summary
-
-For local phase 1 `info-index` work in this repo:
-
-- use `financial-analysis\skills\autoresearch-info-index\scripts\python-local.cmd`
-  as the workspace-local Python entrypoint
-- use `financial-analysis\skills\autoresearch-info-index\scripts\run_news_index.cmd`
-  to build the new recency-first retrieval front half for one topic
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_news_index_demo.cmd`
-  to regenerate the bundled one-shot request/result/report example
-- use `financial-analysis\skills\autoresearch-info-index\scripts\run_news_refresh.cmd`
-  to refresh only the newest evidence windows without rebuilding all history;
-  it expects an existing result JSON plus a refresh request JSON
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_news_refresh_demo.cmd`
-  to regenerate the bundled refresh example result/report
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_news_index_to_run_record.cmd`
-  to bridge a retrieval result into the existing phase 1 run-record format
-- use `financial-analysis\skills\autoresearch-info-index\scripts\run_phase1_demo.cmd`
-  as the single-sample demo entry for the local phase 1 path
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_phase1_batch_demo.cmd`
-  as the fixed-sample batch demo entry; it now upgrades the benchmark items
-  through `news-index -> run-record -> evaluate`
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_validate_sample_pool.cmd`
-  to validate the fixed benchmark sample set
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_init_run_record.cmd`
-  to turn one benchmark item into a starter run record
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_init_all_run_records.cmd`
-  to generate starter run records for the full benchmark set in one pass
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_evaluate_info_index.cmd`
-  to score one run record
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_evaluate_all_run_records.cmd`
-  to score a full run-record directory into a separate evaluated output
-  directory
-- use
-  `financial-analysis\skills\autoresearch-info-index\scripts\run_build_run_report.cmd`
-  to summarize evaluated result JSON files into one Markdown report
-- use `financial-analysis\skills\autoresearch-info-index\sample-pool\`
-  as the fixed benchmark sample set for phase 1
-
-Recommended local phase 1 info-index flow:
-
-1. use `run_news_index_demo.cmd` if you want to regenerate the bundled example,
-   or `run_news_index.cmd` for your own request file
-2. use `run_news_refresh_demo.cmd` if you want to regenerate the bundled
-   refresh example, or `run_news_refresh.cmd <existing-result> <refresh-request>`
-   when only the most recent windows need updating for your own prior result
-3. bridge the retrieval result into the phase 1 evaluator input with
-   `run_news_index_to_run_record.cmd`
-4. otherwise choose whether to generate one starter run record or a full batch
-5. use `run_init_run_record.cmd` for one fixed benchmark item, or
-   `run_init_all_run_records.cmd` for the full sample set
-6. fill in real hard checks and baseline/candidate scores
-7. evaluate one run record with `run_evaluate_info_index.cmd`, or run batch
-   evaluation into a dedicated evaluated output directory
-8. use `run_phase1_batch_demo.cmd` when you want the fixed benchmark sample-pool
-   workflow pushed through the recency-first front half rather than only the
-   one-shot/refresh demo
-8. point `run_build_run_report.cmd` at that evaluated results directory to produce
-   the Markdown summary
-
-Then load `autoresearch-loop` and follow its workflow.
+hird-party
+||adunite.com^$third-party
+||adyun.com^$third-party
+||aguo.com^$third-party
+||apis301.com^
+||awifi.cn^$third-party
+||baitu3lllqubyqmttdkjsv.com^
+||balmoralmkt.com^$third-party
+||bianxianmao.com^$third-party
+||birdmedia.com^$third-party
+||cxsh.cn.com^
+||d1pmhihatyvp1k.cloudfront.net^
+||dgaxrjj0jwpwp.cloudfront.net^
+||dian500.com^$third-party
+||dianxin.com^$third-party
+||duomai.com^$third-party
+||dv4ku.icu^
+||dzjzg.com^
+||easou.com^$third-party
+||eeyy.com^$third-party
+||fenxi.com^$third-party
+||gameone.com^$third-party
+||i3z.cn^$third-party
+||iddhui.com^
+||iyuedu.cn.com^
+||jollyspring.com^
+||jqsex.com^
+||jsinfo.net^$third-party
+||jsqygwl.top^
+||juandou.com^$third-party
+||jusha.com^$third-party
+||kiwihk.net^$third-party
+||le4le.com^
+||linkvans.com^$third-party
+||mhdnspro.com^
+||mp83fkx.cn^
+||niwota.com^$third-party
+||panel-cn.com^
+||qidou.com^$third-party
+||qywbslk.top^
+||s8.pw^$third-party
+||sdnc.top^
+||sexy-more.com^$third-party
+||snmi.cn^$third-party
+||snxyf.com^$third-party
+||sotunet.com^
+||superfish.com^$third-party
+||szhgmd.com^
+||tc911.vip^
+||twzui6.com^
+||u7u9.com^$third-party
+||um5xcgngmart.xyz^
+||uniway.cn.com^
+||uwerpyh.cn^
+||vlion.cn^$third-party
+||wxfdmri.xyz^
+||xn--wgvp78a61swpe6zdozj.cn^
+||xoqsxdpx.xyz^
+||xueaaaw.cn^
+||xulizui6.com^
+||yatemy.cn^
+||ybcnvqf.cn^
+||yijfdsu.cn^
+||yl04z4v.cn^
+||yuwenbin.host^
+||zantainet.com^
+||zcck60eqyw.world^
+||zcfhi.cn.com^
+||ze5.com^$third-party
+||zisu.cn.com^
+||zlclgzs.cn^
+||zlgame.top^
+||zlongad.com^$third-party
+||xxsmad7.com^
+||ra10.xyz^
+||tu1500919341.cc^
+||tu3168509469.cc^
+||tu3921276844.cc^
+||tu4038097360.cc^
+||tu6767109513.cc^
+||165tchuang.com^
+||6820tp1.com^
+||imgoss820.top^
+||chinesean.com^$third-party
+||25662zubo23739.com^
+||88362zubo95838.com^
+||57573zubo36833.com^
+||w0057.com^
+||rmhfrtnd.com^$third-party
+||w0054.com^
+||w0079.com^
+||w0082.com^
+||68287zubo85737.com^
+||96382zubo66756.com^
+||73336zubo25326.com^
+||93692zubo66936.com^
+||55726zubo56686.com^
+||fgwuw.com^
+||ky595images.com^
+||gn01.top^
+||holmesmind.com^
+||burniecrepes.com^
+||663008888.com^
+||xxxx68xxxx.com^
+||cai75tp.com^
+||595image.com^
+||sales-frontier.com^$third-party
+||xianliao.voto^
+||7299tu75.cc^
+||twrank.com^$third-party
+||uu11881.com^
+||uu22332.com^
+||uu22112.com^
+||tu2024020388.com^
+||uu22662.com^
+||caomeixz7.xyz^
+||imageshh.com^
+||999xx333kk.com^
+||666bb777ww.com^
+||777bb111ww.com^
+||888xx222kk.com^
+||ymmiyun.com^
+##a[href*=".xacg.info/"]
+##button[onclick*=".xacg.info/"]
+||666aa777bb.com^
+||222aa333bb.com^
+||999aa666bb.com^
+||888bb666cc.com^
+||xn--w9q675dm1p7em.net^
+||06789.xyz^
+||114la.com^$third-party,domain=~ylmf.com
+||114lm.com^$third-party
+||16m.cc^$third-party
+||3alian.net^$third-party
+||3dwwwgame.com^$third-party
+||3p8801.co^
+||6651tp.com^
+||6v4.cn^$third-party
+||79181531227.com^
+||7xi9g1.com1.z0.glb.clouddn.com^
+||876920.com^
+||87uq.com^
+||8861202.com^
+||8feichai.com^
+||94lm.com^
+||9831tb.com^
+||a.youdao.com^
+||aafuck.xyz^$third-party
+||achicih.gitee.io^$third-party
+||ad-survey.com^$third-party
+||adbxb.com^$third-party
+||adm.cnzz.net^$third-party
+||adrs.sdo.com^
+||ads-6686.top^
+||adsage.com^$third-party
+||aixuntupian.oss-cn-hongkong.aliyuncs.com^
+||alimama.alicdn.com^
+||alimama.cn^$third-party,domain=~alimama.com|~foctop.com|~meidebi.com|~qinqintejia.com|~tanx.com|~taobao.com|~youhuiyouhui.com.cn
+||alime-pic.oss-cn-hangzhou.aliyuncs.com^
+||atanx.alicdn.com^
+||avivid.likr.tw^$third-party
+||avividone.likr.tw$third-party
+||baiducom.bj.bcebos.com^
+||baitugu.com^$third-party
+||baizhu.cc^$third-party
+||biddingx.com^$third-party
+||books.com.tw/exep/ap/$third-party
+||c.91wan.com^$third-party
+||cb.baidu.com^
+||cbjs.baidu.com^
+||chunmiaosh.com^
+||chushoushijian.cn^
+||cpro.baidu.com^
+||cpro.baidustatic.com^
+||cs.37see.com^$third-party
+||d15cjcet1djbmv.cloudfront.net^
+||d1zoi2q7y0e4d.cloudfront.net^
+||d37d9zbli5ytch.cloudfront.net^
+||d3d7a0q05k6bvz.cloudfront.net^
+||darren01.oss-cn-beijing.aliyuncs.com^
+||dingbu.bj.bcebos.com^
+||displink.com^$third-party
+||dlads.cn^$third-party
+||dmg-dd.oss-accelerate.aliyuncs.com^
+||dongtukj.oss-cn-hongkong.aliyuncs.com^
+||drmcmm.baidu.com^
+||duiwai.baidu.com^
+||eduad.baidu.com^
+||eiv.baidu.com^
+||facai383.oss-cn-guangzhou.aliyuncs.com^
+||farm-cn.plista.com^
+||fijipic.xyz^
+||first-hufu.oss-cn-shanghai.aliyuncs.com^
+||foreveryoung.gz01.bdysite.com^
+||g1.tagtic.cn^
+||gamecps.com^$third-party
+||gd.189.cn^*.htm?SP=$third-party
+||gdxxb.com^$third-party
+||geotmt.com^$third-party
+||gg.miued.com^
+||guanjiabo.net^
+||hao123union.baidu.com^$third-party
+||haokoubei.top^
+||hdtu.oss-cn-beijing.aliyuncs.com^
+||hiad.myweb.hinet.net^
+||img.uu1001.cn^$third-party,domain=~1688.com|~alimama.com|~taobao.com
+||img301.com^
+||imgtg.com^*.gif
+||inte.sogoucdn.com^$domain=~index.sogou.com|~zhishu.sogou.com
+||iprefer.com.tw^$third-party
+||jianpian.vip^$third-party
+||js22f.net^
+||kefeng56.com^$third-party
+||kiees.com^$image,subdocument,third-party
+||kiuee8.com^
+||kuaizitech.com^$third-party
+||kvhee.com^
+||leeleo.top^$third-party
+||lianle.com^$third-party
+||lianmeng.360.cn^$domain=~lianmeng.360.cn
+||linkpicture.com^$third-party
+||lmlmvip.com^
+||lu.sogou.com^
+||lu.sogoucdn.com^
+||mediav.com^$third-party,domain=~dev.360.cn|~g.360.cn
+||miaozhen.com^$third-party
+||mnnmnn.com^
+||mobads.baidu.com^$third-party
+||mobantong.oss-cn-hangzhou.aliyuncs.com^
+||mttpsy6666.cc^
+||n0211.com^
+||n0244.com^
+||n0255.com^
+||n0399.com^
+||n0488.com^
+||n0499.com^
+||n0544.com^
+||n0566.com^
+||n0622.com^
+||n0633.com^
+||n0644.com^
+||n3567.com^
+||n5725.com^
+||n6579.com^
+||n7181.com^
+||news.tagtoo.co^$third-party
+||niuza.com^$image,subdocument,third-party
+||oa-panther.data.aliyun.com^$third-party
+||p0y.cn^$image,domain=~ipinyou.com.cn
+||pagechoice.net^$third-party
+||penxiangge.com^
+||picnewsss.com^
+||pos.baidu.com^
+||pro.cn^$third-party
+||qtmojo.com^$third-party
+||qwe0231141.bj.bcebos.com^
+||re.taotaosou.com^
+||show.kc.taotaosou.com^
+||spcode.baidu.com^
+||star-seo.oss-ap-northeast-1.aliyuncs.com^
+||static-cn.plista.com^
+||stgowan.com^$third-party
+||sums.suning.com^$third-party
+||sz88.oss-cn-shenzhen.aliyuncs.com^
+||tad.suning.com^
+||tamedia.com.tw^$third-party
+||tanx.com^$third-party,domain=~1688.com|~alimama.com|~tmall.com|~www.taobao.com
+||taobao.com/go/$third-party,domain=~alimama.com|~alitrip.com|~tanx.com|~tmall.com
+||tenmax.io^$third-party
+||tianji520.cn^$third-party
+||to8to.com^$subdocument,third-party
+||tttppp.oss-cn-guangzhou.aliyuncs.com^
+||tx99y.net^
+||u0056.com^
+||u0057.com^
+||u0062.com^
+||u0065.com^
+||u0067.com^
+||u0071.com^
+||u0075.com^
+||u0078.com^
+||u0079.com^
+||u0081.com^
+||u0082.com^
+||u0083.com^
+||u1010.com^
+||u1011.com^
+||u1033.com^
+||u1055.com^
+||u1077.com^
+||u1099.c

@@ -1,0 +1,11 @@
+{
+  "task": "match",
+  "job_source": "text",
+  "job_input": "Title: Senior AI Product Manager\nCompany: Example AI\nLocation: Remote\n\nResponsibilities\n- Build AI workflow products\n- Partner with engineering and design\n\nRequirements\n- 5+ years product experience\n- Experience with AI or automation workflows\n",
+  "role_pack": "ai_platform_pm",
+  "candidate_profile_dir": "D:\\career-ops-local\\profile",
+  "output_dir": "D:\\career-ops-local\\outputs\\demo-job-match",
+  "tracker_path": "D:\\career-ops-local\\applications\\tracker.csv",
+  "require_human_review": true,
+  "language": "zh-CN"
+}

@@ -1,0 +1,217 @@
+{
+  "subjects": [
+    {
+      "handle": "twikejin",
+      "display_name": "laofashi",
+      "url": "https://x.com/twikejin",
+      "notes": "Operator supplied seed account for A-share theme and catalyst pattern study.",
+      "tags": ["A-share", "theme-basket", "catalyst"],
+      "candidate_names": [
+        "卓郎智能",
+        "泰坦股份",
+        "中国巨石",
+        "国际复材",
+        "中材科技",
+        "宏和科技",
+        "东山精密",
+        "厦门钨业",
+        "杰瑞股份",
+        "长飞光纤",
+        "亨通光电",
+        "中天科技"
+      ],
+      "theme_aliases": {
+        "electronic_cloth": ["电子布", "织布机", "CCL", "覆铜板"],
+        "cleanroom": ["洁净室"],
+        "fiber_cable": ["光纤光缆", "海缆", "光缆"],
+        "pcb_equipment": ["PCB设备", "PCB"]
+      }
+    },
+    {
+      "handle": "tuolaji2024",
+      "display_name": "tuolaji2024",
+      "url": "https://x.com/tuolaji2024",
+      "notes": "Operator supplied seed account for industry-chain and event-driven study.",
+      "tags": ["A-share", "industry-chain", "event-driven", "optical"],
+      "candidate_names": [
+        "新易盛",
+        "中际旭创",
+        "天孚通信",
+        "德科立",
+        "仕佳光子",
+        "源杰科技",
+        "联特科技",
+        "剑桥科技",
+        "太辰光",
+        "工业富联",
+        "罗博特科",
+        "博创科技",
+        "光迅科技"
+      ],
+      "theme_aliases": {
+        "optical_interconnect": ["光模块", "光互联", "光通信", "光芯片", "EML", "DFB", "CPO", "OCS", "DCI", "硅光子", "光器件", "SiPhIA", "LUMENTUM"],
+        "advanced_pcb_flexible": ["FOLP", "FCCL", "PI膜", "TPI树脂", "柔性PCB", "电路板"],
+        "satellite_chain": ["卫星", "SpaceX", "航天级"]
+      },
+      "logic_basket_rules": [
+        {
+          "rule_name": "optical_interconnect_a_share_basket",
+          "basket_name": "optical_interconnect_a_share",
+          "sector_or_chain": "optical_interconnect",
+          "match_any": ["光模块", "光互联", "EML", "CPO", "OCS", "DCI", "光芯片", "硅光子", "LUMENTUM", "SiPhIA"],
+          "candidate_names": ["新易盛", "中际旭创", "天孚通信", "德科立", "仕佳光子", "源杰科技", "联特科技", "剑桥科技", "太辰光", "博创科技", "光迅科技"],
+          "note": "Use as an advisory basket when the post clearly argues the optical chain but does not name A-share stocks."
+        }
+      ]
+    },
+    {
+      "handle": "aleabitoreddit",
+      "display_name": "aleabitoreddit",
+      "url": "https://x.com/aleabitoreddit",
+      "notes": "Cross-market AI infrastructure / semiconductor theme source. Use for overseas logic -> A-share basket mapping rather than direct copy-trading.",
+      "tags": ["cross-market", "AI-infra", "semiconductor", "A-share-mapping"],
+      "candidate_names": [
+        "沪电股份",
+        "深南电路",
+        "生益科技",
+        "胜宏科技",
+        "中际旭创",
+        "新易盛",
+        "天孚通信",
+        "工业富联"
+      ],
+      "theme_aliases": {
+        "ai_infra": ["AI infra", "AI capex", "GPU", "ASIC", "datacenter", "server", "power", "networking"],
+        "memory_hbm": ["HBM", "memory", "DRAM", "SK hynix", "Micron", "Samsung memory"],
+        "advanced_packaging": ["advanced packaging", "CoWoS", "packaging", "TSMC packaging", "chiplet"],
+        "optical_interconnect": ["optical", "photonics", "800G", "1.6T", "CPO", "DSP"]
+      },
+      "logic_basket_rules": [
+        {
+          "rule_name": "ai_infra_a_share_basket",
+          "basket_name": "ai_infra_a_share",
+          "sector_or_chain": "ai_infra",
+          "match_any": ["AI infra", "AI capex", "GPU", "ASIC", "datacenter", "server", "networking", "power"],
+          "candidate_names": ["工业富联", "沪电股份", "深南电路", "胜宏科技", "生益科技"],
+          "note": "Use when the post argues AI infra capex or server/networking demand without naming A-share stocks."
+        },
+        {
+          "rule_name": "memory_hbm_a_share_basket",
+          "basket_name": "memory_hbm_a_share",
+          "sector_or_chain": "memory_hbm",
+          "match_any": ["HBM", "memory", "DRAM", "SK hynix", "Micron", "Samsung memory"],
+          "candidate_names": ["香农芯创", "雅克科技", "深科技", "兆易创新"],
+          "core_candidate_names": ["雅克科技"],
+          "note": "Use as an advisory China mapping for HBM / memory supply-chain discussion."
+        },
+        {
+          "rule_name": "advanced_packaging_a_share_basket",
+          "basket_name": "advanced_packaging_a_share",
+          "sector_or_chain": "advanced_packaging",
+          "match_any": ["advanced packaging", "CoWoS", "packaging", "TSMC packaging", "chiplet"],
+          "candidate_names": ["长电科技", "通富微电", "华天科技", "文一科技"],
+          "core_candidate_names": ["长电科技", "通富微电", "华天科技"],
+          "note": "Use for overseas advanced-packaging bottleneck or expansion logic mapped into A-share packaging names."
+        },
+        {
+          "rule_name": "optical_interconnect_cross_market_a_share_basket",
+          "basket_name": "optical_interconnect_cross_market_a_share",
+          "sector_or_chain": "optical_interconnect",
+          "match_any": ["optical", "photonics", "800G", "1.6T", "CPO", "DSP"],
+          "candidate_names": ["中际旭创", "新易盛", "天孚通信", "源杰科技"],
+          "core_candidate_names": ["中际旭创", "新易盛", "天孚通信"],
+          "note": "Use when the post frames global optical/photonics demand and we need an A-share expression."
+        }
+      ]
+    },
+    {
+      "handle": "jukan05",
+      "display_name": "jukan05",
+      "url": "https://x.com/jukan05",
+      "notes": "Cross-market semiconductor and supply-chain signal source. Best used for sector/chain mapping into A-share, not as a direct ticker source.",
+      "tags": ["cross-market", "semiconductor", "supply-chain", "A-share-mapping"],
+      "candidate_names": [
+        "长电科技",
+        "通富微电",
+        "华天科技",
+        "沪电股份",
+        "深南电路",
+        "生益科技",
+        "中际旭创",
+        "新易盛"
+      ],
+      "theme_aliases": {
+        "semiconductor_supply_chain": ["semiconductor", "foundry", "fabless", "equipment", "EDA", "wafer", "backend"],
+        "advanced_packaging": ["advanced packaging", "CoWoS", "chiplet", "substrate", "ABF"],
+        "pcb_ccl": ["PCB", "CCL", "substrate", "server board", "switch board"],
+        "optical_interconnect": ["optical", "transceiver", "CPO", "800G", "1.6T"]
+      },
+      "logic_basket_rules": [
+        {
+          "rule_name": "semiconductor_supply_chain_a_share_basket",
+          "basket_name": "semiconductor_supply_chain_a_share",
+          "sector_or_chain": "semiconductor_supply_chain",
+          "match_any": ["semiconductor", "foundry", "fabless", "equipment", "EDA", "wafer", "backend"],
+          "candidate_names": ["北方华创", "中微公司", "长电科技", "通富微电", "华天科技"],
+          "core_candidate_names": ["北方华创", "中微公司"],
+          "note": "Use for global semi-cycle and supply-chain read-through into A-share leaders."
+        },
+        {
+          "rule_name": "advanced_packaging_jukan_a_share_basket",
+          "basket_name": "advanced_packaging_jukan_a_share",
+          "sector_or_chain": "advanced_packaging",
+          "match_any": ["advanced packaging", "CoWoS", "chiplet", "substrate", "ABF"],
+          "candidate_names": ["长电科技", "通富微电", "华天科技", "兴森科技"],
+          "core_candidate_names": ["长电科技", "通富微电", "华天科技"],
+          "note": "Use when packaging/substrate bottlenecks are the main message."
+        },
+        {
+          "rule_name": "pcb_ccl_a_share_basket",
+          "basket_name": "pcb_ccl_a_share",
+          "sector_or_chain": "pcb_ccl",
+          "match_any": ["PCB", "CCL", "substrate", "server board", "switch board"],
+          "candidate_names": ["沪电股份", "深南电路", "生益科技", "胜宏科技"],
+          "core_candidate_names": ["沪电股份", "深南电路", "生益科技"],
+          "note": "Use for board/material read-through from overseas AI server or networking demand."
+        }
+      ]
+    },
+    {
+      "handle": "mack8858",
+      "display_name": "mack8858",
+      "url": "https://x.com/mack8858",
+      "notes": "A-share event-driven and price-hike cycle analyst. Focus on supply-demand catalysts, industry chain bottlenecks, and price increase signals for materials and chemicals.",
+      "tags": ["A-share", "event-driven", "price-hike", "supply-demand"],
+      "candidate_names": [
+        "中材科技",
+        "中国巨石",
+        "宏和科技",
+        "长海股份",
+        "国际复材",
+        "山东玻纤"
+      ],
+      "theme_aliases": {
+        "electronic_cloth": ["电子布", "织布机", "CCL", "覆铜板", "玻纤布", "电子级玻纤"],
+        "price_hike_cycle": ["涨价", "提价", "供需紧缺", "景气上行", "供不应求"]
+      },
+      "logic_basket_rules": [
+        {
+          "rule_name": "event_driven_catalyst",
+          "basket_name": "event_driven_catalyst",
+          "sector_or_chain": "event_driven_catalyst",
+          "match_any": ["涨价", "景气", "供需", "催化"],
+          "candidate_names": ["盐湖股份", "云天化", "华鲁恒升", "万华化学", "合盛硅业", "新安股份"],
+          "core_candidate_names": ["盐湖股份", "云天化"]
+        },
+        {
+          "rule_name": "price_hike_cycle",
+          "basket_name": "price_hike_cycle",
+          "sector_or_chain": "price_hike_cycle",
+          "match_any": ["涨价周期", "景气上行", "供需紧缺"],
+          "candidate_names": ["华鲁恒升", "万华化学", "合盛硅业"],
+          "core_candidate_names": ["华鲁恒升"]
+        }
+      ]
+    }
+  ]
+}

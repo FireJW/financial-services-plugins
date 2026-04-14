@@ -1,0 +1,32 @@
+{
+  "ticker": "NVDA",
+  "enabled": false,
+  "mode": "optional",
+  "analysis_profile": "smart_free",
+  "cost_budget_tokens": 50000,
+  "timeout_seconds": 120,
+  "version_guard": "0.2.3",
+  "thesis": {
+    "thesis_id": "smart-free-example-2026-04-06",
+    "summary": "Use the market-aware smart_free profile so the bridge picks the best available free fallback for the ticker, including SEC or Eastmoney tokenless paths when applicable."
+  },
+  "evidence": [
+    {
+      "claim_id": "smart-free-example-claim-001",
+      "summary": "This request demonstrates automatic free-profile selection by market."
+    }
+  ],
+  "catalysts": [
+    {
+      "summary": "Upcoming earnings, filings, or operating updates."
+    }
+  ],
+  "market_context": {
+    "benchmark_symbol": "SOXX"
+  },
+  "fixture": {
+    "enabled": false,
+    "root": "tests/fixtures/tradingagents-decision-bridge",
+    "response": "basic-success.json"
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "source": "china-portal-adapter",
+  "scan_status": "ready",
+  "session_status": {
+    "mode": "existing_local_only",
+    "platforms_signed_in": ["boss", "liepin"],
+    "stale_platforms": []
+  },
+  "platform_status": {
+    "boss": {
+      "discovery": "ready",
+      "apply_support": "manual_only",
+      "risk_level": "high"
+    },
+    "liepin": {
+      "discovery": "ready",
+      "apply_support": "manual_only",
+      "risk_level": "medium"
+    }
+  },
+  "jobs": [
+    {
+      "job_card": {
+        "job_id": "boss-ai-pm-001",
+        "company": "Alpha AI",
+        "role_title": "AI Product Manager",
+        "level": "senior",
+        "location": "Shanghai",
+        "reports_to": "",
+        "summary": "Build AI workflow products for enterprise teams.",
+        "responsibilities": [
+          "Drive AI workflow features",
+          "Partner with engineering and design"
+        ],
+        "must_haves": [
+          "5 years product experience",
+          "AI workflow experience"
+        ],
+        "nice_to_have": ["Platform experience"],
+        "keywords": ["ai", "product", "platform"],
+        "source": {
+          "type": "portal_scan",
+          "url": "https://example.com/jobs/alpha-ai",
+          "path": ""
+        },
+        "raw_text_excerpt": "Build AI workflow products for enterprise teams."
+      },
+      "platform_meta": {
+        "platform": "boss",
+        "recruiter_type": "direct",
+        "recruiter_name": "Alice Recruiter",
+        "salary_text": "35-50K"
+      },
+      "apply_support": {
+        "available": false,
+        "mode": "manual_only"
+      }
+    },
+    {
+      "job_card": {
+        "job_id": "liepin-growth-pm-002",
+        "company": "GrowthCo",
+        "role_title": "Growth Product Manager",
+        "level": "senior",
+        "location": "Beijing",
+        "reports_to": "",
+        "summary": "Own growth funnels and conversion experiments.",
+        "responsibilities": [
+          "Drive growth experiments",
+          "Own metrics reviews"
+        ],
+        "must_haves": [
+          "5 years product experience",
+          "Growth experience"
+        ],
+        "nice_to_have": [],
+        "keywords": ["growth", "conversion", "product"],
+        "source": {
+          "type": "portal_scan",
+          "url": "https://example.com/jobs/growthco",
+          "path": ""
+        },
+        "raw_text_excerpt": "Own growth funnels and conversion experiments."
+      },
+      "platform_meta": {
+        "platform": "liepin",
+        "recruiter_type": "headhunter",
+        "recruiter_name": "External Headhunter",
+        "salary_text": "20-25K"
+      },
+      "apply_support": {
+        "available": false,
+        "mode": "manual_only"
+      }
+    }
+  ],
+  "warnings": []
+}

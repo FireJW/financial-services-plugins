@@ -1,0 +1,37 @@
+{
+  "mode": "batch",
+  "analysis_time": "2026-04-11T22:20:00+08:00",
+  "analysis_date": "2026-04-11",
+  "subject_registry_path": "financial-analysis/skills/x-stock-picker-style/examples/x-stock-picker-style-subject-registry.template.json",
+  "selected_handles": [
+    "aleabitoreddit",
+    "jukan05"
+  ],
+  "shared_request": {
+    "score_mode": "off",
+    "enable_live_resolution": false,
+    "enable_live_history": false,
+    "candidate_names": [],
+    "theme_aliases": {},
+    "ticker_resolution_by_name": {},
+    "history_by_ticker": {},
+    "x_index_request_template": {
+      "browser_session": {
+        "strategy": "remote_debugging",
+        "cdp_endpoint": "http://127.0.0.1:9222",
+        "required": true
+      },
+      "include_threads": true,
+      "include_images": false,
+      "same_author_scan_window_hours": 96,
+      "same_author_scan_limit": 8,
+      "max_candidates": 10,
+      "max_kept_posts": 6,
+      "profile_recent_relevance_required": false
+    }
+  },
+  "subject_overrides_by_handle": {
+    "aleabitoreddit": {},
+    "jukan05": {}
+  }
+}

@@ -29,6 +29,9 @@ $targetPath = Join-Path $targetDir "$safeName.md"
 if (Test-Path $targetPath) {
   throw "Plan already exists: $targetPath"
 }
+$activePlanDir = Join-Path $repoRoot ".context\current\branches\$branch"
+$activePlanPath = Join-Path $activePlanDir "active-plan.txt"
+$relativePlanPath = ".claude\plan\$safeName.md"
 
 $content = Get-Content -Raw -LiteralPath $templatePath -Encoding UTF8
 $content = $content.Replace("<task-name>", $safeName)
@@ -40,6 +43,11 @@ $content = $content.Replace(
 )
 
 New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+New-Item -ItemType Directory -Force -Path $activePlanDir | Out-Null
 Set-Content -LiteralPath $targetPath -Value $content -Encoding UTF8
+Set-Content -LiteralPath $activePlanPath -Value $relativePlanPath -Encoding UTF8
 
 Write-Output $targetPath
+Write-Output ""
+Write-Output ("Active plan registered: {0}" -f $relativePlanPath)
+Write-Output ('Story loop shortcut: .\scripts\codex-story-loop.ps1 -Current')

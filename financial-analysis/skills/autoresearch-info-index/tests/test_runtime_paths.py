@@ -1,33 +1,32 @@
-#!/usr/bin/env python3
-from __future__ import annotations
+et[split_name])))
+            )
 
-import os
-import unittest
-from pathlib import Path
-from unittest.mock import patch
+    dataset["train"] = dataset["train"].shuffle(seed=training_args.seed)
 
-import sys
+    data_args.train_val_split = None if "validation" in dataset else data_args.train_val_split
+    if isinstance(data_args.train_val_split, float) and data_args.train_val_split > 0.0:
+        split = dataset["train"].train_test_split(data_args.train_val_split, seed=training_args.seed)
+        dataset["train"] = split["train"]
+        dataset["validation"] = split["test"]
 
-SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+    categories = None
+    try:
+        if isinstance(dataset["train"].features["objects"], dict):
+            cat_feature = dataset["train"].features["objects"]["category"].feature
+        else:
+            cat_feature = dataset["train"].features["objects"].feature["category"]
 
-from runtime_paths import resolve_runtime_root
+        if hasattr(cat_feature, "names"):
+            categories = cat_feature.names
+    except (AttributeError, KeyError):
+        pass
 
-
-class RuntimePathsTests(unittest.TestCase):
-    def test_resolve_runtime_root_falls_back_when_env_root_is_not_usable(self) -> None:
-        fallback = (Path.cwd() / ".tmp").resolve()
-        with patch.dict(os.environ, {"FINANCIAL_ANALYSIS_RUNTIME_ROOT": r"D:\Users\rickylu\codex-runtime\financial-services-plugins"}, clear=False):
-            with patch("runtime_paths.is_usable_runtime_root", return_value=False):
-                self.assertEqual(resolve_runtime_root(), fallback)
-
-    def test_resolve_runtime_root_preserves_explicit_path(self) -> None:
-        explicit = Path(".tmp/runtime-paths-explicit").resolve()
-        with patch.dict(os.environ, {"FINANCIAL_ANALYSIS_RUNTIME_ROOT": r"D:\Users\rickylu\codex-runtime\financial-services-plugins"}, clear=False):
-            with patch("runtime_paths.is_usable_runtime_root", return_value=False):
-                self.assertEqual(resolve_runtime_root(str(explicit)), explicit)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    if categories is None:
+        # Category is a Value type (not ClassLabel) — scan dataset to discover labels
+        logger.info("Category feature is not ClassLabel — scanning dataset to discover category labels...")
+        unique_cats = set()
+        for example in dataset["train"]:
+            cats = example["objects"]["category"]
+            if isinstance(cats, list):
+                unique_cats.update(cats)
+     

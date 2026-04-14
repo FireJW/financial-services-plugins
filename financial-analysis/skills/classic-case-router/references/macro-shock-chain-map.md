@@ -24,7 +24,17 @@
 - transmission chain
 - benefit vs damage verdict
 - horizon split
+- scenario price map when the user asks for target price, month-end price, or trading plan
 - invalidation triggers
+
+When `scenario price map` is required, include:
+
+- optimistic path
+- base path
+- pessimistic path
+- upgrade triggers
+- downgrade triggers
+- invalidation condition
 
 ## Anti-Patterns
 
