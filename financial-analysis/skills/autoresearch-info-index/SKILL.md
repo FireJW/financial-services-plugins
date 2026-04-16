@@ -11,6 +11,13 @@ This is the task-specific layer for `autoresearch-loop` when the recurring job
 is to turn fast-moving messages, headlines, or market-moving statements into a
 clean, source-traceable index record.
 
+## Dual-Track Hints
+
+- treat requests containing `latest`, `today`, `current`, or `still` as `Complex` unless proven otherwise
+- if the task expands to multiple stocks or multiple industry links, keep it `Complex`
+- use `financial-services-docs/docs/runtime/codex-dual-track/context-pack-template.md` before long research runs
+- finish with the delivery contract and include the exact cutoff date
+
 Routing note for Reddit:
 
 - prefer `agent-reach:reddit` when Reddit should be fetched as part of the

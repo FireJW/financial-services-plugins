@@ -5,6 +5,13 @@ argument-hint: "[request-json-or-brief]"
 
 # Feedback Workflow Command
 
+## Dual-Track Hints
+
+- route through `routing-index.md` before broad browsing
+- treat fresh-source collection or moving-fact work as `Complex`
+- use `financial-services-docs/docs/runtime/codex-dual-track/complexity-classification.md` to decide escalation
+- finish with the delivery contract and explicitly state where human judgment still enters the workflow
+
 Use this command when the user wants one runnable flow that:
 
 1. collects interviews, talks, podcasts, notes, or raw feedback inputs
