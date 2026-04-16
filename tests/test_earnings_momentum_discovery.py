@@ -122,6 +122,36 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertEqual(rumor_bucket, "watch")
         self.assertEqual(confirmed_bucket, "qualified")
 
+    def test_build_auto_discovery_candidates_extracts_structured_preview_events(self) -> None:
+        assessed_candidates = [
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "sector": "optical",
+                "volume_ratio": 1.8,
+                "trend_template": {"trend_pass": True},
+                "score_components": {"structured_catalyst_score": 12, "rs_and_leadership_score": 15},
+                "price_snapshot": {"distance_to_high52_pct": 20.0, "rs90": 1169.07},
+                "structured_catalyst_snapshot": {
+                    "structured_catalyst_within_window": True,
+                    "performance_preview": [
+                        {"notice_date": "2026-04-14", "summary": "预计一季报净利润同比显著增长"}
+                    ],
+                    "structured_company_events": [
+                        {"date": "2026-04-16", "event_type": "股东大会", "detail": "召开年度股东大会"}
+                    ],
+                },
+            }
+        ]
+
+        rows = module_under_test.build_auto_discovery_candidates(assessed_candidates)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["ticker"], "000988.SZ")
+        self.assertEqual(rows[0]["event_type"], "quarterly_preview")
+        self.assertEqual(rows[0]["chain_name"], "optical")
+        self.assertEqual(rows[0]["sources"][0]["source_type"], "official_filing")
+
 
 if __name__ == "__main__":
     unittest.main()

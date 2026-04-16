@@ -10,6 +10,7 @@ from typing import Any, Callable
 from copy import deepcopy
 from earnings_momentum_discovery import (
     assign_discovery_bucket,
+    build_auto_discovery_candidates,
     classify_market_validation,
     compute_rumor_confidence_range,
     normalize_event_candidate,
@@ -401,6 +402,24 @@ def build_discovery_candidates(raw_candidates: list[dict[str, Any]]) -> list[dic
     return rows
 
 
+def merge_discovery_candidate_inputs(
+    manual_candidates: list[dict[str, Any]],
+    auto_candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen_tickers: set[str] = set()
+    for candidate in manual_candidates + auto_candidates:
+        if not isinstance(candidate, dict):
+            continue
+        ticker = clean_text(candidate.get("ticker"))
+        if ticker and ticker in seen_tickers:
+            continue
+        if ticker:
+            seen_tickers.add(ticker)
+        merged.append(candidate)
+    return merged
+
+
 def midday_action_for_status(status: str) -> str:
     normalized = clean_text(status).lower()
     if normalized == "blocked":
@@ -680,7 +699,10 @@ def enrich_live_result_reporting(
             enriched["filter_summary"] = filter_summary
             enriched["near_miss_candidates"] = near_miss_candidates
 
-    discovery_rows = build_discovery_candidates(discovery_candidates or [])
+    auto_discovery_candidates = build_auto_discovery_candidates(assessed_candidates or [])
+    discovery_rows = build_discovery_candidates(
+        merge_discovery_candidate_inputs(list(discovery_candidates or []), auto_discovery_candidates)
+    )
     if discovery_rows:
         enriched["discovery_lane_summary"] = build_discovery_lane_summary(discovery_rows)
         enriched["directly_actionable"] = [row for row in discovery_rows if row.get("discovery_bucket") == "qualified"][:MAX_REPORTED_TOP_PICKS]

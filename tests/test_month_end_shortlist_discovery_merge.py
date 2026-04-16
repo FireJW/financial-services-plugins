@@ -94,6 +94,47 @@ class MonthEndShortlistDiscoveryMergeTests(unittest.TestCase):
         self.assertIn("discovery_lane_summary", enriched)
         self.assertEqual(enriched["directly_actionable"][0]["ticker"], "000988.SZ")
 
+    def test_enrich_live_result_reporting_auto_derives_discovery_candidates_from_assessed_rows(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 1, "keep_threshold": 58.0},
+            "top_picks": [],
+            "dropped": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        assessed_candidates = [
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "sector": "optical",
+                "keep": True,
+                "scores": {"adjusted_total_score": 58.0},
+                "score_components": {
+                    "trend_template_score": 25.0,
+                    "rs_and_leadership_score": 15.0,
+                    "structured_catalyst_score": 12.0,
+                    "liquidity_and_participation_score": 6.0,
+                },
+                "hard_filter_failures": [],
+                "volume_ratio": 1.8,
+                "trend_template": {"trend_pass": True},
+                "price_snapshot": {"distance_to_high52_pct": 20.0, "rs90": 1169.07},
+                "structured_catalyst_snapshot": {
+                    "structured_catalyst_within_window": True,
+                    "performance_preview": [
+                        {"notice_date": "2026-04-14", "summary": "预计一季报净利润同比显著增长"}
+                    ],
+                    "structured_company_events": [
+                        {"date": "2026-04-16", "event_type": "股东大会", "detail": "召开年度股东大会"}
+                    ],
+                },
+            }
+        ]
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], assessed_candidates)
+
+        self.assertIn("discovery_lane_summary", enriched)
+        self.assertEqual(enriched["directly_actionable"][0]["ticker"], "000988.SZ")
+
 
 if __name__ == "__main__":
     unittest.main()
