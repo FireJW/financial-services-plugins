@@ -16,6 +16,9 @@ SOURCE_ROLE_MAP = {
     "community_post": "personal_thesis",
 }
 CODE_PATTERN = re.compile(r"(?P<name>[\u4e00-\u9fffA-Za-z0-9]+)\((?P<code>\d{6})\)")
+RESPONSE_CONFIRM_KEYWORDS = ("确认", "证实", "属实", "已签", "confirm", "confirmed")
+RESPONSE_DENY_KEYWORDS = ("否认", "不属实", "不实", "谣言", "澄清", "denied", "false")
+RESPONSE_AMBIGUOUS_KEYWORDS = ("不予置评", "以公告为准", "无法评论", "适时披露", "no comment")
 
 
 def clean_text(value: Any) -> str:
@@ -33,7 +36,7 @@ def normalize_event_candidate(raw: dict[str, Any]) -> dict[str, Any]:
         "name": clean_text(raw.get("name")) or clean_text(raw.get("ticker")),
         "event_type": clean_text(raw.get("event_type")),
         "event_strength": clean_text(raw.get("event_strength")) or "medium",
-        "chain_name": clean_text(raw.get("chain_name")),
+        "chain_name": clean_text(raw.get("chain_name")) or "unknown",
         "chain_role": clean_text(raw.get("chain_role")) or "unknown",
         "benefit_type": clean_text(raw.get("benefit_type")) or "mapping",
         "sources": sources,
@@ -45,8 +48,13 @@ def normalize_event_candidate(raw: dict[str, Any]) -> dict[str, Any]:
 
 def compute_rumor_confidence_range(candidate: dict[str, Any]) -> dict[str, Any]:
     roles = set(candidate.get("source_roles") or [])
-    if "official_filing_reference" in roles or "company_response_reference" in roles:
+    state = classify_event_state(candidate)
+    if state["label"] == "response_denied":
+        return {"label": "low", "range": [10, 25]}
+    if state["label"] in {"official_confirmed", "response_confirmed"}:
         return {"label": "high", "range": [80, 90]}
+    if state["label"] == "response_ambiguous":
+        return {"label": "medium_high", "range": [55, 75]}
     if "market_rumor" in roles:
         return {"label": "medium", "range": [40, 65]}
     return {"label": "low", "range": [20, 40]}
@@ -74,15 +82,71 @@ def classify_market_validation(candidate: dict[str, Any]) -> dict[str, Any]:
 def assign_discovery_bucket(candidate: dict[str, Any]) -> str:
     confidence = compute_rumor_confidence_range(candidate)
     validation = classify_market_validation(candidate)
-    if clean_text(candidate.get("event_type")).lower() == "rumor":
+    state = classify_event_state(candidate)
+    if state["label"] == "response_denied":
+        return "track"
+    if clean_text(candidate.get("event_type")).lower() == "rumor" and state["label"] not in {"response_confirmed", "official_confirmed"}:
         return "watch"
     if (
         clean_text(candidate.get("event_strength")).lower() == "strong"
         and validation["label"] == "strong"
-        and confidence["label"] in {"medium", "high"}
+        and confidence["label"] in {"medium", "medium_high", "high"}
     ):
         return "qualified"
     return "watch"
+
+
+def detect_response_signal(text: str) -> str:
+    normalized = clean_text(text)
+    if any(keyword in normalized for keyword in RESPONSE_DENY_KEYWORDS):
+        return "deny"
+    if any(keyword in normalized for keyword in RESPONSE_CONFIRM_KEYWORDS):
+        return "confirm"
+    if any(keyword in normalized for keyword in RESPONSE_AMBIGUOUS_KEYWORDS):
+        return "ambiguous"
+    return ""
+
+
+def classify_event_state(candidate: dict[str, Any]) -> dict[str, Any]:
+    sources = candidate.get("sources") if isinstance(candidate.get("sources"), list) else []
+    has_official_filing = False
+    seen_signals: set[str] = set()
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        source_type = clean_text(source.get("source_type"))
+        if source_type == "official_filing":
+            has_official_filing = True
+        summary = clean_text(source.get("summary"))
+        response_signal = clean_text(source.get("response_signal")) or detect_response_signal(summary)
+        if response_signal:
+            seen_signals.add(response_signal)
+
+    if has_official_filing:
+        return {"label": "official_confirmed"}
+    if "deny" in seen_signals:
+        return {"label": "response_denied"}
+    if "confirm" in seen_signals:
+        return {"label": "response_confirmed"}
+    if "ambiguous" in seen_signals:
+        return {"label": "response_ambiguous"}
+    if clean_text(candidate.get("event_type")).lower() == "rumor":
+        return {"label": "rumor_unconfirmed"}
+    return {"label": "unconfirmed"}
+
+
+def classify_trading_usability(candidate: dict[str, Any]) -> dict[str, Any]:
+    state = classify_event_state(candidate)
+    validation = classify_market_validation(candidate)
+    if state["label"] == "response_denied":
+        return {"label": "low", "summary": "交易可用性低，优先等待进一步证据或回避。"}
+    if state["label"] in {"official_confirmed", "response_confirmed"} and validation["label"] == "strong":
+        return {"label": "high", "summary": "交易可用性高，已具备升级为执行判断的基础。"}
+    if state["label"] in {"official_confirmed", "response_confirmed"}:
+        return {"label": "medium", "summary": "交易可用性中等，事件已确认但仍需进一步量价确认。"}
+    if validation["label"] == "strong":
+        return {"label": "medium", "summary": "交易可用性中等，可作为重点观察对象。"}
+    return {"label": "low", "summary": "交易可用性偏低，更多是线索而非执行依据。"}
 
 
 def build_market_validation_from_shortlist_candidate(candidate: dict[str, Any]) -> dict[str, Any]:

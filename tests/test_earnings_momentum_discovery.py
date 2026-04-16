@@ -214,6 +214,70 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["ticker"], "002384.SZ")
 
+    def test_response_denial_downgrades_rumor_to_track(self) -> None:
+        candidate = module_under_test.normalize_event_candidate(
+            {
+                "ticker": "688521.SS",
+                "name": "芯原股份",
+                "event_type": "rumor",
+                "event_strength": "strong",
+                "sources": [
+                    {"source_type": "market_rumor", "summary": "存在合作传闻"},
+                    {"source_type": "x_summary", "summary": "公司回应：相关传闻不属实"},
+                ],
+                "market_validation": {"volume_multiple_5d": 2.5, "breakout": True, "relative_strength": "strong"},
+            }
+        )
+
+        state = module_under_test.classify_event_state(candidate)
+        usability = module_under_test.classify_trading_usability(candidate)
+        bucket = module_under_test.assign_discovery_bucket(candidate)
+
+        self.assertEqual(state["label"], "response_denied")
+        self.assertEqual(usability["label"], "low")
+        self.assertEqual(bucket, "track")
+
+    def test_response_confirmation_can_upgrade_rumor_to_qualified(self) -> None:
+        candidate = module_under_test.normalize_event_candidate(
+            {
+                "ticker": "688521.SS",
+                "name": "芯原股份",
+                "event_type": "rumor",
+                "event_strength": "strong",
+                "sources": [
+                    {"source_type": "market_rumor", "summary": "存在合作传闻"},
+                    {"source_type": "x_summary", "summary": "公司回应：相关合作属实"},
+                ],
+                "market_validation": {"volume_multiple_5d": 2.5, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+            }
+        )
+
+        state = module_under_test.classify_event_state(candidate)
+        usability = module_under_test.classify_trading_usability(candidate)
+        bucket = module_under_test.assign_discovery_bucket(candidate)
+
+        self.assertEqual(state["label"], "response_confirmed")
+        self.assertEqual(usability["label"], "high")
+        self.assertEqual(bucket, "qualified")
+
+    def test_official_confirmation_without_strong_validation_still_has_medium_usability(self) -> None:
+        candidate = module_under_test.normalize_event_candidate(
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "quarterly_preview",
+                "event_strength": "strong",
+                "sources": [{"source_type": "official_filing", "summary": "正式业绩预告"}],
+                "market_validation": {"volume_multiple_5d": 1.1, "breakout": False, "relative_strength": "normal"},
+            }
+        )
+
+        state = module_under_test.classify_event_state(candidate)
+        usability = module_under_test.classify_trading_usability(candidate)
+
+        self.assertEqual(state["label"], "official_confirmed")
+        self.assertEqual(usability["label"], "medium")
+
 
 if __name__ == "__main__":
     unittest.main()

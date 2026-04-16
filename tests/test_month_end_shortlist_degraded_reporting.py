@@ -172,6 +172,36 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("华工科技", enriched["report_markdown"])
         self.assertIn("optical", enriched["report_markdown"])
 
+    def test_enrich_live_result_reporting_renders_response_state_for_discovery_candidates(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "dropped": [],
+            "top_picks": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        discovery_candidates = [
+            {
+                "ticker": "688521.SS",
+                "name": "芯原股份",
+                "event_type": "rumor",
+                "event_strength": "strong",
+                "chain_name": "chip_design",
+                "chain_role": "logic_support",
+                "benefit_type": "mapping",
+                "sources": [
+                    {"source_type": "market_rumor", "summary": "市场传闻"},
+                    {"source_type": "x_summary", "summary": "公司回应：相关传闻不属实"},
+                ],
+                "market_validation": {"volume_multiple_5d": 2.0, "breakout": True, "relative_strength": "strong"},
+            }
+        ]
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
+
+        self.assertIn("事件状态", enriched["report_markdown"])
+        self.assertIn("response_denied", enriched["report_markdown"])
+        self.assertIn("交易可用性", enriched["report_markdown"])
+
     def test_enrich_live_result_reporting_adds_near_miss_candidates(self) -> None:
         result = {
             "filter_summary": {"kept_count": 0, "keep_threshold": 70.0},

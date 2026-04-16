@@ -12,7 +12,9 @@ from earnings_momentum_discovery import (
     assign_discovery_bucket,
     build_auto_discovery_candidates,
     build_x_style_discovery_candidates,
+    classify_event_state,
     classify_market_validation,
+    classify_trading_usability,
     compute_rumor_confidence_range,
     normalize_event_candidate,
 )
@@ -424,7 +426,9 @@ def build_discovery_candidates(raw_candidates: list[dict[str, Any]]) -> list[dic
             continue
         item = normalize_event_candidate(raw)
         item["rumor_confidence_range"] = compute_rumor_confidence_range(item)
+        item["event_state"] = classify_event_state(item)
         item["market_validation_summary"] = classify_market_validation(item)
+        item["trading_usability"] = classify_trading_usability(item)
         item["discovery_bucket"] = assign_discovery_bucket(item)
         rows.append(item)
     return rows
@@ -826,8 +830,10 @@ def enrich_live_result_reporting(
         for item in directly_actionable:
             lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
             lines.append(f"  - 事件: `{item.get('event_type')}`")
+            lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
             lines.append(f"  - 链条: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
             lines.append(f"  - 市场验证: {item.get('market_validation_summary', {}).get('summary')}")
+            lines.append(f"  - 交易可用性: {item.get('trading_usability', {}).get('summary')}")
 
     priority_watchlist = enriched.get("priority_watchlist", [])
     if isinstance(priority_watchlist, list) and priority_watchlist and "## 重点观察" not in "\n".join(lines):
@@ -836,19 +842,26 @@ def enrich_live_result_reporting(
             confidence = item.get("rumor_confidence_range", {})
             lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
             lines.append(f"  - 事件: `{item.get('event_type')}`")
+            lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
             lines.append(f"  - 可信度区间: `{confidence.get('label')}` `{confidence.get('range')}`")
             lines.append(f"  - 链条: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
+            lines.append(f"  - 交易可用性: {item.get('trading_usability', {}).get('summary')}")
 
     chain_tracking = enriched.get("chain_tracking", [])
     if isinstance(chain_tracking, list) and chain_tracking and "## 链条跟踪" not in "\n".join(lines):
         lines.extend(["", "## 链条跟踪", ""])
         for item in chain_tracking:
             lines.append(f"- `{item.get('ticker')}` {item.get('name')}: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
+            lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
+            lines.append(f"  - 交易可用性: {item.get('trading_usability', {}).get('summary')}")
 
     if enriched.get("discovery_lane_summary") and "## Event Board" not in "\n".join(lines):
         lines.extend(["", "## Event Board", ""])
         for item in (directly_actionable or []) + (priority_watchlist or []) + (chain_tracking or []):
-            lines.append(f"- `{item.get('event_type')}` -> `{item.get('ticker')}` {item.get('name')}")
+            lines.append(
+                f"- `{item.get('event_type')}` / `{item.get('event_state', {}).get('label')}`"
+                f" -> `{item.get('ticker')}` {item.get('name')}"
+            )
 
     if enriched.get("discovery_lane_summary") and "## Chain Map" not in "\n".join(lines):
         lines.extend(["", "## Chain Map", ""])
