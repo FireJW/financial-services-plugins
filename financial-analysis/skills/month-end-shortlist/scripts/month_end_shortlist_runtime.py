@@ -30,10 +30,16 @@ TRADINGAGENTS_SCRIPT_DIR = (
     / "tradingagents-decision-bridge"
     / "scripts"
 )
+X_STYLE_SCRIPT_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "x-stock-picker-style"
+    / "scripts"
+)
 
 
-if str(TRADINGAGENTS_SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(TRADINGAGENTS_SCRIPT_DIR))
+for _script_dir in (TRADINGAGENTS_SCRIPT_DIR, X_STYLE_SCRIPT_DIR):
+    if str(_script_dir) not in sys.path:
+        sys.path.insert(0, str(_script_dir))
 
 
 BENCHMARK_TICKERS = {"000300.SS", "000300.SH"}
@@ -159,31 +165,44 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
         compiled_normalize_request(raw_payload),
     )
     batch_path = clean_text(normalized.get("x_style_batch_result_path"))
-    if not batch_path:
-        return normalized
-    path = Path(batch_path).expanduser().resolve()
-    if not path.exists():
-        return normalized
-    try:
-        batch_payload = load_json(path)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return normalized
-    handles, overlays = extract_x_style_overlays_from_result(
-        batch_payload,
-        selected_handles=normalized.get("x_style_selected_handles", []),
-    )
-    if handles:
-        normalized["x_style_selected_handles"] = handles
-    if overlays:
-        normalized["x_style_overlays"] = overlays
-    x_discovery_candidates = build_x_style_discovery_candidates(
-        batch_payload,
-        selected_handles=normalized.get("x_style_selected_handles", []),
-    )
-    if x_discovery_candidates:
-        existing = normalized.get("event_discovery_candidates")
-        existing_rows = existing if isinstance(existing, list) else []
-        normalized["event_discovery_candidates"] = existing_rows + x_discovery_candidates
+    if batch_path:
+        path = Path(batch_path).expanduser().resolve()
+        if path.exists():
+            try:
+                batch_payload = load_json(path)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                batch_payload = {}
+            if batch_payload:
+                handles, overlays = extract_x_style_overlays_from_result(
+                    batch_payload,
+                    selected_handles=normalized.get("x_style_selected_handles", []),
+                )
+                if handles:
+                    normalized["x_style_selected_handles"] = handles
+                if overlays:
+                    normalized["x_style_overlays"] = overlays
+                x_discovery_candidates = build_x_style_discovery_candidates(
+                    batch_payload,
+                    selected_handles=normalized.get("x_style_selected_handles", []),
+                )
+                if x_discovery_candidates:
+                    existing = normalized.get("event_discovery_candidates")
+                    existing_rows = existing if isinstance(existing, list) else []
+                    normalized["event_discovery_candidates"] = existing_rows + x_discovery_candidates
+
+    x_discovery_request = raw_payload.get("x_discovery_request")
+    if isinstance(x_discovery_request, dict):
+        try:
+            from x_stock_picker_style_runtime import run_x_stock_picker_style
+        except ModuleNotFoundError:
+            x_result = {}
+        else:
+            x_result = run_x_stock_picker_style(deepcopy(x_discovery_request))
+        x_request_candidates = build_x_style_discovery_candidates(x_result)
+        if x_request_candidates:
+            existing = normalized.get("event_discovery_candidates")
+            existing_rows = existing if isinstance(existing, list) else []
+            normalized["event_discovery_candidates"] = existing_rows + x_request_candidates
     return normalized
 
 

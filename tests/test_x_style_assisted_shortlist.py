@@ -113,6 +113,33 @@ class XStyleAssistedShortlistTests(unittest.TestCase):
         self.assertEqual(normalized["event_discovery_candidates"][0]["ticker"], "002384.SZ")
         self.assertEqual(normalized["event_discovery_candidates"][0]["event_type"], "earnings")
 
+    def test_normalize_request_derives_event_discovery_candidates_from_x_discovery_request(self) -> None:
+        request = {
+            "template_name": "month_end_shortlist",
+            "target_date": "2026-04-30",
+            "x_discovery_request": {
+                "subject": {"handle": "twikejin"},
+                "candidate_names": ["东山精密"],
+                "source_board_seed": {
+                    "source_board": [
+                        {
+                            "status_url": "https://x.com/twikejin/status/2041534482210242629",
+                            "status_id": "2041534482210242629",
+                            "author_handle": "twikejin",
+                            "published_at": "2026-04-07T02:00:00+00:00",
+                            "direct_text": "东山精密(002384)Q1净利预增119%-152%，第一目标市值仍有翻倍空间。核心股(东山精密)。",
+                            "direct_text_kind": "raw_post_text"
+                        }
+                    ]
+                }
+            },
+        }
+
+        normalized = normalize_request(request)
+
+        self.assertEqual(normalized["event_discovery_candidates"][0]["ticker"], "002384.SZ")
+        self.assertEqual(normalized["event_discovery_candidates"][0]["chain_role"], "direct_pick")
+
 
 if __name__ == "__main__":
     unittest.main()

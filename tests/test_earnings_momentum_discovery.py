@@ -192,6 +192,28 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertEqual(rows[1]["chain_name"], "optical_interconnect")
         self.assertEqual(rows[1]["chain_role"], "logic_support")
 
+    def test_build_x_style_discovery_candidates_accepts_single_run_payload(self) -> None:
+        single_run = {
+            "subject": {"handle": "twikejin"},
+            "recommendation_ledger": [
+                {
+                    "classification": "direct_pick",
+                    "strength": "strong_direct",
+                    "names": ["东山精密"],
+                    "sector_or_chain": "electronic_cloth",
+                    "catalyst_type": "earnings",
+                    "thesis_excerpt": "东山精密Q1净利预增，核心股。",
+                    "status_url": "https://x.com/twikejin/status/2041534482210242629",
+                    "scored_names": [{"name": "东山精密", "ticker": "002384.SZ"}],
+                }
+            ],
+        }
+
+        rows = module_under_test.build_x_style_discovery_candidates(single_run)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["ticker"], "002384.SZ")
+
 
 if __name__ == "__main__":
     unittest.main()

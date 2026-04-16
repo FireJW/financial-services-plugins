@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any
 
 
@@ -14,6 +15,7 @@ SOURCE_ROLE_MAP = {
     "xueqiu_summary": "summary_or_relay",
     "community_post": "personal_thesis",
 }
+CODE_PATTERN = re.compile(r"(?P<name>[\u4e00-\u9fffA-Za-z0-9]+)\((?P<code>\d{6})\)")
 
 
 def clean_text(value: Any) -> str:
@@ -174,7 +176,13 @@ def build_x_style_discovery_candidates(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     desired_handles = {clean_text(item).lstrip("@") for item in (selected_handles or []) if clean_text(item)}
-    for subject_run in batch_payload.get("subject_runs", []) if isinstance(batch_payload.get("subject_runs"), list) else []:
+    if isinstance(batch_payload.get("subject_runs"), list):
+        subject_runs = batch_payload.get("subject_runs", [])
+    elif isinstance(batch_payload.get("recommendation_ledger"), list):
+        subject_runs = [batch_payload]
+    else:
+        subject_runs = []
+    for subject_run in subject_runs:
         if not isinstance(subject_run, dict):
             continue
         subject = subject_run.get("subject") if isinstance(subject_run.get("subject"), dict) else {}
@@ -194,6 +202,17 @@ def build_x_style_discovery_candidates(
                 if name and ticker and name not in name_to_ticker:
                     name_to_ticker[name] = ticker
 
+        source_board_by_status: dict[str, dict[str, Any]] = {}
+        for item in subject_run.get("source_board", []) if isinstance(subject_run.get("source_board"), list) else []:
+            if not isinstance(item, dict):
+                continue
+            status_url = clean_text(item.get("status_url"))
+            status_id = clean_text(item.get("status_id"))
+            if status_url:
+                source_board_by_status[status_url] = item
+            if status_id:
+                source_board_by_status[status_id] = item
+
         for event in subject_run.get("recommendation_ledger", []) if isinstance(subject_run.get("recommendation_ledger"), list) else []:
             if not isinstance(event, dict):
                 continue
@@ -211,10 +230,24 @@ def build_x_style_discovery_candidates(
                 name = clean_text(raw_name)
                 if not name:
                     continue
+                ticker = name_to_ticker.get(name, "")
+                if not ticker:
+                    source_item = source_board_by_status.get(clean_text(event.get("status_url"))) or source_board_by_status.get(clean_text(event.get("status_id")))
+                    source_text = ""
+                    if isinstance(source_item, dict):
+                        source_text = clean_text(source_item.get("direct_text")) or clean_text(source_item.get("quoted_text"))
+                    for match in CODE_PATTERN.finditer(source_text):
+                        if clean_text(match.group("name")) == name:
+                            code = clean_text(match.group("code"))
+                            if code.startswith(("6", "9")):
+                                ticker = f"{code}.SS"
+                            else:
+                                ticker = f"{code}.SZ"
+                            break
                 rows.append(
                     normalize_event_candidate(
                         {
-                            "ticker": name_to_ticker.get(name, ""),
+                            "ticker": ticker,
                             "name": name,
                             "event_type": clean_text(event.get("catalyst_type")) or "x_logic_signal",
                             "event_strength": "strong" if "strong" in clean_text(event.get("strength")).lower() else "medium",
