@@ -177,41 +177,16 @@
       ]
     },
     {
-      "handle": "mack8858",
-      "display_name": "mack8858",
-      "url": "https://x.com/mack8858",
-      "notes": "A-share event-driven and price-hike cycle analyst. Focus on supply-demand catalysts, industry chain bottlenecks, and price increase signals for materials and chemicals.",
-      "tags": ["A-share", "event-driven", "price-hike", "supply-demand"],
-      "candidate_names": [
-        "中材科技",
-        "中国巨石",
-        "宏和科技",
-        "长海股份",
-        "国际复材",
-        "山东玻纤"
-      ],
+      "handle": "Ariston_Macro",
+      "display_name": "Ariston_Macro",
+      "url": "https://x.com/Ariston_Macro",
+      "notes": "Macro-focused market intelligence account for top-down regime, liquidity, rates, and policy framing. Use as a macro context source rather than a direct A-share ticker source.",
+      "tags": ["macro", "cross-market", "rates", "policy", "top-down"],
+      "candidate_names": [],
       "theme_aliases": {
-        "electronic_cloth": ["电子布", "织布机", "CCL", "覆铜板", "玻纤布", "电子级玻纤"],
-        "price_hike_cycle": ["涨价", "提价", "供需紧缺", "景气上行", "供不应求"]
+        "macro_regime": ["liquidity", "rates", "yield", "dollar", "policy", "inflation", "growth", "term premium"]
       },
-      "logic_basket_rules": [
-        {
-          "rule_name": "event_driven_catalyst",
-          "basket_name": "event_driven_catalyst",
-          "sector_or_chain": "event_driven_catalyst",
-          "match_any": ["涨价", "景气", "供需", "催化"],
-          "candidate_names": ["盐湖股份", "云天化", "华鲁恒升", "万华化学", "合盛硅业", "新安股份"],
-          "core_candidate_names": ["盐湖股份", "云天化"]
-        },
-        {
-          "rule_name": "price_hike_cycle",
-          "basket_name": "price_hike_cycle",
-          "sector_or_chain": "price_hike_cycle",
-          "match_any": ["涨价周期", "景气上行", "供需紧缺"],
-          "candidate_names": ["华鲁恒升", "万华化学", "合盛硅业"],
-          "core_candidate_names": ["华鲁恒升"]
-        }
-      ]
+      "logic_basket_rules": []
     }
   ]
 }
