@@ -14,6 +14,7 @@ SCRIPT_DIR = (
     / "month-end-shortlist"
     / "scripts"
 )
+EXAMPLES_DIR = SCRIPT_DIR.parent / "examples"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -62,9 +63,7 @@ class XStyleAssistedShortlistTests(unittest.TestCase):
         }
         try:
             batch_path.write_text(json.dumps(batch_payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            template_path = Path(
-                "financial-analysis/skills/month-end-shortlist/examples/month-end-shortlist-x-style-assisted.template.json"
-            )
+            template_path = EXAMPLES_DIR / "month-end-shortlist-x-style-assisted.template.json"
             request = load_json(template_path)
             request["x_style_batch_result_path"] = str(batch_path)
             normalized = normalize_request(request)
@@ -72,6 +71,47 @@ class XStyleAssistedShortlistTests(unittest.TestCase):
             shutil.rmtree(cache_dir, ignore_errors=True)
         self.assertEqual(normalized["x_style_selected_handles"], ["twikejin", "tuolaji2024"])
         self.assertEqual([item["overlay_name"] for item in normalized["x_style_overlays"]], ["x_style_twikejin", "x_style_tuolaji2024"])
+
+    def test_normalize_request_derives_event_discovery_candidates_from_x_batch_result(self) -> None:
+        cache_dir = Path.cwd() / ".tmp" / "test-x-style-discovery-candidates"
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        batch_path = cache_dir / "batch-result.json"
+        batch_payload = {
+            "subject_runs": [
+                {
+                    "subject": {"handle": "twikejin"},
+                    "overlay_pack": {"overlay_name": "x_style_twikejin"},
+                    "recommendation_ledger": [
+                        {
+                            "classification": "direct_pick",
+                            "strength": "strong_direct",
+                            "names": ["东山精密"],
+                            "sector_or_chain": "electronic_cloth",
+                            "catalyst_type": "earnings",
+                            "thesis_excerpt": "东山精密Q1净利预增，核心股。",
+                            "status_url": "https://x.com/twikejin/status/2041534482210242629",
+                            "scored_names": [{"name": "东山精密", "ticker": "002384.SZ"}],
+                        }
+                    ],
+                }
+            ]
+        }
+        try:
+            batch_path.write_text(json.dumps(batch_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            request = {
+                "template_name": "month_end_shortlist",
+                "target_date": "2026-04-30",
+                "x_style_batch_result_path": str(batch_path),
+                "x_style_selected_handles": ["twikejin"],
+            }
+            normalized = normalize_request(request)
+        finally:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+        self.assertEqual(normalized["event_discovery_candidates"][0]["ticker"], "002384.SZ")
+        self.assertEqual(normalized["event_discovery_candidates"][0]["event_type"], "earnings")
 
 
 if __name__ == "__main__":

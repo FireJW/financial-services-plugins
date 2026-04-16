@@ -152,6 +152,46 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertEqual(rows[0]["chain_name"], "optical")
         self.assertEqual(rows[0]["sources"][0]["source_type"], "official_filing")
 
+    def test_build_x_style_discovery_candidates_extracts_direct_pick_and_logic_basket(self) -> None:
+        batch_payload = {
+            "subject_runs": [
+                {
+                    "subject": {"handle": "twikejin"},
+                    "recommendation_ledger": [
+                        {
+                            "classification": "direct_pick",
+                            "strength": "strong_direct",
+                            "names": ["东山精密"],
+                            "sector_or_chain": "electronic_cloth",
+                            "catalyst_type": "earnings",
+                            "thesis_excerpt": "东山精密Q1净利预增，核心股。",
+                            "status_url": "https://x.com/twikejin/status/2041534482210242629",
+                            "scored_names": [{"name": "东山精密", "ticker": "002384.SZ"}],
+                        },
+                        {
+                            "classification": "logic_support",
+                            "strength": "logic_support_high_conviction",
+                            "names": [],
+                            "suggested_basket_sector": "optical_interconnect",
+                            "suggested_basket_core_candidates": ["新易盛", "中际旭创"],
+                            "thesis_excerpt": "光模块/光互联——EML缺货的下游受益者。",
+                            "status_url": "https://x.com/tuolaji2024/status/2042465436810559801",
+                        },
+                    ],
+                }
+            ]
+        }
+
+        rows = module_under_test.build_x_style_discovery_candidates(batch_payload)
+
+        self.assertEqual(rows[0]["ticker"], "002384.SZ")
+        self.assertEqual(rows[0]["event_type"], "earnings")
+        self.assertEqual(rows[0]["chain_role"], "direct_pick")
+        self.assertEqual(rows[0]["sources"][0]["account"], "twikejin")
+        self.assertEqual(rows[1]["name"], "新易盛")
+        self.assertEqual(rows[1]["chain_name"], "optical_interconnect")
+        self.assertEqual(rows[1]["chain_role"], "logic_support")
+
 
 if __name__ == "__main__":
     unittest.main()

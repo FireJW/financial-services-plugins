@@ -11,6 +11,7 @@ from copy import deepcopy
 from earnings_momentum_discovery import (
     assign_discovery_bucket,
     build_auto_discovery_candidates,
+    build_x_style_discovery_candidates,
     classify_market_validation,
     compute_rumor_confidence_range,
     normalize_event_candidate,
@@ -175,6 +176,14 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
         normalized["x_style_selected_handles"] = handles
     if overlays:
         normalized["x_style_overlays"] = overlays
+    x_discovery_candidates = build_x_style_discovery_candidates(
+        batch_payload,
+        selected_handles=normalized.get("x_style_selected_handles", []),
+    )
+    if x_discovery_candidates:
+        existing = normalized.get("event_discovery_candidates")
+        existing_rows = existing if isinstance(existing, list) else []
+        normalized["event_discovery_candidates"] = existing_rows + x_discovery_candidates
     return normalized
 
 

@@ -165,3 +165,72 @@ def build_auto_discovery_candidates(assessed_candidates: list[dict[str, Any]]) -
             )
         )
     return rows
+
+
+def build_x_style_discovery_candidates(
+    batch_payload: dict[str, Any],
+    *,
+    selected_handles: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    desired_handles = {clean_text(item).lstrip("@") for item in (selected_handles or []) if clean_text(item)}
+    for subject_run in batch_payload.get("subject_runs", []) if isinstance(batch_payload.get("subject_runs"), list) else []:
+        if not isinstance(subject_run, dict):
+            continue
+        subject = subject_run.get("subject") if isinstance(subject_run.get("subject"), dict) else {}
+        handle = clean_text(subject.get("handle")).lstrip("@")
+        if desired_handles and handle not in desired_handles:
+            continue
+
+        name_to_ticker: dict[str, str] = {}
+        for event in subject_run.get("recommendation_ledger", []) if isinstance(subject_run.get("recommendation_ledger"), list) else []:
+            if not isinstance(event, dict):
+                continue
+            for scored in event.get("scored_names", []) if isinstance(event.get("scored_names"), list) else []:
+                if not isinstance(scored, dict):
+                    continue
+                name = clean_text(scored.get("name"))
+                ticker = clean_text(scored.get("ticker"))
+                if name and ticker and name not in name_to_ticker:
+                    name_to_ticker[name] = ticker
+
+        for event in subject_run.get("recommendation_ledger", []) if isinstance(subject_run.get("recommendation_ledger"), list) else []:
+            if not isinstance(event, dict):
+                continue
+            classification = clean_text(event.get("classification"))
+            if classification not in {"direct_pick", "theme_basket", "logic_support", "quote_only"}:
+                continue
+
+            raw_names = event.get("names", []) if isinstance(event.get("names"), list) else []
+            if not raw_names:
+                raw_names = event.get("suggested_basket_core_candidates", []) if isinstance(event.get("suggested_basket_core_candidates"), list) else []
+            if not raw_names:
+                raw_names = event.get("suggested_basket_candidates", []) if isinstance(event.get("suggested_basket_candidates"), list) else []
+
+            for raw_name in raw_names:
+                name = clean_text(raw_name)
+                if not name:
+                    continue
+                rows.append(
+                    normalize_event_candidate(
+                        {
+                            "ticker": name_to_ticker.get(name, ""),
+                            "name": name,
+                            "event_type": clean_text(event.get("catalyst_type")) or "x_logic_signal",
+                            "event_strength": "strong" if "strong" in clean_text(event.get("strength")).lower() else "medium",
+                            "chain_name": clean_text(event.get("sector_or_chain") or event.get("suggested_basket_sector")),
+                            "chain_role": classification,
+                            "benefit_type": "direct" if classification == "direct_pick" else "mapping",
+                            "sources": [
+                                {
+                                    "source_type": "x_summary",
+                                    "account": handle,
+                                    "summary": clean_text(event.get("thesis_excerpt")),
+                                    "status_url": clean_text(event.get("status_url")),
+                                }
+                            ],
+                            "market_validation": {},
+                        }
+                    )
+                )
+    return rows
