@@ -324,6 +324,33 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertIn("official_filing_reference", card["source_roles"])
         self.assertIn("summary_or_relay", card["source_roles"])
 
+    def test_build_event_cards_assigns_priority_score_and_why_now_summary(self) -> None:
+        rows = [
+            module_under_test.normalize_event_candidate(
+                {
+                    "ticker": "000988.SZ",
+                    "name": "华工科技",
+                    "event_type": "quarterly_preview",
+                    "event_strength": "strong",
+                    "chain_name": "optical",
+                    "chain_role": "midstream_manufacturing",
+                    "benefit_type": "direct",
+                    "sources": [
+                        {"source_type": "official_filing", "summary": "一季报预告显示利润显著增长"},
+                        {"source_type": "x_summary", "account": "Ariston_Macro", "summary": "板块盈利预期修复信号"},
+                        {"source_type": "company_response", "summary": "公司回应：相关业绩预增信息属实"},
+                    ],
+                    "market_validation": {"volume_multiple_5d": 2.2, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+                }
+            )
+        ]
+
+        cards = module_under_test.build_event_cards(rows)
+
+        self.assertGreater(cards[0]["priority_score"], 0)
+        self.assertIn("official_confirmed", cards[0]["why_now"])
+        self.assertIn("Ariston_Macro", cards[0]["why_now"])
+
 
 if __name__ == "__main__":
     unittest.main()

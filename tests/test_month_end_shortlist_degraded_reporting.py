@@ -239,6 +239,8 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("## Event Cards", enriched["report_markdown"])
         self.assertIn("source_count", enriched["report_markdown"])
         self.assertIn("Ariston_Macro", enriched["report_markdown"])
+        self.assertIn("priority_score", enriched["report_markdown"])
+        self.assertIn("why_now", enriched["report_markdown"])
 
     def test_enrich_live_result_reporting_adds_near_miss_candidates(self) -> None:
         result = {

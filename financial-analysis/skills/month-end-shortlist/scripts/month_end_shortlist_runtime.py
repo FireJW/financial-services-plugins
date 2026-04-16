@@ -872,6 +872,8 @@ def enrich_live_result_reporting(
         for item in event_cards:
             lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
             lines.append(f"  - primary_event_type: `{item.get('primary_event_type')}`")
+            lines.append(f"  - priority_score: `{item.get('priority_score')}`")
+            lines.append(f"  - why_now: `{item.get('why_now')}`")
             lines.append(f"  - source_count: `{item.get('source_count')}`")
             lines.append(f"  - source_accounts: `{', '.join(item.get('source_accounts', [])) or 'none'}`")
             lines.append(f"  - event_state: `{item.get('event_state', {}).get('label')}`")

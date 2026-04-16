@@ -174,6 +174,46 @@ def _state_priority(value: str) -> int:
     }.get(clean_text(value), 99)
 
 
+def compute_event_priority_score(candidate: dict[str, Any]) -> int:
+    state = classify_event_state(candidate)
+    usability = classify_trading_usability(candidate)
+    validation = classify_market_validation(candidate)
+    source_roles = set(candidate.get("source_roles") or [])
+    score = 0
+    if state["label"] == "official_confirmed":
+        score += 40
+    elif state["label"] == "response_confirmed":
+        score += 30
+    elif state["label"] == "response_ambiguous":
+        score += 20
+    elif state["label"] == "rumor_unconfirmed":
+        score += 10
+    if usability["label"] == "high":
+        score += 25
+    elif usability["label"] == "medium":
+        score += 15
+    if validation["label"] == "strong":
+        score += 20
+    elif validation["label"] == "medium":
+        score += 10
+    if "official_filing_reference" in source_roles:
+        score += 10
+    if "summary_or_relay" in source_roles or "personal_thesis" in source_roles:
+        score += 5
+    return score
+
+
+def build_why_now_summary(candidate: dict[str, Any]) -> str:
+    state = classify_event_state(candidate)
+    validation = classify_market_validation(candidate)
+    accounts = [clean_text(item.get("account")) for item in candidate.get("sources", []) if isinstance(item, dict) and clean_text(item.get("account"))]
+    account_text = ", ".join(sorted(set(accounts))) if accounts else "no_named_accounts"
+    return (
+        f"{state['label']} + {validation['label']} validation"
+        f" + accounts[{account_text}]"
+    )
+
+
 def build_event_cards(discovery_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in discovery_rows:
@@ -248,10 +288,12 @@ def build_event_cards(discovery_rows: list[dict[str, Any]]) -> list[dict[str, An
             "market_validation_summary": market_validation_summary,
             "trading_usability": trading_usability,
             "discovery_bucket": discovery_bucket,
+            "priority_score": compute_event_priority_score(merged_candidate),
+            "why_now": build_why_now_summary(merged_candidate),
         }
         cards.append(card)
 
-    cards.sort(key=lambda item: (_state_priority(item.get("event_state", {}).get("label")), -len(item.get("sources", [])), clean_text(item.get("ticker"))))
+    cards.sort(key=lambda item: (-int(item.get("priority_score") or 0), _state_priority(item.get("event_state", {}).get("label")), clean_text(item.get("ticker"))))
     return cards
 
 
