@@ -143,6 +143,35 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("trend=`25.0`", enriched["report_markdown"])
         self.assertIn("score_below_keep_threshold", enriched["report_markdown"])
 
+    def test_enrich_live_result_reporting_renders_event_board_and_chain_map(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "dropped": [],
+            "top_picks": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        discovery_candidates = [
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "quarterly_preview",
+                "event_strength": "strong",
+                "chain_name": "optical",
+                "chain_role": "midstream_manufacturing",
+                "benefit_type": "direct",
+                "sources": [{"source_type": "official_filing", "summary": "正式业绩预告"}],
+                "market_validation": {"volume_multiple_5d": 2.0, "breakout": True, "relative_strength": "strong"},
+            }
+        ]
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
+
+        self.assertIn("## 直接可执行", enriched["report_markdown"])
+        self.assertIn("## Event Board", enriched["report_markdown"])
+        self.assertIn("## Chain Map", enriched["report_markdown"])
+        self.assertIn("华工科技", enriched["report_markdown"])
+        self.assertIn("optical", enriched["report_markdown"])
+
     def test_enrich_live_result_reporting_adds_near_miss_candidates(self) -> None:
         result = {
             "filter_summary": {"kept_count": 0, "keep_threshold": 70.0},

@@ -8,6 +8,12 @@ from pathlib import Path
 import sys
 from typing import Any, Callable
 from copy import deepcopy
+from earnings_momentum_discovery import (
+    assign_discovery_bucket,
+    classify_market_validation,
+    compute_rumor_confidence_range,
+    normalize_event_candidate,
+)
 
 
 PYC_PATH = (
@@ -369,6 +375,32 @@ def classify_midday_status(candidate: dict[str, Any], near_miss_tickers: set[str
     return "watch"
 
 
+def build_discovery_lane_summary(discovery_rows: list[dict[str, Any]]) -> dict[str, int]:
+    summary = {"qualified_count": 0, "watch_count": 0, "track_count": 0}
+    for item in discovery_rows:
+        bucket = clean_text(item.get("discovery_bucket"))
+        if bucket == "qualified":
+            summary["qualified_count"] += 1
+        elif bucket == "watch":
+            summary["watch_count"] += 1
+        else:
+            summary["track_count"] += 1
+    return summary
+
+
+def build_discovery_candidates(raw_candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for raw in raw_candidates:
+        if not isinstance(raw, dict):
+            continue
+        item = normalize_event_candidate(raw)
+        item["rumor_confidence_range"] = compute_rumor_confidence_range(item)
+        item["market_validation_summary"] = classify_market_validation(item)
+        item["discovery_bucket"] = assign_discovery_bucket(item)
+        rows.append(item)
+    return rows
+
+
 def midday_action_for_status(status: str) -> str:
     normalized = clean_text(status).lower()
     if normalized == "blocked":
@@ -612,6 +644,7 @@ def enrich_live_result_reporting(
     result: dict[str, Any],
     failure_candidates: list[dict[str, Any]],
     assessed_candidates: list[dict[str, Any]] | None = None,
+    discovery_candidates: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     enriched = enrich_degraded_live_result(result, failure_candidates)
     dropped = [item for item in enriched.get("dropped", []) if isinstance(item, dict)]
@@ -646,6 +679,13 @@ def enrich_live_result_reporting(
             filter_summary["near_miss_candidate_count"] = len(near_miss_candidates)
             enriched["filter_summary"] = filter_summary
             enriched["near_miss_candidates"] = near_miss_candidates
+
+    discovery_rows = build_discovery_candidates(discovery_candidates or [])
+    if discovery_rows:
+        enriched["discovery_lane_summary"] = build_discovery_lane_summary(discovery_rows)
+        enriched["directly_actionable"] = [row for row in discovery_rows if row.get("discovery_bucket") == "qualified"][:MAX_REPORTED_TOP_PICKS]
+        enriched["priority_watchlist"] = [row for row in discovery_rows if row.get("discovery_bucket") == "watch"][:MAX_REPORTED_NEAR_MISS]
+        enriched["chain_tracking"] = [row for row in discovery_rows if row.get("discovery_bucket") not in {"qualified", "watch"}][:MAX_REPORTED_BLOCKED]
 
     midday_action_summary = build_midday_action_summary_from_result(enriched)
     if midday_action_summary:
@@ -729,6 +769,41 @@ def enrich_live_result_reporting(
                 next_watch = item.get("next_watch_items") if isinstance(item.get("next_watch_items"), list) else []
                 for note in next_watch[:MAX_REPORTED_WATCH_ITEMS]:
                     lines.append(f"  - 观察点: {note}")
+
+    directly_actionable = enriched.get("directly_actionable", [])
+    if isinstance(directly_actionable, list) and directly_actionable and "## 直接可执行" not in "\n".join(lines):
+        lines.extend(["", "## 直接可执行", ""])
+        for item in directly_actionable:
+            lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
+            lines.append(f"  - 事件: `{item.get('event_type')}`")
+            lines.append(f"  - 链条: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
+            lines.append(f"  - 市场验证: {item.get('market_validation_summary', {}).get('summary')}")
+
+    priority_watchlist = enriched.get("priority_watchlist", [])
+    if isinstance(priority_watchlist, list) and priority_watchlist and "## 重点观察" not in "\n".join(lines):
+        lines.extend(["", "## 重点观察", ""])
+        for item in priority_watchlist:
+            confidence = item.get("rumor_confidence_range", {})
+            lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
+            lines.append(f"  - 事件: `{item.get('event_type')}`")
+            lines.append(f"  - 可信度区间: `{confidence.get('label')}` `{confidence.get('range')}`")
+            lines.append(f"  - 链条: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
+
+    chain_tracking = enriched.get("chain_tracking", [])
+    if isinstance(chain_tracking, list) and chain_tracking and "## 链条跟踪" not in "\n".join(lines):
+        lines.extend(["", "## 链条跟踪", ""])
+        for item in chain_tracking:
+            lines.append(f"- `{item.get('ticker')}` {item.get('name')}: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
+
+    if enriched.get("discovery_lane_summary") and "## Event Board" not in "\n".join(lines):
+        lines.extend(["", "## Event Board", ""])
+        for item in (directly_actionable or []) + (priority_watchlist or []) + (chain_tracking or []):
+            lines.append(f"- `{item.get('event_type')}` -> `{item.get('ticker')}` {item.get('name')}")
+
+    if enriched.get("discovery_lane_summary") and "## Chain Map" not in "\n".join(lines):
+        lines.extend(["", "## Chain Map", ""])
+        for item in (directly_actionable or []) + (priority_watchlist or []) + (chain_tracking or []):
+            lines.append(f"- `{item.get('chain_name')}` / `{item.get('chain_role')}` -> `{item.get('ticker')}` {item.get('name')}")
     enriched["report_markdown"] = "\n".join(lines).strip() + "\n"
     return enriched
 
@@ -795,13 +870,14 @@ def run_month_end_shortlist(
             normalize_request_with_compiled(raw_payload, original_normalize_request),
             bars_fetcher=wrap_bars_fetcher_with_benchmark_fallback(bars_fetcher),
         )
+        discovery_candidates = deepcopy(prepared_payload.get("event_discovery_candidates") or [])
         result = _compiled.run_month_end_shortlist(
             prepared_payload,
             universe_fetcher=universe_fetcher,
             bars_fetcher=wrap_bars_fetcher_with_benchmark_fallback(bars_fetcher),
             html_fetcher=html_fetcher,
         )
-        return enrich_live_result_reporting(result, failure_log, assessed_log)
+        return enrich_live_result_reporting(result, failure_log, assessed_log, discovery_candidates)
     finally:
         _compiled.assess_candidate = original_assess_candidate
         _compiled.normalize_request = original_normalize_request
