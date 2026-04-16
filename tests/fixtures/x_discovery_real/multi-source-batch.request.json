@@ -1,0 +1,183 @@
+{
+  "subject_registry": {
+    "subjects": [
+      {
+        "handle": "twikejin",
+        "display_name": "老法师",
+        "url": "https://x.com/twikejin",
+        "candidate_names": [
+          "协创数据",
+          "华工科技",
+          "润泽科技",
+          "数据港",
+          "中国巨石",
+          "国际复材",
+          "中材科技",
+          "宏和科技",
+          "中际旭创",
+          "新易盛",
+          "天孚通信",
+          "宁德时代",
+          "赣锋锂业",
+          "立讯精密"
+        ],
+        "theme_aliases": {
+          "ai_infra": ["算力", "算力租赁", "液冷", "AIDC", "IDC"],
+          "electronic_cloth": ["电子布", "覆铜板", "CCL", "铜箔", "树脂"],
+          "optical_interconnect": ["光模块", "光互联", "EML"],
+          "lithium_chain": ["锂", "储能", "电解液", "锂矿"]
+        },
+        "logic_basket_rules": [
+          {
+            "rule_name": "ai_infra_a_share_basket",
+            "basket_name": "ai_infra_a_share",
+            "sector_or_chain": "ai_infra",
+            "match_any": ["算力", "算力租赁", "液冷", "AIDC", "IDC"],
+            "candidate_names": ["协创数据", "华工科技", "润泽科技", "数据港"],
+            "core_candidate_names": ["协创数据", "华工科技"]
+          },
+          {
+            "rule_name": "electronic_cloth_a_share_basket",
+            "basket_name": "electronic_cloth_a_share",
+            "sector_or_chain": "electronic_cloth",
+            "match_any": ["电子布", "覆铜板", "CCL", "铜箔", "树脂"],
+            "candidate_names": ["中国巨石", "国际复材", "中材科技", "宏和科技"],
+            "core_candidate_names": ["中国巨石", "国际复材"]
+          },
+          {
+            "rule_name": "lithium_chain_a_share_basket",
+            "basket_name": "lithium_chain_a_share",
+            "sector_or_chain": "lithium_chain",
+            "match_any": ["锂", "储能", "电解液", "锂矿"],
+            "candidate_names": ["宁德时代", "赣锋锂业"],
+            "core_candidate_names": ["宁德时代", "赣锋锂业"]
+          },
+          {
+            "rule_name": "optical_interconnect_a_share_basket",
+            "basket_name": "optical_interconnect_a_share",
+            "sector_or_chain": "optical_interconnect",
+            "match_any": ["光模块", "光互联", "EML"],
+            "candidate_names": ["中际旭创", "新易盛", "天孚通信"],
+            "core_candidate_names": ["中际旭创", "新易盛"]
+          }
+        ]
+      },
+      {
+        "handle": "LinQingV",
+        "display_name": "Macro_Lin",
+        "url": "https://x.com/LinQingV",
+        "candidate_names": ["兆易创新"],
+        "theme_aliases": {
+          "memory_custom_dram": ["长鑫存储", "3D DRAM", "定制化3D DRAM", "端侧AI", "DRAM"]
+        },
+        "logic_basket_rules": [
+          {
+            "rule_name": "memory_custom_dram_a_share_basket",
+            "basket_name": "memory_custom_dram_a_share",
+            "sector_or_chain": "memory_custom_dram",
+            "match_any": ["长鑫存储", "3D DRAM", "定制化3D DRAM", "端侧AI", "DRAM"],
+            "candidate_names": ["兆易创新", "深科技", "澜起科技"],
+            "core_candidate_names": ["兆易创新"]
+          }
+        ]
+      },
+      {
+        "handle": "tuolaji2024",
+        "display_name": "拖拉机",
+        "url": "https://x.com/tuolaji2024",
+        "candidate_names": ["中际旭创", "新易盛", "天孚通信"],
+        "theme_aliases": {
+          "optical_interconnect": ["光模块", "光互联", "EML"]
+        },
+        "logic_basket_rules": [
+          {
+            "rule_name": "optical_interconnect_a_share_basket",
+            "basket_name": "optical_interconnect_a_share",
+            "sector_or_chain": "optical_interconnect",
+            "match_any": ["光模块", "光互联", "EML"],
+            "candidate_names": ["中际旭创", "新易盛", "天孚通信"],
+            "core_candidate_names": ["中际旭创", "新易盛"]
+          }
+        ]
+      }
+      ,
+      {
+        "handle": "dmjk001",
+        "display_name": "每日快讯",
+        "url": "https://x.com/dmjk001",
+        "candidate_names": ["中际旭创", "新易盛", "天孚通信"],
+        "theme_aliases": {
+          "optical_interconnect": ["光模块", "800G", "1.6T", "硅光", "EML"]
+        },
+        "logic_basket_rules": [
+          {
+            "rule_name": "optical_interconnect_a_share_basket",
+            "basket_name": "optical_interconnect_a_share",
+            "sector_or_chain": "optical_interconnect",
+            "match_any": ["光模块", "800G", "1.6T", "硅光", "EML"],
+            "candidate_names": ["中际旭创", "新易盛", "天孚通信"],
+            "core_candidate_names": ["中际旭创", "新易盛"]
+          }
+        ]
+      }
+    ]
+  },
+  "subject_overrides_by_handle": {
+    "twikejin": {
+      "source_board_seed": {
+        "source_board": [
+          {
+            "status_url": "https://x.com/twikejin/status/2044729369474863349",
+            "status_id": "2044729369474863349",
+            "author_handle": "twikejin",
+            "published_at": "2026-04-16T13:22:00+00:00",
+            "direct_text": "9.4GW，算力租空！豆包日均调用120万亿Token，北美算力租赁量9.4GW同比增五倍，价格持续上行。覆铜板CCL开工率打满，PCB下游拿货凶猛，铜箔、树脂、电子布全面告急，覆铜板高阶材料再涨价。宁德时代业绩太硬，带着整个新能源产业链修复，锂矿又传来供给扰动。今晚中际要发财报，赣锋必须顶住。",
+            "direct_text_kind": "raw_post_text"
+          }
+        ]
+      }
+    },
+    "linqingv": {
+      "source_board_seed": {
+        "source_board": [
+          {
+            "status_url": "https://x.com/LinQingV/status/2044710801597223339",
+            "status_id": "2044710801597223339",
+            "author_handle": "LinQingV",
+            "published_at": "2026-04-16T13:20:32+00:00",
+            "direct_text": "《中国重资产》第五篇：长鑫存储朱一明的三次下注。兆易创新从NOR Flash做到DRAM，再到定制化3D DRAM加NPU，背后核心是长鑫存储、端侧AI和定制化3D DRAM方案。核心标的(兆易创新)，市场低估了它在接口IP、方案设计和3D堆叠整合层的价值。",
+            "direct_text_kind": "raw_post_text"
+          }
+        ]
+      }
+    },
+    "tuolaji2024": {
+      "source_board_seed": {
+        "source_board": [
+          {
+            "status_url": "https://x.com/tuolaji2024/status/2042465436810559801",
+            "status_id": "2042465436810559801",
+            "author_handle": "tuolaji2024",
+            "published_at": "2026-04-10T04:51:21+00:00",
+            "direct_text": "光模块/光互联，EML缺货的下游受益者。EML越缺，光模块价格越坚挺，已锁定产能的光模块厂利润弹性最大，可能大概率光模块要涨价了。",
+            "direct_text_kind": "raw_post_text"
+          }
+        ]
+      }
+    },
+    "dmjk001": {
+      "source_board_seed": {
+        "source_board": [
+          {
+            "status_url": "https://x.com/dmjk001/status/2044774708391125067",
+            "status_id": "2044774708391125067",
+            "author_handle": "dmjk001",
+            "published_at": "2026-04-16T14:18:53+00:00",
+            "direct_text": "中际旭创2026Q1交流takeaway：增长来源为800G和1.6T产品Q1均放量攀升，后续有机会保持环比增长。毛利率通过硅光渗透、高端占比提升、提高良率，后续稳中有升。",
+            "direct_text_kind": "raw_post_text"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -351,6 +351,157 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertIn("official_confirmed", cards[0]["why_now"])
         self.assertIn("Ariston_Macro", cards[0]["why_now"])
 
+    def test_build_event_cards_adds_evidence_mix_urls_and_market_signal_summary(self) -> None:
+        rows = [
+            module_under_test.normalize_event_candidate(
+                {
+                    "ticker": "000988.SZ",
+                    "name": "华工科技",
+                    "event_type": "quarterly_preview",
+                    "event_strength": "strong",
+                    "chain_name": "optical_interconnect",
+                    "chain_role": "midstream_manufacturing",
+                    "benefit_type": "direct",
+                    "sources": [
+                        {
+                            "source_type": "official_filing",
+                            "date": "2026-04-16",
+                            "summary": "一季报预告显示利润显著增长",
+                            "status_url": "https://example.com/official/huagong-q1",
+                        }
+                    ],
+                    "market_validation": {"volume_multiple_5d": 2.2, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+                }
+            ),
+            module_under_test.normalize_event_candidate(
+                {
+                    "ticker": "000988.SZ",
+                    "name": "华工科技",
+                    "event_type": "x_logic_signal",
+                    "event_strength": "strong",
+                    "chain_name": "optical_interconnect",
+                    "chain_role": "logic_support",
+                    "benefit_type": "mapping",
+                    "sources": [
+                        {
+                            "source_type": "x_summary",
+                            "account": "Ariston_Macro",
+                            "summary": "板块把这次预告理解为业绩拐点确认",
+                            "evidence_excerpt": "板块把这次预告理解为业绩拐点确认，叠加EML紧缺和算力光互联需求修复。",
+                            "status_url": "https://x.com/Ariston_Macro/status/2044000000000000001",
+                        }
+                    ],
+                    "market_validation": {"volume_multiple_5d": 2.4, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+                }
+            ),
+        ]
+
+        cards = module_under_test.build_event_cards(rows)
+
+        self.assertEqual(cards[0]["evidence_mix"]["official_filing"], 1)
+        self.assertEqual(cards[0]["evidence_mix"]["x_summary"], 1)
+        self.assertIn("https://x.com/Ariston_Macro/status/2044000000000000001", cards[0]["source_urls"])
+        self.assertTrue(any("Ariston_Macro" in item for item in cards[0]["key_evidence"]))
+        self.assertIn("volume_5d=2.4x", cards[0]["market_signal_summary"])
+        self.assertIn("optical_interconnect / midstream_manufacturing / direct", cards[0]["chain_path_summary"])
+
+    def test_build_event_cards_synthesizes_phase_verdict_metrics_and_community_reaction(self) -> None:
+        rows = [
+            module_under_test.normalize_event_candidate(
+                {
+                    "ticker": "300308.SZ",
+                    "name": "中际旭创",
+                    "event_type": "quarterly_preview",
+                    "event_strength": "strong",
+                    "chain_name": "optical_interconnect",
+                    "chain_role": "midstream_manufacturing",
+                    "benefit_type": "direct",
+                    "sources": [
+                        {
+                            "source_type": "official_filing",
+                            "date": "2026-04-14",
+                            "summary": "公司将2026年第一季度报告披露时间提前至4月17日，市场普遍解读为业绩可能超预期。",
+                            "status_url": "https://example.com/official/300308-schedule",
+                        },
+                        {
+                            "source_type": "x_summary",
+                            "account": "twikejin",
+                            "published_at": "2026-04-16T13:22:00+00:00",
+                            "summary": "9.4GW算力租赁、EML紧缺、光模块价格可能上行，今晚中际要发财报。",
+                        },
+                        {
+                            "source_type": "x_summary",
+                            "account": "tuolaji2024",
+                            "published_at": "2026-04-10T04:51:21+00:00",
+                            "summary": "EML缺货的下游受益者，已锁定产能的光模块厂利润弹性最大。",
+                        },
+                        {
+                            "source_type": "x_summary",
+                            "account": "dmjk001",
+                            "published_at": "2026-04-16T14:18:53+00:00",
+                            "summary": "中际旭创2026Q1交流takeaway：800G和1.6T产品Q1均放量攀升，后续有机会保持环比增长；毛利率通过硅光渗透、高端占比提升、提高良率，后续稳中有升。",
+                        },
+                    ],
+                    "market_validation": {"volume_multiple_5d": 2.3, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+                    "peer_tier_1": ["中际旭创", "新易盛"],
+                    "peer_tier_2": ["天孚通信"],
+                }
+            )
+        ]
+
+        cards = module_under_test.build_event_cards(rows)
+
+        self.assertEqual(cards[0]["event_phase"], "预期交易")
+        self.assertEqual(cards[0]["expectation_verdict"], "市场押注超预期")
+        self.assertTrue(any("9.4GW" in item for item in cards[0]["headline_metrics"]))
+        self.assertTrue(any("800G" in item for item in cards[0]["headline_metrics"]))
+        self.assertTrue(any("1.6T" in item for item in cards[0]["headline_metrics"]))
+        self.assertIn("twikejin", cards[0]["community_reaction_summary"])
+        self.assertIn("tuolaji2024", cards[0]["community_reaction_summary"])
+        self.assertIn("dmjk001", cards[0]["community_reaction_summary"])
+        self.assertEqual(cards[0]["community_conviction"], "high")
+        self.assertIn("800G/1.6T放量", cards[0]["expectation_basis_summary"])
+        self.assertIn("EML紧缺", cards[0]["expectation_basis_summary"])
+        self.assertIn("毛利率改善", cards[0]["expectation_basis_summary"])
+        self.assertIn("若财报兑现弱于这些线索", cards[0]["expectation_risk_summary"])
+
+    def test_build_event_cards_merges_name_only_signal_into_ticker_backed_card(self) -> None:
+        rows = [
+            module_under_test.normalize_event_candidate(
+                {
+                    "ticker": "300308.SZ",
+                    "name": "中际旭创",
+                    "event_type": "quarterly_preview",
+                    "event_strength": "strong",
+                    "chain_name": "optical_interconnect",
+                    "chain_role": "midstream_manufacturing",
+                    "benefit_type": "direct",
+                    "sources": [{"source_type": "official_filing", "summary": "公司将一季报披露时间提前至4月17日。"}],
+                    "market_validation": {"volume_multiple_5d": 2.3, "breakout": True, "relative_strength": "strong"},
+                }
+            ),
+            module_under_test.normalize_event_candidate(
+                {
+                    "ticker": "",
+                    "name": "中际旭创",
+                    "event_type": "price_hike",
+                    "event_strength": "medium",
+                    "chain_name": "optical_interconnect",
+                    "chain_role": "logic_support",
+                    "benefit_type": "mapping",
+                    "sources": [{"source_type": "x_summary", "account": "tuolaji2024", "summary": "EML缺货的下游受益者。"}],
+                    "market_validation": {},
+                }
+            ),
+        ]
+
+        cards = module_under_test.build_event_cards(rows)
+
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]["ticker"], "300308.SZ")
+        self.assertIn("tuolaji2024", cards[0]["source_accounts"])
+        self.assertIn("midstream_manufacturing", cards[0]["chain_path_summary"])
+
 
 if __name__ == "__main__":
     unittest.main()

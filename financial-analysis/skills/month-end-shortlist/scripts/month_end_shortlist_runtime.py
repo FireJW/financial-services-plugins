@@ -11,6 +11,7 @@ from copy import deepcopy
 from earnings_momentum_discovery import (
     assign_discovery_bucket,
     build_auto_discovery_candidates,
+    build_chain_path_summary,
     build_event_cards,
     build_x_style_discovery_candidates,
     classify_event_state,
@@ -162,6 +163,34 @@ def apply_wrapper_filter_profile_override(raw_payload: dict[str, Any], normalize
     return normalized
 
 
+def build_x_discovery_context(raw_request: dict[str, Any]) -> dict[str, Any]:
+    subject_registry = raw_request.get("subject_registry") if isinstance(raw_request.get("subject_registry"), dict) else {}
+    subjects = subject_registry.get("subjects") if isinstance(subject_registry.get("subjects"), list) else []
+    chain_map_by_name: dict[str, dict[str, Any]] = {}
+    for subject in subjects:
+        if not isinstance(subject, dict):
+            continue
+        for rule in subject.get("logic_basket_rules", []) if isinstance(subject.get("logic_basket_rules"), list) else []:
+            if not isinstance(rule, dict):
+                continue
+            chain_name = clean_text(rule.get("sector_or_chain") or rule.get("basket_name"))
+            if not chain_name:
+                continue
+            leaders = unique_strings(rule.get("core_candidate_names") or rule.get("candidate_names") or [])
+            tier_1 = unique_strings(rule.get("core_candidate_names") or rule.get("candidate_names") or [])
+            all_candidates = unique_strings(rule.get("candidate_names") or [])
+            tier_2 = [item for item in all_candidates if item not in tier_1]
+            existing = chain_map_by_name.setdefault(
+                chain_name,
+                {"chain_name": chain_name, "leaders": [], "tier_1": [], "tier_2": [], "all_candidates": []},
+            )
+            existing["leaders"] = unique_strings(existing["leaders"] + leaders)
+            existing["tier_1"] = unique_strings(existing["tier_1"] + tier_1)
+            existing["tier_2"] = unique_strings(existing["tier_2"] + tier_2)
+            existing["all_candidates"] = unique_strings(existing["all_candidates"] + all_candidates)
+    return {"chain_map": list(chain_map_by_name.values())}
+
+
 def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normalize_request: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
     normalized = apply_wrapper_filter_profile_override(
         raw_payload,
@@ -202,11 +231,24 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
             x_discovery_request = None
     if isinstance(x_discovery_request, dict):
         try:
-            from x_stock_picker_style_runtime import run_x_stock_picker_style
+            from x_stock_picker_style_runtime import run_x_stock_picker_style, run_x_stock_picker_style_batch
         except ModuleNotFoundError:
             x_result = {}
         else:
-            x_result = run_x_stock_picker_style(deepcopy(x_discovery_request))
+            is_batch_request = bool(
+                isinstance(x_discovery_request.get("subject_registry"), dict)
+                or clean_text(x_discovery_request.get("subject_registry_path"))
+                or isinstance(x_discovery_request.get("subject_overrides_by_handle"), dict)
+                or isinstance(x_discovery_request.get("shared_request"), dict)
+                or isinstance(x_discovery_request.get("selected_handles"), list)
+            )
+            if is_batch_request:
+                x_result = run_x_stock_picker_style_batch(deepcopy(x_discovery_request))
+                x_discovery_context = build_x_discovery_context(x_discovery_request)
+                if x_discovery_context.get("chain_map"):
+                    normalized["x_discovery_context"] = x_discovery_context
+            else:
+                x_result = run_x_stock_picker_style(deepcopy(x_discovery_request))
         x_request_candidates = build_x_style_discovery_candidates(x_result)
         if x_request_candidates:
             existing = normalized.get("event_discovery_candidates")
@@ -687,11 +729,99 @@ def prepare_request_with_candidate_snapshots(request: dict[str, Any], *, bars_fe
     prepared["universe_candidates"] = universe_candidates
     return prepared
 
+
+def enrich_event_cards_with_chain_context(event_cards: list[dict[str, Any]], discovery_context: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(discovery_context, dict):
+        return event_cards
+    chain_map = discovery_context.get("chain_map") if isinstance(discovery_context.get("chain_map"), list) else []
+    if not chain_map:
+        return event_cards
+    chain_lookup = {
+        clean_text(item.get("chain_name")): item
+        for item in chain_map
+        if isinstance(item, dict) and clean_text(item.get("chain_name"))
+    }
+    membership_lookup: dict[str, str] = {}
+    for item in chain_map:
+        if not isinstance(item, dict):
+            continue
+        chain_name = clean_text(item.get("chain_name"))
+        for name in unique_strings(
+            list(item.get("all_candidates") or [])
+            + list(item.get("leaders") or [])
+            + list(item.get("tier_1") or [])
+            + list(item.get("tier_2") or [])
+        ):
+            membership_lookup.setdefault(name, chain_name)
+    enriched_cards: list[dict[str, Any]] = []
+    for card in event_cards:
+        if not isinstance(card, dict):
+            continue
+        enriched_card = deepcopy(card)
+        current_chain_name = clean_text(card.get("chain_name"))
+        card_name = clean_text(card.get("name")) or clean_text(card.get("ticker"))
+        current_context = chain_lookup.get(current_chain_name)
+        if isinstance(current_context, dict):
+            current_known_names = unique_strings(
+                list(current_context.get("all_candidates") or [])
+                + list(current_context.get("leaders") or [])
+                + list(current_context.get("tier_1") or [])
+                + list(current_context.get("tier_2") or [])
+            )
+        else:
+            current_known_names = []
+        if card_name and card_name not in current_known_names:
+            fallback_chain_name = membership_lookup.get(card_name)
+            if fallback_chain_name:
+                enriched_card["chain_name"] = fallback_chain_name
+                current_chain_name = fallback_chain_name
+        context = chain_lookup.get(current_chain_name)
+        if isinstance(context, dict):
+            enriched_card["leaders"] = unique_strings(list(enriched_card.get("leaders", [])) + list(context.get("leaders", [])))
+            enriched_card["peer_tier_1"] = unique_strings(list(enriched_card.get("peer_tier_1", [])) + list(context.get("tier_1", [])))
+            enriched_card["peer_tier_2"] = unique_strings(list(enriched_card.get("peer_tier_2", [])) + list(context.get("tier_2", [])))
+            enriched_card["chain_path_summary"] = build_chain_path_summary(enriched_card)
+        enriched_cards.append(enriched_card)
+    return enriched_cards
+
+
+def build_chain_map_entries(event_cards: list[dict[str, Any]], discovery_context: dict[str, Any] | None) -> list[dict[str, Any]]:
+    rows = discovery_context.get("chain_map") if isinstance(discovery_context, dict) and isinstance(discovery_context.get("chain_map"), list) else []
+    grouped: dict[str, dict[str, Any]] = {}
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        chain_name = clean_text(item.get("chain_name"))
+        if not chain_name:
+            continue
+        grouped[chain_name] = {
+            "chain_name": chain_name,
+            "leaders": unique_strings(item.get("leaders") or []),
+            "tier_1": unique_strings(item.get("tier_1") or []),
+            "tier_2": unique_strings(item.get("tier_2") or []),
+            "anchors": [],
+        }
+    for card in event_cards:
+        if not isinstance(card, dict):
+            continue
+        chain_name = clean_text(card.get("chain_name"))
+        if not chain_name:
+            continue
+        row = grouped.setdefault(chain_name, {"chain_name": chain_name, "leaders": [], "tier_1": [], "tier_2": [], "anchors": []})
+        anchor_name = clean_text(card.get("name")) or clean_text(card.get("ticker"))
+        if anchor_name and anchor_name not in row["anchors"]:
+            row["anchors"].append(anchor_name)
+        row["leaders"] = unique_strings(row["leaders"] + list(card.get("leaders", [])))
+        row["tier_1"] = unique_strings(row["tier_1"] + list(card.get("peer_tier_1", [])))
+        row["tier_2"] = unique_strings(row["tier_2"] + list(card.get("peer_tier_2", [])))
+    return list(grouped.values())
+
 def enrich_live_result_reporting(
     result: dict[str, Any],
     failure_candidates: list[dict[str, Any]],
     assessed_candidates: list[dict[str, Any]] | None = None,
     discovery_candidates: list[dict[str, Any]] | None = None,
+    discovery_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     enriched = enrich_degraded_live_result(result, failure_candidates)
     dropped = [item for item in enriched.get("dropped", []) if isinstance(item, dict)]
@@ -732,9 +862,10 @@ def enrich_live_result_reporting(
         merge_discovery_candidate_inputs(list(discovery_candidates or []), auto_discovery_candidates)
     )
     if discovery_rows:
-        event_cards = build_event_cards(discovery_rows)
+        event_cards = enrich_event_cards_with_chain_context(build_event_cards(discovery_rows), discovery_context)
         enriched["event_cards"] = event_cards
         enriched["discovery_lane_summary"] = build_discovery_lane_summary(event_cards)
+        enriched["chain_map_entries"] = build_chain_map_entries(event_cards, discovery_context)
         enriched["directly_actionable"] = [row for row in event_cards if row.get("discovery_bucket") == "qualified"][:MAX_REPORTED_TOP_PICKS]
         enriched["priority_watchlist"] = [row for row in event_cards if row.get("discovery_bucket") == "watch"][:MAX_REPORTED_NEAR_MISS]
         enriched["chain_tracking"] = [row for row in event_cards if row.get("discovery_bucket") not in {"qualified", "watch"}][:MAX_REPORTED_BLOCKED]
@@ -853,31 +984,72 @@ def enrich_live_result_reporting(
             lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
             lines.append(f"  - 交易可用性: {item.get('trading_usability', {}).get('summary')}")
 
+    event_cards = enriched.get("event_cards", [])
     if enriched.get("discovery_lane_summary") and "## Event Board" not in "\n".join(lines):
         lines.extend(["", "## Event Board", ""])
-        for item in (directly_actionable or []) + (priority_watchlist or []) + (chain_tracking or []):
-            lines.append(
-                f"- `{item.get('event_type')}` / `{item.get('event_state', {}).get('label')}`"
-                f" -> `{item.get('ticker')}` {item.get('name')}"
-            )
+        for item in (event_cards if isinstance(enriched.get("event_cards"), list) else []):
+            lines.append(f"- `{item.get('ticker')}` {item.get('name')} / `{item.get('chain_name')}`")
+            lines.append(f"  - 阶段: `{item.get('event_phase')}`")
+            lines.append(f"  - 预期判断: `{item.get('expectation_verdict')}`")
+            metrics = item.get("headline_metrics") if isinstance(item.get("headline_metrics"), list) else []
+            if metrics:
+                lines.append(f"  - 关键数据: `{', '.join(metrics[:4])}`")
+            lines.append(f"  - 社区反应: {item.get('community_reaction_summary')}")
+            lines.append(f"  - 社区一致性: `{item.get('community_conviction')}`")
+            lines.append(f"  - 预期驱动: {item.get('expectation_basis_summary')}")
+            lines.append(f"  - 兑现风险: {item.get('expectation_risk_summary')}")
+            lines.append(f"  - 市场验证: {item.get('market_signal_summary')}")
 
     if enriched.get("discovery_lane_summary") and "## Chain Map" not in "\n".join(lines):
         lines.extend(["", "## Chain Map", ""])
-        for item in (directly_actionable or []) + (priority_watchlist or []) + (chain_tracking or []):
-            lines.append(f"- `{item.get('chain_name')}` / `{item.get('chain_role')}` -> `{item.get('ticker')}` {item.get('name')}")
+        chain_map_entries = enriched.get("chain_map_entries", [])
+        for item in chain_map_entries if isinstance(chain_map_entries, list) else []:
+            lines.append(f"- `{item.get('chain_name')}`")
+            if item.get("anchors"):
+                lines.append(f"  - 当前事件锚点: `{', '.join(item.get('anchors', []))}`")
+            if item.get("leaders"):
+                lines.append(f"  - 龙头/核心: `{', '.join(item.get('leaders', []))}`")
+            if item.get("tier_1"):
+                lines.append(f"  - 一线: `{', '.join(item.get('tier_1', []))}`")
+            if item.get("tier_2"):
+                lines.append(f"  - 二线: `{', '.join(item.get('tier_2', []))}`")
 
     event_cards = enriched.get("event_cards", [])
     if isinstance(event_cards, list) and event_cards and "## Event Cards" not in "\n".join(lines):
         lines.extend(["", "## Event Cards", ""])
         for item in event_cards:
             lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
+            lines.append(f"  - 阶段: `{item.get('event_phase')}`")
+            lines.append(f"  - 预期判断: `{item.get('expectation_verdict')}`")
+            metrics = item.get("headline_metrics") if isinstance(item.get("headline_metrics"), list) else []
+            if metrics:
+                lines.append(f"  - 关键数据: `{', '.join(metrics[:4])}`")
+            lines.append(f"  - 社区反应: {item.get('community_reaction_summary')}")
+            lines.append(f"  - 社区一致性: `{item.get('community_conviction')}`")
+            lines.append(f"  - 预期驱动: {item.get('expectation_basis_summary')}")
+            lines.append(f"  - 兑现风险: {item.get('expectation_risk_summary')}")
             lines.append(f"  - primary_event_type: `{item.get('primary_event_type')}`")
             lines.append(f"  - priority_score: `{item.get('priority_score')}`")
             lines.append(f"  - why_now: `{item.get('why_now')}`")
+            lines.append(f"  - chain_path_summary: `{item.get('chain_path_summary')}`")
+            lines.append(f"  - market_signal_summary: `{item.get('market_signal_summary')}`")
+            if item.get("leaders"):
+                lines.append(f"  - 龙头/核心: `{', '.join(item.get('leaders', []))}`")
+            if item.get("peer_tier_1"):
+                lines.append(f"  - 一线: `{', '.join(item.get('peer_tier_1', []))}`")
+            if item.get("peer_tier_2"):
+                lines.append(f"  - 二线: `{', '.join(item.get('peer_tier_2', []))}`")
             lines.append(f"  - source_count: `{item.get('source_count')}`")
             lines.append(f"  - source_accounts: `{', '.join(item.get('source_accounts', [])) or 'none'}`")
+            lines.append(f"  - source_urls: `{', '.join(item.get('source_urls', [])) or 'none'}`")
+            lines.append(f"  - evidence_mix: `{json.dumps(item.get('evidence_mix', {}), ensure_ascii=False, sort_keys=True)}`")
             lines.append(f"  - event_state: `{item.get('event_state', {}).get('label')}`")
             lines.append(f"  - trading_usability: `{item.get('trading_usability', {}).get('label')}`")
+            key_evidence = item.get("key_evidence") if isinstance(item.get("key_evidence"), list) else []
+            if key_evidence:
+                lines.append("  - key_evidence:")
+                for bullet in key_evidence[:MAX_REPORTED_WATCH_ITEMS]:
+                    lines.append(f"    - {bullet}")
     enriched["report_markdown"] = "\n".join(lines).strip() + "\n"
     return enriched
 
@@ -945,13 +1117,14 @@ def run_month_end_shortlist(
             bars_fetcher=wrap_bars_fetcher_with_benchmark_fallback(bars_fetcher),
         )
         discovery_candidates = deepcopy(prepared_payload.get("event_discovery_candidates") or [])
+        discovery_context = deepcopy(prepared_payload.get("x_discovery_context") or {})
         result = _compiled.run_month_end_shortlist(
             prepared_payload,
             universe_fetcher=universe_fetcher,
             bars_fetcher=wrap_bars_fetcher_with_benchmark_fallback(bars_fetcher),
             html_fetcher=html_fetcher,
         )
-        return enrich_live_result_reporting(result, failure_log, assessed_log, discovery_candidates)
+        return enrich_live_result_reporting(result, failure_log, assessed_log, discovery_candidates, discovery_context)
     finally:
         _compiled.assess_candidate = original_assess_candidate
         _compiled.normalize_request = original_normalize_request

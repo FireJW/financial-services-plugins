@@ -211,36 +211,96 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         }
         discovery_candidates = [
             {
-                "ticker": "000988.SZ",
-                "name": "华工科技",
+                "ticker": "300308.SZ",
+                "name": "中际旭创",
                 "event_type": "quarterly_preview",
                 "event_strength": "strong",
-                "chain_name": "optical",
+                "chain_name": "optical_interconnect",
                 "chain_role": "midstream_manufacturing",
                 "benefit_type": "direct",
-                "sources": [{"source_type": "official_filing", "summary": "正式业绩预告"}],
-                "market_validation": {"volume_multiple_5d": 1.8, "breakout": True, "relative_strength": "strong"},
+                "sources": [
+                    {"source_type": "official_filing", "summary": "公司将2026年第一季度报告披露时间提前至4月17日，市场普遍解读为业绩可能超预期。"},
+                    {"source_type": "x_summary", "account": "twikejin", "summary": "9.4GW算力租赁、EML紧缺、光模块价格可能上行，今晚中际要发财报。"},
+                    {"source_type": "x_summary", "account": "tuolaji2024", "summary": "EML缺货的下游受益者，已锁定产能的光模块厂利润弹性最大。"},
+                ],
+                "market_validation": {"volume_multiple_5d": 2.3, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+                "peer_tier_1": ["中际旭创", "新易盛"],
+                "peer_tier_2": ["天孚通信"],
             },
-            {
-                "ticker": "000988.SZ",
-                "name": "华工科技",
-                "event_type": "x_logic_signal",
-                "event_strength": "strong",
-                "chain_name": "optical",
-                "chain_role": "logic_support",
-                "benefit_type": "mapping",
-                "sources": [{"source_type": "x_summary", "account": "Ariston_Macro", "summary": "板块盈利预期修复"}],
-                "market_validation": {"volume_multiple_5d": 2.2, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
-            }
         ]
+        discovery_context = {
+            "chain_map": [
+                {
+                    "chain_name": "optical_interconnect",
+                    "leaders": ["中际旭创", "新易盛"],
+                    "tier_1": ["中际旭创", "新易盛"],
+                    "tier_2": ["天孚通信"],
+                }
+            ]
+        }
 
-        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates, discovery_context)
 
         self.assertIn("## Event Cards", enriched["report_markdown"])
-        self.assertIn("source_count", enriched["report_markdown"])
-        self.assertIn("Ariston_Macro", enriched["report_markdown"])
+        self.assertIn("阶段", enriched["report_markdown"])
+        self.assertIn("预期判断", enriched["report_markdown"])
+        self.assertIn("关键数据", enriched["report_markdown"])
+        self.assertIn("社区反应", enriched["report_markdown"])
+        self.assertIn("预期驱动", enriched["report_markdown"])
+        self.assertIn("兑现风险", enriched["report_markdown"])
         self.assertIn("priority_score", enriched["report_markdown"])
-        self.assertIn("why_now", enriched["report_markdown"])
+        self.assertIn("市场押注超预期", enriched["report_markdown"])
+        self.assertIn("market_signal_summary", enriched["report_markdown"])
+        self.assertIn("chain_path_summary", enriched["report_markdown"])
+        self.assertIn("key_evidence", enriched["report_markdown"])
+        self.assertIn("一线", enriched["report_markdown"])
+        self.assertIn("二线", enriched["report_markdown"])
+        self.assertIn("新易盛", enriched["report_markdown"])
+        self.assertIn("天孚通信", enriched["report_markdown"])
+
+    def test_enrich_live_result_reporting_realigns_chain_by_known_context_membership(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "dropped": [],
+            "top_picks": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        discovery_candidates = [
+            {
+                "ticker": "300750.SZ",
+                "name": "宁德时代",
+                "event_type": "price_hike",
+                "event_strength": "medium",
+                "chain_name": "ai_infra",
+                "chain_role": "direct_pick",
+                "benefit_type": "direct",
+                "sources": [{"source_type": "x_summary", "account": "twikejin", "summary": "宁德时代业绩太硬，带着整个新能源产业链修复。"}],
+                "market_validation": {},
+            },
+        ]
+        discovery_context = {
+            "chain_map": [
+                {
+                    "chain_name": "ai_infra",
+                    "leaders": ["协创数据", "华工科技"],
+                    "tier_1": ["协创数据", "华工科技"],
+                    "tier_2": ["润泽科技", "数据港"],
+                    "all_candidates": ["协创数据", "华工科技", "润泽科技", "数据港"],
+                },
+                {
+                    "chain_name": "lithium_chain",
+                    "leaders": ["宁德时代", "赣锋锂业"],
+                    "tier_1": ["宁德时代", "赣锋锂业"],
+                    "tier_2": [],
+                    "all_candidates": ["宁德时代", "赣锋锂业"],
+                },
+            ]
+        }
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates, discovery_context)
+
+        self.assertEqual(enriched["event_cards"][0]["chain_name"], "lithium_chain")
+        self.assertIn("lithium_chain", enriched["report_markdown"])
 
     def test_enrich_live_result_reporting_adds_near_miss_candidates(self) -> None:
         result = {

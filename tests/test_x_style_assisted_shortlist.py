@@ -15,6 +15,7 @@ SCRIPT_DIR = (
     / "scripts"
 )
 EXAMPLES_DIR = SCRIPT_DIR.parent / "examples"
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "x_discovery_real"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -174,6 +175,30 @@ class XStyleAssistedShortlistTests(unittest.TestCase):
             shutil.rmtree(cache_dir, ignore_errors=True)
 
         self.assertEqual(normalized["event_discovery_candidates"][0]["ticker"], "002384.SZ")
+
+    def test_normalize_request_derives_event_discovery_candidates_from_real_x_batch_request_path(self) -> None:
+        request = {
+            "template_name": "month_end_shortlist",
+            "target_date": "2026-04-30",
+            "x_discovery_request_path": str(FIXTURES_DIR / "multi-source-batch.request.json"),
+        }
+
+        normalized = normalize_request(request)
+
+        candidates = normalized["event_discovery_candidates"]
+        accounts = {item["sources"][0]["account"] for item in candidates if item.get("sources")}
+        chains = {item["chain_name"] for item in candidates}
+
+        self.assertTrue(candidates)
+        self.assertIn("twikejin", accounts)
+        self.assertIn("linqingv", accounts)
+        self.assertIn("tuolaji2024", accounts)
+        self.assertIn("ai_infra", chains)
+        self.assertIn("memory_custom_dram", chains)
+        self.assertIn("optical_interconnect", chains)
+        self.assertIn("x_discovery_context", normalized)
+        chain_names = {item["chain_name"] for item in normalized["x_discovery_context"]["chain_map"]}
+        self.assertIn("optical_interconnect", chain_names)
 
 
 if __name__ == "__main__":
