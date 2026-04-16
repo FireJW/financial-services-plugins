@@ -59,6 +59,14 @@ MAX_REPORTED_TOP_PICKS = 10
 MAX_REPORTED_NEAR_MISS = 5
 MAX_REPORTED_BLOCKED = 5
 MAX_REPORTED_WATCH_ITEMS = 3
+WRAPPER_FILTER_PROFILE_OVERRIDES: dict[str, dict[str, float]] = {
+    # Recovered from a validated historical artifact until the compiled runtime
+    # regains native support for this documented profile.
+    "month_end_event_support_transition": {
+        "keep_threshold": 58.0,
+        "strict_top_pick_threshold": 59.0,
+    }
+}
 
 
 def wrap_bars_fetcher_with_benchmark_fallback(base_fetcher: BarsFetcher) -> BarsFetcher:
@@ -120,8 +128,28 @@ def extract_x_style_overlays_from_result(batch_payload: dict[str, Any], selected
     return handles, overlays
 
 
-def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
-    normalized = _compiled.normalize_request(raw_payload)
+def apply_wrapper_filter_profile_override(raw_payload: dict[str, Any], normalized: dict[str, Any]) -> dict[str, Any]:
+    requested_profile = clean_text(raw_payload.get("filter_profile"))
+    if not requested_profile:
+        return normalized
+    override = WRAPPER_FILTER_PROFILE_OVERRIDES.get(requested_profile)
+    if not override:
+        return normalized
+
+    normalized["filter_profile"] = requested_profile
+    profile_settings = dict(normalized.get("profile_settings") or {})
+    for key, value in override.items():
+        normalized[key] = value
+        profile_settings[key] = value
+    normalized["profile_settings"] = profile_settings
+    return normalized
+
+
+def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normalize_request: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
+    normalized = apply_wrapper_filter_profile_override(
+        raw_payload,
+        compiled_normalize_request(raw_payload),
+    )
     batch_path = clean_text(normalized.get("x_style_batch_result_path"))
     if not batch_path:
         return normalized
@@ -141,6 +169,10 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     if overlays:
         normalized["x_style_overlays"] = overlays
     return normalized
+
+
+def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    return normalize_request_with_compiled(raw_payload, _compiled.normalize_request)
 
 
 def build_bars_fetch_failed_candidate(candidate: dict[str, Any], error: Exception | str) -> dict[str, Any]:
@@ -751,14 +783,16 @@ def run_month_end_shortlist(
     failure_log: list[dict[str, Any]] = []
     assessed_log: list[dict[str, Any]] = []
     original_assess_candidate = _compiled.assess_candidate
+    original_normalize_request = _compiled.normalize_request
     _compiled.assess_candidate = wrap_assess_candidate_with_bars_failure_fallback(
         original_assess_candidate,
         failure_log,
         assessed_log,
     )
+    _compiled.normalize_request = lambda payload: normalize_request_with_compiled(payload, original_normalize_request)
     try:
         prepared_payload = prepare_request_with_candidate_snapshots(
-            normalize_request(raw_payload),
+            normalize_request_with_compiled(raw_payload, original_normalize_request),
             bars_fetcher=wrap_bars_fetcher_with_benchmark_fallback(bars_fetcher),
         )
         result = _compiled.run_month_end_shortlist(
@@ -770,6 +804,7 @@ def run_month_end_shortlist(
         return enrich_live_result_reporting(result, failure_log, assessed_log)
     finally:
         _compiled.assess_candidate = original_assess_candidate
+        _compiled.normalize_request = original_normalize_request
 
 if "__all__" not in globals():
     __all__ = [name for name in dir(_compiled) if not name.startswith("_")]
