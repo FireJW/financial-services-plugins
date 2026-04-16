@@ -193,6 +193,12 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
                     normalized["event_discovery_candidates"] = existing_rows + x_discovery_candidates
 
     x_discovery_request = raw_payload.get("x_discovery_request")
+    x_discovery_request_path = raw_payload.get("x_discovery_request_path")
+    if not isinstance(x_discovery_request, dict) and clean_text(x_discovery_request_path):
+        try:
+            x_discovery_request = load_json(clean_text(x_discovery_request_path))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            x_discovery_request = None
     if isinstance(x_discovery_request, dict):
         try:
             from x_stock_picker_style_runtime import run_x_stock_picker_style
