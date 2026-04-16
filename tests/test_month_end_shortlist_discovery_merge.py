@@ -135,6 +135,45 @@ class MonthEndShortlistDiscoveryMergeTests(unittest.TestCase):
         self.assertIn("discovery_lane_summary", enriched)
         self.assertEqual(enriched["directly_actionable"][0]["ticker"], "000988.SZ")
 
+    def test_enrich_live_result_reporting_merges_duplicate_discovery_sources_into_single_card(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "top_picks": [],
+            "dropped": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        discovery_candidates = [
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "quarterly_preview",
+                "event_strength": "strong",
+                "chain_name": "optical",
+                "chain_role": "midstream_manufacturing",
+                "benefit_type": "direct",
+                "sources": [{"source_type": "official_filing", "summary": "正式业绩预告"}],
+                "market_validation": {"volume_multiple_5d": 1.8, "breakout": True, "relative_strength": "strong"},
+            },
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "x_logic_signal",
+                "event_strength": "strong",
+                "chain_name": "optical",
+                "chain_role": "logic_support",
+                "benefit_type": "mapping",
+                "sources": [{"source_type": "x_summary", "account": "Ariston_Macro", "summary": "板块盈利预期修复"}],
+                "market_validation": {"volume_multiple_5d": 2.2, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+            },
+        ]
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
+
+        self.assertEqual(enriched["discovery_lane_summary"]["qualified_count"], 1)
+        self.assertEqual(len(enriched["directly_actionable"]), 1)
+        self.assertEqual(enriched["directly_actionable"][0]["source_count"], 2)
+        self.assertIn("Ariston_Macro", enriched["directly_actionable"][0]["source_accounts"])
+
 
 if __name__ == "__main__":
     unittest.main()

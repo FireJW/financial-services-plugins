@@ -202,6 +202,44 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("response_denied", enriched["report_markdown"])
         self.assertIn("交易可用性", enriched["report_markdown"])
 
+    def test_enrich_live_result_reporting_renders_event_cards_section(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "dropped": [],
+            "top_picks": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        discovery_candidates = [
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "quarterly_preview",
+                "event_strength": "strong",
+                "chain_name": "optical",
+                "chain_role": "midstream_manufacturing",
+                "benefit_type": "direct",
+                "sources": [{"source_type": "official_filing", "summary": "正式业绩预告"}],
+                "market_validation": {"volume_multiple_5d": 1.8, "breakout": True, "relative_strength": "strong"},
+            },
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "x_logic_signal",
+                "event_strength": "strong",
+                "chain_name": "optical",
+                "chain_role": "logic_support",
+                "benefit_type": "mapping",
+                "sources": [{"source_type": "x_summary", "account": "Ariston_Macro", "summary": "板块盈利预期修复"}],
+                "market_validation": {"volume_multiple_5d": 2.2, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+            }
+        ]
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
+
+        self.assertIn("## Event Cards", enriched["report_markdown"])
+        self.assertIn("source_count", enriched["report_markdown"])
+        self.assertIn("Ariston_Macro", enriched["report_markdown"])
+
     def test_enrich_live_result_reporting_adds_near_miss_candidates(self) -> None:
         result = {
             "filter_summary": {"kept_count": 0, "keep_threshold": 70.0},

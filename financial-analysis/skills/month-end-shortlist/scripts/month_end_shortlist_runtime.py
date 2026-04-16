@@ -11,6 +11,7 @@ from copy import deepcopy
 from earnings_momentum_discovery import (
     assign_discovery_bucket,
     build_auto_discovery_candidates,
+    build_event_cards,
     build_x_style_discovery_candidates,
     classify_event_state,
     classify_market_validation,
@@ -444,18 +445,7 @@ def merge_discovery_candidate_inputs(
     manual_candidates: list[dict[str, Any]],
     auto_candidates: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    merged: list[dict[str, Any]] = []
-    seen_tickers: set[str] = set()
-    for candidate in manual_candidates + auto_candidates:
-        if not isinstance(candidate, dict):
-            continue
-        ticker = clean_text(candidate.get("ticker"))
-        if ticker and ticker in seen_tickers:
-            continue
-        if ticker:
-            seen_tickers.add(ticker)
-        merged.append(candidate)
-    return merged
+    return [candidate for candidate in (manual_candidates + auto_candidates) if isinstance(candidate, dict)]
 
 
 def midday_action_for_status(status: str) -> str:
@@ -742,10 +732,12 @@ def enrich_live_result_reporting(
         merge_discovery_candidate_inputs(list(discovery_candidates or []), auto_discovery_candidates)
     )
     if discovery_rows:
-        enriched["discovery_lane_summary"] = build_discovery_lane_summary(discovery_rows)
-        enriched["directly_actionable"] = [row for row in discovery_rows if row.get("discovery_bucket") == "qualified"][:MAX_REPORTED_TOP_PICKS]
-        enriched["priority_watchlist"] = [row for row in discovery_rows if row.get("discovery_bucket") == "watch"][:MAX_REPORTED_NEAR_MISS]
-        enriched["chain_tracking"] = [row for row in discovery_rows if row.get("discovery_bucket") not in {"qualified", "watch"}][:MAX_REPORTED_BLOCKED]
+        event_cards = build_event_cards(discovery_rows)
+        enriched["event_cards"] = event_cards
+        enriched["discovery_lane_summary"] = build_discovery_lane_summary(event_cards)
+        enriched["directly_actionable"] = [row for row in event_cards if row.get("discovery_bucket") == "qualified"][:MAX_REPORTED_TOP_PICKS]
+        enriched["priority_watchlist"] = [row for row in event_cards if row.get("discovery_bucket") == "watch"][:MAX_REPORTED_NEAR_MISS]
+        enriched["chain_tracking"] = [row for row in event_cards if row.get("discovery_bucket") not in {"qualified", "watch"}][:MAX_REPORTED_BLOCKED]
 
     midday_action_summary = build_midday_action_summary_from_result(enriched)
     if midday_action_summary:
@@ -873,6 +865,17 @@ def enrich_live_result_reporting(
         lines.extend(["", "## Chain Map", ""])
         for item in (directly_actionable or []) + (priority_watchlist or []) + (chain_tracking or []):
             lines.append(f"- `{item.get('chain_name')}` / `{item.get('chain_role')}` -> `{item.get('ticker')}` {item.get('name')}")
+
+    event_cards = enriched.get("event_cards", [])
+    if isinstance(event_cards, list) and event_cards and "## Event Cards" not in "\n".join(lines):
+        lines.extend(["", "## Event Cards", ""])
+        for item in event_cards:
+            lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
+            lines.append(f"  - primary_event_type: `{item.get('primary_event_type')}`")
+            lines.append(f"  - source_count: `{item.get('source_count')}`")
+            lines.append(f"  - source_accounts: `{', '.join(item.get('source_accounts', [])) or 'none'}`")
+            lines.append(f"  - event_state: `{item.get('event_state', {}).get('label')}`")
+            lines.append(f"  - trading_usability: `{item.get('trading_usability', {}).get('label')}`")
     enriched["report_markdown"] = "\n".join(lines).strip() + "\n"
     return enriched
 

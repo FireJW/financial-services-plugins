@@ -149,6 +149,112 @@ def classify_trading_usability(candidate: dict[str, Any]) -> dict[str, Any]:
     return {"label": "low", "summary": "交易可用性偏低，更多是线索而非执行依据。"}
 
 
+def _event_type_priority(value: str) -> tuple[int, str]:
+    normalized = clean_text(value)
+    priorities = {
+        "annual_report_preview": 0,
+        "quarterly_preview": 1,
+        "earnings": 2,
+        "company_event": 3,
+        "structured_catalyst": 4,
+        "x_logic_signal": 5,
+        "rumor": 6,
+    }
+    return (priorities.get(normalized, 99), normalized)
+
+
+def _state_priority(value: str) -> int:
+    return {
+        "response_denied": 0,
+        "official_confirmed": 1,
+        "response_confirmed": 2,
+        "response_ambiguous": 3,
+        "rumor_unconfirmed": 4,
+        "unconfirmed": 5,
+    }.get(clean_text(value), 99)
+
+
+def build_event_cards(discovery_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in discovery_rows:
+        if not isinstance(row, dict):
+            continue
+        ticker = clean_text(row.get("ticker")) or clean_text(row.get("name"))
+        if not ticker:
+            continue
+        grouped.setdefault(ticker, []).append(row)
+
+    cards: list[dict[str, Any]] = []
+    for ticker, rows in grouped.items():
+        base = deepcopy(rows[0])
+        all_sources: list[dict[str, Any]] = []
+        all_roles: list[str] = []
+        all_accounts: list[str] = []
+        event_types: list[str] = []
+        chain_names: list[str] = []
+        chain_roles: list[str] = []
+        benefit_types: list[str] = []
+        merged_validation = {"volume_multiple_5d": 0.0, "breakout": False, "relative_strength": "", "chain_resonance": False}
+
+        for row in rows:
+            event_types.append(clean_text(row.get("event_type")))
+            chain_names.append(clean_text(row.get("chain_name")))
+            chain_roles.append(clean_text(row.get("chain_role")))
+            benefit_types.append(clean_text(row.get("benefit_type")))
+            for source in row.get("sources", []) if isinstance(row.get("sources"), list) else []:
+                if not isinstance(source, dict):
+                    continue
+                all_sources.append(deepcopy(source))
+                role = normalize_source_role(clean_text(source.get("source_type")))
+                if role:
+                    all_roles.append(role)
+                account = clean_text(source.get("account"))
+                if account:
+                    all_accounts.append(account)
+            validation = row.get("market_validation") if isinstance(row.get("market_validation"), dict) else {}
+            merged_validation["volume_multiple_5d"] = max(float(merged_validation.get("volume_multiple_5d") or 0), float(validation.get("volume_multiple_5d") or 0))
+            merged_validation["breakout"] = bool(merged_validation.get("breakout")) or bool(validation.get("breakout"))
+            merged_validation["chain_resonance"] = bool(merged_validation.get("chain_resonance")) or bool(validation.get("chain_resonance"))
+            if clean_text(validation.get("relative_strength")).lower() == "strong":
+                merged_validation["relative_strength"] = "strong"
+
+        merged_candidate = normalize_event_candidate(
+            {
+                "ticker": ticker,
+                "name": clean_text(base.get("name")),
+                "event_type": sorted([item for item in event_types if item], key=_event_type_priority)[0] if any(event_types) else clean_text(base.get("event_type")),
+                "event_strength": "strong" if any(clean_text(row.get("event_strength")).lower() == "strong" for row in rows) else clean_text(base.get("event_strength")) or "medium",
+                "chain_name": next((item for item in chain_names if item and item != "unknown"), "unknown"),
+                "chain_role": next((item for item in chain_roles if item and item != "unknown"), "unknown"),
+                "benefit_type": next((item for item in benefit_types if item and item != "mapping"), clean_text(base.get("benefit_type")) or "mapping"),
+                "sources": all_sources,
+                "market_validation": merged_validation,
+            }
+        )
+        event_state = classify_event_state(merged_candidate)
+        rumor_confidence = compute_rumor_confidence_range(merged_candidate)
+        market_validation_summary = classify_market_validation(merged_candidate)
+        trading_usability = classify_trading_usability(merged_candidate)
+        discovery_bucket = assign_discovery_bucket(merged_candidate)
+        card = {
+            **merged_candidate,
+            "event_types": sorted({item for item in event_types if item}, key=_event_type_priority),
+            "primary_event_type": clean_text(merged_candidate.get("event_type")),
+            "source_roles": sorted(set(all_roles)),
+            "source_accounts": sorted(set(all_accounts)),
+            "source_count": len(all_sources),
+            "event_state": event_state,
+            "rumor_confidence_range": rumor_confidence,
+            "market_validation_summary": market_validation_summary,
+            "trading_usability": trading_usability,
+            "discovery_bucket": discovery_bucket,
+        }
+        cards.append(card)
+
+    cards.sort(key=lambda item: (_state_priority(item.get("event_state", {}).get("label")), -len(item.get("sources", [])), clean_text(item.get("ticker"))))
+    return cards
+
+
 def build_market_validation_from_shortlist_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     trend = candidate.get("trend_template") if isinstance(candidate.get("trend_template"), dict) else {}
     price_snapshot = candidate.get("price_snapshot") if isinstance(candidate.get("price_snapshot"), dict) else {}

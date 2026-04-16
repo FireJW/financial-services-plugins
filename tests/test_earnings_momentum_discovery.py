@@ -278,6 +278,52 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertEqual(state["label"], "official_confirmed")
         self.assertEqual(usability["label"], "medium")
 
+    def test_build_event_cards_merges_official_x_summary_and_response_for_same_ticker(self) -> None:
+        rows = [
+            module_under_test.normalize_event_candidate(
+                {
+                    "ticker": "000988.SZ",
+                    "name": "华工科技",
+                    "event_type": "quarterly_preview",
+                    "event_strength": "strong",
+                    "chain_name": "optical",
+                    "chain_role": "midstream_manufacturing",
+                    "benefit_type": "direct",
+                    "sources": [{"source_type": "official_filing", "summary": "一季报预告显示利润显著增长"}],
+                    "market_validation": {"volume_multiple_5d": 1.8, "breakout": True, "relative_strength": "strong"},
+                }
+            ),
+            module_under_test.normalize_event_candidate(
+                {
+                    "ticker": "000988.SZ",
+                    "name": "华工科技",
+                    "event_type": "x_logic_signal",
+                    "event_strength": "strong",
+                    "chain_name": "optical",
+                    "chain_role": "logic_support",
+                    "benefit_type": "mapping",
+                    "sources": [
+                        {"source_type": "x_summary", "account": "Ariston_Macro", "summary": "市场把这次预告理解成板块盈利预期修复信号"},
+                        {"source_type": "company_response", "summary": "公司回应：相关业绩预增信息属实"},
+                    ],
+                    "market_validation": {"volume_multiple_5d": 2.2, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+                }
+            ),
+        ]
+
+        cards = module_under_test.build_event_cards(rows)
+
+        self.assertEqual(len(cards), 1)
+        card = cards[0]
+        self.assertEqual(card["ticker"], "000988.SZ")
+        self.assertEqual(card["primary_event_type"], "quarterly_preview")
+        self.assertEqual(card["event_state"]["label"], "official_confirmed")
+        self.assertEqual(card["trading_usability"]["label"], "high")
+        self.assertEqual(card["source_count"], 3)
+        self.assertIn("Ariston_Macro", card["source_accounts"])
+        self.assertIn("official_filing_reference", card["source_roles"])
+        self.assertIn("summary_or_relay", card["source_roles"])
+
 
 if __name__ == "__main__":
     unittest.main()
