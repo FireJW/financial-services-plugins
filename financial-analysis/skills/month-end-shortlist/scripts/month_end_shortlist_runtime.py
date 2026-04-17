@@ -836,6 +836,30 @@ def build_decision_flow(enriched: dict[str, Any]) -> list[dict[str, Any]]:
     return ordered
 
 
+def build_decision_flow_markdown(decision_flow: list[dict[str, Any]]) -> list[str]:
+    lines = ["", "## 决策流", ""]
+    for item in decision_flow:
+        lines.append(
+            f"### {item.get('ticker')} | {item.get('action')} | {item.get('score')}分 | {item.get('trading_profile_bucket')}"
+        )
+        lines.append("")
+        lines.append(f"- 结论：{item.get('conclusion')}")
+        lines.append("- 盘中观察点：")
+        watch_points = item.get("watch_points") if isinstance(item.get("watch_points"), dict) else {}
+        lines.append(f"  - 技术：{watch_points.get('technical', '技术形态证据不足。')}")
+        lines.append(f"  - 事件：{watch_points.get('event', '事件证据不足。')}")
+        lines.append(f"  - 链条：{watch_points.get('chain', '链条共振证据不足。')}")
+        lines.append("- 触发条件：")
+        triggers = item.get("triggers") if isinstance(item.get("triggers"), dict) else {}
+        lines.append(f"  - ↑ upgrade：{triggers.get('upgrade', '等待更多确认。')}")
+        lines.append(f"  - ↓ downgrade：{triggers.get('downgrade', '若验证转弱则降级。')}")
+        if clean_text(triggers.get("event_risk")):
+            lines.append(f"  - ⚡ event risk：{triggers.get('event_risk')}")
+        lines.append(f"- 操作提醒：{item.get('operation_reminder')}")
+        lines.append("")
+    return lines
+
+
 def prepare_request_with_candidate_snapshots(request: dict[str, Any], *, bars_fetcher: BarsFetcher) -> dict[str, Any]:
     prepared = deepcopy(request)
     candidate_tickers = [clean_text(item) for item in prepared.get("candidate_tickers", []) if clean_text(item)]
@@ -1082,9 +1106,11 @@ def enrich_live_result_reporting(
     if midday_action_summary:
         enriched["midday_action_summary"] = midday_action_summary
     decision_factors = build_decision_factors_from_result(enriched)
+    decision_flow: list[dict[str, Any]] = []
     if any(decision_factors.values()):
         enriched["decision_factors"] = decision_factors
-        enriched["decision_flow"] = build_decision_flow(enriched)
+        decision_flow = build_decision_flow(enriched)
+        enriched["decision_flow"] = decision_flow
 
     report_markdown = str(enriched.get("report_markdown") or "").rstrip()
     if "## Dropped Candidates" in report_markdown:
@@ -1136,6 +1162,8 @@ def enrich_live_result_reporting(
             score = item.get("score")
             gap = item.get("keep_threshold_gap")
             lines.append(f"- `{ticker}` {name}: `{action}` score=`{score}` gap=`{gap}`")
+    if decision_flow and "## 决策流" not in "\n".join(lines):
+        lines.extend(build_decision_flow_markdown(decision_flow))
     if any(decision_factors.values()) and "## Decision Factors" not in "\n".join(lines):
         lines.extend(["", "## Decision Factors", ""])
         section_map = [("qualified", "可执行"), ("near_miss", "继续观察"), ("blocked", "不执行")]
@@ -1192,37 +1220,6 @@ def enrich_live_result_reporting(
             lines.append(f"- `{item.get('ticker')}` {item.get('name')}: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
             lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
             lines.append(f"  - 交易可用性: {item.get('trading_usability', {}).get('summary')}")
-
-    event_cards = enriched.get("event_cards", [])
-    if enriched.get("discovery_lane_summary") and "## Event Board" not in "\n".join(lines):
-        lines.extend(["", "## Event Board", ""])
-        for item in (event_cards if isinstance(enriched.get("event_cards"), list) else []):
-            lines.append(f"- `{item.get('ticker')}` {item.get('name')} / `{item.get('chain_name')}`")
-            lines.append(f"  - {item.get('trading_profile_judgment')}")
-            lines.append(f"  - {item.get('trading_profile_usage')}")
-            metrics = item.get("headline_metrics") if isinstance(item.get("headline_metrics"), list) else []
-            metrics_text = f" | 数据: {', '.join(metrics[:4])}" if metrics else ""
-            lines.append(f"  - `{item.get('event_phase')}` | `{item.get('expectation_verdict')}`{metrics_text}")
-            accounts = item.get("source_accounts") if isinstance(item.get("source_accounts"), list) else []
-            accounts_text = ", ".join(accounts[:3]) if accounts else "none"
-            lines.append(f"  - 社区: {accounts_text} | 一致性: `{item.get('community_conviction')}`")
-            lines.append(f"  - 驱动: {item.get('expectation_basis_summary')} | 风险: {item.get('expectation_risk_summary')}")
-            lines.append(f"  - 市场验证: {item.get('market_signal_summary')}")
-
-    if enriched.get("discovery_lane_summary") and "## Chain Map" not in "\n".join(lines):
-        lines.extend(["", "## Chain Map", ""])
-        chain_map_entries = enriched.get("chain_map_entries", [])
-        for item in chain_map_entries if isinstance(chain_map_entries, list) else []:
-            lines.append(f"- `{item.get('chain_name')}`")
-            if item.get("anchors"):
-                lines.append(f"  - 当前事件锚点: `{', '.join(item.get('anchors', []))}`")
-            if clean_text(item.get("chain_playbook")):
-                lines.append(f"  - {item.get('chain_playbook')}")
-            profiles = item.get("profiles") if isinstance(item.get("profiles"), dict) else {}
-            for bucket in TRADING_PROFILE_BUCKETS:
-                names = profiles.get(bucket, [])
-                if isinstance(names, list) and names:
-                    lines.append(f"  - {bucket}: `{', '.join(names)}`")
 
     event_cards = enriched.get("event_cards", [])
     if isinstance(event_cards, list) and event_cards and "## Event Cards" not in "\n".join(lines):
@@ -1359,6 +1356,7 @@ for _extra in (
     "build_event_risk_trigger",
     "build_decision_flow_card",
     "build_decision_flow",
+    "build_decision_flow_markdown",
     "midday_action_for_status",
     "prepare_request_with_candidate_snapshots",
     "wrap_assess_candidate_with_bars_failure_fallback",

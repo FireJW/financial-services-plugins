@@ -220,34 +220,15 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("trend=`25.0`", enriched["report_markdown"])
         self.assertIn("score_below_keep_threshold", enriched["report_markdown"])
 
-    def test_enrich_live_result_reporting_renders_event_board_and_chain_map(self) -> None:
-        result = {
-            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
-            "dropped": [],
-            "top_picks": [],
-            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
-        }
-        discovery_candidates = [
-            {
-                "ticker": "000988.SZ",
-                "name": "华工科技",
-                "event_type": "quarterly_preview",
-                "event_strength": "strong",
-                "chain_name": "optical",
-                "chain_role": "midstream_manufacturing",
-                "benefit_type": "direct",
-                "sources": [{"source_type": "official_filing", "summary": "正式业绩预告"}],
-                "market_validation": {"volume_multiple_5d": 2.0, "breakout": True, "relative_strength": "strong"},
-            }
-        ]
+    def test_enrich_live_result_reporting_renders_decision_flow_and_removes_event_board_and_chain_map(self) -> None:
+        enriched = self._build_enriched_for_decision_flow()
+        report = enriched["report_markdown"]
 
-        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
-
-        self.assertIn("## 直接可执行", enriched["report_markdown"])
-        self.assertIn("## Event Board", enriched["report_markdown"])
-        self.assertIn("## Chain Map", enriched["report_markdown"])
-        self.assertIn("华工科技", enriched["report_markdown"])
-        self.assertIn("optical", enriched["report_markdown"])
+        self.assertIn("## 决策流", report)
+        self.assertNotIn("## Event Board", report)
+        self.assertNotIn("## Chain Map", report)
+        self.assertIn("## Decision Factors", report)
+        self.assertIn("## Event Cards", report)
 
     def test_enrich_live_result_reporting_renders_response_state_for_discovery_candidates(self) -> None:
         result = {
@@ -332,18 +313,13 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("key_evidence", enriched["report_markdown"])
         self.assertIn("判断:", enriched["report_markdown"])
         self.assertIn("用法:", enriched["report_markdown"])
-        self.assertIn("链条打法", enriched["report_markdown"])
-        self.assertIn("轮动补涨", enriched["report_markdown"])
         self.assertIn("稳健核心", enriched["report_markdown"])
-        self.assertIn("补涨候选", enriched["report_markdown"])
         self.assertNotIn("交易属性分层", enriched["report_markdown"])
         self.assertNotIn("交易属性细分", enriched["report_markdown"])
         self.assertNotIn("分层依据", enriched["report_markdown"])
         self.assertNotIn("交易打法:", enriched["report_markdown"])
         self.assertNotIn("  - 一线:", enriched["report_markdown"])
         self.assertNotIn("  - 二线:", enriched["report_markdown"])
-        self.assertIn("新易盛", enriched["report_markdown"])
-        self.assertIn("天孚通信", enriched["report_markdown"])
 
     def test_enrich_live_result_reporting_realigns_chain_by_known_context_membership(self) -> None:
         result = {
@@ -956,30 +932,16 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
         return enriched
 
-    def test_event_board_layout_judgment_usage_on_lines_2_3(self) -> None:
-        """B4: Event Board should have 判断 on line 2 and 用法 on line 3 per entry."""
-        enriched = self._build_enriched_with_event_cards()
-        report = enriched.get("report_markdown", "")
-        board_section = report.split("## Event Board")[1].split("## ")[0] if "## Event Board" in report else ""
-        entries = [line for line in board_section.strip().split("\n") if line.strip()]
-        # Find first entry (starts with "- `")
-        entry_lines = []
-        collecting = False
-        for line in entries:
-            if line.startswith("- `"):
-                if collecting:
-                    break
-                collecting = True
-                entry_lines = [line]
-            elif collecting and line.startswith("  - "):
-                entry_lines.append(line)
-        self.assertTrue(len(entry_lines) >= 3, f"Expected at least 3 lines per entry, got {len(entry_lines)}")
-        self.assertIn("判断:", entry_lines[1])
-        self.assertIn("用法:", entry_lines[2])
-        # Lines 4+ should NOT start with "阶段:" or "预期判断:" as separate lines
-        for line in entry_lines[3:]:
-            self.assertNotIn("  - 阶段:", line)
-            self.assertNotIn("  - 预期判断:", line)
+    def test_decision_flow_card_has_conclusion_watchpoints_triggers_and_operation_reminder(self) -> None:
+        enriched = self._build_enriched_for_decision_flow()
+        report = enriched["report_markdown"]
+        flow = report.split("## 决策流", 1)[1].split("## Decision Factors", 1)[0] if "## 决策流" in report else ""
+
+        self.assertIn("### 002460.SZ | 继续观察 | 60.0分 | 高弹性", flow)
+        self.assertIn("结论", flow)
+        self.assertIn("盘中观察点", flow)
+        self.assertIn("触发条件", flow)
+        self.assertIn("操作提醒", flow)
 
     def test_chain_map_does_not_produce_expectation_gap_without_evidence(self) -> None:
         """B5: chain map should not assign names to 预期差最大 without evidence."""
