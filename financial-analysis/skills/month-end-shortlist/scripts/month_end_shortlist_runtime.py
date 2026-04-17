@@ -1173,6 +1173,32 @@ def build_chain_map_playbook(profiles: dict[str, list[str]] | None) -> str:
         return "链条打法: 当前更适合先观察预期定价，等市场把预期交易得更清楚。"
     return "链条打法: 当前缺少清晰主攻方向，先观察链内强弱分化。"
 
+
+def apply_rendered_caps(
+    tiers: dict[str, list[dict[str, Any]]],
+) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
+    """
+    Enforce per-tier caps. Overflow candidates get [tier_cap_overflow] tag
+    and are removed from rendered tiers but kept in diagnostic scorecard.
+
+    Returns: (capped_tiers, overflow_list)
+    """
+    overflow: list[dict[str, Any]] = []
+    capped: dict[str, list[dict[str, Any]]] = {}
+    for tier_name, candidates in tiers.items():
+        cap = TIER_CAPS.get(tier_name, 10)
+        sorted_candidates = sorted(
+            candidates,
+            key=lambda x: x.get("adjusted_total_score", 0),
+            reverse=True,
+        )
+        capped[tier_name] = sorted_candidates[:cap]
+        for c in sorted_candidates[cap:]:
+            c["tier_tags"] = c.get("tier_tags", []) + ["tier_cap_overflow"]
+            overflow.append(c)
+    return capped, overflow
+
+
 def enrich_live_result_reporting(
     result: dict[str, Any],
     failure_candidates: list[dict[str, Any]],
@@ -1233,6 +1259,44 @@ def enrich_live_result_reporting(
     decision_factors = build_decision_factors_from_result(enriched)
     if any(decision_factors.values()):
         enriched["decision_factors"] = decision_factors
+
+    # --- Tier output integration ---
+    if diagnostic_scorecard:
+        keep_threshold = filter_summary.get("keep_threshold", 60.0)
+        top_picks = [item for item in diagnostic_scorecard if item.get("keep")]
+        near_miss_candidates_for_tiers = enriched.get("near_miss_candidates", [])
+        discovery_results = {
+            "qualified": enriched.get("directly_actionable", []),
+            "watch": enriched.get("priority_watchlist", []),
+            "track": enriched.get("chain_tracking", []),
+        }
+        tiers = assign_tiers(
+            top_picks, near_miss_candidates_for_tiers,
+            discovery_results, diagnostic_scorecard, keep_threshold,
+        )
+        capped_tiers, overflow = apply_rendered_caps(tiers)
+        enriched["tier_output"] = {
+            tier_name: [
+                {
+                    "ticker": clean_text(c.get("ticker")),
+                    "name": clean_text(c.get("name")),
+                    "score": c.get("score") or c.get("adjusted_total_score"),
+                    "wrapper_tier": c.get("wrapper_tier"),
+                    "tier_tags": c.get("tier_tags", []),
+                }
+                for c in candidates
+            ]
+            for tier_name, candidates in capped_tiers.items()
+        }
+        enriched["tier_metadata"] = {
+            "total_rendered": sum(len(v) for v in capped_tiers.values()),
+            "overflow_count": len(overflow),
+            "floor_policy_applied": any(
+                "coverage_fill" in c.get("tier_tags", [])
+                for tier in capped_tiers.values() for c in tier
+            ),
+            "profile_used": str(filter_summary.get("profile", "default")),
+        }
 
     report_markdown = str(enriched.get("report_markdown") or "").rstrip()
     if "## Dropped Candidates" in report_markdown:
@@ -1309,6 +1373,20 @@ def enrich_live_result_reporting(
                 next_watch = item.get("next_watch_items") if isinstance(item.get("next_watch_items"), list) else []
                 for note in next_watch[:MAX_REPORTED_WATCH_ITEMS]:
                     lines.append(f"  - 观察点: {note}")
+
+    # --- T2 事件驱动 section ---
+    tier_output = enriched.get("tier_output", {})
+    t2_candidates = tier_output.get("T2", [])
+    if t2_candidates and "## T2 事件驱动" not in "\n".join(lines):
+        lines.extend(["", "## T2 事件驱动", ""])
+        lines.append("| 标的 | 分数 | 事件信号 | 来源 |")
+        lines.append("|---|---|---|---|")
+        for item in t2_candidates:
+            ticker = clean_text(item.get("ticker")) or "unknown"
+            name = clean_text(item.get("name")) or ticker
+            score = item.get("score", "")
+            tags = ", ".join(item.get("tier_tags", []))
+            lines.append(f"| `{ticker}` {name} | {score} | {tags} | T2 |")
 
     directly_actionable = enriched.get("directly_actionable", [])
     if isinstance(directly_actionable, list) and directly_actionable and "## 直接可执行" not in "\n".join(lines):
