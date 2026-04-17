@@ -38,6 +38,7 @@ QUERYLESS_REDDIT_SUBREDDIT_LIMITS = [
     ("r/investing", 1),
     ("r/SecurityAnalysis", 2),
     ("r/ValueInvesting", 1),
+    ("r/wallstreetbets", 1),
     ("r/MachineLearning", 2),
     ("r/hardware", 2),
     ("r/geopolitics", 1),
@@ -49,6 +50,8 @@ QUERYLESS_REDDIT_SEARCH_QUERIES = [
     "robotaxi Tesla",
     "oil shipping Hormuz",
     "jet fuel shortage Europe",
+    "Netflix NFLX earnings revenue",
+    "tariffs trade war supply chain",
 ]
 QUERYLESS_REDDIT_SEARCH_SUBREDDITS = [
     "r/MachineLearning",
@@ -56,6 +59,7 @@ QUERYLESS_REDDIT_SEARCH_SUBREDDITS = [
     "r/stocks",
     "r/SecurityAnalysis",
     "r/CredibleDefense",
+    "r/wallstreetbets",
 ]
 QUERYLESS_REDDIT_META_TITLE_KEYWORDS = {
     "rate my portfolio",
@@ -123,6 +127,8 @@ QUERYLESS_X_SEARCH_QUERIES = [
     "OpenAI Anthropic Claude Gemini AI agents",
     "robotaxi autonomous driving Tesla",
     "oil shipping Hormuz jet fuel sanctions",
+    "Netflix NFLX earnings revenue EPS",
+    "tariffs trade war supply chain macro",
 ]
 QUERYLESS_X_PER_QUERY_TIMEOUT_SECONDS = 8
 DEFAULT_TIMEOUT_PER_CHANNEL = 30
