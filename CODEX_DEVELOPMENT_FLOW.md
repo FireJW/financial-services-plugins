@@ -43,6 +43,7 @@ For `Complex` tasks, discover context in this order:
 4. related recurring notes in `obsidian-kb-v2`
 5. only then start fresh execution
 
+
 ## Local Obsidian KB Capture Contract
 
 This file is the canonical workflow contract for persisting Codex conversation
@@ -371,9 +372,34 @@ synced with the current `HEAD` or lagging.
 ## Repo-Specific Defaults
 
 - Prefer repository-native workflows over generic scraping.
+- Before any delete, cleanup, move, rename, rollback, or batch rewrite, create
+  a git-inclusive external snapshot first.
+- Treat the external backup root as read-only and outside the edit or staging
+  scope unless the user explicitly asks to manage backups.
+- Require a dry-run or explicit candidate-file preview before every
+  file-affecting command.
 - Prefer safe staging scripts over broad `git add`.
 - Keep temp artifacts out of git.
 - When a task depends on sibling projects, state exact paths and split responsibilities clearly.
+
+## File-Mutation Safety Gate
+
+For any task that can delete files, clean directories, move or rename paths, or
+rewrite many files in one pass:
+
+1. create the backup first:
+
+```powershell
+.\scripts\repo-snapshot.ps1 -BackupRoot "D:\Users\rickylu\repo-safety-backups\financial-services-plugins" -MirrorLatest -IncludeGit
+```
+
+2. keep the backup root out of scope for edits, staging, cleanup, or restore-by-
+   accident work
+3. run `--dry-run`, `-WhatIf`, or an equivalent candidate report and review the
+   exact file list before execution
+4. execute only the targeted paths that appeared in the preview
+5. verify the result with `git status --short` plus task-specific checks before
+   any further cleanup
 
 ## Windows Hook Fallback
 

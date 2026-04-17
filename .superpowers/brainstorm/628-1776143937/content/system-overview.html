@@ -1,0 +1,77 @@
+<h2>范围升级：从"生图优化"到"完整内容生产系统"</h2>
+<p class="subtitle">3 个内容领域 × 封面自适应 + 文章生成 × 多平台扩展</p>
+
+<div class="section">
+  <h3>系统全景</h3>
+  <div class="mockup">
+    <div class="mockup-header">内容生产管线 — 从主题到成品</div>
+    <div class="mockup-body" style="font-family:monospace;font-size:13px;line-height:2;white-space:pre-wrap;color:#e2e8f0;background:#1e293b;padding:20px;border-radius:8px;">
+<strong style="color:#fbbf24;">输入</strong>
+  主题 + 参考素材（新闻链接/图片/灵感笔记）
+      │
+      ▼
+<strong style="color:#fbbf24;">① 内容领域识别</strong>
+  ┌─────────────────┬──────────────┬──────────────┐
+  │ 宏观/财经/地缘   │   科技动态    │   个人成长    │
+  └────────┬────────┴──────┬───────┴──────┬───────┘
+           ▼               ▼              ▼
+<strong style="color:#fbbf24;">② 文章生成</strong>（按领域风格）
+  · 语气、结构、信息密度各不同
+  · 输出 source-image-cover.txt 格式
+      │
+      ▼
+<strong style="color:#fbbf24;">③ 封面生图</strong>（按领域 + 主题自适应）
+  · 自动选择视觉方向（纪实/隐喻/科技/温暖…）
+  · prompt 的主体、气质、色调全部动态生成
+  · 输出无字主视觉 PNG
+      │
+      ▼
+<strong style="color:#fbbf24;">④ 封面合成</strong>
+  · 代码渲染器叠加标题 + 品牌
+  · 输出最终封面
+      │
+      ▼
+<strong style="color:#fbbf24;">⑤ 平台适配</strong>（未来）
+  · 小红书 → 1242×1660
+  · 微信公众号 → 900×383
+  · 抖音 → 1080×1920</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>3 个内容领域 × 视觉风格矩阵</h3>
+  <div class="cards">
+    <div class="card" data-choice="macro" onclick="toggleSelect(this)">
+      <div class="card-body" style="border-left:4px solid #ef4444;">
+        <p class="label" style="color:#ef4444;">宏观 / 财经 / 地缘</p>
+        <h3>紧张、权威、信息密度高</h3>
+        <p><strong>文章风格：</strong>短句快评、信号解读、情景推演</p>
+        <p><strong>视觉方向：</strong></p>
+        <p style="font-size:13px;color:#94a3b8;">· 有现场 → 纪实摄影（A）<br>· 无现场 → 抽象隐喻（C）</p>
+        <p><strong>色调：</strong>暗调、去饱和暖色、紧张感</p>
+      </div>
+    </div>
+
+    <div class="card" data-choice="tech" onclick="toggleSelect(this)">
+      <div class="card-body" style="border-left:4px solid #3b82f6;">
+        <p class="label" style="color:#3b82f6;">科技动态</p>
+        <h3>前沿、清晰、有未来感</h3>
+        <p><strong>文章风格：</strong>产品解读、技术趋势、行业分析</p>
+        <p><strong>视觉方向：</strong></p>
+        <p style="font-size:13px;color:#94a3b8;">· 有产品实体 → 产品特写/场景（新方向 D）<br>· 纯概念/趋势 → 科技抽象（新方向 E）</p>
+        <p><strong>色调：</strong>冷色调、深蓝/紫、干净、高对比</p>
+      </div>
+    </div>
+
+    <div class="card" data-choice="growth" onclick="toggleSelect(this)">
+      <div class="card-body" style="border-left:4px solid #10b981;">
+        <p class="label" style="color:#10b981;">个人成长</p>
+        <h3>温暖、有质感、不鸡汤</h3>
+        <p><strong>文章风格：</strong>经验复盘、思维模型、读书笔记</p>
+        <p><strong>视觉方向：</strong></p>
+        <p style="font-size:13px;color:#94a3b8;">· 有具体场景 → 生活质感摄影（新方向 F）<br>· 纯思维/概念 → 极简隐喻（新方向 G）</p>
+        <p><strong>色调：</strong>暖色、柔光、自然、有呼吸感</p>
+      </div>
+    </div>
+  </div>
+</div>

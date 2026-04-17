@@ -1,0 +1,9 @@
+{
+  "name": "career-ops-local",
+  "version": "0.1.0",
+  "description": "Local-first personal job search copilot bridge with private profile storage and optional external career-ops augmentation.",
+  "author": {
+    "name": "Local bridge"
+  }
+}
+

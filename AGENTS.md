@@ -63,6 +63,7 @@ If a simple task grows beyond those bounds, stop and escalate:
 4. load related docs and KB assets
 5. restate verification before continuing
 
+
 ## Capability-First Routing
 
 Before using generic browsing, web search, or ad hoc scraping, always route
@@ -420,6 +421,18 @@ For Chinese stock analysis in this repo:
 
 ## Git Safety Rules
 
+- Before any delete, cleanup, move, rename, rollback, codemod, or batch file
+  rewrite, create a git-inclusive external snapshot first with
+  `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/repo-snapshot.ps1 -BackupRoot "D:\Users\rickylu\repo-safety-backups\financial-services-plugins" -MirrorLatest -IncludeGit`.
+- Treat `D:\Users\rickylu\repo-safety-backups\financial-services-plugins\` and
+  any mirrored snapshot output as read-only during normal development. Do not
+  stage, edit, prune, or delete backup contents unless the user explicitly asks
+  to manage backups.
+- Any file-affecting operation must have a dry-run or preview phase first.
+  Surface the exact candidate file list before execution for delete, cleanup,
+  move, rename, rollback, or bulk writes.
+- If a tool lacks `--dry-run`, `-WhatIf`, or preview mode, stop and produce an
+  equivalent candidate report before executing the real write or delete step.
 - Never stage `.tmp/`, `.tmp-*`, root-level `tmp-*`, browser session/profile
   data, screenshots, caches, or database files unless the user explicitly asks
   to version them.
@@ -442,3 +455,5 @@ For Chinese stock analysis in this repo:
 - If a runtime artifact needs to be kept for tests or examples, move it under a
   stable non-temp path such as `examples/` or `tests/fixtures/` instead of
   `.tmp/`.
+- Keep the execution order strict: backup -> dry-run preview -> targeted
+  execute -> post-change verification.
