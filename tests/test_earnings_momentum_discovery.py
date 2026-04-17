@@ -645,6 +645,114 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertAlmostEqual(module_under_test.to_float_safe("N/A"), 0.0)
         self.assertAlmostEqual(module_under_test.to_float_safe(None), 0.0)
 
+    def test_classify_trading_profile_market_bet_outperform_routes_to_elastic_not_gap(self) -> None:
+        """Fix 1: 市场押注超预期 with weak validation should go to 高弹性, not 预期差最大."""
+        profile = module_under_test.classify_trading_profile(
+            {
+                "name": "TestName",
+                "benefit_type": "direct",
+                "chain_role": "unknown",
+                "leaders": [],
+                "peer_tier_1": [],
+                "peer_tier_2": [],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "low", "summary": "低"},
+                "market_validation_summary": {"label": "weak", "summary": "弱"},
+                "expectation_verdict": "市场押注超预期",
+                "community_conviction": "low",
+                "priority_score": 50,
+            }
+        )
+        self.assertNotEqual(profile["bucket"], "预期差最大")
+
+    def test_classify_trading_profile_low_conviction_alone_not_gap(self) -> None:
+        """Fix 2: community_conviction == low alone should not trigger 预期差最大."""
+        profile = module_under_test.classify_trading_profile(
+            {
+                "name": "TestName2",
+                "benefit_type": "direct",
+                "chain_role": "unknown",
+                "leaders": [],
+                "peer_tier_1": [],
+                "peer_tier_2": [],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "low", "summary": "低"},
+                "market_validation_summary": {"label": "medium", "summary": "中等"},
+                "expectation_verdict": "符合预期",
+                "community_conviction": "low",
+                "priority_score": 40,
+            }
+        )
+        self.assertNotEqual(profile["bucket"], "预期差最大")
+
+    def test_classify_trading_profile_mapping_strong_validation_routes_to_elastic(self) -> None:
+        """Fix 4: mapping + strong validation + high usability → 高弹性, not 补涨候选."""
+        profile = module_under_test.classify_trading_profile(
+            {
+                "name": "MappingStrong",
+                "benefit_type": "mapping",
+                "chain_role": "midstream_manufacturing",
+                "leaders": [],
+                "peer_tier_1": [],
+                "peer_tier_2": [],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "high", "summary": "高"},
+                "market_validation_summary": {"label": "strong", "summary": "强"},
+                "expectation_verdict": "市场押注超预期",
+                "community_conviction": "medium",
+                "priority_score": 70,
+            }
+        )
+        self.assertEqual(profile["bucket"], "高弹性")
+        self.assertIn("映射", profile["subtype"])
+
+    def test_classify_trading_profile_final_fallback_is_catchup_not_gap(self) -> None:
+        """Fix 5: final fallback with weak validation → 补涨候选, not 预期差最大."""
+        profile = module_under_test.classify_trading_profile(
+            {
+                "name": "FallbackName",
+                "benefit_type": "direct",
+                "chain_role": "unknown",
+                "leaders": [],
+                "peer_tier_1": [],
+                "peer_tier_2": [],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "low", "summary": "低"},
+                "market_validation_summary": {"label": "weak", "summary": "弱"},
+                "expectation_verdict": "符合预期",
+                "community_conviction": "medium",
+                "priority_score": 30,
+            }
+        )
+        self.assertEqual(profile["bucket"], "补涨候选")
+        self.assertIn("证据不足", profile["subtype"])
+
+    def test_classify_trading_profile_genuine_gap_has_evidence_strength(self) -> None:
+        """Fix 3: genuine 预期差最大 entries carry evidence_strength marker."""
+        profile = module_under_test.classify_trading_profile(
+            {
+                "name": "GapName",
+                "benefit_type": "direct",
+                "chain_role": "unknown",
+                "leaders": [],
+                "peer_tier_1": [],
+                "peer_tier_2": [],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "low", "summary": "低"},
+                "market_validation_summary": {"label": "weak", "summary": "弱"},
+                "expectation_verdict": "暂无一致预期",
+                "community_conviction": "low",
+                "priority_score": 30,
+            }
+        )
+        self.assertEqual(profile["bucket"], "预期差最大")
+        self.assertIn("evidence_strength", profile)
+
 
 if __name__ == "__main__":
     unittest.main()

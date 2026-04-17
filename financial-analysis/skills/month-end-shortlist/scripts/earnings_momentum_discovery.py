@@ -523,6 +523,21 @@ def classify_trading_profile(candidate: dict[str, Any]) -> dict[str, str]:
             "reason": "处于核心链条但表达更偏攻击性，当前更适合作为高弹性方向而不是稳健承载。",
         }
 
+    # --- Path 6: mapping with strong validation → 高弹性 (new, before old Path 6) ---
+    if (
+        benefit_type == "mapping"
+        and market_validation in {"strong", "medium"}
+        and trading_usability in {"high", "medium"}
+        and not is_secondary_name
+        and chain_role not in {"logic_support", "quote_only"}
+    ):
+        return {
+            "bucket": "高弹性",
+            "subtype": "映射受益但验证充分的弹性表达",
+            "reason": "虽然属于映射受益，但量价验证和交易可用性已经足够，更像高弹性表达。",
+        }
+
+    # --- Path 7: secondary / weak-mapping / logic_support → 补涨候选 ---
     if is_secondary_name or benefit_type == "mapping" or chain_role in {"logic_support", "quote_only"}:
         subtype = "链条扩散补涨"
         if is_core_name:
@@ -533,6 +548,7 @@ def classify_trading_profile(candidate: dict[str, Any]) -> dict[str, str]:
             "reason": "更偏链条扩散或映射受益，当前更适合作为补涨候选跟踪。",
         }
 
+    # --- Path 8: non-core direct with validation → 高弹性 ---
     if (
         benefit_type == "direct"
         and not is_core_name
@@ -547,17 +563,32 @@ def classify_trading_profile(candidate: dict[str, Any]) -> dict[str, str]:
             "reason": "不是最稳的链条核心，但事件和量价都已具备交易性，更像高弹性表达。",
         }
 
-    if expectation_verdict in {"市场押注超预期", "暂无一致预期"} or community_conviction == "low":
+    # --- Path 9: tightened 预期差最大 (all three conditions must hold) ---
+    if (
+        community_conviction == "low"
+        and expectation_verdict == "暂无一致预期"
+        and market_validation not in {"strong", "medium"}
+    ):
+        has_positive_signal = expectation_verdict != "暂无一致预期" or community_conviction != "low"
+        evidence = "genuine_gap" if has_positive_signal else "weak_evidence"
         return {
             "bucket": "预期差最大",
             "subtype": "预期尚未充分定价",
             "reason": "市场一致预期尚未完全收敛，当前更像预期差最大的博弈方向。",
+            "evidence_strength": evidence,
         }
 
+    # --- Path 10: final fallback → 高弹性 (strong) or 补涨候选 (default) ---
+    if market_validation == "strong":
+        return {
+            "bucket": "高弹性",
+            "subtype": "事件确认后攻击性弹性",
+            "reason": "当前更适合按弹性表达理解，而不是按静态行业位次理解。",
+        }
     return {
-        "bucket": "高弹性" if market_validation == "strong" else "预期差最大",
-        "subtype": "事件确认后攻击性弹性" if market_validation == "strong" else "预期尚未充分定价",
-        "reason": "当前更适合按弹性表达或预期差博弈理解，而不是按静态行业位次理解。",
+        "bucket": "补涨候选",
+        "subtype": "证据不足的扩散候选",
+        "reason": "当前证据不足以归入更强的交易属性分类，先按补涨候选跟踪。",
     }
 
 
