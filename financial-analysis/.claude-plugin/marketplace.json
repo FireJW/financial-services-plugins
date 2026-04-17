@@ -1,0 +1,16 @@
+{
+  "name": "financial-analysis-local",
+  "owner": { "name": "Ricky Lu" },
+  "metadata": {
+    "description": "Financial analysis and article generation pipeline",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "financial-analysis",
+      "source": "./",
+      "description": "Core financial modeling and analysis tools: DCF, comps, article pipeline, and deck QC",
+      "version": "0.1.0"
+    }
+  ]
+}

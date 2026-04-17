@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -87,52 +88,74 @@ class MacroHealthAssistedShortlistTests(unittest.TestCase):
             return {"sentiment_vol_overlay": {"sentiment_regime": "panic_in_growth_not_broad_market"}}
 
         def fake_run_month_end_shortlist(request: dict) -> dict:
-            self.assertEqual(request["macro_health_/**
- * createVariableCollection
- *
- * Creates a new Figma variable collection with the specified name and modes.
- * If `modeNames` has more than one entry, the first mode is renamed from
- * Figma's default "Mode 1" to the first name, and additional modes are added.
- *
- * Every created collection is tagged with `dsb_key` plugin data so it can be
- * found and cleaned up idempotently by `cleanupOrphans`.
- *
- * @param {string} name - The display name of the collection (e.g. "Color", "Spacing").
- * @param {string[]} modeNames - Ordered list of mode names (e.g. ["Light", "Dark"] or ["Value"]).
- * @param {string} [runId] - Optional dsb_run_id to tag for cleanup.
- * @returns {Promise<{
- *   collection: VariableCollection,
- *   modeIds: Record<string, string>
- * }>}
- *   `modeIds` maps each mode name to its modeId string.
- */
-async function createVariableCollection(name, modeNames, runId) {
-  if (!modeNames || modeNames.length === 0) {
-    throw new Error('createVariableCollection: modeNames must have at least one entry.')
-  }
+            self.assertEqual(request["macro_health_overlay"]["health_label"], "mixed_or_neutral_window")
+            self.assertEqual(request["sentiment_vol_overlay"]["sentiment_regime"], "panic_in_growth_not_broad_market")
+            return {"request": request, "report_markdown": "# ok\n"}
 
-  // Create the collection — Figma always creates it with one mode named "Mode 1".
-  const collection = figma.variables.createVariableCollection(name)
+        def fake_write_json(path: Path, payload: dict) -> None:
+            writes.append((path, payload))
 
-  // Tag for idempotent cleanup
-  collection.setPluginData('dsb_key', `collection/${name}`)
-  if (runId) {
-    collection.setPluginData('dsb_run_id', runId)
-  }
+        with patch.object(module_under_test, "load_json", side_effect=fake_load_json), patch.object(
+            module_under_test, "build_macro_health_overlay_result", side_effect=fake_build_macro_health_overlay_result
+        ), patch.object(
+            module_under_test, "build_a_share_sentiment_overlay_result", side_effect=fake_build_a_share_sentiment_overlay_result
+        ), patch.object(module_under_test, "run_month_end_shortlist", side_effect=fake_run_month_end_shortlist), patch.object(
+            module_under_test, "write_json", side_effect=fake_write_json
+        ):
+            exit_code = module_under_test.main(
+                [
+                    "C:/base.json",
+                    "--output",
+                    "C:/out.json",
+                    "--overlay-output",
+                    "C:/overlay.json",
+                    "--resolved-request-output",
+                    "C:/resolved.json",
+                    "--sentiment-request-json",
+                    "C:/sentiment.json",
+                    "--sentiment-output",
+                    "C:/sentiment-out.json",
+                ]
+            )
 
-  // modeIds accumulator
-  const modeIds = {}
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(loaded_paths[0], Path("C:/base.json"))
+        self.assertEqual(loaded_paths[1], module_under_test.DEFAULT_MACRO_HEALTH_REQUEST)
+        self.assertEqual(loaded_paths[2], Path("C:/sentiment.json"))
+        self.assertEqual(len(writes), 4)
 
-  // Rename the default first mode
-  const defaultMode = collection.modes[0]
-  collection.renameMode(defaultMode.modeId, modeNames[0])
-  modeIds[modeNames[0]] = defaultMode.modeId
+    def test_main_writes_markdown_output_with_utf8_bom(self) -> None:
+        tmp_path = Path.cwd() / ".tmp" / "test-macro-health-markdown-bom"
+        if tmp_path.exists():
+            shutil.rmtree(tmp_path)
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        try:
+            base_request = tmp_path / "base.json"
+            macro_request = tmp_path / "macro.json"
+            markdown_path = tmp_path / "report.md"
+            base_request.write_text('{"template_name":"month_end_shortlist","target_date":"2026-04-30"}', encoding="utf-8")
+            macro_request.write_text('{"live_data_provider":"public_macro_mix"}', encoding="utf-8")
 
-  // Add additional modes
-  for (let i = 1; i < modeNames.length; i++) {
-    const newModeId = collection.addMode(modeNames[i])
-    modeIds[modeNames[i]] = newModeId
-  }
+            with (
+                patch.object(module_under_test, "load_json", side_effect=[{"template_name": "month_end_shortlist"}, {"live_data_provider": "public_macro_mix"}]),
+                patch.object(module_under_test, "build_macro_health_overlay_result", return_value={"macro_health_overlay": {"health_label": "mixed"}}),
+                patch.object(module_under_test, "run_month_end_shortlist", return_value={"report_markdown": "# macro\n"}),
+            ):
+                exit_code = module_under_test.main(
+                    [
+                        str(base_request),
+                        str(macro_request),
+                        "--markdown-output",
+                        str(markdown_path),
+                    ]
+                )
 
-  return { collection, modeIds }
-}
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(markdown_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+            self.assertIn("# macro", markdown_path.read_text(encoding="utf-8-sig"))
+        finally:
+            shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    unittest.main()

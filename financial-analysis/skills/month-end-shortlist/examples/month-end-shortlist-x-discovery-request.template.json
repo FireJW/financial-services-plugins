@@ -1,0 +1,31 @@
+{
+  "subject": {
+    "handle": "twikejin"
+  },
+  "candidate_names": [
+    "东山精密",
+    "中国巨石",
+    "中际旭创",
+    "新易盛"
+  ],
+  "source_board_seed": {
+    "source_board": [
+      {
+        "status_url": "https://x.com/twikejin/status/2041534482210242629",
+        "status_id": "2041534482210242629",
+        "author_handle": "twikejin",
+        "published_at": "2026-04-07T02:00:00+00:00",
+        "direct_text": "东山精密(002384)Q1净利预增119%-152%，第一目标市值仍有翻倍空间。核心股(东山精密)。",
+        "direct_text_kind": "raw_post_text"
+      },
+      {
+        "status_url": "https://x.com/twikejin/status/2038991266449592742",
+        "status_id": "2038991266449592742",
+        "author_handle": "twikejin",
+        "published_at": "2026-03-31T02:00:00+00:00",
+        "direct_text": "电子布4月报价全面上调。核心股(中国巨石,国际复材,中材科技,宏和科技)",
+        "direct_text_kind": "raw_post_text"
+      }
+    ]
+  }
+}

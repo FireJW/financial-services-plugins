@@ -1,0 +1,18 @@
+{
+  "goal": "Deploy the P0/P1 runtime hardening layer.",
+  "currentState": [
+    "Contracts are drafted.",
+    "Profile routing is pending."
+  ],
+  "confirmedFacts": [
+    "Recovered runtime builds successfully.",
+    "Core plugin surface diff is clean."
+  ],
+  "unresolvedQuestions": [
+    "Whether verifier output should later become JSON-first."
+  ],
+  "nextStep": "- Implement the verification wrapper.",
+  "risks": [
+    "Do not couple wrapper logic to vendor internals too early."
+  ]
+}
