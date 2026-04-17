@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.output:
         write_json(args.output, result)
     if args.markdown_output:
-        Path(args.markdown_output).expanduser().resolve().write_text(build_markdown_report(result), encoding="utf-8")
+        Path(args.markdown_output).expanduser().resolve().write_text(build_markdown_report(result), encoding="utf-8-sig")
     return 0
 
 

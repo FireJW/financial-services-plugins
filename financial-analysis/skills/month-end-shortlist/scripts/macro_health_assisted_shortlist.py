@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.markdown_output:
         Path(args.markdown_output).expanduser().resolve().write_text(
             str(result.get("report_markdown") or build_markdown_report(result)),
-            encoding="utf-8",
+            encoding="utf-8-sig",
         )
     if args.overlay_output:
         write_json(Path(args.overlay_output), macro_result)
