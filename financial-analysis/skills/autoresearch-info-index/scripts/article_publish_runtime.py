@@ -732,9 +732,19 @@ def select_cover_plan(image_assets: list[dict[str, Any]], cover_candidates: list
     if dedicated_candidates:
         preferred = [item for item in dedicated_candidates if clean_text(item.get("role")) == "article_page_screenshot"]
         candidate = preferred[0] if preferred else dedicated_candidates[0]
-        selection_mode = "dedicated_candidate"
-        cover_source = "dedicated_cover_candidate"
-        reason = "Selected a dedicated cover candidate before falling back to body images."
+        if (
+            clean_text(request.get("image_strategy")) == "prefer_images"
+            and "screenshot" not in clean_text(candidate.get("role")).lower()
+            and screenshot_candidates
+        ):
+            candidate = sorted(screenshot_candidates, key=lambda item: int(item.get("body_order", 999)))[0]
+            selection_mode = "screenshot_candidate"
+            cover_source = "dedicated_cover_candidate"
+            reason = "Selected the first screenshot cover candidate from the body image order."
+        else:
+            selection_mode = "dedicated_candidate"
+            cover_source = "dedicated_cover_candidate"
+            reason = "Selected a dedicated cover candidate before falling back to body images."
     elif screenshot_candidates:
         candidate = sorted(screenshot_candidates, key=lambda item: int(item.get("body_order", 999)))[0]
         selection_mode = "screenshot_candidate"
