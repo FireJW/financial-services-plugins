@@ -119,7 +119,7 @@ def assign_discovery_bucket(candidate: dict[str, Any]) -> str:
         return "watch"
     if (
         clean_text(candidate.get("event_strength")).lower() == "strong"
-        and validation["label"] == "strong"
+        and validation["label"] in {"strong", "medium"}
         and confidence["label"] in {"medium", "medium_high", "high"}
     ):
         return "qualified"
@@ -868,7 +868,7 @@ def build_auto_discovery_candidates(assessed_candidates: list[dict[str, Any]]) -
                     "ticker": clean_text(candidate.get("ticker")),
                     "name": clean_text(candidate.get("name")),
                     "event_type": infer_event_type_from_shortlist_candidate(candidate),
-                    "event_strength": "strong" if to_float_safe((candidate.get("score_components") or {}).get("structured_catalyst_score")) >= 12 else "medium",
+                    "event_strength": "strong" if to_float_safe((candidate.get("score_components") or {}).get("structured_catalyst_score")) >= 10 else "medium",
                     "chain_name": clean_text(candidate.get("sector")),
                     "chain_role": clean_text(candidate.get("chain_role")) or "unknown",
                     "benefit_type": "direct",
@@ -960,36 +960,41 @@ def build_x_style_discovery_candidates(
                             else:
                                 ticker = f"{code}.SZ"
                             break
-                rows.append(
-                    normalize_event_candidate(
-                        {
-                            "ticker": ticker,
-                            "name": name,
-                            "event_type": clean_text(event.get("catalyst_type")) or "x_logic_signal",
-                            "event_strength": "strong" if "strong" in clean_text(event.get("strength")).lower() else "medium",
-                            "chain_name": clean_text(event.get("sector_or_chain") or event.get("suggested_basket_sector")),
-                            "chain_role": classification,
-                            "benefit_type": "direct" if classification == "direct_pick" else "mapping",
-                            "peer_tier_1": [clean_text(item) for item in event.get("suggested_basket_core_candidates", []) if clean_text(item)],
-                            "peer_tier_2": [
-                                clean_text(item)
-                                for item in event.get("suggested_basket_candidates", [])
-                                if clean_text(item) and clean_text(item) not in {clean_text(core) for core in event.get("suggested_basket_core_candidates", []) if clean_text(core)}
-                            ],
-                            "leaders": [name] if classification == "direct_pick" else [clean_text(item) for item in event.get("suggested_basket_core_candidates", []) if clean_text(item)],
-                            "sources": [
-                                {
-                                    "source_type": "x_summary",
-                                    "account": handle,
-                                    "summary": clean_text(event.get("thesis_excerpt")) or source_text,
-                                    "evidence_excerpt": source_text or clean_text(event.get("thesis_excerpt")),
-                                    "status_url": clean_text(event.get("status_url")),
-                                    "published_at": published_at,
-                                    "source_kind": source_kind,
-                                }
-                            ],
-                            "market_validation": {},
-                        }
-                    )
+                candidate = normalize_event_candidate(
+                    {
+                        "ticker": ticker,
+                        "name": name,
+                        "event_type": clean_text(event.get("catalyst_type")) or "x_logic_signal",
+                        "event_strength": "strong" if "strong" in clean_text(event.get("strength")).lower() else "medium",
+                        "chain_name": clean_text(event.get("sector_or_chain") or event.get("suggested_basket_sector")),
+                        "chain_role": classification,
+                        "benefit_type": "direct" if classification == "direct_pick" else "mapping",
+                        "peer_tier_1": [clean_text(item) for item in event.get("suggested_basket_core_candidates", []) if clean_text(item)],
+                        "peer_tier_2": [
+                            clean_text(item)
+                            for item in event.get("suggested_basket_candidates", [])
+                            if clean_text(item) and clean_text(item) not in {clean_text(core) for core in event.get("suggested_basket_core_candidates", []) if clean_text(core)}
+                        ],
+                        "leaders": [name] if classification == "direct_pick" else [clean_text(item) for item in event.get("suggested_basket_core_candidates", []) if clean_text(item)],
+                        "sources": [
+                            {
+                                "source_type": "x_summary",
+                                "account": handle,
+                                "summary": clean_text(event.get("thesis_excerpt")) or source_text,
+                                "evidence_excerpt": source_text or clean_text(event.get("thesis_excerpt")),
+                                "status_url": clean_text(event.get("status_url")),
+                                "published_at": published_at,
+                                "source_kind": source_kind,
+                            }
+                        ],
+                        "market_validation": {},
+                    }
                 )
+                if candidate.get("chain_role") == "logic_support":
+                    bucket = assign_discovery_bucket(candidate)
+                    if bucket in {"qualified", "watch"}:
+                        candidate["discovery_bucket"] = bucket
+                    else:
+                        candidate["discovery_bucket"] = "track"
+                rows.append(candidate)
     return rows

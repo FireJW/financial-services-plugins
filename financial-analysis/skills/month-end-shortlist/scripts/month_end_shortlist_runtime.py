@@ -77,18 +77,39 @@ for _name in dir(_compiled):
 
 BarsFetcher = Callable[[str, str, str], list[dict[str, Any]]]
 AssessCandidate = Callable[..., dict[str, Any]]
-NEAR_MISS_MAX_GAP = 15.0
+NEAR_MISS_MAX_GAP = 20.0
 MAX_REPORTED_TOP_PICKS = 10
 MAX_REPORTED_NEAR_MISS = 5
 MAX_REPORTED_BLOCKED = 5
 MAX_REPORTED_WATCH_ITEMS = 3
+
+# --- Screening Coverage Optimization constants ---
+NEAR_MISS_FLOOR_GAP = 25.0        # used by floor policy supplementation
+TIER_CAPS = {"T1": 10, "T2": 5, "T3": 8, "T4": 5}
+TOTAL_RENDERED_CAP = 28            # sum of tier caps
+MIN_COVERAGE_TARGET = 10
+TWO_ROUND_THRESHOLD = 3            # top_picks < this triggers Round 2
+CATALYST_WAIVER_SCORE_GAP = 10.0   # keep_threshold - this = waiver floor
+
+# Hard failures that permanently exclude from all tiers
+HARD_EXCLUSION_FAILURES = frozenset({
+    "bars_fetch_failed",
+    "price_below_floor",
+    "volume_below_floor",
+    "suspended",
+    "st_or_risk_warning",
+})
 WRAPPER_FILTER_PROFILE_OVERRIDES: dict[str, dict[str, float]] = {
     # Recovered from a validated historical artifact until the compiled runtime
     # regains native support for this documented profile.
     "month_end_event_support_transition": {
         "keep_threshold": 58.0,
         "strict_top_pick_threshold": 59.0,
-    }
+    },
+    "broad_coverage_mode": {
+        "keep_threshold": 55.0,
+        "strict_top_pick_threshold": 57.0,
+    },
 }
 
 
