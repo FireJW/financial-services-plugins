@@ -464,8 +464,8 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertIn("EML紧缺", cards[0]["expectation_basis_summary"])
         self.assertIn("毛利率改善", cards[0]["expectation_basis_summary"])
         self.assertIn("若财报兑现弱于这些线索", cards[0]["expectation_risk_summary"])
-        self.assertEqual(cards[0]["trading_profile_bucket"], "稳健核心")
-        self.assertIn("核心", cards[0]["trading_profile_reason"])
+        self.assertEqual(cards[0]["trading_profile_bucket"], "兑现风险最高")
+        self.assertIn("预期", cards[0]["trading_profile_reason"])
         self.assertIn("打法", cards[0]["trading_profile_playbook"])
 
     def test_classify_trading_profile_distinguishes_core_catchup_and_realization_risk(self) -> None:
@@ -752,6 +752,52 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         )
         self.assertEqual(profile["bucket"], "预期差最大")
         self.assertIn("evidence_strength", profile)
+
+
+    def test_classify_trading_profile_expectation_phase_crowded_trade_triggers_realization_risk(self) -> None:
+        """B3: 预期交易 + high conviction + strong validation + 3+ accounts + priority>=85 → 兑现风险最高."""
+        profile = module_under_test.classify_trading_profile(
+            {
+                "name": "CrowdedTrade",
+                "benefit_type": "direct",
+                "chain_role": "midstream_manufacturing",
+                "leaders": ["CrowdedTrade"],
+                "peer_tier_1": ["CrowdedTrade"],
+                "peer_tier_2": [],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "high", "summary": "高"},
+                "market_validation_summary": {"label": "strong", "summary": "强"},
+                "expectation_verdict": "市场押注超预期",
+                "community_conviction": "high",
+                "priority_score": 90,
+                "source_accounts": ["account1", "account2", "account3"],
+            }
+        )
+        self.assertEqual(profile["bucket"], "兑现风险最高")
+        self.assertIn("预期交易", profile["subtype"])
+
+    def test_classify_trading_profile_expectation_phase_not_crowded_stays_core(self) -> None:
+        """B3 negative: same setup but only 2 accounts → should NOT trigger 兑现风险."""
+        profile = module_under_test.classify_trading_profile(
+            {
+                "name": "NotCrowded",
+                "benefit_type": "direct",
+                "chain_role": "midstream_manufacturing",
+                "leaders": ["NotCrowded"],
+                "peer_tier_1": ["NotCrowded"],
+                "peer_tier_2": [],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "high", "summary": "高"},
+                "market_validation_summary": {"label": "strong", "summary": "强"},
+                "expectation_verdict": "市场押注超预期",
+                "community_conviction": "high",
+                "priority_score": 90,
+                "source_accounts": ["account1", "account2"],
+            }
+        )
+        self.assertNotEqual(profile["bucket"], "兑现风险最高")
 
 
 if __name__ == "__main__":

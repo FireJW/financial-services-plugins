@@ -497,6 +497,24 @@ def classify_trading_profile(candidate: dict[str, Any]) -> dict[str, str]:
             "reason": "正式结果或官方预告已落入兑现窗口，作为核心直接受益票更需要防范 sell-the-fact 风险。",
         }
 
+    # --- Path 3b: 预期交易阶段的过度定价风险 ---
+    source_accounts = candidate.get("source_accounts") or []
+    if not isinstance(source_accounts, list):
+        source_accounts = []
+    if (
+        event_phase == "预期交易"
+        and community_conviction == "high"
+        and market_validation == "strong"
+        and expectation_verdict == "市场押注超预期"
+        and len(source_accounts) >= 3
+        and priority_score >= 85
+    ):
+        return {
+            "bucket": "兑现风险最高",
+            "subtype": "预期交易阶段的过度定价风险",
+            "reason": "虽然还没到正式结果，但多个社区声音已经高度一致且量价强势验证，当前更像预期过度定价的兑现窗口。",
+        }
+
     if is_core_name and benefit_type == "direct":
         if trading_usability in {"high", "medium"}:
             return {
