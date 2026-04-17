@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+
+SCRIPT_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "financial-analysis"
+    / "skills"
+    / "month-end-shortlist"
+    / "scripts"
+)
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import month_end_shortlist_runtime as module_under_test
+
+
+class MonthEndShortlistDiscoveryMergeTests(unittest.TestCase):
+    def test_enrich_live_result_reporting_injects_discovery_qualified_and_watch_buckets(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "top_picks": [],
+            "dropped": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        discovery_candidates = [
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "quarterly_preview",
+                "event_strength": "strong",
+                "chain_name": "optical",
+                "chain_role": "midstream_manufacturing",
+                "benefit_type": "direct",
+                "sources": [{"source_type": "official_filing", "summary": "正式业绩预告"}],
+                "market_validation": {"volume_multiple_5d": 2.0, "breakout": True, "relative_strength": "strong"},
+            },
+            {
+                "ticker": "688521.SS",
+                "name": "芯原股份",
+                "event_type": "rumor",
+                "event_strength": "strong",
+                "chain_name": "chip_design",
+                "chain_role": "midstream_manufacturing",
+                "benefit_type": "direct",
+                "sources": [{"source_type": "market_rumor", "summary": "市场传闻"}],
+                "market_validation": {"volume_multiple_5d": 2.4, "breakout": True, "relative_strength": "strong"},
+            },
+        ]
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
+
+        self.assertEqual(enriched["discovery_lane_summary"]["qualified_count"], 1)
+        self.assertEqual(enriched["discovery_lane_summary"]["watch_count"], 1)
+        self.assertEqual(enriched["directly_actionable"][0]["ticker"], "000988.SZ")
+        self.assertEqual(enriched["priority_watchlist"][0]["ticker"], "688521.SS")
+
+    def test_run_month_end_shortlist_passes_request_discovery_candidates_into_enrichment(self) -> None:
+        payload = {
+            "template_name": "month_end_shortlist",
+            "target_date": "2026-04-17",
+            "event_discovery_candidates": [
+                {
+                    "ticker": "000988.SZ",
+                    "name": "华工科技",
+                    "event_type": "quarterly_preview",
+                    "event_strength": "strong",
+                    "chain_name": "optical",
+                    "chain_role": "midstream_manufacturing",
+                    "benefit_type": "direct",
+                    "sources": [{"source_type": "official_filing", "summary": "正式业绩预告"}],
+                    "market_validation": {"volume_multiple_5d": 2.0, "breakout": True, "relative_strength": "strong"},
+                }
+            ],
+        }
+
+        with (
+            patch.object(module_under_test, "prepare_request_with_candidate_snapshots", side_effect=lambda request, **_: request),
+            patch.object(module_under_test._compiled, "run_month_end_shortlist", return_value={
+                "status": "ok",
+                "filter_summary": {"keep_threshold": 58.0},
+                "top_picks": [],
+                "dropped": [],
+                "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+            }),
+        ):
+            enriched = module_under_test.run_month_end_shortlist(payload)
+
+        self.assertIn("discovery_lane_summary", enriched)
+        self.assertEqual(enriched["directly_actionable"][0]["ticker"], "000988.SZ")
+
+    def test_enrich_live_result_reporting_auto_derives_discovery_candidates_from_assessed_rows(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 1, "keep_threshold": 58.0},
+            "top_picks": [],
+            "dropped": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        assessed_candidates = [
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "sector": "optical",
+                "keep": True,
+                "scores": {"adjusted_total_score": 58.0},
+                "score_components": {
+                    "trend_template_score": 25.0,
+                    "rs_and_leadership_score": 15.0,
+                    "structured_catalyst_score": 12.0,
+                    "liquidity_and_participation_score": 6.0,
+                },
+                "hard_filter_failures": [],
+                "volume_ratio": 1.8,
+                "trend_template": {"trend_pass": True},
+                "price_snapshot": {"distance_to_high52_pct": 20.0, "rs90": 1169.07},
+                "structured_catalyst_snapshot": {
+                    "structured_catalyst_within_window": True,
+                    "performance_preview": [
+                        {"notice_date": "2026-04-14", "summary": "预计一季报净利润同比显著增长"}
+                    ],
+                    "structured_company_events": [
+                        {"date": "2026-04-16", "event_type": "股东大会", "detail": "召开年度股东大会"}
+                    ],
+                },
+            }
+        ]
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], assessed_candidates)
+
+        self.assertIn("discovery_lane_summary", enriched)
+        self.assertEqual(enriched["directly_actionable"][0]["ticker"], "000988.SZ")
+
+    def test_enrich_live_result_reporting_merges_duplicate_discovery_sources_into_single_card(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "top_picks": [],
+            "dropped": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        discovery_candidates = [
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "quarterly_preview",
+                "event_strength": "strong",
+                "chain_name": "optical",
+                "chain_role": "midstream_manufacturing",
+                "benefit_type": "direct",
+                "sources": [{"source_type": "official_filing", "summary": "正式业绩预告"}],
+                "market_validation": {"volume_multiple_5d": 1.8, "breakout": True, "relative_strength": "strong"},
+            },
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "x_logic_signal",
+                "event_strength": "strong",
+                "chain_name": "optical",
+                "chain_role": "logic_support",
+                "benefit_type": "mapping",
+                "sources": [{"source_type": "x_summary", "account": "Ariston_Macro", "summary": "板块盈利预期修复"}],
+                "market_validation": {"volume_multiple_5d": 2.2, "breakout": True, "relative_strength": "strong", "chain_resonance": True},
+            },
+        ]
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
+
+        self.assertEqual(enriched["discovery_lane_summary"]["qualified_count"], 1)
+        self.assertEqual(len(enriched["directly_actionable"]), 1)
+        self.assertEqual(enriched["directly_actionable"][0]["source_count"], 2)
+        self.assertIn("Ariston_Macro", enriched["directly_actionable"][0]["source_accounts"])
+
+
+if __name__ == "__main__":
+    unittest.main()
