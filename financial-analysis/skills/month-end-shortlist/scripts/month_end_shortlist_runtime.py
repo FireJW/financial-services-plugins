@@ -9,11 +9,16 @@ import sys
 from typing import Any, Callable
 from copy import deepcopy
 from earnings_momentum_discovery import (
+    TRADING_PROFILE_BUCKETS,
     assign_discovery_bucket,
     build_auto_discovery_candidates,
     build_chain_path_summary,
     build_event_cards,
+    build_trading_profile_judgment,
+    build_trading_profile_playbook,
+    build_trading_profile_usage,
     build_x_style_discovery_candidates,
+    classify_trading_profile,
     classify_event_state,
     classify_market_validation,
     classify_trading_usability,
@@ -781,6 +786,13 @@ def enrich_event_cards_with_chain_context(event_cards: list[dict[str, Any]], dis
             enriched_card["peer_tier_1"] = unique_strings(list(enriched_card.get("peer_tier_1", [])) + list(context.get("tier_1", [])))
             enriched_card["peer_tier_2"] = unique_strings(list(enriched_card.get("peer_tier_2", [])) + list(context.get("tier_2", [])))
             enriched_card["chain_path_summary"] = build_chain_path_summary(enriched_card)
+            trading_profile = classify_trading_profile(enriched_card)
+            enriched_card["trading_profile_bucket"] = trading_profile["bucket"]
+            enriched_card["trading_profile_subtype"] = trading_profile["subtype"]
+            enriched_card["trading_profile_reason"] = trading_profile["reason"]
+            enriched_card["trading_profile_playbook"] = build_trading_profile_playbook(enriched_card)
+            enriched_card["trading_profile_judgment"] = build_trading_profile_judgment(enriched_card)
+            enriched_card["trading_profile_usage"] = build_trading_profile_usage(enriched_card)
         enriched_cards.append(enriched_card)
     return enriched_cards
 
@@ -794,11 +806,24 @@ def build_chain_map_entries(event_cards: list[dict[str, Any]], discovery_context
         chain_name = clean_text(item.get("chain_name"))
         if not chain_name:
             continue
+        leaders = unique_strings(item.get("leaders") or [])
+        tier_1 = unique_strings(item.get("tier_1") or [])
+        tier_2 = unique_strings(item.get("tier_2") or [])
+        all_candidates = unique_strings(item.get("all_candidates") or (leaders + tier_1 + tier_2))
+        high_beta = [name for name in tier_1 if name not in leaders]
+        assigned = set(leaders + high_beta + tier_2)
+        expectation_gap = [name for name in all_candidates if name and name not in assigned]
+        profiles = {
+            "稳健核心": leaders,
+            "高弹性": high_beta,
+            "补涨候选": tier_2,
+            "预期差最大": expectation_gap,
+            "兑现风险最高": [],
+        }
         grouped[chain_name] = {
             "chain_name": chain_name,
-            "leaders": unique_strings(item.get("leaders") or []),
-            "tier_1": unique_strings(item.get("tier_1") or []),
-            "tier_2": unique_strings(item.get("tier_2") or []),
+            "profiles": profiles,
+            "chain_playbook": build_chain_map_playbook(profiles),
             "anchors": [],
         }
     for card in event_cards:
@@ -807,14 +832,49 @@ def build_chain_map_entries(event_cards: list[dict[str, Any]], discovery_context
         chain_name = clean_text(card.get("chain_name"))
         if not chain_name:
             continue
-        row = grouped.setdefault(chain_name, {"chain_name": chain_name, "leaders": [], "tier_1": [], "tier_2": [], "anchors": []})
+        row = grouped.setdefault(
+            chain_name,
+            {"chain_name": chain_name, "profiles": {bucket: [] for bucket in TRADING_PROFILE_BUCKETS}, "anchors": []},
+        )
         anchor_name = clean_text(card.get("name")) or clean_text(card.get("ticker"))
         if anchor_name and anchor_name not in row["anchors"]:
             row["anchors"].append(anchor_name)
-        row["leaders"] = unique_strings(row["leaders"] + list(card.get("leaders", [])))
-        row["tier_1"] = unique_strings(row["tier_1"] + list(card.get("peer_tier_1", [])))
-        row["tier_2"] = unique_strings(row["tier_2"] + list(card.get("peer_tier_2", [])))
+        bucket = clean_text(card.get("trading_profile_bucket"))
+        profiles = row.setdefault("profiles", {bucket_name: [] for bucket_name in TRADING_PROFILE_BUCKETS})
+        for profile_names in profiles.values():
+            if anchor_name in profile_names:
+                profile_names[:] = [name for name in profile_names if name != anchor_name]
+        if anchor_name and bucket in profiles:
+            profiles[bucket] = unique_strings(list(profiles[bucket]) + [anchor_name])
+        row["chain_playbook"] = build_chain_map_playbook(profiles)
     return list(grouped.values())
+
+
+def build_chain_map_playbook(profiles: dict[str, list[str]] | None) -> str:
+    profile_map = profiles if isinstance(profiles, dict) else {}
+    core = profile_map.get("稳健核心") if isinstance(profile_map.get("稳健核心"), list) else []
+    elastic = profile_map.get("高弹性") if isinstance(profile_map.get("高弹性"), list) else []
+    catchup = profile_map.get("补涨候选") if isinstance(profile_map.get("补涨候选"), list) else []
+    expectation_gap = profile_map.get("预期差最大") if isinstance(profile_map.get("预期差最大"), list) else []
+    realized_risk = profile_map.get("兑现风险最高") if isinstance(profile_map.get("兑现风险最高"), list) else []
+
+    if realized_risk and core:
+        return "链条打法: 核心票已经进入兑现窗口，先防 sell-the-fact，再看后排轮动。"
+    if realized_risk:
+        return "链条打法: 当前先防兑现风险，不适合把这条链当作新开仓主攻方向。"
+    if core and elastic:
+        return "链条打法: 先看核心承载，再择机做高弹性进攻。"
+    if core and catchup:
+        return "链条打法: 先盯核心承载，再等轮动补涨。"
+    if elastic:
+        return "链条打法: 当前更适合按高弹性方向进攻，重点看加速与回踩二选一。"
+    if catchup:
+        return "链条打法: 当前更适合按轮动补涨处理，关注主线继续扩散而不是孤立抢跑。"
+    if core:
+        return "链条打法: 当前以核心承载为主，优先等回踩确认而不是情绪化追高。"
+    if expectation_gap:
+        return "链条打法: 当前更适合先观察预期定价，等市场把预期交易得更清楚。"
+    return "链条打法: 当前缺少清晰主攻方向，先观察链内强弱分化。"
 
 def enrich_live_result_reporting(
     result: dict[str, Any],
@@ -989,15 +1049,15 @@ def enrich_live_result_reporting(
         lines.extend(["", "## Event Board", ""])
         for item in (event_cards if isinstance(enriched.get("event_cards"), list) else []):
             lines.append(f"- `{item.get('ticker')}` {item.get('name')} / `{item.get('chain_name')}`")
-            lines.append(f"  - 阶段: `{item.get('event_phase')}`")
-            lines.append(f"  - 预期判断: `{item.get('expectation_verdict')}`")
+            lines.append(f"  - {item.get('trading_profile_judgment')}")
+            lines.append(f"  - {item.get('trading_profile_usage')}")
             metrics = item.get("headline_metrics") if isinstance(item.get("headline_metrics"), list) else []
-            if metrics:
-                lines.append(f"  - 关键数据: `{', '.join(metrics[:4])}`")
-            lines.append(f"  - 社区反应: {item.get('community_reaction_summary')}")
-            lines.append(f"  - 社区一致性: `{item.get('community_conviction')}`")
-            lines.append(f"  - 预期驱动: {item.get('expectation_basis_summary')}")
-            lines.append(f"  - 兑现风险: {item.get('expectation_risk_summary')}")
+            metrics_text = f" | 数据: {', '.join(metrics[:4])}" if metrics else ""
+            lines.append(f"  - `{item.get('event_phase')}` | `{item.get('expectation_verdict')}`{metrics_text}")
+            accounts = item.get("source_accounts") if isinstance(item.get("source_accounts"), list) else []
+            accounts_text = ", ".join(accounts[:3]) if accounts else "none"
+            lines.append(f"  - 社区: {accounts_text} | 一致性: `{item.get('community_conviction')}`")
+            lines.append(f"  - 驱动: {item.get('expectation_basis_summary')} | 风险: {item.get('expectation_risk_summary')}")
             lines.append(f"  - 市场验证: {item.get('market_signal_summary')}")
 
     if enriched.get("discovery_lane_summary") and "## Chain Map" not in "\n".join(lines):
@@ -1007,12 +1067,13 @@ def enrich_live_result_reporting(
             lines.append(f"- `{item.get('chain_name')}`")
             if item.get("anchors"):
                 lines.append(f"  - 当前事件锚点: `{', '.join(item.get('anchors', []))}`")
-            if item.get("leaders"):
-                lines.append(f"  - 龙头/核心: `{', '.join(item.get('leaders', []))}`")
-            if item.get("tier_1"):
-                lines.append(f"  - 一线: `{', '.join(item.get('tier_1', []))}`")
-            if item.get("tier_2"):
-                lines.append(f"  - 二线: `{', '.join(item.get('tier_2', []))}`")
+            if clean_text(item.get("chain_playbook")):
+                lines.append(f"  - {item.get('chain_playbook')}")
+            profiles = item.get("profiles") if isinstance(item.get("profiles"), dict) else {}
+            for bucket in TRADING_PROFILE_BUCKETS:
+                names = profiles.get(bucket, [])
+                if isinstance(names, list) and names:
+                    lines.append(f"  - {bucket}: `{', '.join(names)}`")
 
     event_cards = enriched.get("event_cards", [])
     if isinstance(event_cards, list) and event_cards and "## Event Cards" not in "\n".join(lines):
@@ -1021,6 +1082,8 @@ def enrich_live_result_reporting(
             lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
             lines.append(f"  - 阶段: `{item.get('event_phase')}`")
             lines.append(f"  - 预期判断: `{item.get('expectation_verdict')}`")
+            lines.append(f"  - {item.get('trading_profile_judgment')}")
+            lines.append(f"  - {item.get('trading_profile_usage')}")
             metrics = item.get("headline_metrics") if isinstance(item.get("headline_metrics"), list) else []
             if metrics:
                 lines.append(f"  - 关键数据: `{', '.join(metrics[:4])}`")
@@ -1033,12 +1096,6 @@ def enrich_live_result_reporting(
             lines.append(f"  - why_now: `{item.get('why_now')}`")
             lines.append(f"  - chain_path_summary: `{item.get('chain_path_summary')}`")
             lines.append(f"  - market_signal_summary: `{item.get('market_signal_summary')}`")
-            if item.get("leaders"):
-                lines.append(f"  - 龙头/核心: `{', '.join(item.get('leaders', []))}`")
-            if item.get("peer_tier_1"):
-                lines.append(f"  - 一线: `{', '.join(item.get('peer_tier_1', []))}`")
-            if item.get("peer_tier_2"):
-                lines.append(f"  - 二线: `{', '.join(item.get('peer_tier_2', []))}`")
             lines.append(f"  - source_count: `{item.get('source_count')}`")
             lines.append(f"  - source_accounts: `{', '.join(item.get('source_accounts', [])) or 'none'}`")
             lines.append(f"  - source_urls: `{', '.join(item.get('source_urls', [])) or 'none'}`")

@@ -253,8 +253,18 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("market_signal_summary", enriched["report_markdown"])
         self.assertIn("chain_path_summary", enriched["report_markdown"])
         self.assertIn("key_evidence", enriched["report_markdown"])
-        self.assertIn("一线", enriched["report_markdown"])
-        self.assertIn("二线", enriched["report_markdown"])
+        self.assertIn("判断:", enriched["report_markdown"])
+        self.assertIn("用法:", enriched["report_markdown"])
+        self.assertIn("链条打法", enriched["report_markdown"])
+        self.assertIn("轮动补涨", enriched["report_markdown"])
+        self.assertIn("稳健核心", enriched["report_markdown"])
+        self.assertIn("补涨候选", enriched["report_markdown"])
+        self.assertNotIn("交易属性分层", enriched["report_markdown"])
+        self.assertNotIn("交易属性细分", enriched["report_markdown"])
+        self.assertNotIn("分层依据", enriched["report_markdown"])
+        self.assertNotIn("交易打法:", enriched["report_markdown"])
+        self.assertNotIn("  - 一线:", enriched["report_markdown"])
+        self.assertNotIn("  - 二线:", enriched["report_markdown"])
         self.assertIn("新易盛", enriched["report_markdown"])
         self.assertIn("天孚通信", enriched["report_markdown"])
 
@@ -301,6 +311,46 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
 
         self.assertEqual(enriched["event_cards"][0]["chain_name"], "lithium_chain")
         self.assertIn("lithium_chain", enriched["report_markdown"])
+
+    def test_enrich_live_result_reporting_recomputes_trading_profile_after_chain_context_enrichment(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "dropped": [],
+            "top_picks": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        discovery_candidates = [
+            {
+                "ticker": "000988.SZ",
+                "name": "华工科技",
+                "event_type": "quarterly_preview",
+                "event_strength": "strong",
+                "chain_name": "ai_infra",
+                "chain_role": "direct_pick",
+                "benefit_type": "direct",
+                "sources": [
+                    {"source_type": "official_filing", "summary": "公司将于4月27日披露一季报。"},
+                ],
+                "market_validation": {"volume_multiple_5d": 1.8, "breakout": True, "relative_strength": "strong"},
+            },
+        ]
+        discovery_context = {
+            "chain_map": [
+                {
+                    "chain_name": "ai_infra",
+                    "leaders": ["协创数据", "华工科技"],
+                    "tier_1": ["协创数据", "华工科技"],
+                    "tier_2": ["润泽科技", "数据港"],
+                    "all_candidates": ["协创数据", "华工科技", "润泽科技", "数据港"],
+                }
+            ]
+        }
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates, discovery_context)
+
+        self.assertEqual(enriched["event_cards"][0]["trading_profile_bucket"], "稳健核心")
+        self.assertIn("稳健核心", enriched["report_markdown"])
+        self.assertIn("华工科技", enriched["report_markdown"])
 
     def test_enrich_live_result_reporting_adds_near_miss_candidates(self) -> None:
         result = {
@@ -799,6 +849,60 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("事件驱动支持偏弱", factor["event_summary"])
         self.assertIn("关键事件", enriched["report_markdown"])
         self.assertIn("事件驱动支持偏弱", enriched["report_markdown"])
+
+
+    def _build_enriched_with_event_cards(self):
+        """Helper to build enriched result with at least one event card for layout testing."""
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "dropped": [],
+            "top_picks": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+        }
+        discovery_candidates = [
+            {
+                "ticker": "000001.SZ",
+                "name": "TestStock",
+                "event_type": "quarterly_preview",
+                "event_strength": "strong",
+                "chain_name": "TestChain",
+                "chain_role": "midstream_manufacturing",
+                "benefit_type": "direct",
+                "sources": [
+                    {"source_type": "official_filing", "summary": "正式业绩预告"},
+                    {"source_type": "x_summary", "account": "account1", "summary": "看多"},
+                    {"source_type": "x_summary", "account": "account2", "summary": "看多"},
+                ],
+                "market_validation": {"volume_multiple_5d": 2.1, "breakout": True, "relative_strength": "strong"},
+            }
+        ]
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [], discovery_candidates)
+        return enriched
+
+    def test_event_board_layout_judgment_usage_on_lines_2_3(self) -> None:
+        """B4: Event Board should have 判断 on line 2 and 用法 on line 3 per entry."""
+        enriched = self._build_enriched_with_event_cards()
+        report = enriched.get("report_markdown", "")
+        board_section = report.split("## Event Board")[1].split("## ")[0] if "## Event Board" in report else ""
+        entries = [line for line in board_section.strip().split("\n") if line.strip()]
+        # Find first entry (starts with "- `")
+        entry_lines = []
+        collecting = False
+        for line in entries:
+            if line.startswith("- `"):
+                if collecting:
+                    break
+                collecting = True
+                entry_lines = [line]
+            elif collecting and line.startswith("  - "):
+                entry_lines.append(line)
+        self.assertTrue(len(entry_lines) >= 3, f"Expected at least 3 lines per entry, got {len(entry_lines)}")
+        self.assertIn("判断:", entry_lines[1])
+        self.assertIn("用法:", entry_lines[2])
+        # Lines 4+ should NOT start with "阶段:" or "预期判断:" as separate lines
+        for line in entry_lines[3:]:
+            self.assertNotIn("  - 阶段:", line)
+            self.assertNotIn("  - 预期判断:", line)
 
 
 if __name__ == "__main__":
