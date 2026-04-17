@@ -1,1969 +1,1438 @@
-$image
-email.mailgun.foodora.fi$image
-email.mailgun.foodora.no$image
-email.mailgun.foodora.se$image
-email.mailgun.foodpanda.co.th$image
-email.mailgun.foodpanda.com.bd$image
-email.mailgun.foodpanda.hk$image
-email.mailgun.foodpanda.my$image
-email.mailgun.foodpanda.ph$image
-email.mailgun.foodpanda.pk$image
-email.mailgun.foodpanda.ro$image
-email.mailgun.foodpanda.sg$image
-email.mailgun.football-data.org$image
-email.mailgun.forladfolkekirken.dk$image
-email.mailgun.frucon.net$image
-email.mailgun.garena.com$image
-email.mailgun.getcalfresh.org$image
-email.mailgun.getchange.com$image
-email.mailgun.getkraft.app$image
-email.mailgun.giftpro.co.uk$image
-email.mailgun.gingrapp.com$image
-email.mailgun.glamstore.com$image
-email.mailgun.glot.io$image
-email.mailgun.glow25.de$image
-email.mailgun.goodnews.id$image
-email.mailgun.goproposal.com$image
-email.mailgun.gpropsystems.com$image
-email.mailgun.greenthumb.com$image
-email.mailgun.grindstone.com.au$image
-email.mailgun.grow-trees.in$image
-email.mailgun.guavahr.com$image
-email.mailgun.habitatoakland.org$image
-email.mailgun.hamsatapp.com$image
-email.mailgun.hansinform.de$image
-email.mailgun.healthwarehouse.com$image
-email.mailgun.heavygari.com$image
-email.mailgun.hiddenseezimmer.de$image
-email.mailgun.hiskio.com$image
-email.mailgun.hit.hu$image
-email.mailgun.hoamemberservices.com$image
-email.mailgun.hostesswing.com$image
-email.mailgun.housecheck.be$image
-email.mailgun.how-4.com$image
-email.mailgun.huiskes-kokkeler.nl$image
-email.mailgun.icmlc.com$image
-email.mailgun.idium.no$image
-email.mailgun.ifccnewdelhi2026.org$image
-email.mailgun.ikeasi.com$image
-email.mailgun.immobiliallasta.net$image
-email.mailgun.ingleseperpigri.com$image
-email.mailgun.insendi.com$image
-email.mailgun.interaction-design.org$image
-email.mailgun.internaltest.payex.com$image
-email.mailgun.iogates.com$image
-email.mailgun.iqt.co.za$image
-email.mailgun.ixdf.org$image
-email.mailgun.izi.or.id$image
-email.mailgun.joinstatus.com$image
-email.mailgun.jrwiener.com$image
-email.mailgun.judocdn.net$image
-email.mailgun.kajeforex.com$image
-email.mailgun.kaufes.ch$image
-email.mailgun.kazformaturas.com.br$image
-email.mailgun.kurs.software$image
-email.mailgun.kutego.de$image
-email.mailgun.labex.io$image
-email.mailgun.lacsq.org$image
-email.mailgun.ladym.com$image
-email.mailgun.laendleanzeiger.at$image
-email.mailgun.landchecker.com.au$image
-email.mailgun.letsvai.com$image
-email.mailgun.likami-physio.de$image
-email.mailgun.linkvertise.com$image
-email.mailgun.littleoneslondon.co.uk$image
-email.mailgun.lobbypms.com$image
-email.mailgun.logicked.com$image
-email.mailgun.longmontdairy.com$image
-email.mailgun.lovito.com$image
-email.mailgun.lumedeodorant.com$image
-email.mailgun.luz.com.pt$image
-email.mailgun.maczfit.pl$image
-email.mailgun.mailgun.foodpanda.ro$image
-email.mailgun.malaebapp.com$image
-email.mailgun.marobad.de$image
-email.mailgun.maxxihandel.de$image
-email.mailgun.mecanica.mx$image
-email.mailgun.medcanonestop.com$image
-email.mailgun.meucare.com$image
-email.mailgun.mikelegal.com$image
-email.mailgun.mini-presents.com$image
-email.mailgun.mjandhungryman.com$image
-email.mailgun.mobiltelefoni.no$image
-email.mailgun.monica.im$image
-email.mailgun.motionelements.com$image
-email.mailgun.motke.co.il$image
-email.mailgun.msbm.org.uk$image
-email.mailgun.mtp.travel$image
-email.mailgun.mtroute.com$image
-email.mailgun.mullinsapartments.com$image
-email.mailgun.myrewardsprogram.net$image
-email.mailgun.myusa.cc$image
-email.mailgun.nayan.be$image
-email.mailgun.nbz.fr$image
-email.mailgun.net$image
-email.mailgun.neuron.sg$image
-email.mailgun.northviewchurch.us$image
-email.mailgun.ntkia.es$image
-email.mailgun.offergenie.ai$image
-email.mailgun.omnidim.io$image
-email.mailgun.onflow.org$image
-email.mailgun.onyxone.com$image
-email.mailgun.openai.com$image
-email.mailgun.partnermarketing.com$image
-email.mailgun.pingproxies.com$image
-email.mailgun.plateforme-ce.com$image
-email.mailgun.plato.dev$image
-email.mailgun.pmg.com$image
-email.mailgun.portasigma.com$image
-email.mailgun.porters.jp$image
-email.mailgun.qcells.com$image
-email.mailgun.raiolanetworks.es$image
-email.mailgun.ranchoburica.com$image
-email.mailgun.raremaps.com$image
-email.mailgun.raresoul45s.co.uk$image
-email.mailgun.rase.org.uk$image
-email.mailgun.realitni-pes.cz$image
-email.mailgun.reparm.io$image
-email.mailgun.reqlut.com$image
-email.mailgun.resellingelectronicsforprofit.com$image
-email.mailgun.respekt.cz$image
-email.mailgun.rkformaturas.com.br$image
-email.mailgun.rudolfsteiner.it$image
-email.mailgun.sacmondelez.com.br$image
-email.mailgun.salesloft.com$image
-email.mailgun.sameday.bg$image
-email.mailgun.sameday.hu$image
-email.mailgun.sameday.ro$image
-email.mailgun.saunakoning.nl$image
-email.mailgun.scheuerer-weiterbildung.de$image
-email.mailgun.schwim-m.de$image
-email.mailgun.schwimmschule-badeenten.de$image
-email.mailgun.schwimmschule-pingu.de$image
-email.mailgun.schwimmschule-schumacher.de$image
-email.mailgun.schwimmschule-swimkids.de$image
-email.mailgun.scrumonline.school$image
-email.mailgun.seestern-schule.de$image
-email.mailgun.selfstorageinvesting.com$image
-email.mailgun.setso.com$image
-email.mailgun.sharky-sportsclub.de$image
-email.mailgun.shopee.io$image
-email.mailgun.shopeemobile.com$image
-email.mailgun.sicher-schwimmen-lernen.de$image
-email.mailgun.signa-france.fr$image
-email.mailgun.sinfonia.org$image
-email.mailgun.skindr.com$image
-email.mailgun.slimemail.vn$image
-email.mailgun.smaestimating.com$image
-email.mailgun.smybox.cz$image
-email.mailgun.solceller.nu$image
-email.mailgun.sqkii.com$image
-email.mailgun.staging.buildium.com$image
-email.mailgun.staging.payex.com$image
-email.mailgun.start-with-a-friend.de$image
-email.mailgun.survivallife.com$image
-email.mailgun.swim2grow.de$image
-email.mailgun.swimgym.de$image
-email.mailgun.taiwanstay.net.tw$image
-email.mailgun.taksering.no$image
-email.mailgun.talklife.co$image
-email.mailgun.tbauctions.com$image
-email.mailgun.teko.ph$image
-email.mailgun.testerup.com$image
-email.mailgun.teststar.com$image
-email.mailgun.thehypeagency.com$image
-email.mailgun.thenewoil.org$image
-email.mailgun.thestar.com.my$image
-email.mailgun.ticketoo.it$image
-email.mailgun.tketflix.com$image
-email.mailgun.tmnwe.com$image
-email.mailgun.totum.fr$image
-email.mailgun.trackmyride.com.au$image
-email.mailgun.travelcompositor.com$image
-email.mailgun.tripper.nl$image
-email.mailgun.trulytravel.com$image
-email.mailgun.tsico.com$image
-email.mailgun.tvpaket.nu$image
-email.mailgun.twospacesgroup.com$image
-email.mailgun.uncove.com$image
-email.mailgun.vakantieveilingen.nl$image
-email.mailgun.varmepump.se$image
-email.mailgun.varmepumpe.no$image
-email.mailgun.vendersemanas.com$image
-email.mailgun.ventasxmayor.com$image
-email.mailgun.vetcheck.it$image
-email.mailgun.vfxalert.com$image
-email.mailgun.vinkwitgoed.nl$image
-email.mailgun.vitaswim.de$image
-email.mailgun.vyper.io$image
-email.mailgun.waiverforever.com$image
-email.mailgun.wall-market.com$image
-email.mailgun.wawafertility.com$image
-email.mailgun.websitehunt.co$image
-email.mailgun.wenatex.com$image
-email.mailgun.weroad.co$image
-email.mailgun.weroad.com$image
-email.mailgun.weroad.de$image
-email.mailgun.weroad.es$image
-email.mailgun.weroad.fr$image
-email.mailgun.weroad.it$image
-email.mailgun.whatstba.com$image
-email.mailgun.whirlpoolcentral.ca$image
-email.mailgun.witco.app$image
-email.mailgun.woods4sale.co.uk$image
-email.mailgun.wooplagaming.com$image
-email.mailgun.worldofbooks.com$image
-email.mailgun.worldprofitemail.com$image
-email.mailgun.xhamster.com$image
-email.mailgun.xn--strm-ira.no$image
-email.mailgun.xneelo.com$image
-email.mailgun.yabangke.com$image
-email.mailgun.yourphotobox.com$image
-email.mailgun.yousemble.com$image
-email.mailgun.ys-technology.com.tw$image
-email.mailgun10.msbm.org.uk$image
-email.mailgun11.msbm.org.uk$image
-email.mailgun2.bqool.com$image
-email.mailgun2.buildium.com$image
-email.mailgun2.staging.buildium.com$image
-email.mailgun21.msbm.org.uk$image
-email.mailgun22.msbm.org.uk$image
-email.mailgun25.msbm.org.uk$image
-email.mailgun27.msbm.org.uk$image
-email.mailgun3.lfb.g12.br$image
-email.mailgun30.msbm.org.uk$image
-email.mailgun6.msbm.org.uk$image
-email.mailgun6.twbmailgun.com$image
-email.mailgunbelpointesi.com$image
-email.mailguncrmkitchen.ikeasi.com$image
-email.mailgunedm.cmoney.tw$image
-email.mailguneu.stann.app$image
-email.mailgunner.bytesized-hosting.com$image
-email.mailgw.wegrowdigital.io$image
-email.mailhn.excelautomotriz.com$image
-email.mailildc.com$image
-email.mailing-elespectador.com$image
-email.mailing-slay.org$image
-email.mailing.4maxpower.pl$image
-email.mailing.agentli.ai$image
-email.mailing.airgunseurope.com$image
-email.mailing.aivo.co$image
-email.mailing.alcoholfreelifestyle.com$image
-email.mailing.alfambra.cat$image
-email.mailing.aliphia.com$image
-email.mailing.alireviews.io$image
-email.mailing.ardoer.com$image
-email.mailing.assiduus.pl$image
-email.mailing.auditorservice.com$image
-email.mailing.bajaratierra.com$image
-email.mailing.bestbuying.it$image
-email.mailing.biznesboxing.pl$image
-email.mailing.blv.gr$image
-email.mailing.capca.com.ar$image
-email.mailing.celestintazoukong.ca$image
-email.mailing.clubefinancas.pt$image
-email.mailing.competize.com$image
-email.mailing.coopaguasv.com$image
-email.mailing.cosentino.com$image
-email.mailing.davidliviau.be$image
-email.mailing.dgasps.com$image
-email.mailing.dietly.pl$image
-email.mailing.djkmedia.nl$image
-email.mailing.dpay.pl$image
-email.mailing.drone-hacks.com$image
-email.mailing.eekhoornnest.nl$image
-email.mailing.elizabethlocey.com$image
-email.mailing.euroshop.be$image
-email.mailing.factura.com$image
-email.mailing.facturaonline.com.mx$image
-email.mailing.fertilidadeemfoco.pt$image
-email.mailing.feturtles.com$image
-email.mailing.fiat.dex360.net$image
-email.mailing.filipaamendoeira.pt$image
-email.mailing.firstbilling.com$image
-email.mailing.fixz24.nl$image
-email.mailing.flevonatuur.nl$image
-email.mailing.flicker.finance$image
-email.mailing.forward-shop.ru$image
-email.mailing.frostnyc.com$image
-email.mailing.fvv.al$image
-email.mailing.goldurban.com$image
-email.mailing.griokids.com$image
-email.mailing.guruyoucoach.com$image
-email.mailing.hungarianwithsofie.com$image
-email.mailing.ikhlasinsurance.com$image
-email.mailing.influi.pl$image
-email.mailing.jamerica.com.ar$image
-email.mailing.kudosi.ai$image
-email.mailing.leto.com.mx$image
-email.mailing.levity.uy$image
-email.mailing.madame.de$image
-email.mailing.mibait.com$image
-email.mailing.myhorsez.com$image
-email.mailing.ommerland.nl$image
-email.mailing.osfatun.com.ar$image
-email.mailing.pladra.com$image
-email.mailing.playrobot.es$image
-email.mailing.procfit.com.br$image
-email.mailing.qualityacademy.org$image
-email.mailing.rogaska-resort.com$image
-email.mailing.rozaniecrodzicow.pl$image
-email.mailing.schoolforbutlers.com$image
-email.mailing.servatur.com$image
-email.mailing.socialapp.co$image
-email.mailing.solme.info$image
-email.mailing.speakertunity.com$image
-email.mailing.stemmark.cz$image
-email.mailing.strandcampinggroede.nl$image
-email.mailing.successroadacademy.com$image
-email.mailing.systems-by-design.com$image
-email.mailing.tesa.edu.ec$image
-email.mailing.theofficialmarksman.com$image
-email.mailing.therabill.com$image
-email.mailing.twojpsycholog.pl$image
-email.mailing.ventura-villas.com$image
-email.mailing.wachap.app$image
-email.mailing.wings.rs$image
-email.mailing.xtra.dog$image
-email.mailing2.twojpsycholog.pl$image
-email.mailinglist.kangourou.it$image
-email.mailingnovatics.com$image
-email.mailings.dump-and-chase.com$image
-email.mailings.eyecarereminder.com$image
-email.mailings.lumix-solutions.com$image
-email.mailings.mindcastlecreations.com$image
-email.mailings.valk.nl$image
-email.mailingservice.onlayer.com$image
-email.mailio.io$image
-email.mailite.bookcers.com$image
-email.mailjtnrg.com$image
-email.maill5.gamedayready.com$image
-email.maillckgrn.com$image
-email.maillcsn13.com$image
-email.mailman.bankmobile.com$image
-email.mailman.bankmobilewebemail.com$image
-email.mailman.genzwealthexpert.com$image
-email.mailman.muzikantenbank.net$image
-email.mailmarketer.info$image
-email.mailmg.stackcommerce.com$image
-email.mailmkt.businessdigital360.com.br$image
-email.mailmkt.helloenglishlovers.com.br$image
-email.mailmkthackers.com$image
-email.mailmonitor.com$image
-email.mailnc1.vaplusvip.com$image
-email.mailnginx.com$image
-email.mailni.excelautomotriz.com$image
-email.mailno-fault.com$image
-email.mailout.fantasy.eliteserien.no$image
-email.mailout.fantasy.premierleague.com$image
-email.mailout.marymaycarving.com$image
-email.mailout.nbafantasy.nba.com$image
-email.mailout.promos.premierleague.com$image
-email.mailout.samtrafiken.se$image
-email.mailout.supekort.se$image
-email.mailout.timebucks.com$image
-email.mailout.users.premierleague.com$image
-email.mailout.wotpods.com.au$image
-email.mailout2.timebucks.com$image
-email.mailpa.excelautomotriz.com$image
-email.mailparser.io$image
-email.mailpr.jenesissoftware.com$image
-email.mailq.gallup.com$image
-email.mailr.red.sa$image
-email.mailreplies.taxliencode.com$image
-email.mailroyalblack.com$image
-email.mails.8daw.nl$image
-email.mails.adoratherapy.com$image
-email.mails.akadian.com$image
-email.mails.almendroatelier.com$image
-email.mails.annarisinghope.org$image
-email.mails.apotheke-dna.de$image
-email.mails.apteka.md$image
-email.mails.aruana.com.br$image
-email.mails.aus-east.ops.center$image
-email.mails.banksvac.com$image
-email.mails.bchtechnologies.com$image
-email.mails.bespaar-slim.nl$image
-email.mails.bitacathq.com$image
-email.mails.buckwholesale.com$image
-email.mails.conneqto.ai$image
-email.mails.contorion.at$image
-email.mails.contorion.com$image
-email.mails.contorion.de$image
-email.mails.contorion.fr$image
-email.mails.crystalimagery.com$image
-email.mails.darussalamus.com$image
-email.mails.dev.ops.center$image
-email.mails.deyappa.com.ar$image
-email.mails.dickspawnpl.com$image
-email.mails.empoweringbiz.club$image
-email.mails.erfolgsrhythmus.ch$image
-email.mails.esenzz.nl$image
-email.mails.eu-west.ops.center$image
-email.mails.eurekacrystalbeads.com$image
-email.mails.everybodybootcamp.co.uk$image
-email.mails.finanzasparalatinos.de$image
-email.mails.flaviojimenez.com$image
-email.mails.flexcourses.com$image
-email.mails.further-coaching.com$image
-email.mails.gabisantermer.com$image
-email.mails.garagebaggerstereo.com$image
-email.mails.goldendrops.co.nz$image
-email.mails.heartfulcraft.com$image
-email.mails.honeysweetieacres.com$image
-email.mails.invisiblebraces4u.co.uk$image
-email.mails.leaddec.com$image
-email.mails.lgsubscribes.com.my$image
-email.mails.liveluxestaysproperties.com$image
-email.mails.mdev.ops.center$image
-email.mails.minandmon.com$image
-email.mails.mountainhighoutfitters.com$image
-email.mails.mstaging.ops.center$image
-email.mails.mybeautysecrets.ca$image
-email.mails.nonoinspired.be$image
-email.mails.oceanoprisiones.es$image
-email.mails.oncologym.sitesfu.com$image
-email.mails.onlineislamicbook.com$image
-email.mails.orangemud.com$image
-email.mails.orthoticshop.com$image
-email.mails.pandereshoes.com$image
-email.mails.physicalwellness.co.uk$image
-email.mails.pimpmydiabetes.com$image
-email.mails.pinkparlour.com.sg$image
-email.mails.prvcy.world$image
-email.mails.pureelectricalandair.com.au$image
-email.mails.qalort.com$image
-email.mails.romapowerwashing.com.au$image
-email.mails.saborama.mx$image
-email.mails.schneesicheredeals.de$image
-email.mails.simpools.be$image
-email.mails.sinirsizmusteri.com$image
-email.mails.starboardelectrical.com.au$image
-email.mails.stashlogix.com$image
-email.mails.teamflavio.com$image
-email.mails.tees2urdoor.com$image
-email.mails.theaquavault.com$image
-email.mails.uk-south.ops.center$image
-email.mails.us-east.ops.center$image
-email.mails.verifeye.online$image
-email.mails.wacs.online$image
-email.mails.wanderers-germering.de$image
-email.mails.weflowtherapy.com$image
-email.mails.wisdomharbour.com$image
-email.mails1.loogxii.com$image
-email.mails2.clingerholsters.com$image
-email.mailsend.bullysticks.ca$image
-email.mailsend.dollartoto.xyz$image
-email.mailsend.immigrationandmigration.com$image
-email.mailsend.onpodium.com$image
-email.mailsend.pmabrooklyn.com$image
-email.mailsend.visitmarshallmn.com$image
-email.mailsend.wilsonsupplements.com$image
-email.mailsender.octoprep.ai$image
-email.mailsender.thelowcarbgrocery.com$image
-email.mailsender.zampylife.org$image
-email.mailserv4.golfgamebook.com$image
-email.mailserver.harmony.nl$image
-email.mailserver.legallinefelici.bio$image
-email.mailservice.dormeo.sk$image
-email.mailservice.etaxtome.com$image
-email.mailservice.multikant.dk$image
-email.mailservice.sisb.ac.th$image
-email.mailservice.thaieei.com$image
-email.mailservice.womenwhobossup.com$image
-email.mailservice1.archosaur-game.com$image
-email.mailservices.ocuss.com$image
-email.mailservices.vileda.com$image
-email.mailshake.com$image
-email.mailshots.journeyman.tv$image
-email.mailslaunitec.com$image
-email.mailslc.1800buyhouses.com$image
-email.mailslpc.logitechpartners.club$image
-email.mailslt7.com$image
-email.mailslt7de.com$image
-email.mailspf.crayesteingolf.nl$image
-email.mailsrv.basicgd.com$image
-email.mailstg.e-food.gr$image
-email.mailstlr.com$image
-email.mailsv.excelautomotriz.com$image
-email.mailsyard.com$image
-email.mailtest.mortgageboss.ca$image
-email.mailtime.email$image
-email.mailtjes.floorheatingexpert.nl$image
-email.mailto.back2balance.co.uk$image
-email.mailto.gmacc.co.za$image
-email.mailto.gokailo.com$image
-email.mailto.nusantarateredukasi.com$image
-email.mailtoshop.com$image
-email.mailu.weynwebworks.com$image
-email.mailusa.synergyforeducation.us$image
-email.mailvoyages.com$image
-email.mailwizz.com$image
-email.main.jointradenation.com$image
-email.main.jointyson.com$image
-email.main.vbdonline.com$image
-email.mainemedicalcertifications.com$image
-email.maineregisteredagent.com$image
-email.mainetlr.com$image
-email.mainscope-alerts.com$image
-email.mainsender.junglee.sk$image
-email.mainstreetcash.com$image
-email.mairie-reze.fr$image
-email.mais.selecoes.com.br$image
-email.maisdescontos.com.br$image
-email.maisen.fgtpro.online$image
-email.maitland.agency$image
-email.majestic-rp.ru$image
-email.majnet.moodlejapan.org$image
-email.major-ac-repair-company.com$image
-email.majorsaver.com$image
-email.makalius.co.th$image
-email.makalius.lt$image
-email.makanalu.com$image
-email.makarem.email$image
-email.make-quiz.com$image
-email.makeawish.org.nz$image
-email.makedo.net$image
-email.makehaven.org$image
-email.makemymarketingwork.com$image
-email.makeonlinebiz.com$image
-email.makeright.co.uk$image
-email.makerswiz.com$image
-email.makesantafe.org$image
-email.makesurveymoney.com$image
-email.makeup.cl$image
-email.makeyourmove.co.tz$image
-email.makingdreamsonline.com$image
-email.makispin.com$image
-email.maklaro.com$image
-email.makoo.com$image
-email.makwafinance.com$image
-email.malad.us$image
-email.malaysia.mamamandarin.com$image
-email.malaysiaconsumers.info$image
-email.maldegem.be$image
-email.malefis.com$image
-email.maliaras.gr$image
-email.malle.be$image
-email.mallorcacyclingcenter.com$image
-email.malmanlaw.com$image
-email.malnoir-marketing.de$image
-email.maloney.claimsmail.net$image
-email.malsecom.com$image
-email.maltashipphotos.com$image
-email.maltrak.com$image
-email.mamalabels.co.uk$image
-email.mamaluna.cz$image
-email.mamiservice.it$image
-email.man-super.com$image
-email.manabalss.lv$image
-email.manabouttownbarbershop.com$image
-email.manabyus.com$image
-email.manage.opimo-media.dk$image
-email.managedit.com.au$image
-email.managephone.io$image
-email.manager.mosyle.com$image
-email.managereq.ai$image
-email.managers.hourwork.sprockets.ai$image
-email.managertoday.com.tw$image
-email.managing.baresocial.dk$image
-email.managingconflict.com$image
-email.manatex.com.br$image
-email.manawatunz.co.nz$image
-email.manchesterrivercruises.com$image
-email.mandala.mx$image
-email.mandalatransportes.log.br$image
-email.mandalaws.com$image
-email.mandeville.hdmk.co$image
-email.mandira-ayurveda.at$image
-email.mando-express.com$image
-email.mandrytechnology.us$image
-email.mandyendigital.es$image
-email.mandygolm.com$image
-email.maneki.net$image
-email.manekispin.com$image
-email.manfield.fr$image
-email.mangastore.com.br$image
-email.mangumangas.lt$image
-email.manifestacion.net$image
-email.manitou.playmetrics.com$image
-email.mankindmg.co.uk$image
-email.manneback.be$image
-email.manningkass.com$image
-email.manpower.datacruit.com$image
-email.mansar.eu$image
-email.mansionhouse.ie$image
-email.mansour.reputation-bridge.com$image
-email.mansuryavas.com.tr$image
-email.mantraband.com$image
-email.mantrahq.com$image
-email.manual.com.br$image
-email.manucurist.com$image
-email.manuel.agmninjalab.com$image
-email.manuel.manuelsuarez.com$image
-email.manuvia-sk.datacruit.com$image
-email.manwearz.com$image
-email.manyvets.com$image
-email.manzanares.com.ve$image
-email.manzano.myenotice.com$image
-email.map.squareup.com$image
-email.mapfre.mx.trytoku.com$image
-email.mapleglen.myresourceemail.com$image
-email.mapmycustomers.me$image
-email.mapotic.com$image
-email.mapryser.cat$image
-email.maps.piggyback.com$image
-email.mapstell.com$image
-email.mapsync.com.br$image
-email.mar.proximityagency.ca$image
-email.marais.com.au$image
-email.marakon.com$image
-email.marasouq.com$image
-email.marathonadv.com$image
-email.marathonbaker.com$image
-email.marathonmindset.ca$image
-email.marathonus.com$image
-email.marbeauty.gr$image
-email.marbleandstones.com$image
-email.marblepay.com$image
-email.marbleslab.ca$image
-email.marcantonio.me.uk$image
-email.marcas.rflex.io$image
-email.marcelreschke.com$image
-email.marcheuparis.email.getbento.com$image
-email.marcobeveragesystems.com$image
-email.marcom.isuzu.in$image
-email.marcomgroup.com$image
-email.marcos.com.au$image
-email.marcusthomasllc.com$image
-email.mardamanagement.com$image
-email.mardilowe.com.au$image
-email.marelle.email.getbento.com$image
-email.mares.be$image
-email.maret.myenotice.com$image
-email.margaretriverrealestate.com.au$image
-email.margaritavillebelize.conciergeboost.com$image
-email.margiegayle.com$image
-email.margots.com$image
-email.mariadelapena.com$image
-email.mariamiddelares.be$image
-email.mariathackwell.co.nz$image
-email.maribank.com.sg$image
-email.maricarmenconde.com$image
-email.mariepoussart.com$image
-email.marine-test.reply-test.mirakl.net$image
-email.marinemax.aimbase.com$image
-email.marinercomputer.com$image
-email.marineverse.com$image
-email.marinsoftware.com$image
-email.marinuzzi.it$image
-email.mariodeianni.wm-marketing.it$image
-email.marion-weiser.at$image
-email.mariska.zuiverzichtbaar.nl$image
-email.marissastolson.indimortgage.ca$image
-email.mark31.cz$image
-email.markandhouston.com$image
-email.market-lane.tpced.com$image
-email.market-scope.com$image
-email.market.briefing.com$image
-email.market.webull-br.com$image
-email.marketchoicellc.com$image
-email.marketer.co$image
-email.marketing-ledison.com$image
-email.marketing-mail.getsimfy.com$image
-email.marketing.19pine.ai$image
-email.marketing.49dollaridahoregisteredagent.com$image
-email.marketing.49dollarmontanaregisteredagent.com$image
-email.marketing.aachho.com$image
-email.marketing.abestregisteredagent.com$image
-email.marketing.actionmedia.info$image
-email.marketing.activefilings.com$image
-email.marketing.advanced-graphix.com$image
-email.marketing.aesthesy.com$image
-email.marketing.aestheticnation.co.in$image
-email.marketing.afciviliancareers.com$image
-email.marketing.agentprocessing.com$image
-email.marketing.alabamaregisteredagent.com$image
-email.marketing.alaskaregisteredagent.com$image
-email.marketing.alexclarkart.co.uk$image
-email.marketing.algobi.com$image
-email.marketing.allthingsfet.com$image
-email.marketing.allthingsworn.com$image
-email.marketing.almostheavenplantation.com$image
-email.marketing.aloevera-online.it$image
-email.marketing.alphaomegagymnastics.com$image
-email.marketing.amaltaas.com$image
-email.marketing.analyticsinsightmagazine.com$image
-email.marketing.anniescraftstore.com$image
-email.marketing.arabiancenter.com$image
-email.marketing.arcticfox.com$image
-email.marketing.argon-stack.com$image
-email.marketing.arizonaregisteredagent.com$image
-email.marketing.autocrit.com$image
-email.marketing.b2bmarketing4business.com$image
-email.marketing.backconstruction.com$image
-email.marketing.baywheels.com$image
-email.marketing.becasino.be$image
-email.marketing.bestdelawareregisteredagents.com$image
-email.marketing.bethub.bg$image
-email.marketing.betvibe.com$image
-email.marketing.billygene.com$image
-email.marketing.bodegadigital.biz$image
-email.marketing.bookwedgo.com$image
-email.marketing.bronier.com$image
-email.marketing.c6deals.com$image
-email.marketing.cacorporateagents.com$image
-email.marketing.california-registered-agent.net$image
-email.marketing.californiaagentforserviceofprocess.com$image
-email.marketing.californiaregisteredagent.com$image
-email.marketing.californiaregisteredagent.net$image
-email.marketing.californiaregisteredagents.net$image
-email.marketing.cashcowboy.net$image
-email.marketing.cashea.app$image
-email.marketing.casualhoteles.com$image
-email.marketing.cheapestdelawareregisteredagent.com$image
-email.marketing.citibikenyc.com$image
-email.marketing.clinicatear.pt$image
-email.marketing.clubcarwash.com$image
-email.marketing.coins.co.th$image
-email.marketing.coins.ph$image
-email.marketing.colorfoto.pt$image
-email.marketing.corbon.com$image
-email.marketing.corporatetools.com$image
-email.marketing.cosmogroupsa.co.za$image
-email.marketing.croatiapropertysales.com$image
-email.marketing.delawareregisteredagent.com$image
-email.marketing.delawareregisteredagentservice.com$image
-email.marketing.digi-mart-hub.com$image
-email.marketing.dipiuclinicadelcapello.it$image
-email.marketing.dorint.com$image
-email.marketing.dubaidesigndistrict.com$image
-email.marketing.easywaybusiness.ae$image
-email.marketing.ebmsbusiness.com$image
-email.marketing.edgeperformancesports.com$image
-email.marketing.ehcmke.com$image
-email.marketing.elevatedch.org$image
-email.marketing.elevatedesigns.com$image
-email.marketing.email4rabet.com$image
-email.marketing.ergeon.com$image
-email.marketing.estatesales.org$image
-email.marketing.europecapital.it$image
-email.marketing.eurotierce.be$image
-email.marketing.evolvelenders.com$image
-email.marketing.ewboats.com$image
-email.marketing.executivecareercoaching.com.au$image
-email.marketing.expertplus.ae$image
-email.marketing.extraconceptions.com$image
-email.marketing.facilmenteinglese.com$image
-email.marketing.ferrerhotels.com$image
-email.marketing.findaya.co.id$image
-email.marketing.findomsonly.com$image
-email.marketing.finotivefunding.com$image
-email.marketing.fixmycurls.com$image
-email.marketing.floridaregisteredagent.com$image
-email.marketing.floridaregisteredagent.net$image
-email.marketing.fortunapalace.ro$image
-email.marketing.fusionhotelgroup.com$image
-email.marketing.gcals.co.uk$image
-email.marketing.generalmedicine.co$image
-email.marketing.gingrapp.com$image
-email.marketing.go-jek.com$image
-email.marketing.goinrent.it$image
-email.marketing.goldbeat.hu$image
-email.marketing.gradywhite.com$image
-email.marketing.granddesignrv.com$image
-email.marketing.griffati.com$image
-email.marketing.hamsterlondon.com$image
-email.marketing.healthymealpreppers.com$image
-email.marketing.hkcgi.org.hk$image
-email.marketing.hunterdouglas.com$image
-email.marketing.ifinancial.systems$image
-email.marketing.ilardoaudio.com$image
-email.marketing.inbet.mx$image
-email.marketing.indianaregisteredagent.com$image
-email.marketing.indianterrain.com$image
-email.marketing.iowaregisteredagent.com$image
-email.marketing.iwantclips.com$image
-email.marketing.jamonesblazquez.com$image
-email.marketing.jungledisk.com$image
-email.marketing.kansasregisteredagent.com$image
-email.marketing.kfc.pt$image
-email.marketing.kijiji.ca$image
-email.marketing.kinkie.co.uk$image
-email.marketing.labanksmedical.com$image
-email.marketing.leadnesthub.com$image
-email.marketing.leads2b.com$image
-email.marketing.legalregisteredagentservices.com$image
-email.marketing.livingnessinc.com$image
-email.marketing.llc-registeredagent.com$image
-email.marketing.louisianalandbank.com$image
-email.marketing.luckyseven.ro$image
-email.marketing.lyftmail.com$image
-email.marketing.m-book.mn$image
-email.marketing.magicbet.bg$image
-email.marketing.maineregisteredagent.com$image
-email.marketing.marylandresidentagent.com$image
-email.marketing.massachusettsregisteredagent.com$image
-email.marketing.matrackucko.hu$image
-email.marketing.maverickboatgroup.com$image
-email.marketing.maxwin.ro$image
-email.marketing.mcnc.org$image
-email.marketing.mentabrokers.com.ar$image
-email.marketing.metodomegamamma.com$image
-email.marketing.michiganregisteredagent.com$image
-email.marketing.midtrans.com$image
-email.marketing.minascore.com$image
-email.marketing.minimal.com.hr$image
-email.marketing.minnesotaregisteredagent.com$image
-email.marketing.mississippiregisteredagent.com$image
-email.marketing.mkaddour.com$image
-email.marketing.morgancorso.academy$image
-email.marketing.muzz.com$image
-email.marketing.mz-marketing.nl$image
-email.marketing.naaleads.com$image
-email.marketing.nauticaorion.com$image
-email.marketing.nautique.com$image
-email.marketing.nemtac.co$image
-email.marketing.new.customer.integracredit.com$image
-email.marketing.newjerseyregisteredagent.com$image
-email.marketing.northdakotaregisteredagent.com$image
-email.marketing.northwestregisteredagent.com$image
-email.marketing.nuancedumonde.com$image
-email.marketing.nubysolutions.com$image
-email.marketing.nutrideconsultorio.com$image
-email.marketing.nuvo.co.uk$image
-email.marketing.onecasino.ro$image
-email.marketing.onepercentleague.com$image
-email.marketing.paintingpros.com.au$image
-email.marketing.pansandcompany.pt$image
-email.marketing.parsnational.ca$image
-email.marketing.paylaterapp.com$image
-email.marketing.perfumenetwork.in$image
-email.marketing.petmarket.do$image
-email.marketing.pissedconsumer.com$image
-email.marketing.plastikamessinias.com$image
-email.marketing.poolandspatradeschool.com$image
-email.marketing.positivezone.ae$image
-email.marketing.primenotaryinc.com$image
-email.marketing.prograd.uk$image
-email.marketing.proptix.ai$image
-email.marketing.prowin.ro$image
-email.marketing.redbrickequity.com$image
-email.marketing.registeredagentsinc.com$image
-email.marketing.reservasportobello.com.br$image
-email.marketing.ridewithgps.com$image
-email.marketing.rightsys.com$image
-email.marketing.rollick.io$image
-email.marketing.rosimosi.com$image
-email.marketing.roverpass.com$image
-email.marketing.royaltyhero.com$image
-email.marketing.saddlebrookelife.com$image
-email.marketing.salesprocess.it$image
-email.marketing.selia.co$image
-email.marketing.settlemate.io$image
-email.marketing.shooterschoicesc.com$image
-email.marketing.shred75.com$image
-email.marketing.skinsafeproducts.com$image
-email.marketing.skydiveandes.com$image
-email.marketing.smartercapitalgroup.com$image
-email.marketing.smrtapp.com$image
-email.marketing.snaphookgolf.org$image
-email.marketing.solarisita.it$image
-email.marketing.strikingly.com$image
-email.marketing.suitedash.com$image
-email.marketing.superpowerailab.com$image
-email.marketing.supraboats.com$image
-email.marketing.target100.net$image
-email.marketing.tatescars.co.uk$image
-email.marketing.tdotly.com$image
-email.marketing.tekmetric.com$image
-email.marketing.thepaymentexperts.com$image
-email.marketing.thormotorcoach.com$image
-email.marketing.tiarayachts.com$image
-email.marketing.tidal.com$image
-email.marketing.tige.com$image
-email.marketing.topedgecarwashes.com$image
-email.marketing.transferliveleads.com$image
-email.marketing.ultrabet.ro$image
-email.marketing.ussd.com$image
-email.marketing.vermontregisteredagent.com$image
-email.marketing.veteldiagnostics.com$image
-email.marketing.virginhotelslv.com$image
-email.marketing.vivabet.ro$image
-email.marketing.vshopemail.com$image
-email.marketing.wafi.com$image
-email.marketing.watersofteneredmonton.ca$image
-email.marketing.webull-uk.com$image
-email.marketing.webull.ca$image
-email.marketing.webull.co.jp$image
-email.marketing.webull.co.th$image
-email.marketing.webull.com$image
-email.marketing.webull.com.au$image
-email.marketing.webull.com.my$image
-email.marketing.webull.com.sg$image
-email.marketing.webull.hk$image
-email.marketing.webullpay.com$image
-email.marketing.whatahotel.com$image
-email.marketing.winnebagoind.com$image
-email.marketing.wmarkets.io$image
-email.marketing.xitx.com$image
-email.marketing.xmind.ai$image
-email.marketing.yaanman.in$image
-email.marketing.zambrero.com.au$image
-email.marketing.zeromotorcycles.com$image
-email.marketing.zoomcare.com$image
-email.marketing2.wantedwoman.com$image
-email.marketingandtrade.eu$image
-email.marketingcible.com$image
-email.marketingjoes.com$image
-email.marketingledge.com$image
-email.marketingosm.it$image
-email.marketline.email$image
-email.marketmaker.gulfprojects.ae$image
-email.marketplace-kabum.mirakl.net$image
-email.marketplaceinsurance.com$image
-email.marketsandmarkets.com$image
-email.marketsandminds.com$image
-email.marketsending.com$image
-email.markettraders.com$image
-email.marketwebsite.net$image
-email.markham.edu.pe$image
-email.markhammazda.activix.com$image
-email.markmotors.net$image
-email.markopolo.ai$image
-email.marksandspencerfood.gr$image
-email.marksmanfinance.com.au$image
-email.marktek.de$image
-email.markus-t.com$image
-email.marlena.marlenabotezatu.ro$image
-email.marlinchev.com$image
-email.marlobeauty.com$image
-email.marlukki.eu$image
-email.marmara.ee$image
-email.marmix.net$image
-email.marnys.ro$image
-email.maronda.com$image
-email.marosel.nl$image
-email.marquiswhoswho.com$image
-email.marquisww.com$image
-email.marriottbrandsataglance.com$image
-email.marro.com$image
-email.marsall-media.de$image
-email.marshadunstan.com$image
-email.martensville.ca$image
-email.marthablessing.com$image
-email.marthadiebold.com$image
-email.martinakohrn.com$image
-email.martinmaki.com$image
-email.martinoticias.com$image
-email.martinplace.conditn.com$image
-email.martinskiphire.co.uk$image
-email.martinugarte.com$image
-email.martinweblabs.com$image
-email.maruccisports.com$image
-email.mary.obnovit.com$image
-email.marylandheights.com$image
-email.marylandresidentagent.com$image
-email.marymackilloptoday.org.au$image
-email.masabi.life$image
-email.masaj.me$image
-email.maschek-automobile.de$image
-email.maseven.de$image
-email.masgcor.co.za$image
-email.masgusto.com$image
-email.mashukuk.com$image
-email.masiello.com$image
-email.masivos.mmarketpos.cl$image
-email.masmusculo.com$image
-email.masnad.com.au$image
-email.mason.immo$image
-email.masonelite.com$image
-email.masonicare.org$image
-email.masonohioschoolscom.myenotice.com$image
-email.masonsrestaurant.co.uk$image
-email.maspawards.com$image
-email.mass.opsgeni.us$image
-email.massachusettsregisteredagent.com$image
-email.massage.getmoremassages.com$image
-email.massagespotlight.com$image
-email.massautogroup.com$image
-email.massdrop.com$image
-email.masseyhacks.ca$image
-email.masseyonline.com.au$image
-email.massivemarketingpro.com$image
-email.massmail.fig.net$image
-email.massmarketai.com$image
-email.mastellone.com.ar$image
-email.master-data.engelvoelkers.com$image
-email.mastercardacademy.com$image
-email.mastercfa.com$image
-email.masterclas.es$image
-email.masterclass.com$image
-email.masterclass.noahbissi.com$image
-email.mastercraft.com$image
-email.masterfreight.com.pe$image
-email.masterinjector.com$image
-email.masterm.com.au$image
-email.mastermate.nl$image
-email.mastermind.com$image
-email.masteroficios.com.br$image
-email.masterpieceemail.com$image
-email.masterpullzexpo.nl$image
-email.masters-studio.co.uk$image
-email.mastersacademy.com.au$image
-email.mastodon.surfshark.com$image
-email.masuasociacija.lv$image
-email.masvidahealth.com$image
-email.matachica.com$image
-email.matbao.com$image
-email.matbao.com.vn$image
-email.matbao.net.vn$image
-email.match.glints.com$image
-email.match.pizzaexpo.com$image
-email.matches.simplify.jobs$image
-email.matchfinancialsolutions.com.au$image
-email.matchfire.com$image
-email.matchfit.playmetrics.com$image
-email.matchingmissions.com$image
-email.matchmaking.amsterdamdroneweek.com$image
-email.matchmaking.christianmingle.com$image
-email.matchmaking.jdate.com$image
-email.matchmaking.kbis.com$image
-email.matchmaking.silversingles.com$image
-email.matchmaking.zoosk.com$image
-email.matchmakingcompany.com$image
-email.matchoffice.com$image
-email.matchrelevant.com$image
-email.mate-academy.com$image
-email.matellio.com$image
-email.mater.org.au$image
-email.materiale.wellcode.ro$image
-email.mathe.com$image
-email.matinhomes.ca$image
-email.mation.com$image
-email.matiz.trytoku.com$image
-email.maton.alissonmarques.com.br$image
-email.matrix-cr.net$image
-email.matrixltda.cl$image
-email.matsbs.com$image
-email.matsumotous.com$image
-email.matt.scot$image
-email.mattandkelley.co$image
-email.mattbanderson.com$image
-email.matterofform.com$image
-email.mattfitchett.com$image
-email.matthewshargreaves.net$image
-email.matthewslandscape.com$image
-email.mattressliquidation.biz$image
-email.mattressonline.co.uk$image
-email.mattthebarber.co.uk$image
-email.mattwayne.io$image
-email.matulkainsurance.com$image
-email.maturefriendfinder.co.uk$image
-email.maudekids.com$image
-email.mauiglow.freedemail.com$image
-email.mauinow.com$image
-email.mauioil.com$image
-email.maverik.com$image
-email.mavnet.com$image
-email.mavoyancesecret.com$image
-email.mavrikmachine.com$image
-email.maxapprovalwebinar.com$image
-email.maxb2b.co.uk$image
-email.maxbattaglia.espertodimarketing.com$image
-email.maxbet.ba$image
-email.maxbet.me$image
-email.maxbet.rs$image
-email.maxbitsolution.com$image
-email.maxborgesagency.com$image
-email.maxconf.ru$image
-email.maxeli.com$image
-email.maxfashion.in$image
-email.maxfrota.movidesk.com$image
-email.maxgaming.com$image
-email.maxgaming.se$image
-email.maxi-show.com$image
-email.maxim.com$image
-email.maxim.org.za$image
-email.maximadvisors.com.au$image
-email.maxime.lacroisadedumuscle.com$image
-email.maximizer.co.uk$image
-email.maxitrade.com$image
-email.maxlogo.movidesk.com$image
-email.maxmilhas.com.br$image
-email.maxmillian.com.au$image
-email.maxnet.ru$image
-email.maxrewards.com$image
-email.maxtech.fi$image
-email.maxwell.toolhubmarketing.com$image
-email.maxx-gesundheitszentrum.org$image
-email.maxxispring.com.br$image
-email.mayersystem.it$image
-email.mayflowerwollam.com$image
-email.mayorsa.queop.com$image
-email.mayschemist.vexall.rocks$image
-email.maytechseguridad.com$image
-email.mazak.co.uk$image
-email.mazars.de$image
-email.mazda-mogacar.com$image
-email.mazdagabrielstjacques.activix.com$image
-email.mazdaoempartsoutlet.com$image
-email.mazdaonlineparts.com$image
-email.mazdapartsconnect.com$image
-email.mazdaswag.com$image
-email.mazdawholesaledirect.com$image
-email.maztr.com$image
-email.mazzaats.movidesk.com$image
-email.mb.delvecchio8.com$image
-email.mb.moversboost.com$image
-email.mb.netgrowthwithme.co.uk$image
-email.mb.olspsystem.com$image
-email.mb.smartearn247.biz$image
-email.mb.steadyprofits.biz$image
-email.mb1vet.zednow.com$image
-email.mba.org$image
-email.mbbinstitute.com$image
-email.mbc.twochairs.com$image
-email.mbgt.com$image
-email.mbit.pt$image
-email.mbmtw.garena.com$image
-email.mbmvf.esforce.com$image
-email.mbo.marquisbiographiesonline.com$image
-email.mbpartscenter.com$image
-email.mbpartsource.com$image
-email.mbsinc.com$image
-email.mbta.com$image
-email.mc-transport-logistics.be$image
-email.mc.createprecession.com$image
-email.mc.ecam.com$image
-email.mc.susan-findlay.com$image
-email.mcafeesecure.com$image
-email.mcapitalllc.com$image
-email.mcast.edu.mt$image
-email.mccanntechorg.myenotice.com$image
-email.mccolly.com$image
-email.mccoolinsurance.com$image
-email.mccuneandreed.com$image
-email.mcdc.com.sa$image
-email.mcdelivery.co.in$image
-email.mcdonalds.co.id$image
-email.mcdonaldsemail.smg.com$image
-email.mcdougallinsurance.com$image
-email.mce.ph$image
-email.mcgrathadvisors.com$image
-email.mcgrifftire.com$image
-email.mcgsecuremail.com$image
-email.mcguireconsultingagency.com$image
-email.mchel.net$image
-email.mci-group.com$image
-email.mckaysoftware.co.nz$image
-email.mckinlay.qld.gov.au$image
-email.mckinneyauto.com$image
-email.mcl.de$image
-email.mclaren.org$image
-email.mclarenleisure.co.uk$image
-email.mcleansc.playmetrics.com$image
-email.mcminnvilletn.gov$image
-email.mcmservices.com.au$image
-email.mcnhsorg.myenotice.com$image
-email.mcolombia.homehealthcare.tech$image
-email.mcpehost.ru$image
-email.mcquillanboilers.co.uk$image
-email.mcube.fr$image
-email.md.concepcionseijas.com$image
-email.md.getsentry.com$image
-email.md.getsidekicker.com$image
-email.md.iacop.cn$image
-email.md.mobility-decalaminage.com$image
-email.md.pistacchio.life$image
-email.md.savvyduty.com$image
-email.md2.getsentry.com$image
-email.mddr.cesarine.com$image
-email.mddr.consiliumcom.it$image
-email.mddr.decathlon.com$image
-email.mddr.fiiapp.es$image
-email.mddr.fondazionemontedipietadivicenza.it$image
-email.mddr.greenpeace.org$image
-email.mddr.hangarbicocca.org$image
-email.mddr.ilunion.com$image
-email.mddr.imamcomunicacion.com$image
-email.mddr.intermediagroup.it$image
-email.mddr.nocom.com$image
-email.mddr.politicalwatch.es$image
-email.mddr.tellerspr.com$image
-email.mddr.usb.it$image
-email.mdidentity.com$image
-email.mdmclima.mydesignsolution.it$image
-email.mdntvlive.com$image
-email.mdpmail.bostonvision.com$image
-email.mdpmail.herzig-eye.com$image
-email.mdpmail.iqlaservision.com$image
-email.mdprospects.com$image
-email.mdsbuild.com$image
-email.mdxalgo.com$image
-email.me.bonsai-research.com$image
-email.me.caperesorts.com$image
-email.me.herohomeprograms.com$image
-email.me.miramoufarrej.com$image
-email.me.originalchapters.com$image
-email.me.stratedglobal.ae$image
-email.me.zoeygreco.com$image
-email.mea.org.uk$image
-email.mead1.stewart.com$image
-email.mealcontact.com$image
-email.mealsonwheelsedmonton.org$image
-email.meaningfulwork.xyz$image
-email.measureone.com$image
-email.meatpoint.io$image
-email.meatspice.com$image
-email.meb.livingdreamteam.com$image
-email.mec1.org$image
-email.mechtrace.com$image
-email.mecsekimuzli.com$image
-email.med-deo.com.ua$image
-email.med4all.org.gh$image
-email.medaire.com$image
-email.medarbetaren.se$image
-email.medcare-ae.com$image
-email.medcenterplus.com$image
-email.medecash.com$image
-email.medecision.bcbstx.health$image
-email.medellya.co$image
-email.medexamcenter.com$image
-email.medfit.com.ng$image
-email.medflow.com.mx$image
-email.medi-vet.com$image
-email.media.aircanada.ca$image
-email.media.bakersales.info$image
-email.media.bayer.com$image
-email.media.cupraofficial.nl$image
-email.media.emirates.email$image
-email.media.flyedelweiss.com$image
-email.media.giphy.com$image
-email.media.kingpress.co.uk$image
-email.media.magnumicecream.com$image
-email.media.paychex.com$image
-email.media.pilottravelcenters.com$image
-email.media.puma.com$image
-email.media.skycargo.com$image
-email.media.swiss.com$image
-email.media.theloyaltyzone.com$image
-email.media.transavia.com$image
-email.mediacanarias.net$image
-email.mediacliq.com$image
-email.mediaddress.dblue.it$image
-email.mediaddress.espressocommunication.it$image
-email.mediaddress.essereanimali.org$image
-email.mediaddress.mediaebook.de$image
-email.mediaddress.ucstudio.it$image
-email.mediagiant.co.nz$image
-email.mediagnostica.teleradiologia.com$image
-email.mediakitchen.com$image
-email.mediamarkt-telecom.nl$image
-email.mediapulse.dk$image
-email.mediartrade.com$image
-email.medias.aircanada.ca$image
-email.mediashop.cz$image
-email.mediashop.hu$image
-email.mediashop.sk$image
-email.medical.danone.com$image
-email.medicalaffairs.merck.com$image
-email.medicalaffairs.msd.com$image
-email.medicalinformation.ucb.com$image
-email.medicalistore.it$image
-email.medicallicensing.com$image
-email.medicalshield.cyex.com$image
-email.medicaltracker.co.uk$image
-email.medicalvalues.de$image
-email.medicalwritingwebinar.pharmalinkacademy.co.uk$image
-email.medicare.bcbsnm.com$image
-email.medicare.bcbsok.com$image
-email.medicare.bcbstx.com$image
-email.medicarehelper.net$image
-email.medicllnic.com$image
-email.medicsport.dk$image
-email.medikeeper.com$image
-email.mediklin.vexall.rocks$image
-email.medilab.be$image
-email.mediobanca.com$image
-email.medios.sicar.mx$image
-email.medipar.com.br$image
-email.mediquo.com$image
-email.medivation.com$image
-email.medline.narvar.com$image
-email.medone.academy$image
-email.medpex.de$image
-email.medportal.ca$image
-email.medservices.organon.com$image
-email.medspaofnewyork.com$image
-email.medusaaustralia.com.au$image
-email.medvarsity.com$image
-email.medwayticketslive.co.uk$image
-email.meebook.com$image
-email.meeboss.info$image
-email.meefx.com$image
-email.meeplemadness.com$image
-email.meer.io$image
-email.meet.connecthub24.com$image
-email.meet.getcampfire.com$image
-email.meet.graceinlaceboudoir.com$image
-email.meet.lu$image
-email.meeta.meeta-dani.com$image
-email.meetamechanic.com$image
-email.meetasalesman.com$image
-email.meetbreeze.com$image
-email.meetcoal.ca$image
-email.meetcortex.com$image
-email.meeting.oacmarketing.com$image
-email.meetingplanner.io$image
-email.meetingportal.clarionevents.com$image
-email.meetingroomapp.com$image
-email.meetings.techexevent.com$image
-email.meetmarketreach.com$image
-email.meetupcall.com$image
-email.meetyourva.co$image
-email.meex.hu$image
-email.mega-bangna.com$image
-email.mega-mail-b.selmasu.com$image
-email.mega-mail.selmasu.com$image
-email.mega100.movidesk.com$image
-email.megaescort.info$image
-email.megaofertas.com$image
-email.megaporndeals.com$image
-email.megasaludceam.com$image
-email.megasmicros.com$image
-email.megatravel.com.mx$image
-email.megatvstore.com$image
-email.megcassidy.com$image
-email.meggimai.ie$image
-email.mehmetuzumakademi.com$image
-email.meilleursagents.com$image
-email.mein-beratungsteam.com$image
-email.mein.falter.at$image
-email.mein.master-yachting.de$image
-email.meinarztbedarf.com$image
-email.meinekecarcarecenter1407.us$image
-email.meinekecarcarecenter1592indianapolis.us$image
-email.meinekecarcarecenter2009wichita.us$image
-email.meinekecarcarecenter205audubon.us$image
-email.meinekecarcarecenter2377puyallup.us$image
-email.meinekecarcarecenter2968bouldercity.us$image
-email.meinekecarcarecenter4237longmont.us$image
-email.meinfahrzeug.shop$image
-email.meinfirmenroller.services$image
-email.meininger-hotels.com$image
-email.meisternote.com$image
-email.meiti-uae.com$image
-email.melaniebieker.de$image
-email.melaniehastings.sleepnanny.co.uk$image
-email.melanieherrera.streetteam.email$image
-email.melb.naturecarer.com$image
-email.melbournecityapartments.com$image
-email.melbournewest.actioncoachmail.co$image
-email.melderegister-auskunft.de$image
-email.melhusbil.no$image
-email.melindaguillet.com$image
-email.meltenfashion.cn$image
-email.memassage.aiakseli.fi$image
-email.member-info.aetna.com$image
-email.member.dailyburn.com$image
-email.member.winedrops.com$image
-email.member3.earnwithbeverly.com$image
-email.memberexperience.floridablue.com$image
-email.memberhub.nl$image
-email.memberreference.com$image
-email.members.academylevelx.com$image
-email.members.cmrips.org$image
-email.members.madpunter.com.au$image
-email.members.medigold.com$image
-email.members.nwchoirs.org$image
-email.members.seomasterysummit.com$image
-email.members.sircleclub.com$image
-email.members.trainingsolutionsllc.net$image
-email.membership.acresusa.com$image
-email.membership.bodyfittraining.com$image
-email.membership.isaca.org$image
-email.membership.modelairplanenews.com$image
-email.membership.moneysmart.sg$image
-email.membership.nycrossbowcoalition.com$image
-email.membership.theinitium.com$image
-email.membership.thewac.com$image
-email.membership.usahockey.com$image
-email.membersonlyconnect.com$image
-email.membes.com.au$image
-email.memoapp.com$image
-email.memocasino.com$image
-email.memoforce.wellnessinbox.com$image
-email.memomastercoaching.com$image
-email.memory.net$image
-email.memoryblue.com$image
-email.memoryfoam.com.mx$image
-email.memoryweb.me$image
-email.memphistn.gov$image
-email.mena.ipsosisay.com$image
-email.menacinque.it$image
-email.menafilmfestival.com$image
-email.menagez-vous.ca$image
-email.mendaera.com$image
-email.mendesleiloes.com.br$image
-email.menninger.edu$image
-email.mensajeriacr.com$image
-email.mensajes.albertopjota.com$image
-email.mensajes.misactividades.com$image
-email.mensajes.rocio.app$image
-email.mensalliancetribes.com$image
-email.menstuffcoaching.com$image
-email.mentalhealthmena.com$image
-email.mention.net.br$image
-email.mentoredbymaya.systemisedtoscale.app$image
-email.mentoring.datadoghq.com$image
-email.mentoringlibrary.com$image
-email.mentorkidsusa.org$image
-email.mentorsg.bellixlabs.com$image
-email.mentorship.mitacs.ca$image
-email.menway.com$image
-email.meooffroad.com$image
-email.meotine.com$image
-email.mercadeo.bdcint.com.do$image
-email.mercadeo.kemik.com$image
-email.mercadodiferente.com.br$image
-email.mercedesbenzgatineau.activix.com$image
-email.mercedesbenzstarparts.com$image
-email.mercedesbenzturk.cloudoffix.com$image
-email.mercedeshoffmanestates.purecarstam.com$image
-email.mercedespartscenter.com$image
-email.merch.dice.fm$image
-email.merchant.gojek.com$image
-email.merchantapp.io$image
-email.merchantchimp.com$image
-email.merchantportal.dev.swedbankpay.com$image
-email.merchantportal.test.swedbankpay.com$image
-email.merchize.com$image
-email.mercy.com.au$image
-email.mercy.myenotice.com$image
-email.mercyacademy.myenotice.com$image
-email.mercyforanimals.org$image
-email.mercymcauley.myenotice.com$image
-email.mercymedical.org$image
-email.merelec.com$image
-email.merelivihaven.dk$image
-email.meridian.hellositstillkids.com$image
-email.meridinet.com$image
-email.merimeri.com$image
-email.merionmercy.myenotice.com$image
-email.meritagecapital.com$image
-email.meritmile.com$image
-email.merlenormanphoenix.newbooking.ai$image
-email.merlinsmagicwand.org$image
-email.mermaidme.de$image
-email.merryfoxrealty.com$image
-email.mesa-ins.com$image
-email.mesch.ch$image
-email.meshstore.com.au$image
-email.mesquita.mg.gov.br$image
-email.mesquiteisdorg.myenotice.com$image
-email.mess.org.tr$image
-email.message-boutique.petitsfreresdespauvres.fr$image
-email.message.alla-pyjamas.se$image
-email.message.baserves.com$image
-email.message.bellapropertiesinc.com$image
-email.message.boutique-dragon-ball.com$image
-email.message.closerssociety-setters.com$image
-email.message.comptoir-des-lampes.com$image
-email.message.digiscale.app$image
-email.message.dsers.com$image
-email.message.fullscript.com$image
-email.message.hopeandhealingsolutions.com$image
-email.message.i-host.gr$image
-email.message.ilmiomocassino.it$image
-email.message.inspired-minds-learning.co.uk$image
-email.message.juucecharging.com$image
-email.message.kochfreiburg.de$image
-email.message.lineabrava.es$image
-email.message.ma-bague.com$image
-email.message.ma-combi.com$image
-email.message.ma-peluche.fr$image
-email.message.maison-orthopedique.fr$image
-email.message.manilachiropractor.com$image
-email.message.mi-peluche.com$image
-email.message.mijn-rugzak.nl$image
-email.message.mille-et-une-nuisette.com$image
-email.message.mindtrx.com$image
-email.message.mio-peluche.it$image
-email.message.mon-blazer.com$image
-email.message.mon-habit-chauffant.com$image
-email.message.mon-jouet-educatif.com$image
-email.message.mon-mocassin.com$image
-email.message.mon-sac-a-dos.fr$image
-email.message.monjolipull.com$image
-email.message.moxion.io$image
-email.message.mtdorafamilychiro.com$image
-email.message.mychiropracticlifestyle.com$image
-email.message.noom.com$image
-email.message.petites-pirates.com$image
-email.message.petits-moussaillons.com$image
-email.message.piccoli-pirati.com$image
-email.message.piuminonegozio.com$image
-email.message.precisionspineonline.com$image
-email.message.psychologyvibes.com$image
-email.message.qeeq.com$image
-email.message.sblending.com$image
-email.message.snapcalorie.com$image
-email.message.spineandbodyrenewal.com$image
-email.message.stoneleaf.fr$image
-email.message.symmetryhealthchiropractic.com$image
-email.message.techdadmedia.com$image
-email.message.vintage-univers.com$image
-email.messages-email.store$image
-email.messages.adstruc.com$image
-email.messages.authorsummits.com$image
-email.messages.avenues.org$image
-email.messages.bhvr.com$image
-email.messages.brienshamp.com$image
-email.messages.calmhealth.com$image
-email.messages.cierra.de$image
-email.messages.custommade.com$image
-email.messages.e.mightytaco.com$image
-email.messages.edenpr.org$image
-email.messages.georgiacyber.org$image
-email.messages.gracesimi.com$image
-email.messages.hyde.edu$image
-email.messages.juicycrm.nz$image
-email.messages.maranausd.org$image
-email.messages.offerup.com$image
-email.messages.onpolo.com$image
-email.messages.parksplumbingandsewer.com$image
-email.messages.seamless.md$image
-email.messages.selltotoyotasunnyvale.com$image
-email.messages.selltowhittenbrothers.com$image
-email.messages.shopturtlebacks.com$image
-email.messages.ssis.edu.vn$image
-email.messages.theguidedtutor.com$image
-email.messages.usepepper.com$image
-email.messages.webcookingclasses.com$image
-email.messaging.baskinrobbins.com$image
-email.messaging.behappyps.com$image
-email.messaging.emalify.africa$image
-email.messaging.envoice.eu$image
-email.messaging.glossgenius.com$image
-email.messaging.greenvelope.com$image
-email.messaging.hospitable.com$image
-email.messaging.krakenautomations.com$image
-email.messaging.lodgify.com$image
-email.messaging.tryotter.com$image
-email.messaging.zello.com$image
-email.messedornbirn.at$image
-email.messenger.muzes.ai$image
-email.messinahof.com$image
-email.messly.co.uk$image
-email.mestate-properties.mestate.win$image
-email.meta-banners.com$image
-email.meta-gifts-team.com$image
-email.meta.happycustomer.io$image
-email.meta.lacadenasaludable.com$image
-email.metabase.xt.com$image
-email.metabee.com$image
-email.metabuyercloud.com$image
-email.metacite.com$image
-email.metalink.net$image
-email.metalradar.com$image
-email.metamask.io$image
-email.metamaskinfoid.artcitta.com$image
-email.metcap.com.au$image
-email.meteovista.nl$image
-email.methaenergia.com.br$image
-email.method-agency.com$image
-email.methodebigwave.com$image
-email.methodresearchcompany.com$image
-email.methodyorg.myenotice.com$image
-email.metiersbienetre.fr$image
-email.metla.io$image
-email.metlife.trytoku.com$image
-email.metodista.br$image
-email.metodolocale.convertocrm.it$image
-email.metodomicalma.com$image
-email.metrak.cz$image
-email.metramail.com$image
-email.metricon.com.au$image
-email.metriguest.com$image
-email.metro-mail.co.il$image
-email.metroairproducts.com$image
-email.metrohealth.org$image
-email.metrologic.group$image
-email.metromsp.com$image
-email.metronailbar.com$image
-email.metroprep.com$image
-email.metrorod.co.uk$image
-email.metrosec.biz$image
-email.metrotyres.com.au$image
-email.mettepshop.dk$image
-email.metzgeneralcontracting.com$image
-email.meubelpootjes.nl$image
-email.mewa.gov.sa$image
-email.mewsmailer.com$image
-email.mexlife.com$image
-email.mezgr.com$image
-email.mezzobit.com$image
-email.mf.metodofukudamentoring.com$image
-email.mfbetty.amp.akillionai.com$image
-email.mfc.co.uk$image
-email.mfcmarket.com$image
-email.mfcmortgages.com.au$image
-email.mffa.com$image
-email.mffn.io$image
-email.mfins.com.au$image
-email.mfinternal.staging.akillionai.com$image
-email.mftza.com$image
-email.mg-auth0.23andme.com$image
-email.mg-bolton.edstart.org.uk$image
-email.mg-d0.substack.com$image
-email.mg-d1.substack.com$image
-email.mg-dev.dentalintel.com$image
-email.mg-dev.modento.io$image
-email.mg-dev.visa.com$image
-email.mg-eu.autoinkoopspecialist.nl$image
-email.mg-eu.ckshuttle.cz$image
-email.mg-eu.easypractice.net$image
-email.mg-eu.freeontour.com$image
-email.mg-eu.holistics.io$image
-email.mg-eu.leadhub.co$image
-email.mg-eu.merinfo.se$image
-email.mg-eu.ringover.com$image
-email.mg-eu.spoorwegmuseum.nl$image
-email.mg-eu.vandaagverpanden.nl$image
-email.mg-facturen.gva.be$image
-email.mg-gls.nukium.io$image
-email.mg-gxm.guestxm.com$image
-email.mg-info.iproxy.online$image
-email.mg-internal.attractwell.com$image
-email.mg-mail.premierhealth.com$image
-email.mg-marketing.fintown.eu$image
-email.mg-marketing.inbet.com$image
-email.mg-marketing.paper.id$image
-email.mg-marketing.sesame.bg$image
-email.mg-mijn.bnnvara.nl$image
-email.mg-news.sermonaudio.com$image
-email.mg-news.veltra.com$image
-email.mg-otp.23andme.com$image
-email.mg-out.madeby.ws$image
-email.mg-pg.paper.id$image
-email.mg-prd-benelux.citizenlab.co$image
-email.mg-prod.circajewels.com$image
-email.mg-prod.y-services.fr$image
-email.mg-production.line5.com$image
-email.mg-qa.calendly.com$image
-email.mg-qa.dentalintel.com$image
-email.mg-qa.evovmp.com$image
-email.mg-redash.ca-dev.co$image
-email.mg-sandbox.givewp.com$image
-email.mg-sandbox.stellarwp.com$image
-email.mg-sandbox.wpbusinessreviews.com$image
-email.mg-service.inbet.com$image
-email.mg-service.sesame.bg$image
-email.mg-smeetz.fliplab.ch$image
-email.mg-smeetz.maag-moments.ch$image
-email.mg-smeetz.moods.ch$image
-email.mg-smeetz.verkehrshaus.ch$image
-email.mg-staging.atproperties.com$image
-email.mg-staging.evovmp.com$image
-email.mg-staging.fileyourstatetaxes.org$image
-email.mg-staging.syftapp.com$image
-email.mg-staging.upside.gg$image
-email.mg-stg.dentalintel.com$image
-email.mg-supply.perplexity.ai$image
-email.mg-test.23andme.com$image
-email.mg-tickets.proctors.org$image
-email.mg-trex.integralmediaservices.com$image
-email.mg-tx.nunify.com$image
-email.mg-tx1.substack.com$image
-email.mg-us.aristocrat.com$image
-email.mg-vw.enablia.eu$image
-email.mg.0-60specs.com$image
-email.mg.0441.design$image
-email.mg.0x.org$image
-email.mg.100proboats.com$image
-email.mg.101reporters.com$image
-email.mg.10yearphone.com$image
-email.mg.121training.edu.au$image
-email.mg.12andus.com$image
-email.mg.12build.com$image
-email.mg.149.photos$image
-email.mg.1callclosers.com$image
-email.mg.1clubnepal.com$image
-email.mg.1kday.com$image
-email.mg.1percentbettercoaching.com$image
-email.mg.1stfmg.com$image
-email.mg.1streporting.com$image
-email.mg.1w-cdp-otp.com$image
-email.mg.1w-mailing.com$image
-email.mg.1w-otpsndr.com$image
-email.mg.1w-post.com$image
-email.mg.1w-send.com$image
-email.mg.1win-dgst.com$image
-email.mg.1win-dgsteml.com$image
-email.mg.1win-emlsender.com$image
-email.mg.1win-emsender.com$image
-email.mg.1win-emsndr.com$image
-email.mg.1win-mailer.com$image
-email.mg.1win-mailservice.com$image
-email.mg.1win-mailsndr.com$image
-email.mg.1win-sender.com$image
-email.mg.1win-smtp.com$image
-email.mg.1win-smtpconnect.com$image
-email.mg.1win-smtpeml.com$image
-email.mg.1win-smtpsndr.com$image
-email.mg.1win-trigeml.com$image
-email.mg.1win-vipclub.com$image
-email.mg.1win-vipclub.io$image
-email.mg.1win-vipclubsender.com$image
-email.mg.1win.xyz$image
-email.mg.1winforce.com$image
-email.mg.1winng-email.com$image
-email.mg.1winspecial.com$image
-email.mg.1wmail.com$image
-email.mg.1wpartners-email.com$image
-email.mg.1x2.dk$image
-email.mg.2029webdesign.com$image
-email.mg.21.red$image
-email.mg.212f.com.au$image
-email.mg.21bets.com$image
-email.mg.21bets.io$image
-email.mg.220agents.com$image
-email.mg.24-7-fishing.com$image
-email.mg.2clicks.com$image
-email.mg.2pinup.com$image
-email.mg.2up.io$image
-email.mg.39apps.com$image
-email.mg.3apsistemas.com$image
-email.mg.3birds.io$image
-email.mg.4-siteagency.com$image
-email.mg.401go.com$image
-email.mg.40andthriving.com$image
-email.mg.40plusrelatie.nl$image
-email.mg.49dollarmontanaregisteredagent.com$image
-email.mg.4based.com$image
-email.mg.4bowl.de$image
-email.mg.4dev.com$image
-email.mg.4geeks.com$image
-email.mg.4kdownload.com$image
-email.mg.4programmers.net$image
-email.mg.50skills.com$image
-email.mg.510.org.tw$image
-email.mg.544talbotstreet.com$image
-email.mg.5miles.com$image
-email.mg.5sim.net$image
-email.mg.7-figuredocs.ai$image
-email.mg.7-figurelaw.ai$image
-email.mg.7-figurelist.com$image
-email.mg.72bitcreative.com$image
-email.mg.77spins.com$image
-email.mg.99calls.com$image
-email.mg.99tribe.com$image
-email.mg.9d.bet.br$image
-email.mg.aaannunci.it$image
-email.mg.aacemail.co.uk$image
-email.mg.aalha.org$image
-email.mg.abasky.net$image
-email.mg.abcleasing.com.mx$image
-email.mg.abdataclassactionmail.com$image
-email.mg.abenity.com$image
-email.mg.abestregisteredagent.com$image
-email.mg.abft.be$image
-email.mg.abhealthtech.com$image
-email.mg.abiinteriors.com$image
-email.mg.abnasia.org$image
-email.mg.aboveall.net$image
-email.mg.aboveavl.com$image
-email.mg.abramsonlabor.com$image
-email.mg.absolument-tout.net$image
-email.mg.abundantbrides.com$image
-email.mg.abuseipdb.com$image
-email.mg.abvacademy.com$image
-email.mg.abwe.ca$image
-email.mg.aca.am$image
-email.mg.academiatren.com$image
-email.mg.academy.tomorrowland.com$image
-email.mg.academybysand.com.br$image
-email.mg.academyex.com$image
-email.mg.acadium.com$image
-email.mg.acba.am$image
-email.mg.acca-spa.com$image
-email.mg.accelerate-english.co.uk$image
-email.mg.accomproperties.com.au$image
-email.mg.accoya.com$image
-email.mg.accs.ie$image
-email.mg.accuratebiometrics.com$image
-email.mg.accutekpackaging.com$image
-email.mg.acefms.com$image
-email.mg.acfatlantachefs.org$image
-email.mg.achatshopping.com$image
-email.mg.acihoustonchapter.org$image
-email.mg.acilasvegas.org$image
-email.mg.aciso-suite.com$image
-email.mg.acmi.net.au$image
-email.mg.acmplc.com$image
-email.mg.acousticsamples.com$image
-email.mg.acspro.app$image
-email.mg.actioncoin.com$image
-email.mg.actionhobbies.co.uk$image
-email.mg.activ360.com.ng$image
-email.mg.activebooker.com$image
-email.mg.activefilings.com$image
-email.mg.activeman.com$image
-email.mg.activewellnessjournal.com$image
-email.mg.actualiteshopping.com$image
-email.mg.ad120.co.il$image
-email.mg.adagio.com$image
-email.mg.adamsestateauctions.com$image
-email.mg.adbutler.com$image
-email.mg.adcell.de$image
-email.mg.addwishemail.com$image
-email.mg.adh.com$image
-email.mg.adheart.me$image
-email.mg.adhoc.ar$image
-email.mg.admediasolution.com$image
-email.mg.admin.parcelmonkey.com$image
-email.mg.admiralbet.me$image
-email.mg.admiralbet.rs$image
-email.mg.adnitro.de$image
-email.mg.adoptersforadoption.com$image
-email.mg.adrianahoyos.com$image
-email.mg.adscausesensation.com$image
-email.mg.adspecials.us$image
-email.mg.adubuildermarketing.com$image
-email.mg.advance24.online$image
-email.mg.advancedcouponsplugin.com$image
-email.mg.adventure-expeditions.net$image
-email.mg.advicebrands.com$image
-email.mg.advitalmd.com$image
-email.mg.aedwardsinc.com$image
-email.mg.aeenewengland.org$image
-email.mg.aerodome.com$image
-email.mg.aestheticrecord.com$image
-email.mg.afceducators.org$image
-email.mg.afcfitness.com$image
-email.mg.affordablemobiles.co.uk$image
-email.mg.africanhorsesafaris.com$image
-email.mg.afrinvestor.com$image
-email.mg.afterfound.co$image
-email.mg.againfaster.com.au$image
-email.mg.agedcaredecisions.com.au$image
-email.mg.agencylink.co$image
-email.mg.agencyownersupport.com$image
-email.mg.agentautopilot.com$image
-email.mg.agenticonnct.me$image
-email.mg.agifineart.com$image
-email.mg.agileweb.it$image
-email.mg.agoabuyersclub.com$image
-email.mg.agora-gallery.com$image
-email.mg.agoramodels.com$image
-email.mg.agrealestateteam.ca$image
-email.mg.agrinous.com$image
-email.mg.agstaff.co.nz$image
-email.mg.agylia.com$image
-email.mg.ahadandco.com$image
-email.mg.ahapay.my$image
-email.mg.aiagencyinsiders.com$image
-email.mg.aiamnow.com$image
-email.mg.aiavengers.team$image
-email.mg.aicharacter.cards$image
-email.mg.aicontentlab.io$image
-email.mg.aiforbusiness.com$image
-email.mg.aimscap.com$image
-email.mg.airlockertraining.com$image
-email.mg.airpay.co.id$image
-email.mg.airpay.co.th$image
-email.mg.airpay.com$image
-email.mg.airpay.in.th$image
-email.mg.airpay.sg$image
-email.mg.airpay.vn$image
-email.mg.airsoftgi.com$image
-email.mg.aiselfi.es$image
-email.mg.aislelabs.com$image
-email.mg.aislelabs.net$image
-email.mg.ajc-ajj.ca$image
-email.mg.ajsmooth.com$image
-email.mg.akarta.com.br$image
-email.mg.akcniletak.cz$image
-email.mg.akefas-pathologos.com$image
-email.mg.alajeseku.com$image
-email.mg.albeka.nl$image
-email.mg.albuhutifiqh.com$image
-email.mg.alcyonegrowth.com$image
-email.mg.aldorr.nl$image
-email.mg.alecgs.org$image
-email.mg.alesscolom.es$image
-email.mg.alexandrastockwell.com$image
-email.mg.alexandrecormont.com$image
-email.mg.alexisberda.com$image
-email.mg.ali2bd.com$image
-email.mg.aliansalud-cartera.com.co$image
-email.mg.alibakisfitness.com$image
-email.mg.aliciasquaredllc.com$image
-email.mg.aligndpilatesstudio.com.au$image
-email.mg.alinea-engage.com$image
-email.mg.alirotalent.com$image
-email.mg.alivecor.com$image
-email.mg.allcore.it$image
-email.mg.alliants.app$image
-email.mg.alliedbenefit.com$image
-email.mg.allo-astro.com$image
-email.mg.alloutbookings.co.za$image
-email.mg.alloy.com$image
-email.mg.allridi.com$image
-email.mg.allughawi.com$image
-email.mg.almarjanisland.com$image
-email.mg.alnawawifiqh.com$image
-email.mg.alpaca.markets$image
-email.mg.alpha-futures.com$image
-email.mg.alphaspread.com$image
-email.mg.alpinsport.pl$image
-email.mg.alpop.com.br$image
-email.mg.alsglobal.net$image
-email.mg.altacucina.co$image
-email.mg.altira.com.br$image
-email.mg.alve.pl$image
-email.mg.alwayseducation.com$image
-email.mg.amalirshaidat.com$image
-email.mg.amantesyamigos.com$image
-email.mg.amarkets-email.com$image
-email.mg.amarotic.com$image
-email.mg.americandealer.com$image
-email.mg.amerifleet.com$image
-email.mg.amerikaantje.be$image
-email.mg.amiibo.exchange$image
-email.mg.amili.fi$image
-email.mg.amsonews.com$image
-email.mg.amss.org.rs$image
-email.mg.amyduncanhealth.com$image
-email.mg.anastasis.it$image
-email.mg.anayawithin.com$image
-email.mg.andamentos.astrea.aurum.com.br$image
-email.mg.andraolaru.com$image
-email.mg.andrea-kirchner.com$image
-email.mg.andreamagrin.com$image
-email.mg.andrescrypto.co$image
-email.mg.andrewsimpsoncentres.org$image
-email.mg.angelasonline.co.uk$image
-email.mg.angelflightne.org$image
-email.mg.angelnetwork.com$image
-email.mg.angelomateas.com$image
-email.mg.angelwholesale.co.uk$image
-email.mg.angeplus.com.br$image
-email.mg.angloplatform.com$image
-email.mg.animati.com.br$image
-email.mg.anketka.com$image
-email.mg.ankihub.net$image
-email.mg.annabellepicker.com$image
-email.mg.annonsborsen.se$image
-email.mg.annsplace.org$image
-email.mg.anotherzeropr.com$image
-email.mg.ansleyre.com$image
-email.mg.answeredinsight.co.za$image
-email.mg.anthonymasonrealty.com$image
-email.mg.anthonyoneal.com$image
-email.mg.antje-lehmann.com$image
-email.mg.antoinereydel.fr$image
-email.mg.antoree.com$image
-email.mg.anue.eu$image
-email.mg.anywh
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import re
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from html import unescape
+from pathlib import Path
+from typing import Any
+
+
+TIER_WEIGHTS = {0: 100, 1: 80, 2: 60, 3: 35}
+STALE_PENALTY = 25
+DEFAULT_WINDOWS = ["10m", "1h", "6h", "24h"]
+CRISIS_EXPECTED_SOURCE_FAMILIES = [
+    "government",
+    "wire",
+    "major_news",
+    "public_ais",
+    "public_ship_tracker",
+    "social",
+]
+ENERGY_WAR_EXPECTED_SOURCE_FAMILIES = [
+    "government",
+    "wire",
+    "major_news",
+    "specialist",
+    "public_ship_tracker",
+    "social",
+]
+ENERGY_WAR_DEFAULT_MARKET_RELEVANCE = [
+    "Brent and seaborne oil shock sensitivity",
+    "TTF and Asian LNG sensitivity relative to Henry Hub",
+    "Rates, inflation, and risk-asset headline sensitivity",
+]
+ENERGY_WAR_BENCHMARK_WATCHLIST = [
+    "Brent",
+    "WTI",
+    "TTF",
+    "JKM-style LNG",
+    "Henry Hub",
+    "tanker rates",
+    "prompt spreads",
+    "reserve releases",
+    "OPEC spare capacity",
+    "Qatar LNG flows",
+    "Hormuz flows",
+]
+ENERGY_WAR_NEXT_WATCH_ITEMS = [
+    "Check whether price action is led by Brent, not just WTI.",
+    "Check whether TTF and Asian LNG are reacting more than Henry Hub.",
+    "Separate physical disruption from pure risk premium using flow, freight, and insurance evidence.",
+    "Track reserve releases, rerouting, and spare-capacity language before calling the shock persistent.",
+]
+ENERGY_WAR_KEYWORDS = {
+    "hormuz",
+    "oil",
+    "crude",
+    "lng",
+    "gas",
+    "brent",
+    "wti",
+    "ttf",
+    "jkm",
+    "henry hub",
+    "qatar",
+    "tanker",
+    "shipping",
+    "energy war",
+}
+
+TIER_BY_SOURCE_TYPE = {
+    "official": 0,
+    "official_statement": 0,
+    "official_release": 0,
+    "government": 0,
+    "government_release": 0,
+    "government_ministry": 0,
+    "regulator": 0,
+    "regulator_filing": 0,
+    "company_filing": 0,
+    "exchange_filing": 0,
+    "company_statement": 0,
+    "wire": 1,
+    "major_news": 1,
+    "major_press": 1,
+    "major_media": 1,
+    "specialist": 2,
+    "specialist_outlet": 2,
+    "analysis": 2,
+    "research_note": 2,
+    "public_ais": 2,
+    "public_ship_tracker": 2,
+    "ship_tracker": 2,
+    "ais": 2,
+    "blog": 3,
+    "community": 3,
+    "market_rumor": 3,
+    "rumor": 3,
+    "social": 3,
+}
+
+RECENCY_WINDOWS = [
+    ("10m", 10, 40),
+    ("1h", 60, 30),
+    ("6h", 360, 20),
+    ("24h", 1440, 10),
+]
+
+
+@dataclass
+class ClaimEvidence:
+    supports: list[dict[str, Any]]
+    contradicts: list[dict[str, Any]]
+
+
+def now_utc() -> datetime:
+    return datetime.now(UTC)
+
+
+def clamp(value: float, low: int = 0, high: int = 100) -> int:
+    return max(low, min(high, int(round(value))))
+
+
+def average(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    return sum(values) / len(values)
+
+
+def safe_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def safe_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def parse_datetime(value: Any, *, fallback: datetime | None = None) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
+    if not isinstance(value, str):
+        return fallback
+
+    text = value.strip()
+    if not text:
+        return fallback
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        try:
+            parsed = datetime.fromisoformat(f"{text}T00:00:00+00:00")
+        except ValueError:
+            return fallback
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def isoformat_or_blank(value: datetime | None) -> str:
+    return value.astimezone(UTC).isoformat() if value else ""
+
+
+def normalize_source_type(value: Any) -> str:
+    text = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    return text or "unknown"
+
+
+def source_tier_for(source_type: str) -> int:
+    return TIER_BY_SOURCE_TYPE.get(
+        source_type,
+        2 if "ais" in source_type else 3 if "social" in source_type else 1 if "news" in source_type else 2,
+    )
+
+
+def source_family_for(source_type: str) -> str:
+    if source_type.startswith("government") or source_type.startswith("official"):
+        return "government"
+    if source_type.startswith("regulator") or source_type.endswith("filing"):
+        return "government"
+    if source_type in {"wire", "major_news", "major_press", "major_media"}:
+        return source_type if source_type != "major_press" and source_type != "major_media" else "major_news"
+    if source_type in {"public_ais", "ais"}:
+        return "public_ais"
+    if source_type in {"public_ship_tracker", "ship_tracker"}:
+        return "public_ship_tracker"
+    if source_type in {"social", "market_rumor", "rumor", "community"}:
+        return "social"
+    return source_type
+
+
+def recency_bucket(age_minutes: float) -> str:
+    if age_minutes <= 10:
+        return "0-10m"
+    if age_minutes <= 60:
+        return "10-60m"
+    if age_minutes <= 360:
+        return "1-6h"
+    if age_minutes <= 1440:
+        return "6-24h"
+    return ">24h"
+
+
+def recency_boost(age_minutes: float) -> int:
+    if age_minutes <= 10:
+        return 40
+    if age_minutes <= 60:
+        return 30
+    if age_minutes <= 360:
+        return 20
+    if age_minutes <= 1440:
+        return 10
+    return 0
+
+
+def staleness_penalty(age_minutes: float) -> int:
+    return STALE_PENALTY if age_minutes > 1440 else 0
+
+
+def slugify(text: str, fallback: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return cleaned or fallback
+
+
+def clean_string_list(value: Any) -> list[str]:
+    cleaned: list[str] = []
+    for item in safe_list(value):
+        text = str(item).strip()
+        if text and text not in cleaned:
+            cleaned.append(text)
+    return cleaned
+
+
+def normalize_preset(value: Any) -> str:
+    return str(value or "").strip().lower().replace("_", "-").replace(" ", "-")
+
+
+def infer_preset(payload: dict[str, Any]) -> str:
+    explicit = normalize_preset(payload.get("preset") or payload.get("news_preset") or payload.get("crisis_preset"))
+    if explicit:
+        return explicit
+    haystack_parts = [
+        str(payload.get("topic", "")).strip(),
+        str(payload.get("use_case", "")).strip(),
+        " ".join(clean_string_list(payload.get("questions"))),
+        " ".join(clean_string_list(payload.get("market_relevance"))),
+    ]
+    for claim in safe_list(payload.get("claims")):
+        if isinstance(claim, dict):
+            haystack_parts.append(str(claim.get("claim_text", "")).strip())
+    haystack = " ".join(part.lower() for part in haystack_parts if part)
+    if any(keyword in haystack for keyword in ENERGY_WAR_KEYWORDS):
+        return "energy-war"
+    return ""
+
+
+def merge_unique_strings(base: list[str], additions: list[str]) -> list[str]:
+    merged = list(base)
+    for item in additions:
+        text = str(item).strip()
+        if text and text not in merged:
+            merged.append(text)
+    return merged
+
+
+def clean_artifact_manifest(value: Any) -> list[dict[str, Any]]:
+    cleaned: list[dict[str, Any]] = []
+    for item in safe_list(value):
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path", "")).strip()
+        source_url = str(item.get("source_url", "")).strip()
+        role = str(item.get("role", "")).strip()
+        media_type = str(item.get("media_type", "")).strip()
+        if not any([path, source_url, role, media_type]):
+            continue
+        cleaned.append(
+            {
+                "role": role,
+                "path": path,
+                "source_url": source_url,
+                "media_type": media_type,
+                "summary": short_excerpt(item.get("summary") or item.get("caption") or item.get("title"), limit=180),
+            }
+        )
+    return cleaned
+
+
+def short_excerpt(text: Any, limit: int = 180) -> str:
+    cleaned = " ".join(str(text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 3].rstrip() + "..."
+
+
+def age_minutes_since(analysis_time: datetime, published_at: datetime | None, observed_at: datetime | None) -> float:
+    anchor = published_at or observed_at or analysis_time
+    return max(0.0, (analysis_time - anchor).total_seconds() / 60.0)
+
+
+def minutes_label(minutes: float) -> str:
+    if minutes < 60:
+        return f"{int(round(minutes))}m"
+    if minutes < 1440:
+        return f"{round(minutes / 60.0, 1):g}h"
+    return f"{round(minutes / 1440.0, 1):g}d"
+
+
+def normalize_claim_state(value: Any) -> str:
+    state = str(value or "").strip().lower()
+    aliases = {
+        "supporting": "support",
+        "supported": "support",
+        "confirm": "support",
+        "confirmed": "support",
+        "deny": "contradict",
+        "denied": "contradict",
+        "refute": "contradict",
+        "refuted": "contradict",
+        "uncertain": "unclear",
+    }
+    return aliases.get(state, state or "support")
+
+
+def fetch_public_excerpt(url: str) -> tuple[str, str]:
+    request = urllib.request.Request(url, headers={"User-Agent": "Codex-NewsIndex/1.0"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        raw = response.read(4096)
+    return short_excerpt(raw.decode("utf-8", errors="ignore"), limit=240), "public"
+
+
+def extract_meta_content(html: str, attribute: str, name: str) -> str:
+    patterns = [
+        rf"<meta[^>]+{attribute}=[\"']{re.escape(name)}[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>",
+        rf"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+{attribute}=[\"']{re.escape(name)}[\"'][^>]*>",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, html, flags=re.IGNORECASE)
+        if match:
+            return short_excerpt(unescape(match.group(1)), limit=500)
+    return ""
+
+
+def extract_html_title(html: str) -> str:
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
+    return short_excerpt(unescape(match.group(1)) if match else "", limit=200)
+
+
+def fetch_public_page_hints(url: str) -> dict[str, Any]:
+    request = urllib.request.Request(url, headers={"User-Agent": "Codex-NewsIndex/1.0"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        final_url = response.geturl()
+        raw = response.read(65536)
+
+    html = raw.decode("utf-8", errors="ignore")
+    visible_excerpt = short_excerpt(unescape(re.sub(r"<[^>]+>", " ", html)), limit=240)
+    title = (
+        extract_meta_content(html, "property", "og:title")
+        or extract_meta_content(html, "name", "twitter:title")
+        or extract_html_title(html)
+    )
+    image_alt = (
+        extract_meta_content(html, "property", "og:image:alt")
+        or extract_meta_content(html, "name", "twitter:image:alt")
+    )
+    image_url = (
+        extract_meta_content(html, "property", "og:image")
+        or extract_meta_content(html, "name", "twitter:image")
+    )
+    normalized_image_url = urllib.parse.urljoin(final_url, image_url) if image_url else ""
+    image_summary = short_excerpt(image_alt or title, limit=180)
+    artifact_manifest = []
+    if normalized_image_url:
+        artifact_manifest.append(
+            {
+                "role": "post_media",
+                "path": "",
+                "source_url": normalized_image_url,
+                "media_type": "image",
+                "summary": image_summary,
+            }
+        )
+
+    return {
+        "text_excerpt": visible_excerpt,
+        "access_mode": "public",
+        "post_summary": short_excerpt(title, limit=180),
+        "media_summary": image_summary,
+        "artifact_manifest": artifact_manifest,
+    }
+
+
+def access_rank(access_mode: str) -> int:
+    return {"public": 3, "browser_session": 2, "blocked": 1}.get(access_mode, 0)
+
+
+def claim_text_map_from_request(request: dict[str, Any]) -> dict[str, str]:
+    claim_map: dict[str, str] = {}
+    for claim in safe_list(request.get("claims")):
+        if not isinstance(claim, dict):
+            continue
+        claim_id = str(claim.get("claim_id", "")).strip()
+        if claim_id:
+            claim_map[claim_id] = str(claim.get("claim_text", "")).strip()
+    return claim_map
+
+
+def upgrade_legacy_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    if "candidates" in payload or "source_candidates" in payload:
+        return payload
+
+    source_pack = safe_dict(payload.get("source_pack"))
+    if not source_pack:
+        return payload
+
+    analysis_time = (
+        payload.get("analysis_time")
+        or source_pack.get("analysis_date")
+        or payload.get("analysis_date")
+        or ""
+    )
+    claims = []
+    for index, claim in enumerate(safe_list(source_pack.get("key_claims")), start=1):
+        if not isinstance(claim, dict):
+            continue
+        claim_id = str(claim.get("claim_id") or f"claim-{index:02d}")
+        claims.append(
+            {
+                "claim_id": claim_id,
+                "claim_text": str(claim.get("claim") or claim.get("claim_text") or "").strip(),
+                "expected_status": str(claim.get("status", "")).strip(),
+            }
+        )
+
+    candidates = []
+    for index, source in enumerate(safe_list(source_pack.get("sources")), start=1):
+        if not isinstance(source, dict):
+            continue
+        candidates.append(
+            {
+                "source_id": str(source.get("source_id") or f"legacy-source-{index:02d}"),
+                "source_name": source.get("name", ""),
+                "source_type": source.get("type") or source.get("source_type") or "major_news",
+                "published_at": source.get("published_at") or analysis_time,
+                "observed_at": source.get("observed_at") or source.get("published_at") or analysis_time,
+                "url": source.get("url", ""),
+                "text_excerpt": source.get("support", ""),
+                "claim_ids": [claim["claim_id"] for claim in claims],
+                "channel": "shadow",
+                "access_mode": source.get("access_mode") or "public",
+            }
+        )
+
+    return {
+        "topic": payload.get("topic")
+        or source_pack.get("event_label")
+        or payload.get("title")
+        or payload.get("task_goal")
+        or "news-index-topic",
+        "analysis_time": analysis_time,
+        "questions": payload.get("questions") or [payload.get("claim_to_evaluate") or payload.get("task_goal") or ""],
+        "use_case": payload.get("use_case") or "legacy-run-record-upgrade",
+        "source_preferences": payload.get("source_preferences") or [],
+        "mode": payload.get("mode") or "generic",
+        "windows": payload.get("windows") or DEFAULT_WINDOWS,
+        "claims": claims,
+        "candidates": candidates,
+        "market_relevance": payload.get("market_relevance") or [],
+        "market_relevance_zh": payload.get("market_relevance_zh") or [],
+        "expected_source_families": payload.get("expected_source_families") or [],
+    }
+
+
+def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    payload = upgrade_legacy_payload(raw_payload)
+    analysis_time = parse_datetime(payload.get("analysis_time"), fallback=now_utc()) or now_utc()
+    preset = infer_preset(payload)
+    mode = "crisis" if preset == "energy-war" or str(payload.get("mode", "")).strip().lower() == "crisis" else "generic"
+    expected_source_families = clean_string_list(payload.get("expected_source_families"))
+    if mode == "crisis":
+        for family in CRISIS_EXPECTED_SOURCE_FAMILIES:
+            if family not in expected_source_families:
+                expected_source_families.append(family)
+    market_relevance = clean_string_list(payload.get("market_relevance"))
+    market_relevance_zh = clean_string_list(payload.get("market_relevance_zh"))
+    benchmark_watchlist = clean_string_list(payload.get("benchmark_watchlist"))
+    preset_watch_items = clean_string_list(payload.get("preset_watch_items"))
+    if preset == "energy-war":
+        expected_source_families = merge_unique_strings(expected_source_families, ENERGY_WAR_EXPECTED_SOURCE_FAMILIES)
+        if not market_relevance:
+            market_relevance = list(ENERGY_WAR_DEFAULT_MARKET_RELEVANCE)
+        if not benchmark_watchlist:
+            benchmark_watchlist = list(ENERGY_WAR_BENCHMARK_WATCHLIST)
+        if not preset_watch_items:
+            preset_watch_items = list(ENERGY_WAR_NEXT_WATCH_ITEMS)
+
+    return {
+        "topic": str(payload.get("topic", "")).strip() or "news-index-topic",
+        "analysis_time": analysis_time,
+        "questions": clean_string_list(payload.get("questions")),
+        "use_case": str(payload.get("use_case", "")).strip() or "news-index",
+        "source_preferences": clean_string_list(payload.get("source_preferences")),
+        "mode": mode,
+        "windows": clean_string_list(payload.get("windows")) or list(DEFAULT_WINDOWS),
+        "claims": [item for item in safe_list(payload.get("claims")) if isinstance(item, dict)],
+        "candidates": [
+            item
+            for item in safe_list(payload.get("candidates") or payload.get("source_candidates"))
+            if isinstance(item, dict)
+        ],
+        "market_relevance": market_relevance,
+        "market_relevance_zh": market_relevance_zh,
+        "expected_source_families": expected_source_families,
+        "crisis_defaults": safe_dict(payload.get("crisis_defaults")),
+        "preset": preset,
+        "benchmark_watchlist": benchmark_watchlist,
+        "preset_watch_items": preset_watch_items,
+        "max_parallel_candidates": max(
+            1,
+            int(payload.get("max_parallel_candidates", payload.get("parallel_candidates", 4)) or 1),
+        ),
+    }
+
+
+def normalize_candidate(
+    candidate: dict[str, Any],
+    analysis_time: datetime,
+    claim_texts: dict[str, str],
+    index: int,
+) -> dict[str, Any]:
+    source_name = str(candidate.get("source_name") or candidate.get("name") or f"source-{index:02d}").strip()
+    source_type = normalize_source_type(candidate.get("source_type") or candidate.get("type"))
+    source_id = str(candidate.get("source_id") or slugify(source_name, f"source-{index:02d}")).strip()
+    published_raw = candidate.get("published_at")
+    published_at = parse_datetime(published_raw, fallback=analysis_time if published_raw is None else None)
+    observed_at = parse_datetime(candidate.get("observed_at"), fallback=published_at or analysis_time)
+    access_mode = str(candidate.get("access_mode", "public")).strip() or "public"
+    text_excerpt = short_excerpt(
+        candidate.get("text_excerpt") or candidate.get("summary") or candidate.get("support") or ""
+    )
+    post_summary = str(candidate.get("post_summary", "")).strip()
+    media_summary = str(candidate.get("media_summary", "")).strip()
+    artifact_manifest = clean_artifact_manifest(candidate.get("artifact_manifest"))
+
+    if access_mode != "blocked" and not text_excerpt and str(candidate.get("url", "")).strip():
+        try:
+            text_excerpt, access_mode = fetch_public_excerpt(str(candidate.get("url")).strip())
+        except (TimeoutError, OSError, urllib.error.URLError):
+            access_mode = "blocked"
+
+    if access_mode != "blocked" and str(candidate.get("url", "")).strip() and not artifact_manifest:
+        try:
+            page_hints = fetch_public_page_hints(str(candidate.get("url")).strip())
+            if not text_excerpt:
+                text_excerpt = short_excerpt(page_hints.get("text_excerpt"))
+            if not post_summary:
+                post_summary = str(page_hints.get("post_summary", "")).strip()
+            if not media_summary:
+                media_summary = str(page_hints.get("media_summary", "")).strip()
+            artifact_manifest = clean_artifact_manifest(page_hints.get("artifact_manifest"))
+        except (TimeoutError, OSError, urllib.error.URLError, ValueError):
+            pass
+
+    claim_ids = clean_string_list(candidate.get("claim_ids"))
+    raw_states = safe_dict(candidate.get("claim_states") or candidate.get("stance_by_claim"))
+    claim_states = {
+        claim_id: normalize_claim_state(raw_states.get(claim_id) or candidate.get("claim_state") or "support")
+        for claim_id in claim_ids
+    }
+
+    age = age_minutes_since(analysis_time, published_at, observed_at)
+    source_tier = source_tier_for(source_type)
+    channel = str(candidate.get("channel", "")).strip().lower()
+    if channel not in {"core", "shadow", "background"}:
+        channel = "core" if source_tier <= 1 else "shadow"
+    if access_mode == "blocked":
+        channel = "background"
+    if age > 1440:
+        channel = "background"
+
+    return {
+        "source_id": source_id,
+        "source_name": source_name,
+        "source_type": source_type,
+        "source_tier": source_tier,
+        "origin": str(candidate.get("origin", "")).strip(),
+        "agent_reach_channel": str(candidate.get("agent_reach_channel", "")).strip(),
+        "channel": channel,
+        "published_at": isoformat_or_blank(published_at),
+        "observed_at": isoformat_or_blank(observed_at),
+        "url": str(candidate.get("url", "")).strip(),
+        "claim_ids": claim_ids,
+        "entity_ids": clean_string_list(candidate.get("entity_ids")),
+        "vessel_ids": clean_string_list(candidate.get("vessel_ids")),
+        "text_excerpt": text_excerpt,
+        "position_hint": deepcopy(candidate.get("position_hint")),
+        "geo_hint": deepcopy(candidate.get("geo_hint")),
+        "access_mode": access_mode,
+        "rank_score": 0,
+        "recency_bucket": recency_bucket(age),
+        "age_minutes": round(age, 2),
+        "age_label": minutes_label(age),
+        "claim_states": claim_states,
+        "claim_texts": {claim_id: claim_texts.get(claim_id, "") for claim_id in claim_ids},
+        "raw_metadata": deepcopy(candidate.get("raw_metadata")) if isinstance(candidate.get("raw_metadata"), dict) else {},
+        "artifact_manifest": artifact_manifest,
+        "x_post_record": deepcopy(candidate.get("x_post_record")) if isinstance(candidate.get("x_post_record"), dict) else {},
+        "post_text_raw": str(candidate.get("post_text_raw", "")).strip(),
+        "post_text_source": str(candidate.get("post_text_source", "")).strip(),
+        "post_text_confidence": candidate.get("post_text_confidence", 0.0),
+        "root_post_screenshot_path": str(candidate.get("root_post_screenshot_path", "")).strip(),
+        "thread_posts": deepcopy(candidate.get("thread_posts")) if isinstance(candidate.get("thread_posts"), list) else [],
+        "media_items": deepcopy(candidate.get("media_items")) if isinstance(candidate.get("media_items"), list) else [],
+        "post_summary": post_summary,
+        "media_summary": media_summary,
+        "combined_summary": str(candidate.get("combined_summary", "")).strip(),
+        "discovery_reason": str(candidate.get("discovery_reason", "")).strip(),
+        "crawl_notes": deepcopy(candidate.get("crawl_notes")) if isinstance(candidate.get("crawl_notes"), list) else [],
+    }
+
+
+def error_observation(
+    candidate: dict[str, Any],
+    analysis_time: datetime,
+    claim_texts: dict[str, str],
+    index: int,
+    error: Exception,
+) -> dict[str, Any]:
+    try:
+        source_name = str(candidate.get("source_name") or candidate.get("name") or candidate.get("url") or "").strip()
+    except Exception:
+        source_name = ""
+    source_name = source_name or f"source-{index:02d}"
+    published_at = parse_datetime(candidate.get("published_at"), fallback=analysis_time) or analysis_time
+    observed_at = parse_datetime(candidate.get("observed_at"), fallback=published_at) or published_at
+    claim_ids = clean_string_list(candidate.get("claim_ids"))
+    raw_states = safe_dict(candidate.get("claim_states") or candidate.get("stance_by_claim"))
+    claim_states = {
+        claim_id: normalize_claim_state(raw_states.get(claim_id) or candidate.get("claim_state") or "unclear")
+        for claim_id in claim_ids
+    }
+    message = short_excerpt(f"Candidate normalization failed: {error}", limit=220)
+    age = age_minutes_since(analysis_time, published_at, observed_at)
+    return {
+        "source_id": str(candidate.get("source_id") or f"error-source-{index:02d}").strip() or f"error-source-{index:02d}",
+        "source_name": source_name,
+        "source_type": normalize_source_type(candidate.get("source_type") or candidate.get("type") or "social"),
+        "source_tier": 3,
+        "origin": str(candidate.get("origin", "")).strip(),
+        "agent_reach_channel": str(candidate.get("agent_reach_channel", "")).strip(),
+        "channel": "background",
+        "published_at": isoformat_or_blank(published_at),
+        "observed_at": isoformat_or_blank(observed_at),
+        "url": str(candidate.get("url", "")).strip(),
+        "claim_ids": claim_ids,
+        "entity_ids": clean_string_list(candidate.get("entity_ids")),
+        "vessel_ids": clean_string_list(candidate.get("vessel_ids")),
+        "text_excerpt": message,
+        "position_hint": deepcopy(candidate.get("position_hint")),
+        "geo_hint": deepcopy(candidate.get("geo_hint")),
+        "access_mode": "blocked",
+        "rank_score": 0,
+        "recency_bucket": recency_bucket(age),
+        "age_minutes": round(age, 2),
+        "age_label": minutes_label(age),
+        "claim_states": claim_states,
+        "claim_texts": {claim_id: claim_texts.get(claim_id, "") for claim_id in claim_ids},
+        "raw_metadata": deepcopy(candidate.get("raw_metadata")) if isinstance(candidate.get("raw_metadata"), dict) else {},
+        "artifact_manifest": clean_artifact_manifest(candidate.get("artifact_manifest")),
+        "x_post_record": {},
+        "post_text_raw": "",
+        "post_text_source": "unavailable",
+        "post_text_confidence": 0.0,
+        "root_post_screenshot_path": "",
+        "thread_posts": [],
+        "media_items": [],
+        "post_summary": "",
+        "media_summary": "",
+        "combined_summary": "",
+        "discovery_reason": "",
+        "crawl_notes": [{"kind": "normalization_error", "message": str(error)}],
+    }
+
+
+def dedupe_observations(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for observation in observations:
+        key = (
+            observation.get("url", "") or observation.get("source_name", ""),
+            observation.get("published_at", ""),
+            "|".join(sorted(observation.get("claim_ids", []))),
+            observation.get("text_excerpt", ""),
+        )
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = observation
+            continue
+
+        existing["claim_ids"] = sorted(set(existing["claim_ids"]) | set(observation["claim_ids"]))
+        existing["entity_ids"] = sorted(set(existing["entity_ids"]) | set(observation["entity_ids"]))
+        existing["vessel_ids"] = sorted(set(existing["vessel_ids"]) | set(observation["vessel_ids"]))
+        existing["claim_states"].update(observation.get("claim_states", {}))
+        existing["claim_texts"].update(observation.get("claim_texts", {}))
+        if access_rank(observation.get("access_mode", "")) > access_rank(existing.get("access_mode", "")):
+            existing["access_mode"] = observation.get("access_mode", "")
+        if observation.get("origin") and not existing.get("origin"):
+            existing["origin"] = observation.get("origin", "")
+        if observation.get("agent_reach_channel") and not existing.get("agent_reach_channel"):
+            existing["agent_reach_channel"] = observation.get("agent_reach_channel", "")
+        if len(observation.get("text_excerpt", "")) > len(existing.get("text_excerpt", "")):
+            existing["text_excerpt"] = observation.get("text_excerpt", "")
+        if observation.get("raw_metadata") and not existing.get("raw_metadata"):
+            existing["raw_metadata"] = deepcopy(observation.get("raw_metadata", {}))
+        if len(observation.get("post_text_raw", "")) > len(existing.get("post_text_raw", "")):
+            existing["post_text_raw"] = observation.get("post_text_raw", "")
+            existing["post_text_source"] = observation.get("post_text_source", "")
+            existing["post_text_confidence"] = observation.get("post_text_confidence", 0.0)
+        if len(observation.get("post_summary", "")) > len(existing.get("post_summary", "")):
+            existing["post_summary"] = observation.get("post_summary", "")
+        if len(observation.get("media_summary", "")) > len(existing.get("media_summary", "")):
+            existing["media_summary"] = observation.get("media_summary", "")
+        if len(observation.get("combined_summary", "")) > len(existing.get("combined_summary", "")):
+            existing["combined_summary"] = observation.get("combined_summary", "")
+        if observation.get("root_post_screenshot_path") and not existing.get("root_post_screenshot_path"):
+            existing["root_post_screenshot_path"] = observation.get("root_post_screenshot_path", "")
+        if observation.get("thread_posts") and not existing.get("thread_posts"):
+            existing["thread_posts"] = deepcopy(observation.get("thread_posts", []))
+        if observation.get("media_items") and not existing.get("media_items"):
+            existing["media_items"] = deepcopy(observation.get("media_items", []))
+        if observation.get("x_post_record") and not existing.get("x_post_record"):
+            existing["x_post_record"] = deepcopy(observation.get("x_post_record", {}))
+        if observation.get("artifact_manifest"):
+            merged_artifacts = {
+                (item.get("role", ""), item.get("path", ""), item.get("source_url", "")): item
+                for item in existing.get("artifact_manifest", [])
+            }
+            for artifact in observation.get("artifact_manifest", []):
+                key = (artifact.get("role", ""), artifact.get("path", ""), artifact.get("source_url", ""))
+                merged_artifacts[key] = artifact
+            existing["artifact_manifest"] = list(merged_artifacts.values())
+        if observation.get("crawl_notes"):
+            existing["crawl_notes"] = clean_string_list(existing.get("crawl_notes", []) + observation.get("crawl_notes", []))
+    return list(merged.values())
+
+
+def build_claim_index(request: dict[str, Any], observations: list[dict[str, Any]]) -> dict[str, str]:
+    claim_map = claim_text_map_from_request(request)
+    for observation in observations:
+        for claim_id, claim_text in observation.get("claim_texts", {}).items():
+            if claim_id not in claim_map and claim_text:
+                claim_map[claim_id] = claim_text
+    return claim_map
+
+
+def build_claim_evidence(observations: list[dict[str, Any]]) -> dict[str, ClaimEvidence]:
+    claim_index: dict[str, ClaimEvidence] = {}
+    for observation in observations:
+        if observation.get("access_mode") == "blocked":
+            continue
+        for claim_id in observation.get("claim_ids", []):
+            evidence = claim_index.setdefault(claim_id, ClaimEvidence(supports=[], contradicts=[]))
+            state = normalize_claim_state(observation.get("claim_states", {}).get(claim_id))
+            if state == "contradict":
+                evidence.contradicts.append(observation)
+            else:
+                evidence.supports.append(observation)
+    return claim_index
+
+
+def corroboration_boost_for(observation: dict[str, Any], evidence_index: dict[str, ClaimEvidence]) -> int:
+    corroborators: dict[str, dict[str, Any]] = {}
+    source_id = observation.get("source_id")
+    for claim_id in observation.get("claim_ids", []):
+        evidence = evidence_index.get(claim_id)
+        if not evidence:
+            continue
+        for other in evidence.supports:
+            if other.get("source_id") == source_id:
+                continue
+            corroborators[other.get("source_id", "")] = other
+    corroborators.pop("", None)
+    if not corroborators:
+        return 0
+    if len(corroborators) >= 2 and len({item.get("source_tier", 3) for item in corroborators.values()}) >= 2:
+        return 25
+    return 15
+
+
+def contradiction_penalty_for(observation: dict[str, Any], evidence_index: dict[str, ClaimEvidence]) -> int:
+    penalties: list[int] = []
+    source_tier = observation.get("source_tier", 3)
+    for claim_id in observation.get("claim_ids", []):
+        evidence = evidence_index.get(claim_id)
+        if not evidence:
+            continue
+        for other in evidence.contradicts:
+            other_age = float(other.get("age_minutes", 0.0))
+            other_tier = other.get("source_tier", 3)
+            if other_age > 1440:
+                penalties.append(10)
+            elif other_tier <= 1 and other_tier < source_tier:
+                penalties.append(35)
+            elif other_tier == source_tier:
+                penalties.append(20)
+            else:
+                penalties.append(15)
+    return max(penalties, default=0)
+
+
+def fallback_channel(observation: dict[str, Any]) -> str:
+    if observation.get("access_mode") == "blocked":
+        return "background"
+    if float(observation.get("age_minutes", 0.0)) > 1440:
+        return "background"
+    if observation.get("source_tier", 3) <= 1:
+        return "core"
+    return "shadow"
+
+
+def rerank_observations(
+    observations: list[dict[str, Any]],
+    evidence_index: dict[str, ClaimEvidence],
+) -> list[dict[str, Any]]:
+    ranked: list[dict[str, Any]] = []
+    for observation in observations:
+        age = float(observation.get("age_minutes", 0.0))
+        score = (
+            TIER_WEIGHTS.get(observation.get("source_tier", 3), 35)
+            + recency_boost(age)
+            + corroboration_boost_for(observation, evidence_index)
+            - contradiction_penalty_for(observation, evidence_index)
+            - staleness_penalty(age)
+        )
+        if observation.get("access_mode") == "blocked":
+            score -= 25
+        observation["rank_score"] = score
+        if not observation.get("channel"):
+            observation["channel"] = fallback_channel(observation)
+        ranked.append(observation)
+    ranked.sort(key=lambda item: (item.get("rank_score", 0), -float(item.get("age_minutes", 0.0))), reverse=True)
+    return ranked
+
+
+def promoted_to_core(supports: list[dict[str, Any]]) -> bool:
+    fresh_supports = [
+        item
+        for item in supports
+        if float(item.get("age_minutes", 0.0)) <= 1440 and item.get("access_mode") != "blocked"
+    ]
+    if not fresh_supports:
+        return False
+    direct_supports = [item for item in fresh_supports if item.get("origin") != "last30days"]
+    if not direct_supports:
+        return False
+    if any(item.get("source_tier", 3) <= 1 for item in direct_supports):
+        return True
+    tier_two_sources = {item.get("source_id") for item in fresh_supports if item.get("source_tier", 3) == 2}
+    return len(tier_two_sources) >= 2
+
+
+def claim_status_for(supports: list[dict[str, Any]], contradicts: list[dict[str, Any]]) -> tuple[str, str]:
+    strongest_support = min((item.get("source_tier", 3) for item in supports), default=None)
+    strongest_contradiction = min((item.get("source_tier", 3) for item in contradicts), default=None)
+    if strongest_contradiction is not None and strongest_support is None:
+        return "denied", "core"
+    if strongest_support is None and strongest_contradiction is None:
+        return "inferred", "background"
+    if strongest_support is not None and strongest_contradiction is not None:
+        if strongest_contradiction < strongest_support:
+            return "denied", "shadow"
+        return "unclear", "shadow"
+    promotion_state = (
+        "core"
+        if promoted_to_core(supports)
+        else "background"
+        if all(float(item.get("age_minutes", 0.0)) > 1440 for item in supports)
+        else "shadow"
+    )
+    return ("confirmed", "core") if promotion_state == "core" else ("unclear", promotion_state)
+
+
+def build_claim_ledger(request: dict[str, Any], observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    claim_map = build_claim_index(request, observations)
+    evidence_index = build_claim_evidence(observations)
+    ledger: list[dict[str, Any]] = []
+    for claim_id in sorted(set(claim_map) | set(evidence_index)):
+        evidence = evidence_index.get(claim_id, ClaimEvidence(supports=[], contradicts=[]))
+        status, promotion_state = claim_status_for(evidence.supports, evidence.contradicts)
+        timestamps = [
+            parse_datetime(item.get("published_at"))
+            for item in evidence.supports + evidence.contradicts
+            if item.get("published_at")
+        ]
+        last_updated = max(timestamps) if timestamps else request["analysis_time"]
+        ledger.append(
+            {
+                "claim_id": claim_id,
+                "claim_text": claim_map.get(claim_id, ""),
+                "status": status,
+                "supporting_sources": [item.get("source_id", "") for item in evidence.supports],
+                "contradicting_sources": [item.get("source_id", "") for item in evidence.contradicts],
+                "last_updated_at": isoformat_or_blank(last_updated),
+                "promotion_state": promotion_state,
+            }
+        )
+    return ledger
+
+
+def promote_observation_channels(observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> None:
+    core_claims = {item["claim_id"] for item in claim_ledger if item.get("promotion_state") == "core"}
+    for observation in observations:
+        if observation.get("access_mode") == "blocked":
+            observation["channel"] = "background"
+        elif float(observation.get("age_minutes", 0.0)) > 1440:
+            observation["channel"] = "background"
+        elif observation.get("source_tier", 3) == 2 and core_claims.intersection(observation.get("claim_ids", [])):
+            observation["channel"] = "core"
+        elif observation.get("source_tier", 3) == 3:
+            observation["channel"] = "shadow"
+
+
+def build_latest_signals(observations: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
+    return [
+        {
+            "source_name": item.get("source_name", ""),
+            "source_type": item.get("source_type", ""),
+            "source_tier": item.get("source_tier", 3),
+            "origin": item.get("origin", ""),
+            "channel": item.get("channel", ""),
+            "age": item.get("age_label", ""),
+            "recency_bucket": item.get("recency_bucket", ""),
+            "rank_score": item.get("rank_score", 0),
+            "access_mode": item.get("access_mode", ""),
+            "url": item.get("url", ""),
+            "text_excerpt": item.get("text_excerpt", ""),
+        }
+        for item in observations[:limit]
+    ]
+
+
+def build_freshness_panel(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    panel = []
+    for window_name, ceiling, _ in RECENCY_WINDOWS:
+        matches = [item for item in observations if float(item.get("age_minutes", 0.0)) <= ceiling]
+        panel.append(
+            {
+                "window": window_name,
+                "count": len(matches),
+                "core_count": sum(1 for item in matches if item.get("channel") == "core"),
+                "shadow_count": sum(1 for item in matches if item.get("channel") == "shadow"),
+                "blocked_count": sum(1 for item in matches if item.get("access_mode") == "blocked"),
+            }
+        )
+    return panel
+
+
+def build_conflict_matrix(claim_ledger: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "claim_id": item.get("claim_id", ""),
+            "status": item.get("status", ""),
+            "support_count": len(item.get("supporting_sources", [])),
+            "contradiction_count": len(item.get("contradicting_sources", [])),
+            "promotion_state": item.get("promotion_state", ""),
+        }
+        for item in claim_ledger
+    ]
+
+
+def build_source_layer_summary(observations: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "by_channel": dict(Counter(item.get("channel", "unknown") for item in observations)),
+        "by_tier": dict(Counter(str(item.get("source_tier", 3)) for item in observations)),
+        "by_access_mode": dict(Counter(item.get("access_mode", "unknown") for item in observations)),
+    }
+
+
+def build_source_artifacts(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    artifacts: list[dict[str, Any]] = []
+    for observation in observations:
+        if not any(
+            [
+                observation.get("post_text_raw"),
+                observation.get("media_summary"),
+                observation.get("root_post_screenshot_path"),
+                observation.get("artifact_manifest"),
+            ]
+        ):
+            continue
+        artifacts.append(
+            {
+                "source_name": observation.get("source_name", ""),
+                "source_tier": observation.get("source_tier", 3),
+                "origin": observation.get("origin", ""),
+                "channel": observation.get("channel", ""),
+                "access_mode": observation.get("access_mode", ""),
+                "url": observation.get("url", ""),
+                "post_text_raw": observation.get("post_text_raw", ""),
+                "post_text_source": observation.get("post_text_source", ""),
+                "post_text_confidence": observation.get("post_text_confidence", 0.0),
+                "post_summary": observation.get("post_summary", ""),
+                "media_summary": observation.get("media_summary", ""),
+                "combined_summary": observation.get("combined_summary", ""),
+                "root_post_screenshot_path": observation.get("root_post_screenshot_path", ""),
+                "artifact_manifest": observation.get("artifact_manifest", []),
+            }
+        )
+    return artifacts
+
+
+def build_confidence(claim_ledger: list[dict[str, Any]], observations: list[dict[str, Any]]) -> tuple[list[int], str]:
+    confirmed = sum(1 for item in claim_ledger if item.get("status") == "confirmed")
+    denied = sum(1 for item in claim_ledger if item.get("status") == "denied")
+    unclear = sum(1 for item in claim_ledger if item.get("status") == "unclear")
+    core_sources = [item for item in observations if item.get("channel") == "core" and item.get("access_mode") != "blocked"]
+    shadow_sources = [item for item in observations if item.get("channel") == "shadow"]
+    blocked_sources = [item for item in observations if item.get("access_mode") == "blocked"]
+    avg_core_rank = average([item.get("rank_score", 0) for item in core_sources])
+    center = clamp(35 + confirmed * 15 + min(len(core_sources), 4) * 7 + avg_core_rank / 8 - denied * 12 - unclear * 8 - len(blocked_sources) * 3)
+    width = clamp(10 + unclear * 4 + len(shadow_sources) * 2 + max(0, 2 - len(core_sources)) * 5, low=8, high=45)
+    return [clamp(center - width), clamp(center + width)], "usable" if core_sources else "shadow-heavy"
+
+
+def build_retrieval_quality(observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> dict[str, int]:
+    top_hits = observations[:5]
+    top_recent = sum(1 for item in top_hits if item.get("recency_bucket") in {"0-10m", "10-60m", "1-6h"})
+    improper_shadow_core = sum(1 for item in observations if item.get("channel") == "core" and item.get("source_tier", 3) == 3)
+    improper_promotion = sum(1 for item in claim_ledger if item.get("promotion_state") == "core" and not item.get("supporting_sources"))
+    blocked_sources = [item for item in observations if item.get("access_mode") == "blocked"]
+    blocked_background = sum(1 for item in blocked_sources if item.get("channel") == "background")
+    blocked_identified = sum(1 for item in blocked_sources if item.get("source_name") or item.get("url"))
+    blocked_overweighted = sum(1 for item in blocked_sources if item.get("channel") in {"core", "shadow"})
+    blocked_source_score = 100
+    if blocked_sources:
+        blocked_source_score = clamp(
+            40
+            + (blocked_background / len(blocked_sources)) * 40
+            + (blocked_identified / len(blocked_sources)) * 20
+            - blocked_overweighted * 20
+        )
+    return {
+        "freshness_capture_score": clamp(50 + top_recent * 10),
+        "shadow_signal_discipline_score": clamp(100 - improper_shadow_core * 35),
+        "source_promotion_discipline_score": clamp(100 - improper_promotion * 40),
+        "blocked_source_handling_score": blocked_source_score,
+    }
+
+
+def build_crisis_sections(request: dict[str, Any], observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> dict[str, Any]:
+    if request.get("mode") != "crisis":
+        return {}
+
+    negotiation_items = []
+    for observation in observations:
+        text = (observation.get("text_excerpt", "") + " " + " ".join(observation.get("claim_texts", {}).values())).lower()
+        if any(keyword in text for keyword in ["talk", "negot", "ceasefire", "meeting", "mediat", "call"]):
+            negotiation_items.append(
+                {
+                    "timestamp": observation.get("published_at") or observation.get("observed_at"),
+                    "source_name": observation.get("source_name", ""),
+                    "channel": observation.get("channel", ""),
+                    "text_excerpt": observation.get("text_excerpt", ""),
+                }
+            )
+
+    vessel_rows = []
+    for observation in observations:
+        if not observation.get("vessel_ids") and not observation.get("position_hint"):
+            continue
+        hint = observation.get("position_hint")
+        hint_dict = hint if isinstance(hint, dict) else {"last_public_location": str(hint or "").strip()}
+        eta_low = hint_dict.get("eta_hours_low")
+        eta_high = hint_dict.get("eta_hours_high")
+        if isinstance(eta_low, (int, float)) and isinstance(eta_high, (int, float)):
+            eta_range = f"{round(float(eta_low), 1):g}-{round(float(eta_high), 1):g}h"
+        else:
+            eta_range = str(hint_dict.get("eta_range") or "unknown")
+        vessel_rows.append(
+            {
+                "vessel_ids": observation.get("vessel_ids", []),
+                "last_public_location": hint_dict.get("last_public_location") or hint_dict.get("location") or observation.get("geo_hint") or "unknown",
+                "timestamp": observation.get("published_at") or observation.get("observed_at"),
+                "eta_range": eta_range,
+                "source_name": observation.get("source_name", ""),
+            }
+        )
+
+    confirmed = sum(1 for item in claim_ledger if item.get("status") == "confirmed")
+    denied = sum(1 for item in claim_ledger if item.get("status") == "denied")
+    unclear = sum(1 for item in claim_ledger if item.get("status") == "unclear")
+    deescalation = clamp(50 + confirmed * 6 - denied * 5 - unclear * 3, low=10, high=80)
+    escalation = clamp(25 + denied * 8 + len(vessel_rows) * 4 - confirmed * 4, low=10, high=75)
+    standoff = clamp(100 - max(deescalation, escalation), low=15, high=70)
+    return {
+        "negotiation_status_timeline": sorted(negotiation_items, key=lambda item: item.get("timestamp", ""), reverse=True),
+        "vessel_movement_table": vessel_rows,
+        "escalation_scenarios": [
+            {
+                "scenario": "Managed de-escalation",
+                "probability_range": f"{max(5, deescalation - 10)}-{min(95, deescalation + 10)}%",
+                "trigger": "Fresh official or wire confirmation of continued talks or restraint steps",
+            },
+            {
+                "scenario": "Extended standoff",
+                "probability_range": f"{max(5, standoff - 10)}-{min(95, standoff + 10)}%",
+                "trigger": "Mixed negotiation signals with no decisive military or diplomatic break",
+            },
+            {
+                "scenario": "Renewed escalation",
+                "probability_range": f"{max(5, escalation - 10)}-{min(95, escalation + 10)}%",
+                "trigger": "Fresh denial plus force-positioning signals or a failed mediation channel",
+            },
+        ],
+    }
+
+
+def build_verdict_output(request: dict[str, Any], observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> dict[str, Any]:
+    interval, gate = build_confidence(claim_ledger, observations)
+    confirmed = [item for item in claim_ledger if item.get("status") == "confirmed"]
+    not_confirmed = [item for item in claim_ledger if item.get("status") in {"denied", "unclear"}]
+    inference_only = [item for item in claim_ledger if item.get("status") == "inferred"]
+    live_tape = [item for item in observations if item.get("channel") == "shadow" and float(item.get("age_minutes", 0.0)) <= 1440]
+    background = [item for item in observations if item.get("channel") == "background"]
+    if confirmed:
+        judgment = f"{len(confirmed)} core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel."
+    elif live_tape:
+        judgment = "The live tape is moving faster than the confirmed record; treat current headlines as directional, not settled."
+    else:
+        judgment = "Current evidence is thin or stale; there is no strong confirmed read yet."
+
+    next_watch_items = [
+        "Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.",
+        "Treat ship-tracking as last public indication, not live military truth.",
+        "Watch for blocked or missing source families before calling the picture complete.",
+    ]
+    next_watch_items = merge_unique_strings(next_watch_items, request.get("preset_watch_items", []))
+
+    verdict = {
+        "core_verdict": judgment,
+        "live_tape": [
+            {
+                "source_name": item.get("source_name", ""),
+                "age": item.get("age_label", ""),
+                "source_tier": item.get("source_tier", 3),
+                "text_excerpt": item.get("text_excerpt", ""),
+            }
+            for item in live_tape[:8]
+        ],
+        "confidence_interval": interval,
+        "confidence_gate": gate,
+        "latest_signals": build_latest_signals(observations),
+        "confirmed": confirmed,
+        "not_confirmed": not_confirmed,
+        "inference_only": inference_only,
+        "conflict_matrix": build_conflict_matrix(claim_ledger),
+        "missing_confirmations": [item.get("claim_text", "") for item in not_confirmed if item.get("claim_text")],
+        "market_relevance": request.get("market_relevance", []),
+        "next_watch_items": next_watch_items,
+        "freshness_panel": build_freshness_panel(observations),
+        "source_layer_summary": build_source_layer_summary(observations),
+        "source_artifacts": build_source_artifacts(observations),
+        "background_only": [
+            {
+                "source_name": item.get("source_name", ""),
+                "age": item.get("age_label", ""),
+                "text_excerpt": item.get("text_excerpt", ""),
+            }
+            for item in background[:5]
+        ],
+    }
+    if request.get("preset") == "energy-war":
+        verdict["energy_war_preset"] = {
+            "preset": "energy-war",
+            "benchmark_watchlist": request.get("benchmark_watchlist", []),
+            "focus_areas": [
+                "Physical flow disruption versus risk premium",
+                "Brent versus WTI leadership",
+                "Ex-US gas versus Henry Hub divergence",
+                "Reserve releases, rerouting, and spare-capacity buffers",
+            ],
+        }
+    verdict.update(build_crisis_sections(request, observations, claim_ledger))
+    return verdict
+
+
+def build_retrieval_run_report(request: dict[str, Any], observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> dict[str, Any]:
+    attempted = [
+        {
+            "source_id": item.get("source_id", ""),
+            "source_name": item.get("source_name", ""),
+            "source_type": item.get("source_type", ""),
+            "origin": item.get("origin", ""),
+            "agent_reach_channel": item.get("agent_reach_channel", ""),
+            "access_mode": item.get("access_mode", ""),
+        }
+        for item in observations
+    ]
+    observed_families = {source_family_for(item.get("source_type", "")) for item in observations}
+    report = {
+        "fetch_order": [item.get("source_id", "") for item in observations],
+        "sources_attempted": attempted,
+        "sources_blocked": [item for item in attempted if item.get("access_mode") == "blocked"],
+        "top_recent_hits": build_latest_signals(observations, limit=5),
+        "shadow_to_core_promotions": [item.get("claim_id", "") for item in claim_ledger if item.get("promotion_state") == "core"],
+        "missed_expected_source_families": [
+            item for item in request.get("expected_source_families", []) if source_family_for(item) not in observed_families
+        ],
+    }
+    if request.get("preset") == "energy-war":
+        report["benchmark_watchlist"] = request.get("benchmark_watchlist", [])
+    return report
+
+
+def build_markdown_report(result: dict[str, Any]) -> str:
+    request = result.get("request", {})
+    verdict = result.get("verdict_output", {})
+    interval = verdict.get("confidence_interval", [0, 0])
+    lines = [
+        f"# News Index Report: {request.get('topic', 'topic')}",
+        "",
+        f"One-line judgment ({request.get('analysis_time', '')}, confidence {interval[0]}-{interval[1]}, gate {verdict.get('confidence_gate', 'unknown')}): {verdict.get('core_verdict', '')}",
+        "",
+        "## Confirmed",
+    ]
+    lines.extend([f"- {item.get('claim_text', '')}" for item in verdict.get("confirmed", [])] or ["- None"])
+    lines.extend(["", "## Not Confirmed"])
+    lines.extend([f"- {item.get('claim_text', '')} ({item.get('status', '')})" for item in verdict.get("not_confirmed", [])] or ["- None"])
+    lines.extend(["", "## Inference Only"])
+    lines.extend([f"- {item.get('claim_text', '')}" for item in verdict.get("inference_only", [])] or ["- None"])
+
+    lines.extend(["", "## Latest Signals First", "", "| Source | Tier | Channel | Age | Rank | Note |", "|---|---:|---|---|---:|---|"])
+    for item in verdict.get("latest_signals", []):
+        lines.append(
+            f"| {item.get('source_name', '')} | {item.get('source_tier', 3)} | {item.get('channel', '')} | "
+            f"{item.get('age', '')} | {item.get('rank_score', 0)} | {item.get('text_excerpt', '')} |"
+        )
+
+    lines.extend(["", "## Conflict Matrix", "", "| Claim | Status | Supports | Contradictions | Promotion |", "|---|---|---:|---:|---|"])
+    for item in verdict.get("conflict_matrix", []):
+        lines.append(
+            f"| {item.get('claim_id', '')} | {item.get('status', '')} | {item.get('support_count', 0)} | "
+            f"{item.get('contradiction_count', 0)} | {item.get('promotion_state', '')} |"
+        )
+
+    lines.extend(["", "## Freshness Panel"])
+    for item in verdict.get("freshness_panel", []):
+        lines.append(
+            f"- {item.get('window', '')}: total {item.get('count', 0)}, core {item.get('core_count', 0)}, "
+            f"shadow {item.get('shadow_count', 0)}, blocked {item.get('blocked_count', 0)}"
+        )
+
+    lines.extend(["", "## Source Layer Summary"])
+    summary = verdict.get("source_layer_summary", {})
+    lines.append(f"- By channel: {json.dumps(summary.get('by_channel', {}), ensure_ascii=False)}")
+    lines.append(f"- By tier: {json.dumps(summary.get('by_tier', {}), ensure_ascii=False)}")
+    lines.append(f"- By access mode: {json.dumps(summary.get('by_access_mode', {}), ensure_ascii=False)}")
+
+    if verdict.get("energy_war_preset"):
+        preset = verdict.get("energy_war_preset", {})
+        lines.extend(["", "## Energy-War Preset"])
+        lines.append(f"- Preset: {preset.get('preset', '')}")
+        lines.append(f"- Benchmark watchlist: {', '.join(preset.get('benchmark_watchlist', [])) or 'None'}")
+        lines.extend([f"- Focus: {item}" for item in preset.get("focus_areas", [])] or ["- None"])
+
+    source_artifacts = verdict.get("source_artifacts", [])
+    if source_artifacts:
+        lines.extend(["", "## Source Artifacts"])
+        for item in source_artifacts:
+            lines.append(
+                f"- {item.get('source_name', '')} | tier {item.get('source_tier', 3)} | {item.get('channel', '')} | {item.get('access_mode', '')}"
+            )
+            lines.append(f"  URL: {item.get('url', '') or 'none'}")
+            lines.append(f"  Main post text: {item.get('post_text_raw', '') or 'none'}")
+            lines.append(f"  Image summary: {item.get('media_summary', '') or 'none'}")
+            lines.append(f"  Screenshot: {item.get('root_post_screenshot_path', '') or 'none'}")
+
+    lines.extend(["", "## Live Tape"])
+    lines.extend([f"- [{item.get('source_name', '')}] tier {item.get('source_tier', 3)}, {item.get('age', '')}: {item.get('text_excerpt', '')}" for item in verdict.get("live_tape", [])] or ["- None"])
+
+    if request.get("mode") == "crisis":
+        lines.extend(["", "## Negotiation Status Timeline"])
+        lines.extend([f"- {item.get('timestamp', '')}: {item.get('source_name', '')} ({item.get('channel', '')}) - {item.get('text_excerpt', '')}" for item in verdict.get("negotiation_status_timeline", [])] or ["- None"])
+        lines.extend(["", "## Vessel Movement Table", "", "| Vessel | Last Public Indication | Timestamp | ETA Range | Source |", "|---|---|---|---|---|"])
+        vessel_rows = verdict.get("vessel_movement_table", [])
+        if vessel_rows:
+            for row in vessel_rows:
+                lines.append(
+                    f"| {', '.join(row.get('vessel_ids', [])) or 'unknown'} | {row.get('last_public_location', '')} | "
+                    f"{row.get('timestamp', '')} | {row.get('eta_range', '')} | {row.get('source_name', '')} |"
+                )
+        else:
+            lines.append("| None | None | None | None | None |")
+        lines.extend(["", "## Escalation Scenarios"])
+        for row in verdict.get("escalation_scenarios", []):
+            lines.append(f"- {row.get('scenario', '')}: {row.get('probability_range', '')}; trigger: {row.get('trigger', '')}")
+
+    lines.extend(["", "## What Would Change My View"])
+    lines.extend([f"- {item}" for item in verdict.get("next_watch_items", [])] or ["- None"])
+    return "\n".join(lines) + "\n"
+
+
+def run_news_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    request = normalize_request(raw_payload)
+    claim_texts = claim_text_map_from_request(request)
+    candidates = list(enumerate(request.get("candidates", []), start=1))
+    parallel_workers = min(max(1, int(request.get("max_parallel_candidates", 1) or 1)), max(1, len(candidates)))
+    if parallel_workers > 1 and len(candidates) > 1:
+        observation_by_index: dict[int, dict[str, Any]] = {}
+        candidate_by_index = {index: candidate for index, candidate in candidates}
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            future_map = {
+                executor.submit(normalize_candidate, candidate, request["analysis_time"], claim_texts, index): index
+                for index, candidate in candidates
+            }
+            for future in as_completed(future_map):
+                index = future_map[future]
+                try:
+                    observation_by_index[index] = future.result()
+                except Exception as exc:
+                    observation_by_index[index] = error_observation(
+                        candidate_by_index[index], request["analysis_time"], claim_texts, index, exc
+                    )
+        observations = [observation_by_index[index] for index, _ in candidates if index in observation_by_index]
+    else:
+        observations = []
+        for index, candidate in candidates:
+            try:
+                observation = normalize_candidate(candidate, request["analysis_time"], claim_texts, index)
+            except Exception as exc:
+                observation = error_observation(candidate, request["analysis_time"], claim_texts, index, exc)
+            observations.append(observation)
+    observations = dedupe_observations(observations)
+    evidence_index = build_claim_evidence(observations)
+    observations = rerank_observations(observations, evidence_index)
+    claim_ledger = build_claim_ledger(request, observations)
+    promote_observation_channels(observations, claim_ledger)
+    result = {
+        "request": {**request, "analysis_time": isoformat_or_blank(request["analysis_time"])},
+        "observations": observations,
+        "claim_ledger": claim_ledger,
+    }
+    result["verdict_output"] = build_verdict_output(request, observations, claim_ledger)
+    result["retrieval_run_report"] = build_retrieval_run_report(request, observations, claim_ledger)
+    result["retrieval_quality"] = build_retrieval_quality(observations, claim_ledger)
+    result["report_markdown"] = build_markdown_report(result)
+    return result
+
+
+def merge_refresh(existing_result: dict[str, Any], refresh_payload: dict[str, Any]) -> dict[str, Any]:
+    existing = deepcopy(existing_result)
+    base_request = normalize_request(existing.get("request", {}))
+    refresh_request = normalize_request(refresh_payload)
+    refresh_topic = str(refresh_payload.get("topic", "")).strip()
+    refresh_mode = str(refresh_payload.get("mode", "")).strip().lower()
+    fresh_cutoff = refresh_request["analysis_time"] - timedelta(hours=24)
+    carried_candidates = []
+    for observation in safe_list(existing.get("observations")):
+        published_at = parse_datetime(observation.get("published_at"), fallback=refresh_request["analysis_time"])
+        if published_at and published_at >= fresh_cutoff:
+            carried_candidates.append(
+            {
+                "source_id": observation.get("source_id", ""),
+                "source_name": observation.get("source_name", ""),
+                "source_type": observation.get("source_type", ""),
+                "origin": observation.get("origin", ""),
+                "agent_reach_channel": observation.get("agent_reach_channel", ""),
+                "published_at": observation.get("published_at", ""),
+                "observed_at": observation.get("observed_at", ""),
+                "url": observation.get("url", ""),
+                "claim_ids": observation.get("claim_ids", []),
+                "entity_ids": observation.get("entity_ids", []),
+                    "vessel_ids": observation.get("vessel_ids", []),
+                    "text_excerpt": observation.get("text_excerpt", ""),
+                "position_hint": observation.get("position_hint"),
+                "geo_hint": observation.get("geo_hint"),
+                "access_mode": observation.get("access_mode", "public"),
+                "claim_states": observation.get("claim_states", {}),
+                "raw_metadata": observation.get("raw_metadata", {}),
+                "artifact_manifest": observation.get("artifact_manifest", []),
+                "post_text_raw": observation.get("post_text_raw", ""),
+                "post_text_source": observation.get("post_text_source", ""),
+                "post_text_confidence": observation.get("post_text_confidence", 0.0),
+                "root_post_screenshot_path": observation.get("root_post_screenshot_path", ""),
+                "thread_posts": observation.get("thread_posts", []),
+                "media_items": observation.get("media_items", []),
+                "post_summary": observation.get("post_summary", ""),
+                "media_summary": observation.get("media_summary", ""),
+                "combined_summary": observation.get("combined_summary", ""),
+                "discovery_reason": observation.get("discovery_reason", ""),
+                "crawl_notes": observation.get("crawl_notes", []),
+            }
+        )
+
+    combined_request = {
+        **base_request,
+        "analysis_time": refresh_request["analysis_time"],
+        "topic": refresh_topic or base_request.get("topic"),
+        "questions": refresh_request.get("questions") or base_request.get("questions"),
+        "claims": refresh_request.get("claims") or base_request.get("claims"),
+        "market_relevance": refresh_request.get("market_relevance") or base_request.get("market_relevance"),
+        "market_relevance_zh": refresh_request.get("market_relevance_zh") or base_request.get("market_relevance_zh"),
+        "expected_source_families": refresh_request.get("expected_source_families") or base_request.get("expected_source_families"),
+        "mode": "crisis" if refresh_mode == "crisis" else base_request.get("mode"),
+        "preset": refresh_request.get("preset") or base_request.get("preset"),
+        "benchmark_watchlist": refresh_request.get("benchmark_watchlist") or base_request.get("benchmark_watchlist"),
+        "preset_watch_items": refresh_request.get("preset_watch_items") or base_request.get("preset_watch_items"),
+        "candidates": carried_candidates + refresh_request.get("candidates", []),
+    }
+
+    refreshed = run_news_index(combined_request)
+    previous_ids = {item.get("source_id", "") for item in safe_list(existing.get("observations")) if item.get("source_id")}
+    refreshed["refresh_summary"] = {
+        "new_source_ids": [item.get("source_id", "") for item in refreshed.get("observations", []) if item.get("source_id", "") not in previous_ids],
+        "previous_analysis_time": existing.get("request", {}).get("analysis_time", ""),
+        "refresh_analysis_time": refreshed.get("request", {}).get("analysis_time", ""),
+    }
+    return refreshed
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
