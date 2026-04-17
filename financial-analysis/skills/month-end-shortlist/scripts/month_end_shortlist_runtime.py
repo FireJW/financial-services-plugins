@@ -555,6 +555,47 @@ def assign_tiers(
     return tiers
 
 
+def apply_catalyst_waiver(
+    all_assessed: list[dict[str, Any]],
+    profile: str,
+    keep_threshold: float,
+) -> list[dict[str, Any]]:
+    """
+    Wrapper-only reclassification for catalyst-only failures.
+
+    Does NOT modify the core's keep field. Instead, returns candidates
+    eligible for T3 via catalyst waiver. These should be merged into
+    near_miss before calling assign_tiers.
+    """
+    WAIVER_PROFILES = {
+        "month_end_event_support_transition",
+        "broad_coverage_mode",
+    }
+    if profile not in WAIVER_PROFILES:
+        return []
+
+    waiver_candidates: list[dict[str, Any]] = []
+    score_floor = keep_threshold - CATALYST_WAIVER_SCORE_GAP
+
+    for c in all_assessed:
+        # Skip if core said keep=True (already a top_pick)
+        if c.get("keep"):
+            continue
+        failures = c.get("hard_filter_failures", [])
+        # Must have exactly one failure and it must be catalyst
+        if (
+            len(failures) == 1
+            and failures[0] == "no_structured_catalyst_within_window"
+            and c.get("adjusted_total_score", 0) >= score_floor
+        ):
+            # Check not in hard exclusion list (defensive)
+            if not HARD_EXCLUSION_FAILURES.intersection(failures):
+                c["tier_tags"] = c.get("tier_tags", []) + ["catalyst_waived"]
+                waiver_candidates.append(c)
+
+    return waiver_candidates
+
+
 def build_near_miss_candidates(
     diagnostic_scorecard: list[dict[str, Any]],
     *,
