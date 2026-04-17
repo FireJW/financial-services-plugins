@@ -1,230 +1,129 @@
-ge
-email.mg.ashesofcreation.com$image
-email.mg.ashraeboston.org$image
-email.mg.ashsync.ai$image
-email.mg.asiacloud.com.sg$image
-email.mg.asianwomenmeanbusiness.com$image
-email.mg.asiayo.com$image
-email.mg.askandembla.net$image
-email.mg.asksuite.com$image
-email.mg.asltip.com$image
-email.mg.asmemail.com$image
-email.mg.asmpd.pt$image
-email.mg.asolo.com$image
-email.mg.aspyprevencion.com$image
-email.mg.asset-map.com$image
-email.mg.assetfinda.com$image
-email.mg.associatevets.com$image
-email.mg.assuranceski.com$image
-email.mg.astonrx.com$image
-email.mg.astral-energy.com$image
-email.mg.astrea.aurum.com.br$image
-email.mg.aswa.am$image
-email.mg.atagent.com$image
-email.mg.atelierdesboiseux.fr$image
-email.mg.athartherapy.com$image
-email.mg.atheonos.com$image
-email.mg.atlantisslots.net$image
-email.mg.atproperties.com$image
-email.mg.atpropertiestx.com$image
-email.mg.atsbas.com$image
-email.mg.attainagency.digital$image
-email.mg.audemarspiguet.com$image
-email.mg.auf-der-hoehe.de$image
-email.mg.auge.app$image
-email.mg.auntmeg.com$image
-email.mg.aureawolf.com$image
-email.mg.aurum.com.br$image
-email.mg.australasiasports.com$image
-email.mg.austv.io$image
-email.mg.authoritysystems.net$image
-email.mg.authory.com$image
-email.mg.autodealersurveys.com$image
-email.mg.automatedmarketer.net$image
-email.mg.automatiq.com$image
-email.mg.autoritasgroup.com$image
-email.mg.autosaas.io$image
-email.mg.autovex.fi$image
-email.mg.avadhutsathe.com$image
-email.mg.avaemr.ca$image
-email.mg.avantiway.com$image
-email.mg.averyse.com.au$image
-email.mg.aviasales.ru$image
-email.mg.avoirducul.com$image
-email.mg.awarego.com$image
-email.mg.awin.com$image
-email.mg.axeholistic.com$image
-email.mg.axioshq.com$image
-email.mg.axtron.io$image
-email.mg.azala.org$image
-email.mg.azarhrconsulting.com$image
-email.mg.azblue.com$image
-email.mg.azehosting.net$image
-email.mg.azimpremjifoundation.org$image
-email.mg.azscio.com$image
-email.mg.azum.ua$image
-email.mg.b-42.com$image
-email.mg.b-mind.nl$image
-email.mg.b5systems.com$image
-email.mg.babestationcams.com$image
-email.mg.babylontraffic.com$image
-email.mg.bachdyon.com$image
-email.mg.backspace.fm$image
-email.mg.backup.net$image
-email.mg.badacetactical.com$image
-email.mg.badlion.net$image
-email.mg.badmoonshooting.com$image
-email.mg.baileykramer.com$image
-email.mg.bajabee.com$image
-email.mg.baleaf.com$image
-email.mg.balletbody.sg$image
-email.mg.ballreviews.com$image
-email.mg.banksampah.id$image
-email.mg.banpuenergy.com.au$image
-email.mg.banqo.net$image
-email.mg.banquetrecords.com$image
-email.mg.bar-bufet.ru$image
-email.mg.barceducation.org$image
-email.mg.barecare.bg$image
-email.mg.barkavenuemoseslake.com$image
-email.mg.barkota.com$image
-email.mg.barn2.com$image
-email.mg.basma.com$image
-email.mg.bassford.com$image
-email.mg.bausch.com$image
-email.mg.bazaraki.com$image
-email.mg.bduci.com$image
-email.mg.be.com.vn$image
-email.mg.beagent.online$image
-email.mg.beamandhinge.com$image
-email.mg.beanstock.fr$image
-email.mg.bearblog.dev$image
-email.mg.bearcreektreeservice.com$image
-email.mg.bearefoot.com$image
-email.mg.bearporn.com$image
-email.mg.bearwww.com$image
-email.mg.beastcraft.net$image
-email.mg.beautifullyundomesticated.com$image
-email.mg.beautinow.nl$image
-email.mg.beautyaesthetics.ca$image
-email.mg.beautybucht.de$image
-email.mg.becam.nl$image
-email.mg.beddenbriljant.nl$image
-email.mg.bedietcatering.pl$image
-email.mg.beebreeders.com$image
-email.mg.beefast.pro$image
-email.mg.beffino.com$image
-email.mg.befluent.net$image
-email.mg.begamingdigest.com$image
-email.mg.beglobal.shop$image
-email.mg.behold-retreats.com$image
-email.mg.belajar.id$image
-email.mg.belead.com$image
-email.mg.belgradelanguageschool.com$image
-email.mg.believeinboudoir.com$image
-email.mg.bellamo.com.br$image
-email.mg.belleniba.com$image
-email.mg.bellomoassociates.com$image
-email.mg.belurorthodontics.co.uk$image
-email.mg.belvilla.com$image
-email.mg.bemyguest.com.sg$image
-email.mg.benchmarklib.com$image
-email.mg.bendingspoons.com$image
-email.mg.benefithub.com$image
-email.mg.bentleyhosted.com$image
-email.mg.berden.nl$image
-email.mg.berkeley-international.com$image
-email.mg.berriez.com$image
-email.mg.bestdealbeauty.co$image
-email.mg.bestrongintl.org$image
-email.mg.bet-core.com$image
-email.mg.bet3000.de$image
-email.mg.beta.vr.fi$image
-email.mg.bethebossdogtraining.com$image
-email.mg.betobets.com$image
-email.mg.betonblack.io$image
-email.mg.betonsports.eu$image
-email.mg.betterbackoffice.com.au$image
-email.mg.betterevents.io$image
-email.mg.betterportrait.ch$image
-email.mg.betterportrait.io$image
-email.mg.bettersearchreplace.com$image
-email.mg.bevalk.es$image
-email.mg.beyondconcreteinc.com$image
-email.mg.beyondyourpracticeroom.com$image
-email.mg.bforbank.com$image
-email.mg.bgbcoaching.com$image
-email.mg.bgf.center$image
-email.mg.bib.com$image
-email.mg.biciclop.ro$image
-email.mg.bicky.be$image
-email.mg.bidali.com$image
-email.mg.biddershighway.com$image
-email.mg.biddytarot.com$image
-email.mg.bidsalert.com$image
-email.mg.biggg.com$image
-email.mg.bigmachine.io$image
-email.mg.bigollo.com$image
-email.mg.bigordr.com$image
-email.mg.bikeflip.com$image
-email.mg.bikerswin.net$image
-email.mg.billpay.systems$image
-email.mg.billpocket.com$image
-email.mg.billy.africa$image
-email.mg.binus.ac.id$image
-email.mg.bio-rad.com$image
-email.mg.birdsend.email$image
-email.mg.birdstrength.com$image
-email.mg.bishopscellar.com$image
-email.mg.bisonvazquez.com$image
-email.mg.bistroo.nl$image
-email.mg.bitcasino.io$image
-email.mg.bitcoinalpha.nl$image
-email.mg.bitping.com$image
-email.mg.bitsof.love$image
-email.mg.bizcuit.nl$image
-email.mg.bizvideo.com.au$image
-email.mg.blackboard-training.com$image
-email.mg.blackgold.ca$image
-email.mg.blacktomato.com$image
-email.mg.blastoffpcs.com$image
-email.mg.bleexo.com$image
-email.mg.blesshost.com$image
-email.mg.blinkbeautysalon.co.za$image
-email.mg.blissfulmarketing.io$image
-email.mg.blitzfranchise.com$image
-email.mg.blivande.com$image
-email.mg.blma.co$image
-email.mg.blockclubchi.org$image
-email.mg.blockdyor.com$image
-email.mg.blogarama.com$image
-email.mg.blokworx.com$image
-email.mg.bloom.se$image
-email.mg.bloomwithin.life$image
-email.mg.bloowatch.com$image
-email.mg.blue.nl$image
-email.mg.blue.ro$image
-email.mg.bluecowmarketing.ca$image
-email.mg.bluedataservice.com$image
-email.mg.bluegamma.co.uk$image
-email.mg.bluejogos.com$image
-email.mg.blueoakmedia.com$image
-email.mg.bluesky-houses.com$image
-email.mg.blueskyplan.com$image
-email.mg.bluespirit.com$image
-email.mg.blujedi.com$image
-email.mg.blumeheat.com$image
-email.mg.boardlead.com$image
-email.mg.boardstore.com.au$image
-email.mg.boatzon.com$image
-email.mg.bobgo.co.za$image
-email.mg.bodyatelier.bg$image
-email.mg.bodybynawel.com.au$image
-email.mg.bodylastics.com$image
-email.mg.bodyreset.online$image
-email.mg.boksi.com$image
-email.mg.boldapps.pt$image
-email.mg.boldvoiceapp.com$image
-email.mg.bonelliburger.it$image
-email.mg.bongards.com$image
-emai
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from article_workflow_runtime import load_json, write_json
+from cli_output import print_json
+from wechat_draftbox_runtime import push_publish_package_to_wechat
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Push a publish-package into the WeChat Official Account draft box.")
+    parser.add_argument("input", help="Path to a publish-package result JSON or a request JSON containing publish_package_path")
+    parser.add_argument("--output", help="Optional path to save the push result JSON")
+    parser.add_argument("--markdown-output", help="Optional path to save a small markdown summary")
+    parser.add_argument("--cover-image-path", help="Optional explicit local cover image override")
+    parser.add_argument("--cover-image-url", help="Optional explicit remote cover image override")
+    parser.add_argument("--author", help="Optional author override for the pushed draft")
+    parser.add_argument("--show-cover-pic", type=int, choices=[0, 1], help="Whether WeChat should display the cover pic")
+    parser.add_argument("--human-review-approved", action="store_true", help="Mark the article as human-reviewed so a real WeChat push is allowed")
+    parser.add_argument("--human-review-approved-by", help="Optional reviewer name recorded for the push gate")
+    parser.add_argument("--human-review-note", help="Optional review note recorded for the push gate")
+    parser.add_argument("--push-backend", choices=["api", "browser_session", "auto"], help="Choose API push, browser-session push, or auto fallback")
+    parser.add_argument("--browser-session-strategy", choices=["remote_debugging"], help="Browser-session strategy for WeChat backend fallback")
+    parser.add_argument("--browser-debug-endpoint", help="Remote debugging endpoint, e.g. http://127.0.0.1:9222")
+    parser.add_argument("--browser-wait-ms", type=int, help="Browser-session settle wait in milliseconds")
+    parser.add_argument("--browser-home-url", help="Optional browser-session home URL override")
+    parser.add_argument("--browser-editor-url", help="Optional browser-session editor URL override")
+    parser.add_argument("--browser-session-required", action="store_true", help="Mark browser-session fallback as required")
+    parser.add_argument("--wechat-env-file", help="Optional path to a local .env.wechat.local file")
+    parser.add_argument("--wechat-app-id", help="Optional WeChat app id override")
+    parser.add_argument("--wechat-app-secret", help="Optional WeChat app secret override")
+    parser.add_argument("--timeout-seconds", type=int, help="Optional WeChat API timeout override")
+    parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON output")
+    return parser.parse_args()
+
+
+def build_payload(args: argparse.Namespace) -> dict:
+    payload = load_json(Path(args.input).resolve())
+    if not isinstance(payload, dict):
+        raise ValueError("Input file must contain a JSON object")
+    if "publish_package" not in payload and "contract_version" in payload:
+        payload = {"publish_package": payload}
+    if args.cover_image_path:
+        payload["cover_image_path"] = args.cover_image_path
+    if args.cover_image_url:
+        payload["cover_image_url"] = args.cover_image_url
+    if args.author:
+        payload["author"] = args.author
+    if args.show_cover_pic is not None:
+        payload["show_cover_pic"] = args.show_cover_pic
+    if args.human_review_approved:
+        payload["human_review_approved"] = True
+    if args.human_review_approved_by:
+        payload["human_review_approved_by"] = args.human_review_approved_by
+    if args.human_review_note:
+        payload["human_review_note"] = args.human_review_note
+    if args.push_backend:
+        payload["push_backend"] = args.push_backend
+    browser_session = payload.get("browser_session") if isinstance(payload.get("browser_session"), dict) else {}
+    if args.browser_session_strategy:
+        browser_session["strategy"] = args.browser_session_strategy
+    if args.browser_debug_endpoint:
+        browser_session["cdp_endpoint"] = args.browser_debug_endpoint
+    if args.browser_wait_ms is not None:
+        browser_session["wait_ms"] = args.browser_wait_ms
+    if args.browser_home_url:
+        browser_session["home_url"] = args.browser_home_url
+    if args.browser_editor_url:
+        browser_session["editor_url"] = args.browser_editor_url
+    if args.browser_session_required:
+        browser_session["required"] = True
+    if browser_session:
+        payload["browser_session"] = browser_session
+    if args.wechat_env_file:
+        payload["wechat_env_file"] = args.wechat_env_file
+    if args.wechat_app_id:
+        payload["wechat_app_id"] = args.wechat_app_id
+    if args.wechat_app_secret:
+        payload["wechat_app_secret"] = args.wechat_app_secret
+    if args.timeout_seconds is not None:
+        payload["timeout_seconds"] = args.timeout_seconds
+    return payload
+
+
+def build_markdown(result: dict) -> str:
+    workflow_publication_gate = result.get("workflow_publication_gate", {}) if isinstance(result.get("workflow_publication_gate"), dict) else {}
+    workflow_manual_review = workflow_publication_gate.get("manual_review", {}) if isinstance(workflow_publication_gate.get("manual_review"), dict) else {}
+    lines = [
+        "# WeChat Draft Push",
+        "",
+        f"- Status: {result.get('status', '')}",
+        f"- Backend: {result.get('push_backend', '')}",
+        f"- Workflow publication readiness: {workflow_publication_gate.get('publication_readiness', '') or 'ready'}",
+        f"- Workflow Reddit operator review: {workflow_manual_review.get('status', '') or 'not_required'}",
+        f"- Draft media_id: {result.get('draft_result', {}).get('media_id', '')}",
+        f"- Draft URL: {result.get('draft_result', {}).get('draft_url', '')}",
+        f"- Inline images uploaded: {len(result.get('uploaded_inline_images', []))}",
+        f"- Cover media_id: {result.get('uploaded_cover', {}).get('media_id', '')}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def main() -> None:
+    args = parse_args()
+    try:
+        result = push_publish_package_to_wechat(build_payload(args))
+        if not args.quiet:
+            print_json(result)
+        if args.output:
+            write_json(Path(args.output).resolve(), result)
+        if args.markdown_output:
+            output_path = Path(args.markdown_output).resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(build_markdown(result), encoding="utf-8")
+        sys.exit(0)
+    except Exception as exc:
+        print_json({"status": "ERROR", "message": str(exc)}, stream=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

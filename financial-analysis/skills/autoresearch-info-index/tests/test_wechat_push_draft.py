@@ -1,47 +1,38 @@
-ird-party
-||ist-track.com^$third-party
-||istat24.com^$third-party
-||istats.nl^$third-party
-||istrack.com^$third-party
-||italianadirectory.com^$third-party
-||itop.cz^$third-party
-||itrackerpro.com^$third-party
-||ivcbrasil.org.br^$third-party
-||ivwbox.de^$third-party
-||iwebtrack.com^$third-party
-||iwstats.com^$third-party
-||iyi.net^$third-party
-||izea.com^$third-party
-||izearanks.com^$third-party
-||jdoqocy.com^$third-party
-||jiankongbao.com^$third-party
-||jirafe.com^$third-party
-||js.medi-8.net^$third-party
-||jscounter.com^$third-party
-||jstracker.com^$third-party
-||junbi-tracker.com^$third-party
-||justuno.com^$third-party
-||jwmstats.com^$third-party
-||jwpltx.com^$third-party
-||kameleoon.com^$third-party
-||kampyle.com^$third-party
-||keen.io^$third-party,domain=~keen.github.io|~keen.io
-||kerebro.com^$third-party
-||keymetric.net^$third-party
-||keytrack.de^$third-party
-||keywee.co^$third-party
-||keywordstrategy.org^$third-party
-||kieden.com^$third-party
-||kissmetrics.com^$third-party
-||kitbit.net^$third-party
-||klert.com^$third-party
-||klldabck.com^$third-party
-||kmindex.ru^$third-party
-||knowledgevine.net^$third-party
-||komtrack.com^$third-party
-||kopsil.com^$third-party
-||kostenlose-counter.com^$third-party
-||kqzyfj.com^$third-party
-||krxd.net^
-||kupona.de^$third-party
-||laserstat.com^$third
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+
+SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from wechat_push_draft import build_markdown
+
+
+class WechatPushDraftCliTests(unittest.TestCase):
+    def test_build_markdown_surfaces_workflow_publication_gate(self) -> None:
+        markdown = build_markdown(
+            {
+                "status": "ok",
+                "push_backend": "api",
+                "workflow_publication_gate": {
+                    "publication_readiness": "blocked_by_reddit_operator_review",
+                    "manual_review": {
+                        "status": "awaiting_reddit_operator_review",
+                    },
+                },
+                "draft_result": {"media_id": "draft-123", "draft_url": "https://mp.weixin.qq.com/draft/123"},
+                "uploaded_inline_images": [{"asset_id": "hero-01"}],
+                "uploaded_cover": {"media_id": "cover-123"},
+            }
+        )
+
+        self.assertIn("Workflow publication readiness: blocked_by_reddit_operator_review", markdown)
+        self.assertIn("Workflow Reddit operator review: awaiting_reddit_operator_review", markdown)
+
+
+if __name__ == "__main__":
+    unittest.main()
