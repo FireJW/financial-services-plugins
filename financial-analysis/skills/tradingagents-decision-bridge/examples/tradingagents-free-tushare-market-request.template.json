@@ -1,0 +1,32 @@
+{
+  "ticker": "601600.SS",
+  "enabled": false,
+  "mode": "optional",
+  "analysis_profile": "free_tushare_market",
+  "cost_budget_tokens": 50000,
+  "timeout_seconds": 120,
+  "version_guard": "0.2.3",
+  "thesis": {
+    "thesis_id": "free-tushare-market-example-2026-04-06",
+    "summary": "Use a market-only Tushare profile for A-share names when free local-market data access is required."
+  },
+  "evidence": [
+    {
+      "claim_id": "free-tushare-market-example-claim-001",
+      "summary": "This is a reduced-call control request for validating the Tushare market profile."
+    }
+  ],
+  "catalysts": [
+    {
+      "summary": "Upcoming operating update or monthly production disclosure."
+    }
+  ],
+  "market_context": {
+    "benchmark_symbol": "000300.SS"
+  },
+  "fixture": {
+    "enabled": false,
+    "root": "tests/fixtures/tradingagents-decision-bridge",
+    "response": "basic-success.json"
+  }
+}

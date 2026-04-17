@@ -1,0 +1,16 @@
+{
+  "ticker_alias_groups": [
+    ["nvidia", "nvda"],
+    ["tesla", "tsla"],
+    ["apple", "aapl"],
+    ["microsoft", "msft"],
+    ["amazon", "amzn"],
+    ["alphabet", "googl", "goog"]
+  ],
+  "company_alias_groups": [
+    ["google", "alphabet"]
+  ],
+  "cross_language_alias_groups": [
+    ["tsmc", "台积电", "台積電"]
+  ]
+}

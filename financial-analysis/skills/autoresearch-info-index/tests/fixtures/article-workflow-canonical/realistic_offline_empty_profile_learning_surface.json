@@ -1,0 +1,42 @@
+{
+  "learning_stage": {
+    "decision": "no_signal",
+    "reason": "No reusable style signals were detected from this revision.",
+    "high_confidence_rule_count": 0,
+    "medium_confidence_rule_count": 0,
+    "low_confidence_rule_count": 0,
+    "explicit_change_count": 0,
+    "explicit_preference_count": 0,
+    "used_explicit_feedback": false,
+    "change_summary_preview": [
+      "No material revision deltas were detected."
+    ],
+    "excluded_signals_preview": [],
+    "high_confidence_rule_preview": [],
+    "medium_confidence_rule_preview": [],
+    "low_confidence_rule_preview": [],
+    "proposed_default_keys": [],
+    "proposed_defaults": {}
+  },
+  "review_stage": {
+    "attack_count": 0,
+    "claims_softened_count": 0,
+    "learning_decision": "no_signal",
+    "learning_reason": "No reusable style signals were detected from this revision.",
+    "learning_change_summary_preview": [
+      "No material revision deltas were detected."
+    ],
+    "learning_proposed_default_keys": []
+  },
+  "report_learning_lines": [
+    "- Decision: no_signal",
+    "- Reason: No reusable style signals were detected from this revision.",
+    "- High-confidence reusable rules: 0",
+    "- Medium-confidence candidates: 0",
+    "- Low-confidence observations: 0",
+    "- Human change reasons used: 0",
+    "- Human reusable preferences used: 0",
+    "- Human feedback path used: no",
+    "- Learning summary: No material revision deltas were detected."
+  ]
+}

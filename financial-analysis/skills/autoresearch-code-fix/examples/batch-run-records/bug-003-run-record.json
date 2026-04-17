@@ -1,0 +1,94 @@
+{
+  "task_id": "bug-003",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of search results stay stale after filter reset: After applying filters and then resetting them, the UI still shows stale filtered results instead of returning to the full result set.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": false,
+    "fix_verified_after": false,
+    "no_new_critical_failures": false,
+    "scope_controlled": false,
+    "root_cause_aligned": false
+  },
+  "baseline_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "candidate_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "Likely stale derived state, missing dependency tracking, or reset action not invalidating cached results",
+  "loser_pattern": "A broad reset fix could break pagination, default sorting, or optimistic UI behavior",
+  "source_bug": {
+    "bug_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\sample-pool\\bugs\\bug-003.json",
+    "title": "Search results stay stale after filter reset",
+    "priority": "medium",
+    "module_boundary": {
+      "allowed_paths": [
+        "src/search",
+        "src/ui/filters",
+        "tests/search"
+      ],
+      "forbidden_paths": [
+        "src/api/payments",
+        "src/reporting",
+        "db/migrations"
+      ]
+    },
+    "reproduction": {
+      "preconditions": [
+        "A local UI environment is running with seeded searchable data",
+        "At least one filter reduces the visible result set"
+      ],
+      "steps": [
+        "Open the search page and apply a filter that reduces the list",
+        "Use the reset or clear-all control",
+        "Observe whether the result set returns to the unfiltered state immediately"
+      ],
+      "expected_behavior": "The full unfiltered result set appears right after the reset action.",
+      "actual_behavior": "The UI state clears, but the old filtered results remain visible."
+    },
+    "validation": {
+      "primary_command": "npm test -- filter-reset",
+      "secondary_checks": [
+        "npm run lint -- src/search src/ui/filters/filter-panel.tsx"
+      ],
+      "manual_checks": [
+        "Re-run the filter-reset flow and confirm the list returns to the full dataset",
+        "Confirm a second filter application still works after the reset path"
+      ]
+    },
+    "rollback": {
+      "stable_version": "baseline-v1",
+      "rollback_rule": "Rollback on any hard-check failure or if reset starts causing empty or duplicated result sets",
+      "notes": "Keep the last stable search interaction behavior documented with screenshots or a recorded repro."
+    },
+    "scope_notes": "Keep the fix inside search state wiring and the filter reset path. Do not rework unrelated pagination, sorting, or backend search logic unless the root cause proves it is necessary.",
+    "tags": [
+      "ui",
+      "state-management",
+      "search"
+    ]
+  }
+}

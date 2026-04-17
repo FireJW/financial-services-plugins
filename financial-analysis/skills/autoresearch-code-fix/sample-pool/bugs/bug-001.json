@@ -1,0 +1,71 @@
+{
+  "bug_id": "bug-001",
+  "title": "API input validation accepts malformed payload",
+  "priority": "high",
+  "module_boundary": {
+    "allowed_paths": [
+      "src/api/validation",
+      "src/api/routes",
+      "tests/api/validation"
+    ],
+    "forbidden_paths": [
+      "src/frontend",
+      "src/reporting",
+      "db/migrations"
+    ]
+  },
+  "bug_description": "A create endpoint accepts a malformed payload and returns success instead of rejecting the request with a validation error.",
+  "expected_behavior": "Malformed input should return a 4xx validation error and should not create or mutate any record.",
+  "actual_behavior": "The request returns success and downstream logic runs with partially invalid data.",
+  "reproduction": {
+    "preconditions": [
+      "Local API server is running with test data loaded",
+      "A test user or auth fixture is available"
+    ],
+    "steps": [
+      "Send a request to the create endpoint with one required field missing and one field in the wrong type",
+      "Observe the response status and any downstream record creation side effects"
+    ],
+    "expected_behavior": "The request should fail fast with a validation error and no side effects.",
+    "actual_behavior": "The request succeeds or fails too late after partial processing."
+  },
+  "evidence": {
+    "logs": [
+      "API log shows request accepted and handler completed without validation rejection"
+    ],
+    "related_files": [
+      "src/api/validation/index.ts",
+      "src/api/routes/create-entity.ts",
+      "tests/api/validation/create-entity.test.ts"
+    ]
+  },
+  "validation": {
+    "primary_command": "npm test -- create-entity validation",
+    "secondary_checks": [
+      "npm run lint -- src/api/validation src/api/routes/create-entity.ts"
+    ],
+    "manual_checks": [
+      "Re-send the malformed request and confirm the endpoint now returns the expected validation error",
+      "Confirm no downstream record was created"
+    ]
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback on any hard-check failure or if valid requests start failing after the change",
+    "notes": "Keep the last known passing validation branch or patch set ready for restore."
+  },
+  "scope_notes": "The fix should stay within request validation and the directly affected route. Do not refactor shared auth, persistence, or unrelated response formatting.",
+  "notes": {
+    "root_cause_hint": "Likely a missing schema check or a route path that bypasses the normal validator",
+    "risk_hint": "A broad fix could accidentally reject valid payload variants already used by clients",
+    "similar_bugs": [
+      "payload type coercion accepted silently",
+      "missing required field not rejected in bulk-create mode"
+    ]
+  },
+  "tags": [
+    "api",
+    "validation",
+    "server"
+  ]
+}

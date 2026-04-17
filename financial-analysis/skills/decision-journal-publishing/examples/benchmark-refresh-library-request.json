@@ -1,0 +1,12 @@
+{
+  "analysis_time": "2026-03-24T23:00:00+08:00",
+  "library_path": "financial-analysis\\skills\\decision-journal-publishing\\cases\\benchmark-case-library.json",
+  "candidate_library_path": "financial-analysis\\skills\\decision-journal-publishing\\cases\\benchmark-case-candidates.json",
+  "seeds_path": "financial-analysis\\skills\\decision-journal-publishing\\cases\\benchmark-refresh-seeds.json",
+  "observations_path": "financial-analysis\\skills\\decision-journal-publishing\\cases\\benchmark-case-observations.jsonl",
+  "refresh_existing_cases": true,
+  "discover_new_cases": true,
+  "auto_add_new_cases": true,
+  "allow_reference_url_fallback": false,
+  "run_benchmark_index_after_refresh": true
+}

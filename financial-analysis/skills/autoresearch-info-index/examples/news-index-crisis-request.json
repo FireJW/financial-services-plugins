@@ -1,0 +1,179 @@
+{
+  "topic": "Hormuz negotiation nowcast",
+  "analysis_time": "2026-03-23T10:00:00+00:00",
+  "questions": [
+    "Are US-Iran contacts active right now?",
+    "Is there evidence of a finalized settlement?",
+    "What do public vessel signals imply?"
+  ],
+  "use_case": "crisis-monitoring",
+  "source_preferences": [
+    "public-first",
+    "browser-assisted-second"
+  ],
+  "mode": "crisis",
+  "windows": [
+    "10m",
+    "1h",
+    "6h",
+    "24h"
+  ],
+  "market_relevance": [
+    "Energy price shock sensitivity",
+    "Defense and shipping headline sensitivity"
+  ],
+  "claims": [
+    {
+      "claim_id": "claim-negotiation",
+      "claim_text": "US and Iran are in active indirect contacts today."
+    },
+    {
+      "claim_id": "claim-deal",
+      "claim_text": "A finalized ceasefire or settlement has already been agreed."
+    },
+    {
+      "claim_id": "claim-vessel",
+      "claim_text": "Public vessel tracking shows a possible repositioning signal, but not confirmed operational intent."
+    },
+    {
+      "claim_id": "claim-eta",
+      "claim_text": "A US amphibious group could reach a relevant public watch position within roughly one to two days."
+    }
+  ],
+  "candidates": [
+    {
+      "source_id": "oman-001",
+      "source_name": "Oman Foreign Ministry",
+      "source_type": "government_release",
+      "published_at": "2026-03-23T09:54:00+00:00",
+      "observed_at": "2026-03-23T09:55:00+00:00",
+      "url": "https://example.com/oman-001",
+      "text_excerpt": "Oman said indirect contacts are continuing and described the latest exchanges as constructive.",
+      "claim_ids": [
+        "claim-negotiation"
+      ],
+      "claim_states": {
+        "claim-negotiation": "support"
+      }
+    },
+    {
+      "source_id": "reuters-001",
+      "source_name": "Reuters",
+      "source_type": "wire",
+      "published_at": "2026-03-23T09:47:00+00:00",
+      "observed_at": "2026-03-23T09:48:00+00:00",
+      "url": "https://example.com/reuters-001",
+      "text_excerpt": "A senior official said indirect contacts continued but there was no finalized settlement.",
+      "claim_ids": [
+        "claim-negotiation",
+        "claim-deal"
+      ],
+      "claim_states": {
+        "claim-negotiation": "support",
+        "claim-deal": "contradict"
+      }
+    },
+    {
+      "source_id": "iran-001",
+      "source_name": "Iran Foreign Ministry",
+      "source_type": "government_release",
+      "published_at": "2026-03-23T09:49:00+00:00",
+      "observed_at": "2026-03-23T09:50:00+00:00",
+      "url": "https://example.com/iran-001",
+      "text_excerpt": "Iran denied that any finalized deal had been reached.",
+      "claim_ids": [
+        "claim-deal"
+      ],
+      "claim_states": {
+        "claim-deal": "contradict"
+      }
+    },
+    {
+      "source_id": "marinetraffic-001",
+      "source_name": "MarineTraffic",
+      "source_type": "public_ship_tracker",
+      "published_at": "2026-03-23T09:56:00+00:00",
+      "observed_at": "2026-03-23T09:56:00+00:00",
+      "url": "https://example.com/marinetraffic-001",
+      "text_excerpt": "Public AIS points to a US amphibious ship group moving toward the eastern Mediterranean watch area.",
+      "claim_ids": [
+        "claim-vessel",
+        "claim-eta"
+      ],
+      "claim_states": {
+        "claim-vessel": "support",
+        "claim-eta": "support"
+      },
+      "vessel_ids": [
+        "LHD-01"
+      ],
+      "position_hint": {
+        "last_public_location": "Eastern Mediterranean",
+        "eta_hours_low": 24,
+        "eta_hours_high": 42
+      }
+    },
+    {
+      "source_id": "osint-001",
+      "source_name": "OSINT Watch",
+      "source_type": "social",
+      "published_at": "2026-03-23T09:58:00+00:00",
+      "observed_at": "2026-03-23T09:58:00+00:00",
+      "url": "https://example.com/osint-001",
+      "text_excerpt": "Open-source trackers claim the group may be repositioning faster than previously expected.",
+      "claim_ids": [
+        "claim-vessel",
+        "claim-eta"
+      ],
+      "claim_states": {
+        "claim-vessel": "support",
+        "claim-eta": "support"
+      }
+    },
+    {
+      "source_id": "blog-001",
+      "source_name": "Regional Conflict Blog",
+      "source_type": "blog",
+      "published_at": "2026-03-23T09:40:00+00:00",
+      "observed_at": "2026-03-23T09:41:00+00:00",
+      "url": "https://example.com/blog-001",
+      "text_excerpt": "A deal may already be close, but the post cites no direct confirmation.",
+      "claim_ids": [
+        "claim-deal"
+      ],
+      "claim_states": {
+        "claim-deal": "support"
+      }
+    },
+    {
+      "source_id": "axios-001",
+      "source_name": "Axios",
+      "source_type": "major_news",
+      "published_at": "2026-03-23T09:59:00+00:00",
+      "observed_at": "2026-03-23T09:59:00+00:00",
+      "url": "https://example.com/axios-001",
+      "access_mode": "blocked",
+      "claim_ids": [
+        "claim-negotiation"
+      ],
+      "claim_states": {
+        "claim-negotiation": "support"
+      }
+    },
+    {
+      "source_id": "ap-older-001",
+      "source_name": "AP",
+      "source_type": "major_news",
+      "published_at": "2026-03-22T06:00:00+00:00",
+      "observed_at": "2026-03-22T06:00:00+00:00",
+      "url": "https://example.com/ap-older-001",
+      "text_excerpt": "Earlier reporting noted indirect channels but without fresh same-day confirmation.",
+      "claim_ids": [
+        "claim-negotiation"
+      ],
+      "claim_states": {
+        "claim-negotiation": "support"
+      }
+    }
+  ]
+}

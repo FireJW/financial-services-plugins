@@ -1,0 +1,57 @@
+{
+  "analysis_time": "2026-03-29T10:30:00+00:00",
+  "manual_topic_candidates": [
+    {
+      "title": "Claude Code \u6e90\u7801\u6cc4\u9732\u540e\uff0c\u771f\u6b63\u503c\u5f97\u770b\u7684 7 \u4e2a\u79d8\u5bc6\u529f\u80fd",
+      "summary": "The leaked code and docs point to browser control, tool use boundaries, and workflow orchestration changes.",
+      "source_items": [
+        {
+          "source_name": "X @agintender",
+          "source_type": "social",
+          "url": "https://x.com/agintender/status/2038921508999901274",
+          "published_at": "2026-03-29T10:00:00+00:00",
+          "summary": "The thread captures browser control entrypoints, subagents, and permission boundaries.",
+          "root_post_screenshot_path": "__ROOT_POST_SCREENSHOT_PATH__",
+          "artifact_manifest": [
+            {
+              "role": "root_post_screenshot",
+              "path": "__ROOT_POST_SCREENSHOT_PATH__",
+              "summary": "Screenshot of the original X thread discussing Claude Code hidden capabilities."
+            }
+          ],
+          "media_items": [
+            {
+              "source_url": "https://pbs.twimg.com/media/claude-code-hidden-capabilities.jpg",
+              "local_artifact_path": "__POST_MEDIA_PATH__",
+              "ocr_text_raw": "Browser mode entrypoint shown next to remote control and workflow panels."
+            }
+          ],
+          "post_summary": "Screenshot-backed thread about Claude Code browser control and hidden capabilities.",
+          "media_summary": "Browser-captured image from the original X post showing workflow panels."
+        },
+        {
+          "source_name": "Anthropic docs / Chrome",
+          "source_type": "major_news",
+          "url": "https://docs.anthropic.com/en/docs/claude-code/chrome",
+          "published_at": "2026-03-29T09:50:00+00:00",
+          "summary": "Official docs describe Claude Code browser control and Chrome integration."
+        }
+      ]
+    }
+  ],
+  "audience_keywords": [
+    "Claude Code",
+    "developer tools",
+    "workflow",
+    "browser"
+  ],
+  "account_name": "Test Account",
+  "author": "Codex",
+  "language_mode": "chinese",
+  "article_framework": "deep_analysis",
+  "draft_mode": "image_first",
+  "image_strategy": "prefer_images",
+  "target_length_chars": 2800,
+  "headline_hook_mode": "traffic",
+  "max_images": 2
+}

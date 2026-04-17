@@ -1,0 +1,213 @@
+{
+  "seed_set_name": "decision-journal-benchmark-refresh-seeds",
+  "version": "2026-03-25.4",
+  "updated_at": "2026-03-25T10:05:00+08:00",
+  "observations_path": "benchmark-case-observations.jsonl",
+  "default_request": {
+    "refresh_statuses": [
+      "reviewed",
+      "candidate"
+    ],
+    "max_candidates_per_source": 4,
+    "benchmark_index_request": {
+      "include_curation_statuses": [
+        "reviewed"
+      ],
+      "minimum_read_band": "5w+",
+      "strict_read_gate": false,
+      "allow_below_threshold_commercial_exceptions": true
+    }
+  },
+  "sources": [
+    {
+      "source_id": "zhengjieju-sina-feed",
+      "enabled": true,
+      "platform": "wechat",
+      "account_name": "正解局",
+      "seed_mode": "sina_newmedia_json",
+      "muid": "1889353",
+      "seed_pages": 1,
+      "seed_url": "https://k.sina.cn/media_m_1889353.html",
+      "include_url_patterns": [],
+      "exclude_url_patterns": [
+        "/video/",
+        "/slide/"
+      ],
+      "include_title_keywords": [
+        "为什么",
+        "背后",
+        "意味着",
+        "影响",
+        "风险",
+        "冲击",
+        "谁在买单"
+      ],
+      "exclude_title_keywords": [
+        "招聘",
+        "课程",
+        "直播",
+        "活动",
+        "福利",
+        "报名"
+      ],
+      "max_candidates": 2,
+      "max_age_days": 45,
+      "candidate_defaults": {
+        "account_positioning": "industry and enterprise interpretation for broad business readers",
+        "topic_type": "event explainer",
+        "hook_type": "public consequence question",
+        "affected_group": "broad business readers trying to understand why the event matters",
+        "cta_type": "none",
+        "paid_asset_linkage": "low",
+        "notes": "Auto-discovered from the 正解局 Sina newmedia feed. Prioritize public-consequence explainers over generic current-affairs noise."
+      }
+    },
+    {
+      "source_id": "wallstreetcn-sina-feed",
+      "enabled": true,
+      "platform": "wechat",
+      "account_name": "华尔街见闻",
+      "seed_mode": "sina_newmedia_json",
+      "muid": "1621607",
+      "seed_pages": 1,
+      "seed_url": "https://k.sina.cn/media_m_1621607.html",
+      "include_url_patterns": [],
+      "exclude_url_patterns": [
+        "/video/",
+        "/slide/"
+      ],
+      "include_title_keywords": [
+        "必读",
+        "解读",
+        "复盘",
+        "深度",
+        "前瞻",
+        "专访"
+      ],
+      "exclude_title_keywords": [
+        "快讯",
+        "直播",
+        "公告",
+        "研报",
+        "早报",
+        "收盘",
+        "盘前",
+        "盘中",
+        "异动"
+      ],
+      "max_candidates": 2,
+      "max_age_days": 21,
+      "candidate_defaults": {
+        "account_positioning": "high-frequency finance readers paying to reduce selection cost",
+        "topic_type": "paid daily utility",
+        "hook_type": "selection and opportunity-cost reduction",
+        "affected_group": "serious finance readers with repeated information overload",
+        "cta_type": "paid subscription",
+        "paid_asset_linkage": "high",
+        "notes": "Auto-discovered from the 华尔街见闻 Sina newmedia feed. Review for recurring utility fit before promotion."
+      }
+    },
+    {
+      "source_id": "jinrongbaguanv-sina-feed",
+      "enabled": false,
+      "platform": "toutiao",
+      "account_name": "金融八卦女",
+      "seed_mode": "sina_newmedia_json",
+      "muid": "1587632",
+      "seed_pages": 1,
+      "seed_url": "https://k.sina.cn/media_m_1587632.html",
+      "include_url_patterns": [],
+      "exclude_url_patterns": [
+        "/video/",
+        "/slide/"
+      ],
+      "include_title_keywords": [
+        "老板",
+        "创始人",
+        "破产",
+        "暴雷",
+        "欠薪",
+        "清算",
+        "停摆",
+        "门店",
+        "商家",
+        "行业"
+      ],
+      "exclude_title_keywords": [
+        "活动",
+        "课程",
+        "直播",
+        "招商",
+        "福利",
+        "开课",
+        "名媛",
+        "豪门",
+        "绯闻",
+        "婚",
+        "学生",
+        "健康"
+      ],
+      "max_candidates": 1,
+      "max_age_days": 30,
+      "candidate_defaults": {
+        "account_positioning": "deep business storytelling with finance and operator relevance",
+        "topic_type": "business consequence feature",
+        "hook_type": "affected group under pressure",
+        "affected_group": "operators, founders, and finance-curious readers under real-world pressure",
+        "cta_type": "follow account",
+        "paid_asset_linkage": "medium",
+        "notes": "Auto-discovered from the 金融八卦女 Sina newmedia feed. Keep disabled by default and use manually for Toutiao acquisition case hunting."
+      }
+    },
+    {
+      "source_id": "shizhifengyun-sina-feed",
+      "enabled": true,
+      "platform": "wechat",
+      "account_name": "市值风云",
+      "seed_mode": "sina_newmedia_json",
+      "muid": "1742351",
+      "seed_pages": 1,
+      "seed_url": "https://k.sina.cn/media_m_1742351.html",
+      "include_url_patterns": [],
+      "exclude_url_patterns": [
+        "/video/",
+        "/slide/"
+      ],
+      "include_title_keywords": [
+        "财报",
+        "业绩",
+        "年报",
+        "季报",
+        "估值",
+        "现金流",
+        "商业模式",
+        "盈利",
+        "造假",
+        "招股书"
+      ],
+      "exclude_title_keywords": [
+        "ETF",
+        "基金",
+        "指数",
+        "认购",
+        "开箱",
+        "直播",
+        "一图",
+        "1分钟",
+        "概念股",
+        "名单"
+      ],
+      "max_candidates": 2,
+      "max_age_days": 45,
+      "candidate_defaults": {
+        "account_positioning": "professional and high-net-worth investing audience",
+        "topic_type": "deep company and capital-market analysis",
+        "hook_type": "forensic company reading",
+        "affected_group": "serious investors and market professionals",
+        "cta_type": "app and report upsell",
+        "paid_asset_linkage": "high",
+        "notes": "Auto-discovered from the 市值风云 Sina newmedia feed. Keep the candidate pool focused on forensic company-reading cases."
+      }
+    }
+  ]
+}

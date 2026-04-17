@@ -1,0 +1,31 @@
+{
+  "ticker": "NVDA",
+  "enabled": true,
+  "mode": "optional",
+  "cost_budget_tokens": 50000,
+  "timeout_seconds": 120,
+  "version_guard": "0.2.3",
+  "thesis": {
+    "thesis_id": "nvda-control-2026-04-05",
+    "summary": "Use NVDA as a U.S. control ticker for a TradingAgents pilot run."
+  },
+  "evidence": [
+    {
+      "claim_id": "control-us-nvda-001",
+      "summary": "This row is a control case for upstream stability rather than a production thesis."
+    }
+  ],
+  "catalysts": [
+    {
+      "summary": "Next earnings and AI capex commentary remain major market-moving events."
+    }
+  ],
+  "market_context": {
+    "benchmark_symbol": "SOXX"
+  },
+  "fixture": {
+    "enabled": false,
+    "root": "tests/fixtures/tradingagents-decision-bridge",
+    "response": "basic-success.json"
+  }
+}

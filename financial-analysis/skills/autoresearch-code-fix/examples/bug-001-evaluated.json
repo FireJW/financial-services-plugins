@@ -1,0 +1,83 @@
+{
+  "profile": "code-fix",
+  "task_id": "bug-001",
+  "evaluated_at": "2026-03-23T12:03:38.485445+00:00",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of api input validation accepts malformed payload: A create endpoint accepts a malformed payload and returns success instead of rejecting the request with a validation error.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "hard_checks": {
+    "passed": false,
+    "failures": [
+      "Issue was not reproducible before the fix",
+      "Fix was not verified after the change",
+      "New critical failure was introduced",
+      "Change scope exceeded the allowed boundary",
+      "Fix does not match the stated root cause"
+    ]
+  },
+  "soft_scores": {
+    "baseline_total": 0,
+    "candidate_total": 0,
+    "total": 0,
+    "delta": 0,
+    "dimensions": [
+      {
+        "name": "root_cause_quality",
+        "score": 0,
+        "weight": 25,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "fix_minimality",
+        "score": 0,
+        "weight": 20,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "verification_completeness",
+        "score": 0,
+        "weight": 20,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "regression_risk_control",
+        "score": 0,
+        "weight": 15,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "debugging_efficiency",
+        "score": 0,
+        "weight": 10,
+        "baseline": 0,
+        "delta": 0
+      },
+      {
+        "name": "reuse_value",
+        "score": 0,
+        "weight": 10,
+        "baseline": 0,
+        "delta": 0
+      }
+    ]
+  },
+  "decision": {
+    "keep": false,
+    "rollback_to": "baseline-v1",
+    "reason": "Rollback because one or more hard checks failed",
+    "concerns": []
+  },
+  "stop_signal": {
+    "reached": false,
+    "reason": "No stop condition reached"
+  },
+  "notes": {
+    "winner_pattern": "Likely a missing schema check or a route path that bypasses the normal validator",
+    "loser_pattern": "A broad fix could accidentally reject valid payload variants already used by clients"
+  }
+}

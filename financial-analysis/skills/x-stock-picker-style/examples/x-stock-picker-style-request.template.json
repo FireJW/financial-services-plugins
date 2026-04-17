@@ -1,0 +1,15 @@
+{
+  "analysis_time": "2026-04-10T08:00:00+00:00",
+  "analysis_date": "2026-04-10",
+  "subject_url": "https://x.com/twikejin",
+  "subject_registry_path": "C:\\path\\to\\x-stock-picker-style-subject-registry.json",
+  "score_mode": "off",
+  "enable_live_resolution": false,
+  "enable_live_history": false,
+  "candidate_names": [],
+  "theme_aliases": {},
+  "ticker_resolution_by_name": {},
+  "history_by_ticker": {},
+  "x_index_result_path": "C:\\path\\to\\x-index-result.json",
+  "max_source_items": 80
+}

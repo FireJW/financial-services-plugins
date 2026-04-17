@@ -1,0 +1,52 @@
+{
+  "topic": "ValueInvesting supplier leverage debate",
+  "analysis_time": "2026-04-04T04:00:00+00:00",
+  "questions": [
+    "Which replies here are genuinely distinct analysis and which ones only repeat the same framing?"
+  ],
+  "comment_sort_strategy": "hybrid",
+  "reddit_result": {
+    "posts": [
+      {
+        "id": "val123",
+        "title": "Is supplier leverage durable or just another AI squeeze?",
+        "author": "marginledger",
+        "subreddit": "ValueInvesting",
+        "permalink": "/r/ValueInvesting/comments/val123/is_supplier_leverage_durable_or_just_another_ai_squeeze/",
+        "url": "https://www.reddit.com/r/ValueInvesting/comments/val123/is_supplier_leverage_durable_or_just_another_ai_squeeze/",
+        "selftext": "Thread focuses on packaging bottlenecks, pricing power, and how long the squeeze can last.",
+        "score": 410,
+        "num_comments": 48,
+        "created_utc": "2026-04-04T03:05:00+00:00",
+        "listing": "top",
+        "time_filter": "week"
+      }
+    ],
+    "comments": [
+      {
+        "id": "valc1",
+        "link_id": "t3_val123",
+        "author": "grossmarginmap",
+        "score": 76,
+        "created_utc": "2026-04-04T03:18:00+00:00",
+        "body": "Best reply says supplier leverage lasts only while packaging lead times stay tight and customers cannot dual-source."
+      },
+      {
+        "id": "valc2",
+        "link_id": "t3_val123",
+        "author": "grossmarginmap-alt",
+        "score": 73,
+        "created_utc": "2026-04-04T03:26:00+00:00",
+        "body": "Best reply says supplier leverage only lasts while packaging lead times stay tight and customers cannot dual source."
+      },
+      {
+        "id": "valc3",
+        "link_id": "t3_val123",
+        "author": "forensic-gaap",
+        "score": 84,
+        "created_utc": "2026-04-04T03:41:00+00:00",
+        "body": "A different reply says earnings durability depends more on what happens after capacity expands."
+      }
+    ]
+  }
+}

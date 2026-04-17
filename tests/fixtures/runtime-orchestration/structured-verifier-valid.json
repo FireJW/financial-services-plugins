@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "structured-verifier-v1",
+  "verdict": "PASS",
+  "hasAdversarialProbe": true,
+  "checks": [
+    {
+      "title": "Contract scan",
+      "commandRun": "local contract validation",
+      "outputObserved": "All required sections are present.",
+      "result": "PASS",
+      "isAdversarialProbe": false
+    },
+    {
+      "title": "Adversarial overclaim probe",
+      "commandRun": "compare Confirmed and Unconfirmed certainty levels",
+      "outputObserved": "No unsupported upgrade from uncertainty to certainty.",
+      "result": "PASS",
+      "isAdversarialProbe": true
+    }
+  ]
+}

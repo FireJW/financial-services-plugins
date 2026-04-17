@@ -1,0 +1,497 @@
+{
+  "request": {
+    "topic": "rumor-denial",
+    "analysis_time": "2026-02-18T00:00:00+00:00",
+    "questions": [
+      "A deal blog said a listed industrial company had agreed to sell itself, but the company later denied it. How credible is the original takeover claim now?"
+    ],
+    "use_case": "legacy-run-record-upgrade",
+    "source_preferences": [],
+    "mode": "generic",
+    "windows": [
+      "10m",
+      "1h",
+      "6h",
+      "24h"
+    ],
+    "claims": [
+      {
+        "claim_id": "claim-01",
+        "claim_text": "A takeover rumor was published and moved the stock.",
+        "expected_status": "confirmed_by_reporting"
+      },
+      {
+        "claim_id": "claim-02",
+        "claim_text": "A signed sale agreement had been confirmed by the company.",
+        "expected_status": "contradicted"
+      },
+      {
+        "claim_id": "claim-03",
+        "claim_text": "The right framing is that a signed deal was not confirmed, even if informal discussions may have existed.",
+        "expected_status": "analytical_judgment"
+      }
+    ],
+    "candidates": [
+      {
+        "source_id": "legacy-source-01",
+        "source_name": "Deal Blog",
+        "source_type": "news",
+        "published_at": "2026-02-18",
+        "observed_at": "2026-02-18",
+        "url": "https://example.com/deal-blog-industrial-sale",
+        "text_excerpt": "The outlet said a private-equity buyer had already reached board-level agreement.",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "channel": "shadow",
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-02",
+        "source_name": "Exchange Filing",
+        "source_type": "exchange_filing",
+        "published_at": "2026-02-18",
+        "observed_at": "2026-02-18",
+        "url": "https://example.com/exchange-filing-denial",
+        "text_excerpt": "The company said it had no disclosable signed agreement and warned investors to be careful.",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "channel": "shadow",
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-03",
+        "source_name": "Second Press Report",
+        "source_type": "news",
+        "published_at": "2026-02-19",
+        "observed_at": "2026-02-19",
+        "url": "https://example.com/second-report-talks-ongoing",
+        "text_excerpt": "Another report said exploratory talks may have happened but were not finalized.",
+        "claim_ids": [
+          "claim-01",
+          "claim-02",
+          "claim-03"
+        ],
+        "channel": "shadow",
+        "access_mode": "public"
+      }
+    ],
+    "market_relevance": [],
+    "expected_source_families": [],
+    "crisis_defaults": {}
+  },
+  "observations": [
+    {
+      "source_id": "legacy-source-02",
+      "source_name": "Exchange Filing",
+      "source_type": "exchange_filing",
+      "source_tier": 0,
+      "channel": "shadow",
+      "published_at": "2026-02-18T00:00:00+00:00",
+      "observed_at": "2026-02-18T00:00:00+00:00",
+      "url": "https://example.com/exchange-filing-denial",
+      "claim_ids": [
+        "claim-01",
+        "claim-02",
+        "claim-03"
+      ],
+      "entity_ids": [],
+      "vessel_ids": [],
+      "text_excerpt": "The company said it had no disclosable signed agreement and warned investors to be careful.",
+      "position_hint": null,
+      "geo_hint": null,
+      "access_mode": "public",
+      "rank_score": 155,
+      "recency_bucket": "0-10m",
+      "age_minutes": 0.0,
+      "age_label": "0m",
+      "claim_states": {
+        "claim-01": "support",
+        "claim-02": "support",
+        "claim-03": "support"
+      },
+      "claim_texts": {
+        "claim-01": "A takeover rumor was published and moved the stock.",
+        "claim-02": "A signed sale agreement had been confirmed by the company.",
+        "claim-03": "The right framing is that a signed deal was not confirmed, even if informal discussions may have existed."
+      }
+    },
+    {
+      "source_id": "legacy-source-01",
+      "source_name": "Deal Blog",
+      "source_type": "news",
+      "source_tier": 1,
+      "channel": "shadow",
+      "published_at": "2026-02-18T00:00:00+00:00",
+      "observed_at": "2026-02-18T00:00:00+00:00",
+      "url": "https://example.com/deal-blog-industrial-sale",
+      "claim_ids": [
+        "claim-01",
+        "claim-02",
+        "claim-03"
+      ],
+      "entity_ids": [],
+      "vessel_ids": [],
+      "text_excerpt": "The outlet said a private-equity buyer had already reached board-level agreement.",
+      "position_hint": null,
+      "geo_hint": null,
+      "access_mode": "public",
+      "rank_score": 145,
+      "recency_bucket": "0-10m",
+      "age_minutes": 0.0,
+      "age_label": "0m",
+      "claim_states": {
+        "claim-01": "support",
+        "claim-02": "support",
+        "claim-03": "support"
+      },
+      "claim_texts": {
+        "claim-01": "A takeover rumor was published and moved the stock.",
+        "claim-02": "A signed sale agreement had been confirmed by the company.",
+        "claim-03": "The right framing is that a signed deal was not confirmed, even if informal discussions may have existed."
+      }
+    },
+    {
+      "source_id": "legacy-source-03",
+      "source_name": "Second Press Report",
+      "source_type": "news",
+      "source_tier": 1,
+      "channel": "shadow",
+      "published_at": "2026-02-19T00:00:00+00:00",
+      "observed_at": "2026-02-19T00:00:00+00:00",
+      "url": "https://example.com/second-report-talks-ongoing",
+      "claim_ids": [
+        "claim-01",
+        "claim-02",
+        "claim-03"
+      ],
+      "entity_ids": [],
+      "vessel_ids": [],
+      "text_excerpt": "Another report said exploratory talks may have happened but were not finalized.",
+      "position_hint": null,
+      "geo_hint": null,
+      "access_mode": "public",
+      "rank_score": 145,
+      "recency_bucket": "0-10m",
+      "age_minutes": 0.0,
+      "age_label": "0m",
+      "claim_states": {
+        "claim-01": "support",
+        "claim-02": "support",
+        "claim-03": "support"
+      },
+      "claim_texts": {
+        "claim-01": "A takeover rumor was published and moved the stock.",
+        "claim-02": "A signed sale agreement had been confirmed by the company.",
+        "claim-03": "The right framing is that a signed deal was not confirmed, even if informal discussions may have existed."
+      }
+    }
+  ],
+  "claim_ledger": [
+    {
+      "claim_id": "claim-01",
+      "claim_text": "A takeover rumor was published and moved the stock.",
+      "status": "confirmed",
+      "supporting_sources": [
+        "legacy-source-02",
+        "legacy-source-01",
+        "legacy-source-03"
+      ],
+      "contradicting_sources": [],
+      "last_updated_at": "2026-02-19T00:00:00+00:00",
+      "promotion_state": "core"
+    },
+    {
+      "claim_id": "claim-02",
+      "claim_text": "A signed sale agreement had been confirmed by the company.",
+      "status": "confirmed",
+      "supporting_sources": [
+        "legacy-source-02",
+        "legacy-source-01",
+        "legacy-source-03"
+      ],
+      "contradicting_sources": [],
+      "last_updated_at": "2026-02-19T00:00:00+00:00",
+      "promotion_state": "core"
+    },
+    {
+      "claim_id": "claim-03",
+      "claim_text": "The right framing is that a signed deal was not confirmed, even if informal discussions may have existed.",
+      "status": "confirmed",
+      "supporting_sources": [
+        "legacy-source-02",
+        "legacy-source-01",
+        "legacy-source-03"
+      ],
+      "contradicting_sources": [],
+      "last_updated_at": "2026-02-19T00:00:00+00:00",
+      "promotion_state": "core"
+    }
+  ],
+  "verdict_output": {
+    "core_verdict": "3 core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel.",
+    "live_tape": [
+      {
+        "source_name": "Exchange Filing",
+        "age": "0m",
+        "source_tier": 0,
+        "text_excerpt": "The company said it had no disclosable signed agreement and warned investors to be careful."
+      },
+      {
+        "source_name": "Deal Blog",
+        "age": "0m",
+        "source_tier": 1,
+        "text_excerpt": "The outlet said a private-equity buyer had already reached board-level agreement."
+      },
+      {
+        "source_name": "Second Press Report",
+        "age": "0m",
+        "source_tier": 1,
+        "text_excerpt": "Another report said exploratory talks may have happened but were not finalized."
+      }
+    ],
+    "confidence_interval": [
+      54,
+      100
+    ],
+    "confidence_gate": "shadow-heavy",
+    "latest_signals": [
+      {
+        "source_name": "Exchange Filing",
+        "source_type": "exchange_filing",
+        "source_tier": 0,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 155,
+        "access_mode": "public",
+        "url": "https://example.com/exchange-filing-denial",
+        "text_excerpt": "The company said it had no disclosable signed agreement and warned investors to be careful."
+      },
+      {
+        "source_name": "Deal Blog",
+        "source_type": "news",
+        "source_tier": 1,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 145,
+        "access_mode": "public",
+        "url": "https://example.com/deal-blog-industrial-sale",
+        "text_excerpt": "The outlet said a private-equity buyer had already reached board-level agreement."
+      },
+      {
+        "source_name": "Second Press Report",
+        "source_type": "news",
+        "source_tier": 1,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 145,
+        "access_mode": "public",
+        "url": "https://example.com/second-report-talks-ongoing",
+        "text_excerpt": "Another report said exploratory talks may have happened but were not finalized."
+      }
+    ],
+    "confirmed": [
+      {
+        "claim_id": "claim-01",
+        "claim_text": "A takeover rumor was published and moved the stock.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-02",
+          "legacy-source-01",
+          "legacy-source-03"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-02-19T00:00:00+00:00",
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-02",
+        "claim_text": "A signed sale agreement had been confirmed by the company.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-02",
+          "legacy-source-01",
+          "legacy-source-03"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-02-19T00:00:00+00:00",
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-03",
+        "claim_text": "The right framing is that a signed deal was not confirmed, even if informal discussions may have existed.",
+        "status": "confirmed",
+        "supporting_sources": [
+          "legacy-source-02",
+          "legacy-source-01",
+          "legacy-source-03"
+        ],
+        "contradicting_sources": [],
+        "last_updated_at": "2026-02-19T00:00:00+00:00",
+        "promotion_state": "core"
+      }
+    ],
+    "not_confirmed": [],
+    "inference_only": [],
+    "conflict_matrix": [
+      {
+        "claim_id": "claim-01",
+        "status": "confirmed",
+        "support_count": 3,
+        "contradiction_count": 0,
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-02",
+        "status": "confirmed",
+        "support_count": 3,
+        "contradiction_count": 0,
+        "promotion_state": "core"
+      },
+      {
+        "claim_id": "claim-03",
+        "status": "confirmed",
+        "support_count": 3,
+        "contradiction_count": 0,
+        "promotion_state": "core"
+      }
+    ],
+    "missing_confirmations": [],
+    "market_relevance": [],
+    "next_watch_items": [
+      "Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.",
+      "Treat ship-tracking as last public indication, not live military truth.",
+      "Watch for blocked or missing source families before calling the picture complete."
+    ],
+    "freshness_panel": [
+      {
+        "window": "10m",
+        "count": 3,
+        "core_count": 0,
+        "shadow_count": 3,
+        "blocked_count": 0
+      },
+      {
+        "window": "1h",
+        "count": 3,
+        "core_count": 0,
+        "shadow_count": 3,
+        "blocked_count": 0
+      },
+      {
+        "window": "6h",
+        "count": 3,
+        "core_count": 0,
+        "shadow_count": 3,
+        "blocked_count": 0
+      },
+      {
+        "window": "24h",
+        "count": 3,
+        "core_count": 0,
+        "shadow_count": 3,
+        "blocked_count": 0
+      }
+    ],
+    "source_layer_summary": {
+      "by_channel": {
+        "shadow": 3
+      },
+      "by_tier": {
+        "0": 1,
+        "1": 2
+      },
+      "by_access_mode": {
+        "public": 3
+      }
+    },
+    "background_only": []
+  },
+  "retrieval_run_report": {
+    "fetch_order": [
+      "legacy-source-02",
+      "legacy-source-01",
+      "legacy-source-03"
+    ],
+    "sources_attempted": [
+      {
+        "source_id": "legacy-source-02",
+        "source_name": "Exchange Filing",
+        "source_type": "exchange_filing",
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-01",
+        "source_name": "Deal Blog",
+        "source_type": "news",
+        "access_mode": "public"
+      },
+      {
+        "source_id": "legacy-source-03",
+        "source_name": "Second Press Report",
+        "source_type": "news",
+        "access_mode": "public"
+      }
+    ],
+    "sources_blocked": [],
+    "top_recent_hits": [
+      {
+        "source_name": "Exchange Filing",
+        "source_type": "exchange_filing",
+        "source_tier": 0,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 155,
+        "access_mode": "public",
+        "url": "https://example.com/exchange-filing-denial",
+        "text_excerpt": "The company said it had no disclosable signed agreement and warned investors to be careful."
+      },
+      {
+        "source_name": "Deal Blog",
+        "source_type": "news",
+        "source_tier": 1,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 145,
+        "access_mode": "public",
+        "url": "https://example.com/deal-blog-industrial-sale",
+        "text_excerpt": "The outlet said a private-equity buyer had already reached board-level agreement."
+      },
+      {
+        "source_name": "Second Press Report",
+        "source_type": "news",
+        "source_tier": 1,
+        "channel": "shadow",
+        "age": "0m",
+        "recency_bucket": "0-10m",
+        "rank_score": 145,
+        "access_mode": "public",
+        "url": "https://example.com/second-report-talks-ongoing",
+        "text_excerpt": "Another report said exploratory talks may have happened but were not finalized."
+      }
+    ],
+    "shadow_to_core_promotions": [
+      "claim-01",
+      "claim-02",
+      "claim-03"
+    ],
+    "missed_expected_source_families": []
+  },
+  "retrieval_quality": {
+    "freshness_capture_score": 80,
+    "shadow_signal_discipline_score": 100,
+    "source_promotion_discipline_score": 100,
+    "blocked_source_handling_score": 100
+  },
+  "report_markdown": "# News Index Report: rumor-denial\n\nOne-line judgment (2026-02-18T00:00:00+00:00, confidence 54-100, gate shadow-heavy): 3 core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel.\n\n## Confirmed\n- A takeover rumor was published and moved the stock.\n- A signed sale agreement had been confirmed by the company.\n- The right framing is that a signed deal was not confirmed, even if informal discussions may have existed.\n\n## Not Confirmed\n- None\n\n## Inference Only\n- None\n\n## Latest Signals First\n\n| Source | Tier | Channel | Age | Rank | Note |\n|---|---:|---|---|---:|---|\n| Exchange Filing | 0 | shadow | 0m | 155 | The company said it had no disclosable signed agreement and warned investors to be careful. |\n| Deal Blog | 1 | shadow | 0m | 145 | The outlet said a private-equity buyer had already reached board-level agreement. |\n| Second Press Report | 1 | shadow | 0m | 145 | Another report said exploratory talks may have happened but were not finalized. |\n\n## Conflict Matrix\n\n| Claim | Status | Supports | Contradictions | Promotion |\n|---|---|---:|---:|---|\n| claim-01 | confirmed | 3 | 0 | core |\n| claim-02 | confirmed | 3 | 0 | core |\n| claim-03 | confirmed | 3 | 0 | core |\n\n## Freshness Panel\n- 10m: total 3, core 0, shadow 3, blocked 0\n- 1h: total 3, core 0, shadow 3, blocked 0\n- 6h: total 3, core 0, shadow 3, blocked 0\n- 24h: total 3, core 0, shadow 3, blocked 0\n\n## Source Layer Summary\n- By channel: {\"shadow\": 3}\n- By tier: {\"0\": 1, \"1\": 2}\n- By access mode: {\"public\": 3}\n\n## Live Tape\n- [Exchange Filing] tier 0, 0m: The company said it had no disclosable signed agreement and warned investors to be careful.\n- [Deal Blog] tier 1, 0m: The outlet said a private-equity buyer had already reached board-level agreement.\n- [Second Press Report] tier 1, 0m: Another report said exploratory talks may have happened but were not finalized.\n\n## What Would Change My View\n- Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.\n- Treat ship-tracking as last public indication, not live military truth.\n- Watch for blocked or missing source families before calling the picture complete.\n"
+}

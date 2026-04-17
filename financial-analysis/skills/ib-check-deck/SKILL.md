@@ -1,78 +1,82 @@
 ---
 name: ib-check-deck
-description: Investment banking presentation quality checker. Reviews a pitch deck or client-ready presentation for (1) number consistency across slides, (2) data-narrative alignment, (3) language polish against IB standards, (4) visual and formatting QC. Use whenever the user asks to review, check, QC, proof, or do a final pass on a deck, pitch, or client materials — including requests like "check my numbers", "reconcile figures across slides", "is this client-ready", or "what am I missing before I send this out".
+description: Investment banking presentation quality checker. Reviews a pitch deck or client-ready presentation for number consistency, data-to-narrative alignment, language polish, and formatting QC.
 ---
 
 # IB Deck Checker
 
-Perform comprehensive QC on the presentation across four dimensions. Read every slide, then report findings.
+Perform a comprehensive QC pass across four dimensions. Read every slide, then report findings.
 
-## Environment check
+## Environment Check
 
-This skill works in both the PowerPoint add-in and chat. Identify which you're in before starting:
+This workflow works in both environments:
+- Add-in: inspect the live deck
+- Chat: inspect the uploaded `.pptx`
 
-- **Add-in** — read from the live open deck.
-- **Chat** — read from the uploaded `.pptx` file.
+This is a read-and-report workflow. Do not edit unless the user explicitly asks for fixes after review.
 
-This is read-and-report only — no edits — so the workflow is identical in both.
+## Step 1: Read the Deck
 
-## Workflow
+Extract text from every slide and keep slide-level attribution.
 
-### Read the deck
+Write the extracted text into a markdown-like structure:
 
-Pull text from every slide, keeping track of which slide each line came from. You'll need slide-level attribution for every finding ("$500M appears on slides 3 and 8, but slide 15 shows $485M"). A deck with 30 slides is too much to hold in working memory reliably — write the extracted text to a file so the number-checking script can process it.
-
-The script expects markdown-ish input with slide markers. Format as:
-
-```
+```text
 ## Slide 1
-[slide 1 text content]
+[slide 1 text]
 
 ## Slide 2
-[slide 2 text content]
+[slide 2 text]
 ```
 
-### 1. Number consistency
+## Step 2: Number Consistency
 
-Run the extraction script on what you collected:
+Run:
 
 ```bash
-python scripts/extract_numbers.py /tmp/deck_content.md --check
+python ../check-deck/scripts/extract_numbers.py deck_content.md --check
 ```
 
-It normalizes units ($500M vs $500MM vs $500,000,000 → same number), categorizes values (revenue, EBITDA, multiples, margins), and flags when the same metric category shows conflicting values on different slides. This is the part most likely to catch something a human missed on the fifth read-through.
+Beyond the script output, verify:
+- key metrics reconcile across slides
+- totals, percentages, and growth rates are correct
+- units and date periods are consistent
 
-Beyond what the script flags, verify:
-- Calculations are correct (totals sum, percentages add up, growth rates match the endpoints)
-- Unit style is consistent — the deck should pick one of $M or $MM and stick with it
-- Time periods are aligned — FY vs LTM vs quarterly, explicitly labeled
+## Step 3: Data-to-Narrative Alignment
 
-### 2. Data-narrative alignment
+Test whether slide claims are actually supported by the numbers and charts:
+- trend statements
+- market-position claims
+- strategic or valuation claims
 
-Map claims to the data that's supposed to support them. This is where decks go wrong quietly — someone edits the chart on slide 7 and forgets the narrative on slide 4.
+Flag contradictions explicitly.
 
-- Trend statements ("declining margins") → does the chart actually go that direction?
-- Market position claims ("#1 player") → revenue and share data support it?
-- Plausibility — "#1 in a $100B market" with $200M revenue is 0.2% share; that's not #1
+## Step 4: Language Polish
 
-### 3. Language polish
+Look for:
+- casual or vague language
+- contractions
+- unsupported superlatives
+- terminology drift
 
-IB decks have a register. Scan for anything that breaks it: casual phrasing ("pretty good", "a lot of"), contractions, exclamation points, vague quantifiers without numbers, inconsistent terminology for the same concept.
+Use `../check-deck/references/ib-terminology.md` as the replacement guide.
 
-See `references/ib-terminology.md` for replacement patterns.
+## Step 5: Visual and Formatting QC
 
-### 4. Visual and formatting QC
+Check:
+- missing chart sources
+- missing labels or legends
+- number-format drift
+- font, date, or spacing inconsistencies
+- footnote and disclaimer gaps
 
-Run standard visual verification checks on each slide. You're looking for: missing chart source citations, missing axis labels, typography inconsistencies, number formatting drift (1,000 vs 1K within the same deck), date format drift, footnote and disclaimer gaps.
+## Step 6: Report
 
-Visual verification catches overlaps, overflow, and contrast issues that don't show up in text extraction. Don't skip it — a chart with no source citation looks the same as a properly sourced one in the text dump.
+Use `../check-deck/references/report-format.md` for the report structure.
 
-## Output
+Classify findings as:
+- `Critical` for number mismatches, factual errors, and narrative contradictions
+- `Important` for language or sourcing issues
+- `Minor` for polish issues
 
-Use `references/report-format.md` as the structure. Categorize by severity:
-
-- **Critical** — number mismatches, factual errors, data contradicting narrative. These block client delivery.
-- **Important** — language, missing sources, terminology drift. Should fix.
-- **Minor** — font sizes, spacing, date formats. Polish.
-
-Lead with criticals. If there aren't any, say so explicitly — "no number inconsistencies found" is a finding, not an absence of one.
+Lead with critical findings. If none are found, say so explicitly.

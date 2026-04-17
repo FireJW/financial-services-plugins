@@ -1,0 +1,15 @@
+{
+  "topic": "NVIDIA Blackwell demand",
+  "analysis_time": "2026-04-04T04:00:00+00:00",
+  "reddit_result_path": "financial-analysis/skills/autoresearch-info-index/examples/fixtures/reddit-universal-scraper-sample",
+  "subreddit": "stocks",
+  "claims": [
+    {
+      "claim_id": "claim-nvda",
+      "claim_text": "NVIDIA Blackwell demand remains strong."
+    }
+  ],
+  "questions": [
+    "What part of the Reddit discussion is only community heat versus confirmed evidence?"
+  ]
+}

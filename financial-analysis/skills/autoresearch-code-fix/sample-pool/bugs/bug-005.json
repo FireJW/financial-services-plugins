@@ -1,0 +1,72 @@
+{
+  "bug_id": "bug-005",
+  "title": "Submit button stays disabled after fixing a form validation error",
+  "priority": "medium",
+  "module_boundary": {
+    "allowed_paths": [
+      "src/ui/forms",
+      "src/ui/hooks",
+      "tests/ui/forms"
+    ],
+    "forbidden_paths": [
+      "src/api/payments",
+      "src/imports",
+      "db"
+    ]
+  },
+  "bug_description": "A user corrects an invalid form field, but the submit button remains disabled until the page is refreshed or another unrelated field is changed.",
+  "expected_behavior": "Once the invalid field is corrected, validation state should update and the submit button should re-enable immediately when the form is otherwise valid.",
+  "actual_behavior": "The visible error clears, but the disabled state persists and blocks submission.",
+  "reproduction": {
+    "preconditions": [
+      "Local UI environment is running",
+      "A form exists with client-side validation and a submit button disabled on invalid state"
+    ],
+    "steps": [
+      "Open the target form and enter an invalid value that triggers a validation error",
+      "Correct the invalid value so the form should now be valid",
+      "Observe the submit button state"
+    ],
+    "expected_behavior": "The submit button becomes enabled as soon as the form returns to a valid state.",
+    "actual_behavior": "The submit button stays disabled until a second state change or refresh occurs."
+  },
+  "evidence": {
+    "logs": [
+      "Validation error state clears, but disabled state selector or derived form validity does not recompute"
+    ],
+    "related_files": [
+      "src/ui/forms/account-form.tsx",
+      "src/ui/hooks/use-form-state.ts",
+      "tests/ui/forms/account-form-submit-state.test.tsx"
+    ]
+  },
+  "validation": {
+    "primary_command": "npm test -- account-form-submit-state",
+    "secondary_checks": [
+      "npm run lint -- src/ui/forms src/ui/hooks/use-form-state.ts"
+    ],
+    "manual_checks": [
+      "Repeat the invalid-then-correct flow and confirm the button re-enables immediately",
+      "Confirm the button still stays disabled when the form is truly invalid"
+    ]
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback on any hard-check failure or if the button becomes enabled while invalid input still exists",
+    "notes": "Keep the last stable form behavior and a passing validation-state test ready for restore."
+  },
+  "scope_notes": "Keep the change inside client-side form state, validation wiring, and the directly affected form component. Do not refactor unrelated form primitives or shared button styling.",
+  "notes": {
+    "root_cause_hint": "Likely stale derived validity state, missing dependency update, or one path not clearing disabled state after validation recovers",
+    "risk_hint": "A careless fix could allow submission before async validation or required-field checks finish",
+    "similar_bugs": [
+      "save button stays disabled after correcting date format",
+      "modal submit requires touching a second field before enabling"
+    ]
+  },
+  "tags": [
+    "ui",
+    "forms",
+    "validation-state"
+  ]
+}

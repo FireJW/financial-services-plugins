@@ -1,0 +1,56 @@
+{
+  "analysis_time": "2026-03-29T10:30:00+00:00",
+  "manual_topic_candidates": [
+    {
+      "title": "AI Agent hiring rebound becomes a business story",
+      "summary": "Multiple sources debate whether AI Agent hiring is a real rebound or another short-lived wave.",
+      "source_items": [
+        {
+          "source_name": "36kr",
+          "source_type": "major_news",
+          "url": "https://example.com/36kr-agent-hiring",
+          "published_at": "2026-03-29T10:00:00+00:00",
+          "summary": "36kr reports selected AI Agent startups are hiring again across engineering and delivery roles."
+        },
+        {
+          "source_name": "zhihu",
+          "source_type": "social",
+          "url": "https://example.com/zhihu-agent-hiring",
+          "published_at": "2026-03-29T10:20:00+00:00",
+          "summary": "Zhihu users debate whether the rebound reflects durable demand or another narrative spike."
+        },
+        {
+          "source_name": "google-news-search",
+          "source_type": "major_news",
+          "url": "https://example.com/google-agent-hiring",
+          "published_at": "2026-03-29T10:15:00+00:00",
+          "summary": "Overseas reporting says the scarce resource is no longer hype, but engineers who can ship real agent outcomes."
+        }
+      ]
+    },
+    {
+      "title": "Celebrity airport outfit becomes the top hot search",
+      "summary": "A pure entertainment topic with high traffic but weak business depth.",
+      "source_items": [
+        {
+          "source_name": "weibo",
+          "source_type": "social",
+          "url": "https://example.com/weibo-celebrity",
+          "published_at": "2026-03-29T10:25:00+00:00",
+          "summary": "Mostly image-led discussion with little lasting business value."
+        }
+      ]
+    }
+  ],
+  "audience_keywords": [
+    "AI",
+    "business",
+    "investing",
+    "industry"
+  ],
+  "account_name": "Codex Research Notes",
+  "author": "Codex",
+  "draft_mode": "balanced",
+  "language_mode": "zh",
+  "tone": "professional-calm"
+}

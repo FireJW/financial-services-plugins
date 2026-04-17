@@ -1,0 +1,79 @@
+{
+  "profile": "code-fix",
+  "task_id": "bug-102",
+  "evaluated_at": "2026-03-23T11:37:52.298354+00:00",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Reduce regressions for a repeatable formatting bug",
+  "baseline_version": "baseline-v3",
+  "candidate_version": "candidate-v4",
+  "hard_checks": {
+    "passed": false,
+    "failures": [
+      "Fix was not verified after the change"
+    ]
+  },
+  "soft_scores": {
+    "baseline_total": 78,
+    "candidate_total": 83,
+    "total": 83,
+    "delta": 5,
+    "dimensions": [
+      {
+        "name": "root_cause_quality",
+        "score": 19,
+        "weight": 25,
+        "baseline": 18,
+        "delta": 1
+      },
+      {
+        "name": "fix_minimality",
+        "score": 18,
+        "weight": 20,
+        "baseline": 17,
+        "delta": 1
+      },
+      {
+        "name": "verification_completeness",
+        "score": 18,
+        "weight": 20,
+        "baseline": 16,
+        "delta": 2
+      },
+      {
+        "name": "regression_risk_control",
+        "score": 13,
+        "weight": 15,
+        "baseline": 12,
+        "delta": 1
+      },
+      {
+        "name": "debugging_efficiency",
+        "score": 8,
+        "weight": 10,
+        "baseline": 8,
+        "delta": 0
+      },
+      {
+        "name": "reuse_value",
+        "score": 7,
+        "weight": 10,
+        "baseline": 7,
+        "delta": 0
+      }
+    ]
+  },
+  "decision": {
+    "keep": false,
+    "rollback_to": "baseline-v3",
+    "reason": "Rollback because one or more hard checks failed",
+    "concerns": []
+  },
+  "stop_signal": {
+    "reached": true,
+    "reason": "Two consecutive rounds failed to improve verification quality"
+  },
+  "notes": {
+    "winner_pattern": "",
+    "loser_pattern": "Verification remained incomplete even though the candidate looked cleaner"
+  }
+}

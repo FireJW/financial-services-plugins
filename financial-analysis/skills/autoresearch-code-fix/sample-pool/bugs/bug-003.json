@@ -1,0 +1,72 @@
+{
+  "bug_id": "bug-003",
+  "title": "Search results stay stale after filter reset",
+  "priority": "medium",
+  "module_boundary": {
+    "allowed_paths": [
+      "src/search",
+      "src/ui/filters",
+      "tests/search"
+    ],
+    "forbidden_paths": [
+      "src/api/payments",
+      "src/reporting",
+      "db/migrations"
+    ]
+  },
+  "bug_description": "After applying filters and then resetting them, the UI still shows stale filtered results instead of returning to the full result set.",
+  "expected_behavior": "Resetting filters should clear filter state, trigger a fresh query or state recompute, and show the full result set.",
+  "actual_behavior": "The filter controls reset visually, but the results list remains narrowed until a manual refresh or a second interaction.",
+  "reproduction": {
+    "preconditions": [
+      "A local UI environment is running with seeded searchable data",
+      "At least one filter reduces the visible result set"
+    ],
+    "steps": [
+      "Open the search page and apply a filter that reduces the list",
+      "Use the reset or clear-all control",
+      "Observe whether the result set returns to the unfiltered state immediately"
+    ],
+    "expected_behavior": "The full unfiltered result set appears right after the reset action.",
+    "actual_behavior": "The UI state clears, but the old filtered results remain visible."
+  },
+  "evidence": {
+    "logs": [
+      "UI event shows reset action fired, but result state did not recompute or refetch"
+    ],
+    "related_files": [
+      "src/search/use-search-results.ts",
+      "src/ui/filters/filter-panel.tsx",
+      "tests/search/filter-reset.test.ts"
+    ]
+  },
+  "validation": {
+    "primary_command": "npm test -- filter-reset",
+    "secondary_checks": [
+      "npm run lint -- src/search src/ui/filters/filter-panel.tsx"
+    ],
+    "manual_checks": [
+      "Re-run the filter-reset flow and confirm the list returns to the full dataset",
+      "Confirm a second filter application still works after the reset path"
+    ]
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback on any hard-check failure or if reset starts causing empty or duplicated result sets",
+    "notes": "Keep the last stable search interaction behavior documented with screenshots or a recorded repro."
+  },
+  "scope_notes": "Keep the fix inside search state wiring and the filter reset path. Do not rework unrelated pagination, sorting, or backend search logic unless the root cause proves it is necessary.",
+  "notes": {
+    "root_cause_hint": "Likely stale derived state, missing dependency tracking, or reset action not invalidating cached results",
+    "risk_hint": "A broad reset fix could break pagination, default sorting, or optimistic UI behavior",
+    "similar_bugs": [
+      "sort change not refreshing cached results",
+      "reset clears controls but not query params"
+    ]
+  },
+  "tags": [
+    "ui",
+    "state-management",
+    "search"
+  ]
+}

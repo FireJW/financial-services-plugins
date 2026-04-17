@@ -1,0 +1,145 @@
+{
+  "analysis_time": "2026-03-31T14:30:00+08:00",
+  "account_name": "Antigravity Research",
+  "tone": "sharp-analytical",
+  "target_length_chars": 2800,
+  "max_images": 2,
+  "draft_mode": "image_first",
+  "image_strategy": "prefer_images",
+  "language_mode": "chinese",
+  "article_framework": "deep_analysis",
+  "headline_hook_mode": "traffic",
+  "headline_hook_prefixes": [],
+  "audience_keywords": [
+    "Claude Code",
+    "AI",
+    "developer tools",
+    "workflow",
+    "automation"
+  ],
+  "manual_topic_candidates": [
+    {
+      "title": "Claude Code 泄露源码后，真正值得看的 7 个秘密功能",
+      "summary": "从远控、本地浏览器、语音、30 分钟深度规划、多代理协调，到 Undercover Mode 和 Buddy，泄露代码更像一次产品路线图曝光。",
+      "keywords": [
+        "Claude Code",
+        "源码泄露",
+        "Agent",
+        "多代理",
+        "Remote Control",
+        "Voice",
+        "Ultraplan",
+        "Undercover"
+      ],
+      "source_items": [
+        {
+          "source_name": "X @agintender",
+          "source_type": "social",
+          "url": "https://x.com/agintender/status/2038921508999901274",
+          "published_at": "2026-03-31T10:09:03.7320000Z",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "这条 X 帖子把讨论点集中到“Claude Code 泄露源码里藏着哪些没有公开讲明白的功能”，成为这次选题的直接触发器。",
+          "root_post_screenshot_path": "__ROOT_POST_SCREENSHOT_PATH__",
+          "artifact_manifest": [
+            {
+              "role": "root_post_screenshot",
+              "path": "__ROOT_POST_SCREENSHOT_PATH__",
+              "source_url": "https://x.com/agintender/status/2038921508999901274",
+              "media_type": "screenshot"
+            }
+          ],
+          "post_summary": "- text: 新鲜事一网打尽 X 上的用户能够抢先知道。 - link \"登录\": - /url: /login - link \"注册\": - /url: /i/flow/signup - banner - main: - progressbar \"加载中\": - img",
+          "post_text_raw": "- text: 新鲜事一网打尽 X 上的用户能够抢先知道。 - link \"登录\": - /url: /login - link \"注册\": - /url: /i/flow/signup - banner - main: - progressbar \"加载中\": - img"
+        },
+        {
+          "source_name": "local recovered commands",
+          "source_type": "research_note",
+          "url": "__WORKSPACE_ROOT__\\vendor\\claude-code-recovered\\src\\commands.ts",
+          "published_at": "2026-03-30T18:13:36.0000000Z",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "recovered 代码的命令注册表显示，大量能力受 build-time feature flags 控制，包括 BRIDGE_MODE、VOICE_MODE、ULTRAPLAN、BUDDY、KAIROS、WORKFLOW_SCRIPTS、FORK_SUBAGENT 等，说明公开版之外还有更大的产品面。"
+        },
+        {
+          "source_name": "local Claude in Chrome onboarding",
+          "source_type": "research_note",
+          "url": "__WORKSPACE_ROOT__\\vendor\\claude-code-recovered\\src\\components\\ClaudeInChromeOnboarding.tsx",
+          "published_at": "2026-03-30T18:13:36.0000000Z",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "代码里的 Claude in Chrome onboarding 明确写到 Claude Code 可以直接控制浏览器，执行打开网页、填写表单、截图、录 GIF，并查看 console 和 network 请求，且文案标记为 Beta。"
+        },
+        {
+          "source_name": "Anthropic docs / Chrome",
+          "source_type": "official",
+          "url": "https://code.claude.com/docs/en/chrome",
+          "published_at": "2026-03-31T14:30:00+08:00",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "Anthropic 官方文档已经公开 Chrome 集成，证明浏览器控制不是纯猜测，但 recovered 代码显示它可能只是更大自动化表面的一部分。"
+        },
+        {
+          "source_name": "local bridge and mobile",
+          "source_type": "research_note",
+          "url": "__WORKSPACE_ROOT__\\vendor\\claude-code-recovered\\src\\commands\\bridge\\bridge.tsx",
+          "published_at": "2026-03-30T18:13:36.0000000Z",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "bridge 代码和 mobile 命令说明 Claude Code 可以通过二维码、网页或手机双向远控本地 CLI，会轮询任务、接收权限回复，并维持双向会话。"
+        },
+        {
+          "source_name": "Anthropic docs / Remote Control",
+          "source_type": "official",
+          "url": "https://docs.anthropic.com/en/docs/claude-code/remote-control",
+          "published_at": "2026-03-31T14:30:00+08:00",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "Anthropic 官方文档已经公开 Remote Control，说明跨端控制本地 Claude Code 的能力至少部分已经进入正式产品叙事。"
+        },
+        {
+          "source_name": "local voice mode",
+          "source_type": "research_note",
+          "url": "__WORKSPACE_ROOT__\\vendor\\claude-code-recovered\\src\\voice\\voiceModeEnabled.ts",
+          "published_at": "2026-03-30T18:13:36.0000000Z",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "voice mode 被 compile-time flag 和 Claude.ai OAuth 加 voice_stream endpoint 双重门控，还涉及麦克风权限与 push-to-talk，说明终端语音交互并不是半成品。"
+        },
+        {
+          "source_name": "local coordinator and ultraplan",
+          "source_type": "research_note",
+          "url": "__WORKSPACE_ROOT__\\vendor\\claude-code-recovered\\src\\commands\\ultraplan.tsx",
+          "published_at": "2026-03-30T18:13:36.0000000Z",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "coordinator system prompt 公开写着协调者会并行调度多个 worker；ultraplan 则把复杂规划发送到 Claude Code on the web，允许终端保持空闲 10 到 30 分钟。"
+        },
+        {
+          "source_name": "Anthropic docs / Subagents",
+          "source_type": "official",
+          "url": "https://docs.anthropic.com/en/docs/claude-code/sub-agents",
+          "published_at": "2026-03-31T14:30:00+08:00",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "官方已经公开 subagents，说明多代理不是空想；但 recovered 代码里的 coordinator、teammate、pane backend 更像是这条路线的更重版本。"
+        },
+        {
+          "source_name": "local undercover mode",
+          "source_type": "research_note",
+          "url": "__WORKSPACE_ROOT__\\vendor\\claude-code-recovered\\src\\utils\\undercover.ts",
+          "published_at": "2026-03-30T18:13:36.0000000Z",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "Undercover Mode 会在公共仓库里自动去掉 AI attribution 和内部代号，说明 Anthropic 内部早就把“AI 代理公开协作”当成安全与品牌风险来设计。"
+        },
+        {
+          "source_name": "local buddy and think-back",
+          "source_type": "research_note",
+          "url": "__WORKSPACE_ROOT__\\vendor\\claude-code-recovered\\src\\buddy\\prompt.ts",
+          "published_at": "2026-03-30T18:13:36.0000000Z",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "Buddy 和 Think Back 说明团队并不只把 Claude Code 当成程序员工具，还在尝试陪伴感、年终回顾和更 consumer 化的留存机制。"
+        },
+        {
+          "source_name": "Reddit summary",
+          "source_type": "social",
+          "url": "https://www.reddit.com/r/ClaudeCode/comments/1s8j10r/someone_just_leaked_claude_codes_source_code_on_x/",
+          "published_at": "2026-03-31T14:30:00+08:00",
+          "observed_at": "2026-03-31T14:30:00+08:00",
+          "summary": "社区总结把 KAIROS、Buddy、Ultraplan、Coordinator、UDS Inbox 归为未公开 feature flags，这与我们本地 recovered 代码里看到的命名基本互相印证。"
+        }
+      ]
+    }
+  ]
+}

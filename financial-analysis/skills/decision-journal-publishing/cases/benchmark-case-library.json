@@ -1,0 +1,324 @@
+{
+  "library_name": "decision-journal-benchmark-cases",
+  "version": "2026-03-25.2",
+  "updated_at": "2026-03-25T11:35:00+08:00",
+  "last_machine_refresh_at": "2026-03-25T01:54:04+00:00",
+  "default_request": {
+    "goal": "Review WeChat and Toutiao benchmark cases for a pro-first finance decision-journal account",
+    "commercial_center": "professional investors, research users, and high-participation retail investors who pay for better judgment structure",
+    "minimum_read_band": "5w+",
+    "strict_read_gate": false,
+    "allow_below_threshold_commercial_exceptions": true,
+    "include_curation_statuses": [
+      "reviewed"
+    ],
+    "platforms": [
+      "wechat",
+      "toutiao"
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "qinshuo-wechat-manifesto",
+      "platform": "wechat",
+      "account_name": "秦朔朋友圈",
+      "title": "“秦朔朋友圈”正式开张",
+      "url": "https://www.pingwest.com/a/44088",
+      "published_at": "2015-11-16T00:00:00+08:00",
+      "read_signal": "10万+",
+      "account_positioning": "商业财经投资 commentary with authority-led trust",
+      "topic_type": "account launch manifesto",
+      "hook_type": "broad business consequence",
+      "affected_group": "business and finance readers",
+      "cta_type": "none",
+      "paid_asset_linkage": "low",
+      "notes": "Useful as a WeChat authority-led acquisition benchmark, but not a direct product benchmark.",
+      "copy_signals": [
+        "用更高一级的问题意识切入，而不是从具体工具讲起"
+      ],
+      "avoid_signals": [
+        "不要假设自己有同等创始人声望"
+      ],
+      "fetch_url": "http://mp.weixin.qq.com/s?__biz=MzAwMjE1NjcxMg==&mid=209481276&idx=1&sn=63c8eac5c6cd86d5a366cfd43a00bcb4&scene=21",
+      "fetch_provenance": "first_party",
+      "fetch_notes": "Recovered the original WeChat article URL from the Newrank case page and use it as the primary refresh surface.",
+      "canonical_url": "https://www.pingwest.com/a/44088",
+      "curation_status": "reviewed",
+      "machine_state": {
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "http://mp.weixin.qq.com/s?__biz=MzAwMjE1NjcxMg==&mid=209481276&idx=1&sn=63c8eac5c6cd86d5a366cfd43a00bcb4&scene=21",
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-c4ba1e87e563dbdb",
+        "current_read_signal": "6w",
+        "current_read_count_estimate": 60000,
+        "current_published_at": "",
+        "current_title": "秦朔公众号上线 发刊词为“用希望连接生命与生命”_创业家_i黑马",
+        "change_flags": []
+      },
+      "discovery_state": {
+        "discovered_at": "",
+        "source_id": "",
+        "source_url": "",
+        "discovery_method": "manual"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": true,
+        "notes": true
+      }
+    },
+    {
+      "case_id": "zhengjieju-iran",
+      "platform": "wechat",
+      "account_name": "正解局",
+      "title": "伊朗总统坠亡，跟咱有关系吗？",
+      "url": "https://www.36kr.com/p/2838954851961729",
+      "published_at": "2024-05-21T00:00:00+08:00",
+      "read_signal": "10万+",
+      "account_positioning": "industry and enterprise interpretation for broad business readers",
+      "topic_type": "event explainer",
+      "hook_type": "public consequence question",
+      "affected_group": "broad business readers trying to understand why the event matters",
+      "cta_type": "none",
+      "paid_asset_linkage": "low",
+      "notes": "Strong public-facing wrapper benchmark. High acquisition fit, weaker direct monetization lesson.",
+      "fetch_url": "https://m.thepaper.cn/newsDetail_forward_27452893",
+      "fetch_provenance": "mirror",
+      "fetch_notes": "Use the The Paper mirror of the 正解局 article as the refresh surface; keep the 36Kr wrapper as the benchmark reference URL.",
+      "benchmark_case_shape": "article",
+      "refresh_surface_policy": "mirror_allowed",
+      "canonical_url": "https://www.36kr.com/p/2838954851961729",
+      "curation_status": "reviewed",
+      "machine_state": {
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "https://m.thepaper.cn/newsDetail_forward_27452893",
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-1eb0b47379066fd7",
+        "current_read_signal": "38w",
+        "current_read_count_estimate": 380000,
+        "current_published_at": "",
+        "current_title": "伊朗总统坠亡：他为什么会坐40多年前、美国造的直升机？",
+        "change_flags": []
+      },
+      "discovery_state": {
+        "discovered_at": "",
+        "source_id": "",
+        "source_url": "",
+        "discovery_method": "manual"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": true,
+        "notes": true
+      }
+    },
+    {
+      "case_id": "wallstreetcn-mustread",
+      "platform": "wechat",
+      "account_name": "华尔街见闻",
+      "title": "见闻主编精选 / 必读",
+      "url": "https://www.newrank.cn/article/detail/7946",
+      "published_at": "2017-08-25T00:00:00+08:00",
+      "read_signal": "5万+",
+      "account_positioning": "high-frequency finance readers paying to reduce selection cost",
+      "topic_type": "paid daily must-read utility",
+      "hook_type": "selection and opportunity-cost reduction",
+      "affected_group": "serious finance readers with repeated information overload",
+      "cta_type": "paid subscription",
+      "paid_asset_linkage": "high",
+      "decision_density_score": 88,
+      "notes": "Below the old 10w threshold but an essential commercial-fit benchmark because it proves users pay for selection and speed.",
+      "fetch_url": "https://wallstreetcn.com/authors/109176",
+      "fetch_provenance": "first_party_channel",
+      "fetch_notes": "Use the WallstreetCN first-party author page as the stable refresh surface while keeping the Newrank case study as the benchmark reference URL.",
+      "canonical_url": "https://www.newrank.cn/article/detail/7946",
+      "curation_status": "reviewed",
+      "machine_state": {
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "https://wallstreetcn.com/authors/109176",
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-dc9f43b9d9df8c9a",
+        "current_read_signal": "8W",
+        "current_read_count_estimate": 80000,
+        "current_published_at": "",
+        "current_title": "华尔街见闻的主页",
+        "change_flags": []
+      },
+      "discovery_state": {
+        "discovered_at": "",
+        "source_id": "",
+        "source_url": "",
+        "discovery_method": "manual"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": true,
+        "notes": true
+      }
+    },
+    {
+      "case_id": "shizhifengyun-wechat",
+      "platform": "wechat",
+      "account_name": "市值风云",
+      "title": "市值风云微信内容模型",
+      "url": "https://36kr.com/p/1722055573505",
+      "published_at": "2019-04-22T00:00:00+08:00",
+      "read_signal": "2万+",
+      "account_positioning": "professional and high-net-worth investing audience",
+      "topic_type": "deep company and capital-market analysis",
+      "hook_type": "forensic company reading",
+      "affected_group": "serious investors and market professionals",
+      "cta_type": "app and report upsell",
+      "paid_asset_linkage": "high",
+      "decision_density_score": 90,
+      "notes": "Not a high-read WeChat case, but a strong commercial exception benchmark because buyer quality outruns public virality.",
+      "fetch_url": "https://36kr.com/p/1722055573505",
+      "fetch_provenance": "commentary_only",
+      "fetch_notes": "Keep the 36Kr financing writeup as both the benchmark reference URL and the proxy refresh surface because this case is an account-model benchmark, not a single first-party article.",
+      "benchmark_case_shape": "account_model",
+      "refresh_surface_policy": "proxy_allowed",
+      "canonical_url": "https://36kr.com/p/1722055573505",
+      "curation_status": "reviewed",
+      "machine_state": {
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "https://36kr.com/p/1722055573505",
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-0fc9a465b9d5dab3",
+        "current_read_signal": "2万",
+        "current_read_count_estimate": 20000,
+        "current_published_at": "2026-03-25T09:54:07+08:00",
+        "current_title": "两年解读400家上市公司，金融自媒体「市值风云」获1200万元A轮融资-36氪",
+        "change_flags": [
+          "current_title",
+          "current_published_at"
+        ]
+      },
+      "discovery_state": {
+        "discovered_at": "",
+        "source_id": "",
+        "source_url": "",
+        "discovery_method": "manual"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": true,
+        "notes": true
+      }
+    },
+    {
+      "case_id": "jinrongbaguanv-toutiao",
+      "platform": "toutiao",
+      "account_name": "金融八卦女",
+      "title": "三亚民宿老板，等不到今年春节",
+      "url": "https://cj.sina.com.cn/articles/view/5240327938/138590f0200102n6vk",
+      "published_at": "2026-01-12T00:00:00+08:00",
+      "read_signal": "204万",
+      "account_positioning": "deep business storytelling with finance and operator relevance",
+      "topic_type": "business consequence feature",
+      "hook_type": "affected group under pressure",
+      "affected_group": "holiday homestay operators under policy and demand stress",
+      "cta_type": "follow account",
+      "paid_asset_linkage": "medium",
+      "notes": "Very strong Toutiao acquisition benchmark for public-facing packaging and consequence-led framing.",
+      "fetch_url": "https://cj.sina.com.cn/articles/view/5240327938/138590f0200102n6vk",
+      "fetch_provenance": "commentary_only",
+      "fetch_notes": "Keep the Sina platform-coverage page as both the benchmark reference URL and the proxy refresh surface because the benchmark claim lives inside a cited-case writeup.",
+      "benchmark_case_shape": "cited_case_proxy",
+      "refresh_surface_policy": "proxy_allowed",
+      "canonical_url": "https://cj.sina.com.cn/articles/view/5240327938/138590f0200102n6vk",
+      "curation_status": "reviewed",
+      "machine_state": {
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "https://cj.sina.com.cn/articles/view/5240327938/138590f0200102n6vk",
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-9c8bf00a354314ff",
+        "current_read_signal": "10万",
+        "current_read_count_estimate": 100000,
+        "current_published_at": "2026-03-24T06:01:23+00:00",
+        "current_title": "在“快”时代做“慢”内容，今日头条如何加码深度图文？",
+        "change_flags": [
+          "current_title"
+        ]
+      },
+      "discovery_state": {
+        "discovered_at": "",
+        "source_id": "",
+        "source_url": "",
+        "discovery_method": "manual"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": true,
+        "notes": true
+      }
+    },
+    {
+      "case_id": "shizhifengyun-toutiao",
+      "platform": "toutiao",
+      "account_name": "市值风云",
+      "title": "市值风云头条内容模型",
+      "url": "https://36kr.com/p/1722055573505",
+      "published_at": "2019-04-22T00:00:00+08:00",
+      "read_signal": "5万+",
+      "account_positioning": "professional and high-net-worth investing audience",
+      "topic_type": "deep capital-market analysis",
+      "hook_type": "company consequence explainer",
+      "affected_group": "serious investors and market observers",
+      "cta_type": "app and report upsell",
+      "paid_asset_linkage": "high",
+      "decision_density_score": 86,
+      "notes": "Useful to prove Toutiao can still feed a narrower high-value audience even below 10w.",
+      "fetch_url": "https://36kr.com/p/1722055573505",
+      "fetch_provenance": "commentary_only",
+      "fetch_notes": "Keep the 36Kr account-model analysis as both the benchmark reference URL and the proxy refresh surface because this case tracks channel-level distribution through a third-party case study.",
+      "benchmark_case_shape": "account_model",
+      "refresh_surface_policy": "proxy_allowed",
+      "canonical_url": "https://36kr.com/p/1722055573505",
+      "curation_status": "reviewed",
+      "machine_state": {
+        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "https://36kr.com/p/1722055573505",
+        "last_observation_at": "2026-03-25T01:54:04+00:00",
+        "current_observation_id": "obs-c23b97634743aee4",
+        "current_read_signal": "2万",
+        "current_read_count_estimate": 20000,
+        "current_published_at": "2026-03-25T09:54:08+08:00",
+        "current_title": "两年解读400家上市公司，金融自媒体「市值风云」获1200万元A轮融资-36氪",
+        "change_flags": [
+          "current_title",
+          "current_published_at"
+        ]
+      },
+      "discovery_state": {
+        "discovered_at": "",
+        "source_id": "",
+        "source_url": "",
+        "discovery_method": "manual"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": true,
+        "notes": true
+      }
+    }
+  ],
+  "candidate_library_path": "benchmark-case-candidates.json",
+  "observation_log_path": "benchmark-case-observations.jsonl",
+  "refresh_seed_path": "benchmark-refresh-seeds.json",
+  "machine_refresh_summary": {
+    "reviewed_cases_refreshed": 6,
+    "matched_existing_cases": 0
+  }
+}

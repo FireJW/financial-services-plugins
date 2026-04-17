@@ -1,0 +1,25 @@
+{
+  "scope": "global",
+  "topic": "global",
+  "request_defaults": {
+    "language_mode": "english",
+    "human_signal_ratio": 78,
+    "headline_hook_mode": "traffic"
+  },
+  "style_memory": {
+    "target_band": "3.4",
+    "preferred_transitions": [
+      "put simply",
+      "more importantly",
+      "three things matter next"
+    ],
+    "slot_lines": {
+      "subtitle": [
+        "Lead with the harder variable before talking about heat."
+      ],
+      "watch": [
+        "Do not pick a side yet; wait for the hard signals."
+      ]
+    }
+  }
+}

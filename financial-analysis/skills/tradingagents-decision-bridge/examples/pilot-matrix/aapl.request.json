@@ -1,0 +1,31 @@
+{
+  "ticker": "AAPL",
+  "enabled": true,
+  "mode": "optional",
+  "cost_budget_tokens": 50000,
+  "timeout_seconds": 120,
+  "version_guard": "0.2.3",
+  "thesis": {
+    "thesis_id": "aapl-control-2026-04-05",
+    "summary": "Use AAPL as a second U.S. control ticker for a TradingAgents pilot run."
+  },
+  "evidence": [
+    {
+      "claim_id": "control-us-aapl-001",
+      "summary": "This row is a control case for upstream repeatability."
+    }
+  ],
+  "catalysts": [
+    {
+      "summary": "Hardware cycle expectations and services momentum remain key market debates."
+    }
+  ],
+  "market_context": {
+    "benchmark_symbol": "QQQ"
+  },
+  "fixture": {
+    "enabled": false,
+    "root": "tests/fixtures/tradingagents-decision-bridge",
+    "response": "basic-success.json"
+  }
+}

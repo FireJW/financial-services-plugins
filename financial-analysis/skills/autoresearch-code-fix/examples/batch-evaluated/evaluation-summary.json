@@ -1,0 +1,123 @@
+{
+  "status": "OK",
+  "input_dir": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records",
+  "output_dir": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated",
+  "total_found": 10,
+  "total_evaluated": 10,
+  "total_failed": 0,
+  "keep_count": 0,
+  "rollback_count": 10,
+  "evaluated_files": [
+    {
+      "task_id": "bug-001",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-001-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-001-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    },
+    {
+      "task_id": "bug-002",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-002-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-002-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    },
+    {
+      "task_id": "bug-003",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-003-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-003-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    },
+    {
+      "task_id": "bug-004",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-004-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-004-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    },
+    {
+      "task_id": "bug-005",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-005-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-005-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    },
+    {
+      "task_id": "bug-006",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-006-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-006-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    },
+    {
+      "task_id": "bug-007",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-007-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-007-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    },
+    {
+      "task_id": "bug-008",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-008-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-008-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    },
+    {
+      "task_id": "bug-009",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-009-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-009-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    },
+    {
+      "task_id": "bug-010",
+      "input_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-run-records\\bug-010-run-record.json",
+      "output_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\examples\\batch-evaluated\\bug-010-evaluated.json",
+      "keep": false,
+      "rollback_to": "baseline-v1",
+      "candidate_total": 0,
+      "baseline_total": 0,
+      "delta": 0,
+      "hard_checks_passed": false
+    }
+  ],
+  "failed_files": []
+}

@@ -45,3 +45,26 @@ coverage/
 TASKS.md
 MEMORY.md
 .claude/worktrees/
+.gstack/
+
+# Local runtime artifacts
+runtime-state/
+.tmp/
+.tmp-*/
+tmp-*/
+tmp-*.json
+tmp-*.md
+tmp-*.html
+tmp-*.png
+tmp-*.jpg
+tmp-*.jpeg
+tmp-*.webp
+tmp-*.db
+tmp-*.sqlite
+**/.tmp/
+**/.tmp-*/
+**/tmp-*
+.agent-reach/
+pip/
+weixin_article.html
+weixin_imgs/

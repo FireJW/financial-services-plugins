@@ -1,0 +1,52 @@
+<h2>路线判断：生图 vs 渲染 vs Canva vs 混合</h2>
+<p class="subtitle">基于你的场景（小红书新闻快评封面 + AP News 参考图），推荐混合路线</p>
+
+<div class="section">
+  <h3>推荐路线：两阶段混合</h3>
+  <p style="font-size:15px;line-height:1.7;color:#ccc;margin-bottom:16px;">
+    <strong style="color:#fff;">阶段 1</strong> — GPT-4o 原生图像生成（或 DALL-E 3）生成无字主视觉<br>
+    <strong style="color:#fff;">阶段 2</strong> — 现有代码渲染器叠加标题、品牌角标、安全区文字
+  </p>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="code-render" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>纯代码渲染（现状）</h3>
+      <p><strong>适合：</strong>数据卡、清单卡、对比卡、纯文字封面</p>
+      <p><strong>不适合：</strong>需要新闻现场感、真实摄影质感的封面</p>
+      <p style="color:#f59e0b;">⚠ 当前痛点正是这条路线的天花板 — 代码渲染无法生成摄影质感</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="image-gen" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>生图模型（GPT-4o Image Gen）</h3>
+      <p><strong>适合：</strong>新闻现场、国际局势、人物特写、抽象隐喻类封面</p>
+      <p><strong>优势：</strong>原生支持参考图输入（image editing API），能吸收构图和气质</p>
+      <p style="color:#10b981;">✓ 直接解决"参考图没有真正参与构图"的核心问题</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="canva" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Canva 模板 Autofill</h3>
+      <p><strong>适合：</strong>品牌一致性要求极高、设计师预制模板、批量出图</p>
+      <p><strong>不适合：</strong>每期主题差异大的新闻封面 — 模板会让每期看起来一样</p>
+      <p style="color:#ef4444;">✗ 你的核心诉求是"不要公式化"，Canva 模板恰恰是公式化的</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>混合路线（推荐）</h3>
+      <p><strong>生图模型</strong>出无字主视觉 → <strong>代码渲染器</strong>叠加标题和品牌元素</p>
+      <p><strong>分流规则：</strong>有参考新闻图 + image-dominant → 走生图；纯文字/数据类 → 走代码渲染</p>
+      <p style="color:#10b981;">✓ 两个阶段各做最擅长的事，互不干扰</p>
+    </div>
+  </div>
+</div>

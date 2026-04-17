@@ -1,156 +1,144 @@
 ---
 name: audit-xls
-description: Audit a spreadsheet for formula accuracy, errors, and common mistakes. Scopes to a selected range, a single sheet, or the entire model (including financial-model integrity checks like BS balance, cash tie-out, and logic sanity). Triggers on "audit this sheet", "check my formulas", "find formula errors", "QA this spreadsheet", "sanity check this", "debug model", "model check", "model won't balance", "something's off in my model", "model review".
+description: Audit a spreadsheet for formula accuracy, logic errors, and model-integrity issues. Use for formula QA, model debugging, balance sheet tie-outs, cash flow mismatches, or pre-delivery spreadsheet review.
 ---
 
 # Audit Spreadsheet
 
-Audit formulas and data for accuracy and mistakes. Scope determines depth — from quick formula checks on a selection up to full financial-model integrity audits.
+Audit formulas and data for mistakes. Scope determines depth:
+- `selection` for a specific range
+- `sheet` for the active sheet
+- `model` for the full workbook, including model-integrity checks
 
-## Step 1: Determine scope
+## Environment
 
-If the user already gave a scope, use it. Otherwise **ask them**:
+- If running inside Excel, use Office JS directly.
+- If operating on a standalone `.xlsx` file, use Python and openpyxl.
 
-> What scope do you want me to audit?
-> - **selection** — just the currently selected range
-> - **sheet** — the current active sheet only
-> - **model** — the whole workbook, including financial-model integrity checks (BS balance, cash tie-out, roll-forwards, logic sanity)
+## Step 1: Confirm Scope
 
-The **model** scope is the deepest — use it for DCF, LBO, 3-statement, merger, comps, or any integrated financial model before sending to a client or IC.
+If the user already gave a scope, use it. Otherwise ask:
+- `selection`
+- `sheet`
+- `model`
 
----
+Default to `model` for DCF, LBO, merger, 3-statement, or any integrated financial model.
 
-## Step 2: Formula-level checks (ALL scopes)
+## Step 2: Formula-Level Checks
 
-Run these regardless of scope:
+Run these checks for every scope:
 
 | Check | What to look for |
 |---|---|
 | Formula errors | `#REF!`, `#VALUE!`, `#N/A`, `#DIV/0!`, `#NAME?` |
-| Hardcodes inside formulas | `=A1*1.05` — the `1.05` should be a cell reference |
-| Inconsistent formulas | A formula that breaks the pattern of its neighbors in a row/column |
-| Off-by-one ranges | `SUM`/`AVERAGE` that misses the first or last row |
-| Pasted-over formulas | Cell that looks like a formula but is actually a hardcoded value |
-| Circular references | Intentional or accidental |
-| Broken cross-sheet links | References to cells that moved or were deleted |
-| Unit/scale mismatches | Thousands mixed with millions, % stored as whole numbers |
-| Hidden rows/tabs | Could contain overrides or stale calculations |
+| Hardcodes inside formulas | values like `=A1*1.05` that should reference input cells |
+| Inconsistent formulas | a row or column where one formula breaks the pattern |
+| Off-by-one ranges | missing the first or last row in a sum or average |
+| Pasted-over formulas | hardcoded numbers where a formula should exist |
+| Broken cross-sheet links | moved or deleted references |
+| Unit mismatches | thousands mixed with millions, percents stored as whole numbers |
+| Hidden overrides | hidden rows, columns, or tabs with stale logic |
 
----
+## Step 3: Model-Integrity Checks
 
-## Step 3: Model-integrity checks (MODEL scope only)
+If scope is `model`, identify the model type and run the relevant integrity checks.
 
-If scope is **model**, identify the model type (DCF / LBO / 3-statement / merger / comps / custom) and run the appropriate integrity checks below.
+### Structural Review
 
-### 3a. Structural review
+Check:
+- input vs formula separation
+- color convention consistency
+- tab flow and dependency order
+- date header consistency
+- unit consistency across tabs
 
-| Check | What to look for |
-|---|---|
-| Input/formula separation | Are inputs clearly separated from calculations? |
-| Color convention | Blue=input, black=formula, green=link — or whatever the model uses, applied consistently? |
-| Tab flow | Logical order (Assumptions → IS → BS → CF → Valuation)? |
-| Date headers | Consistent across all tabs? |
-| Units | Consistent (thousands vs millions vs actuals)? |
+### Balance Sheet
 
-### 3b. Balance Sheet
+Verify:
+- Assets = Liabilities + Equity for every period
+- retained earnings roll forward correctly
+- goodwill and intangibles follow acquisition assumptions where applicable
 
-| Check | Test |
-|---|---|
-| BS balances | Total Assets = Total Liabilities + Equity (every period) |
-| RE rollforward | Prior RE + Net Income − Dividends = Current RE |
-| Goodwill/intangibles | Flow from acquisition assumptions (if M&A) |
+If the balance sheet does not balance, quantify the gap by period and trace where it breaks before doing anything else.
 
-If BS doesn't balance, **quantify the gap per period and trace where it breaks** — nothing else matters until this is fixed.
+### Cash Flow
 
-### 3c. Cash Flow Statement
+Verify:
+- ending cash ties to the balance sheet
+- CFO + CFI + CFF = change in cash
+- D&A matches across statements
+- CapEx matches PP&E logic
+- working capital signs match balance-sheet movements
 
-| Check | Test |
-|---|---|
-| Cash tie-out | CF Ending Cash = BS Cash (every period) |
-| CF sums | CFO + CFI + CFF = Δ Cash |
-| D&A match | D&A on CF = D&A on IS |
-| CapEx match | CapEx on CF matches PP&E rollforward on BS |
-| WC changes | Signs match BS movements (ΔAR, ΔAP, ΔInventory) |
+### Income Statement
 
-### 3d. Income Statement
+Verify:
+- revenue ties to the supporting build
+- tax logic is coherent
+- share count ties to dilution schedules
 
-| Check | Test |
-|---|---|
-| Revenue build | Ties to segment/product detail |
-| Tax | Tax expense = Pre-tax income × tax rate (allow for deferred tax adj) |
-| Share count | Ties to dilution schedule (options, converts, buybacks) |
+### Circular References
 
-### 3e. Circular references
+If a circular reference exists:
+- verify whether it is intentional
+- if intentional, confirm iteration is enabled and stable
+- if accidental, trace the loop and explain how to break it
 
-- Interest → debt balance → cash → interest is a common intentional circ in LBO/3-stmt models
-- If intentional: verify iteration toggle exists and works
-- If unintentional: trace the loop and flag how to break it
+### Reasonableness
 
-### 3f. Logic & reasonableness
+Flag:
+- unrealistic growth or margins
+- terminal value dominance in DCF
+- hockey-stick projections
+- leverage or liquidity outputs that do not make economic sense
 
-| Check | Flag if |
-|---|---|
-| Growth rates | >100% revenue growth without explanation |
-| Margins | Outside industry norms |
-| Terminal value dominance | TV > ~75% of DCF EV (yellow flag) |
-| Hockey-stick | Projections ramp unrealistically in out-years |
-| Compounding | EBITDA compounds to absurd $ by Year 10 |
-| Edge cases | Model breaks at 0% or negative growth, negative EBITDA, leverage goes negative |
+## Step 4: Model-Type-Specific Checks
 
-### 3g. Model-type-specific bugs
+### DCF
 
-**DCF:**
-- Discount rate applied to wrong period (mid-year vs end-of-year)
-- Terminal value not discounted back
-- WACC uses book values instead of market values
-- FCF includes interest expense (should be unlevered)
-- Tax shield double-counted
+- discount timing
+- terminal value discounting
+- WACC inputs
+- unlevered vs levered FCF
+- tax shield double counting
 
-**LBO:**
-- Debt paydown doesn't match cash sweep mechanics
-- PIK interest not accruing to principal
-- Management rollover not reflected in returns
-- Exit multiple applied to wrong EBITDA (LTM vs NTM)
-- Fees/expenses not deducted from Day 1 equity
+### LBO
 
-**Merger:**
-- Accretion/dilution uses wrong share count (pre- vs post-deal)
-- Synergies not phased in
-- Purchase price allocation doesn't balance
-- Foregone interest on cash not included
-- Transaction fees not in sources & uses
+- cash sweep and debt paydown logic
+- PIK accrual
+- management rollover treatment
+- exit multiple period selection
+- fees and uses at close
 
-**3-statement:**
-- Working capital changes have wrong sign
-- Depreciation doesn't match PP&E schedule
-- Debt maturity schedule doesn't match principal payments
-- Dividends exceed net income without explanation
+### Merger
 
----
+- accretion / dilution share count
+- synergy phasing
+- purchase price allocation balance
+- foregone interest on cash
+- transaction fees in sources and uses
 
-## Step 4: Report
+### 3-Statement
+
+- working capital sign convention
+- depreciation vs PP&E schedule
+- debt maturity vs principal repayment
+- dividends vs retained earnings logic
+
+## Step 5: Report
 
 Output a findings table:
 
 | # | Sheet | Cell/Range | Severity | Category | Issue | Suggested Fix |
 |---|---|---|---|---|---|---|
 
-**Severity:**
-- **Critical** — wrong output (BS doesn't balance, formula broken, cash doesn't tie)
-- **Warning** — risky (hardcodes, inconsistent formulas, edge-case failures)
-- **Info** — style/best-practice (color coding, layout, naming)
+Severity:
+- `Critical` for wrong outputs or broken statements
+- `Warning` for risky or brittle logic
+- `Info` for style or best-practice issues
 
-For **model** scope, prepend a summary line:
+For `model` scope, lead with a one-line summary:
 
-> Model type: [DCF/LBO/3-stmt/...] — Overall: [Clean / Minor Issues / Major Issues] — [N] critical, [N] warnings, [N] info
+`Model type: [type] - Overall: [Clean / Minor Issues / Major Issues] - [N] critical, [N] warnings, [N] info`
 
-**Don't change anything without asking** — report first, fix on request.
-
----
-
-## Notes
-
-- **BS balance first** — if it doesn't balance, everything downstream is suspect
-- **Hardcoded overrides are the #1 source of silent bugs** — search aggressively
-- **Sign convention errors** (positive vs negative for cash outflows) are extremely common
-- If the model uses VBA macros, note any macro-driven calculations that can't be audited from formulas alone
+Do not change anything unless the user asks. Report first, then fix on request.

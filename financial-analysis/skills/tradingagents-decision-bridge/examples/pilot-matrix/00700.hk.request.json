@@ -1,0 +1,31 @@
+{
+  "ticker": "00700.HK",
+  "enabled": true,
+  "mode": "optional",
+  "cost_budget_tokens": 50000,
+  "timeout_seconds": 120,
+  "version_guard": "0.2.3",
+  "thesis": {
+    "thesis_id": "tencent-pilot-2026-04-05",
+    "summary": "Tencent serves as the HK-market check for the TradingAgents pilot matrix."
+  },
+  "evidence": [
+    {
+      "claim_id": "tencent-hk-control-001",
+      "summary": "This row tests whether HK ticker normalization and advisory output remain bounded."
+    }
+  ],
+  "catalysts": [
+    {
+      "summary": "Gaming, advertising, and capital-return commentary remain key sensitivity points."
+    }
+  ],
+  "market_context": {
+    "benchmark_symbol": "HSI"
+  },
+  "fixture": {
+    "enabled": false,
+    "root": "tests/fixtures/tradingagents-decision-bridge",
+    "response": "basic-success.json"
+  }
+}

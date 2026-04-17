@@ -1,57 +1,66 @@
----
-description: Analyze the swap curve with government and inflation overlays to identify curve trade opportunities
-argument-hint: "<currency e.g. EUR> [index e.g. ESTR]"
----
+alse,
+  "error-codes": ["timeout-or-duplicate"]
+}
+```
 
-# Analyze Swap Curve
+## Error Codes
 
-> This command uses LSEG swap pricing, interest rate curves, and inflation curve tools. See [CONNECTORS.md](../CONNECTORS.md) for available tools.
+| Code | Cause | Solution |
+|------|-------|----------|
+| `missing-input-secret` | Secret key not provided | Include `secret` in request |
+| `invalid-input-secret` | Secret key is wrong | Check secret key in dashboard |
+| `missing-input-response` | Token not provided | Include `response` token |
+| `invalid-input-response` | Token is invalid/malformed | Verify token from widget |
+| `timeout-or-duplicate` | Token expired (>5min) or reused | Generate new token, validate once |
+| `internal-error` | Cloudflare server error | Retry with exponential backoff |
+| `bad-request` | Malformed request | Check JSON/form encoding |
 
-Build and analyze the interest rate swap curve, overlay government yields and inflation breakevens, and identify curve trade opportunities.
+## TypeScript Types
 
-See the **swap-curve-strategy** skill for domain knowledge on curve analysis and trade construction.
+```typescript
+interface TurnstileOptions {
+  sitekey: string;
+  action?: string;
+  cData?: string;
+  callback?: (token: string) => void;
+  'error-callback'?: (errorCode: string) => void;
+  'expired-callback'?: () => void;
+  'timeout-callback'?: () => void;
+  'before-interactive-callback'?: () => void;
+  'after-interactive-callback'?: () => void;
+  'unsupported-callback'?: () => void;
+  theme?: 'light' | 'dark' | 'auto';
+  size?: 'normal' | 'compact' | 'flexible';
+  tabindex?: number;
+  'response-field'?: boolean;
+  'response-field-name'?: string;
+  retry?: 'auto' | 'never';
+  'retry-interval'?: number;
+  language?: string;
+  execution?: 'render' | 'execute';
+  appearance?: 'always' | 'execute' | 'interaction-only';
+  'refresh-expired'?: 'auto' | 'manual' | 'never';
+}
 
-## Workflow
+interface Turnstile {
+  render(container: string | HTMLElement, options: TurnstileOptions): string;
+  reset(widgetId: string): void;
+  remove(widgetId: string): void;
+  getResponse(widgetId: string): string | undefined;
+  isExpired(widgetId: string): boolean;
+  execute(container?: string | HTMLElement, options?: TurnstileOptions): void;
+}
 
-### 1. Gather Input
+declare global {
+  interface Window {
+    turnstile: Turnstile;
+    onloadTurnstileCallback?: () => void;
+  }
+}
+```
 
-Ask the user for:
-- Currency (required) — e.g., EUR, USD, GBP, CHF, JPY
-- Reference rate index (optional) — e.g., ESTR, SOFR, SONIA, TONA
-- Valuation date (optional, defaults to today)
+## Script Loading
 
-### 2. Discover Swap Templates
-
-Call `ir_swap` in list mode with the currency and optional index.
-
-Extract: available template references, index details, conventions.
-
-### 3. Build the Swap Curve
-
-Call `ir_swap` in price mode for standard tenors: 2Y, 5Y, 7Y, 10Y, 20Y, 30Y.
-
-Extract: par swap rate and DV01 at each tenor.
-
-### 4. Overlay the Government Curve
-
-Call `interest_rate_curve` (list then calculate) for the same currency.
-
-Compute swap spread = swap rate minus government yield at each tenor.
-
-### 5. Decompose Real Rates
-
-Call `inflation_curve` (search then calculate) for the currency.
-
-Compute real swap rate = nominal swap rate minus inflation breakeven at each tenor.
-
-### 6. Synthesize Curve Strategy Views
-
-Compute curve metrics: 2s10s slope, 5s30s slope, 2s5s10s butterfly.
-
-Identify opportunities: steepener, flattener, butterfly, or swap spread trades based on current levels vs historical norms.
-
-Present: swap curve table with government overlay, curve metrics, real rate decomposition, and trade recommendations with DV01-neutral ratios.
-
-## Output Format
-
-Lead with curve shape summary and key metrics (2s10s, butterfly). Follow with detailed tables and trade idea section.
+```html
+<!-- Standard -->
+<scr

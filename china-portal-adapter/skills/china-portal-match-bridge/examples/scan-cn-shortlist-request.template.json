@@ -1,0 +1,33 @@
+{
+  "adapter_request": {
+    "task": "scan_jobs",
+    "platforms": ["boss", "liepin"],
+    "keywords": ["ai", "platform"],
+    "cities": ["Shanghai"],
+    "salary_filters": {
+      "minimum_monthly_rmb": 30000
+    },
+    "blacklist_companies": [],
+    "blacklist_recruiters": [],
+    "session_mode": "existing_local_only",
+    "notifications": {
+      "enabled": false
+    },
+    "fixture": {
+      "enabled": true,
+      "source": "tests/fixtures/china-portal-adapter/scan-multi-platform.json"
+    }
+  },
+  "role_pack": "ai_platform_pm",
+  "candidate_profile_dir": "D:\\career-ops-local\\profile",
+  "tracker_path": "D:\\career-ops-local\\applications\\tracker.csv",
+  "output_dir": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\.tmp\\china-portal-shortlist",
+  "minimum_fit_score": 60,
+  "top_n": 5,
+  "emit_tailor_queue": true,
+  "tailor_execution_strategy": "hybrid",
+  "tailor_export_pdf": false,
+  "upstream_root": "D:\\career-ops-upstream",
+  "language": "zh-CN",
+  "dry_run": true
+}

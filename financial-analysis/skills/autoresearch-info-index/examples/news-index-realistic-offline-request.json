@@ -1,0 +1,224 @@
+{
+  "topic": "Hormuz negotiation realistic offline fixture",
+  "analysis_time": "2026-03-23T10:00:00+00:00",
+  "questions": [
+    "Are US-Iran contacts still active right now?",
+    "Is there any confirmed settlement or ceasefire already agreed?",
+    "What do public vessel and social signals imply about near-term force posture?"
+  ],
+  "use_case": "crisis-monitoring",
+  "source_preferences": [
+    "public-first",
+    "browser-assisted-second"
+  ],
+  "mode": "crisis",
+  "windows": [
+    "10m",
+    "1h",
+    "6h",
+    "24h"
+  ],
+  "market_relevance": [
+    "Crude and LNG price sensitivity",
+    "Shipping and defense headline sensitivity"
+  ],
+  "expected_source_families": [
+    "government",
+    "wire",
+    "major_news",
+    "public_ship_tracker",
+    "social"
+  ],
+  "claims": [
+    {
+      "claim_id": "claim-negotiation",
+      "claim_text": "US and Iran are still in active indirect contacts today."
+    },
+    {
+      "claim_id": "claim-deal",
+      "claim_text": "A finalized settlement or ceasefire has already been agreed."
+    },
+    {
+      "claim_id": "claim-vessel",
+      "claim_text": "Public tracking suggests a US amphibious posture shift, but it still does not confirm intent."
+    },
+    {
+      "claim_id": "claim-eta",
+      "claim_text": "A US amphibious group could reach a relevant public watch position within roughly one to two days."
+    }
+  ],
+  "candidates": [
+    {
+      "source_id": "oman-20260323-1",
+      "source_name": "Oman Foreign Ministry",
+      "source_type": "government_release",
+      "published_at": "2026-03-23T09:54:00+00:00",
+      "observed_at": "2026-03-23T09:55:00+00:00",
+      "url": "https://www.fm.gov.om/latest/indirect-contacts-2026-03-23",
+      "text_excerpt": "Oman said indirect contacts are continuing and described the latest exchanges as constructive.",
+      "claim_ids": [
+        "claim-negotiation"
+      ],
+      "claim_states": {
+        "claim-negotiation": "support"
+      }
+    },
+    {
+      "source_id": "reuters-20260323-1",
+      "source_name": "Reuters",
+      "source_type": "wire",
+      "published_at": "2026-03-23T09:47:00+00:00",
+      "observed_at": "2026-03-23T09:48:00+00:00",
+      "url": "https://www.reuters.com/world/middle-east/indirect-us-iran-talks-continue-2026-03-23/",
+      "text_excerpt": "A senior official said indirect contacts continued but there was no finalized settlement.",
+      "claim_ids": [
+        "claim-negotiation",
+        "claim-deal"
+      ],
+      "claim_states": {
+        "claim-negotiation": "support",
+        "claim-deal": "contradict"
+      }
+    },
+    {
+      "source_id": "iran-mfa-20260323-1",
+      "source_name": "Iran Foreign Ministry",
+      "source_type": "government_release",
+      "published_at": "2026-03-23T09:49:00+00:00",
+      "observed_at": "2026-03-23T09:50:00+00:00",
+      "url": "https://en.mfa.gov.ir/portal/newsview/20260323-no-final-deal",
+      "text_excerpt": "Iran denied that any finalized deal had been reached.",
+      "claim_ids": [
+        "claim-deal"
+      ],
+      "claim_states": {
+        "claim-deal": "contradict"
+      }
+    },
+    {
+      "source_id": "marinetraffic-20260323-1",
+      "source_name": "MarineTraffic",
+      "source_type": "public_ship_tracker",
+      "published_at": "2026-03-23T09:56:00+00:00",
+      "observed_at": "2026-03-23T09:56:00+00:00",
+      "url": "https://www.marinetraffic.com/en/ais/home/centerx:31.4/centery:33.2/zoom:6",
+      "text_excerpt": "Public AIS points to a US amphibious group moving toward the eastern Mediterranean watch area.",
+      "claim_ids": [
+        "claim-vessel",
+        "claim-eta"
+      ],
+      "claim_states": {
+        "claim-vessel": "support",
+        "claim-eta": "support"
+      },
+      "vessel_ids": [
+        "LHD-01"
+      ],
+      "position_hint": {
+        "last_public_location": "Eastern Mediterranean",
+        "eta_hours_low": 24,
+        "eta_hours_high": 42
+      },
+      "root_post_screenshot_path": "financial-analysis/skills/autoresearch-info-index/examples/fixtures/hormuz-public-tracker.svg",
+      "media_summary": "Tracker snapshot showing a last-public-indication route toward the eastern Mediterranean with a rough 24h to 42h ETA range.",
+      "artifact_manifest": [
+        {
+          "kind": "screenshot",
+          "path": "financial-analysis/skills/autoresearch-info-index/examples/fixtures/hormuz-public-tracker.svg",
+          "caption": "Offline fixture screenshot for public ship-tracker evidence.",
+          "source_url": "https://www.marinetraffic.com/en/ais/home/centerx:31.4/centery:33.2/zoom:6"
+        }
+      ]
+    },
+    {
+      "source_id": "sentdefender-20260323-1",
+      "source_name": "SentDefender",
+      "source_type": "social",
+      "published_at": "2026-03-23T09:58:00+00:00",
+      "observed_at": "2026-03-23T09:58:00+00:00",
+      "url": "https://x.com/sentdefender/status/2036153038906196133",
+      "text_excerpt": "A high-engagement thread claims a large CONUS-to-Middle-East airlift and faster-than-expected positioning.",
+      "claim_ids": [
+        "claim-vessel",
+        "claim-eta"
+      ],
+      "claim_states": {
+        "claim-vessel": "support",
+        "claim-eta": "support"
+      },
+      "post_text_raw": "A significant movement is underway from US bases in CONUS to the Middle East comprised of at least 35 C-17 flights since March 12th.",
+      "post_text_source": "dom",
+      "post_text_confidence": 0.98,
+      "root_post_screenshot_path": "financial-analysis/skills/autoresearch-info-index/examples/fixtures/sentdefender-airlift.svg",
+      "post_summary": "The post says at least 35 C-17 flights moved from CONUS bases to the Middle East and frames it as a meaningful posture shift.",
+      "media_summary": "Attached chart-style image lists multiple origin and destination bases, useful as a shadow-layer logistics signal.",
+      "combined_summary": "Post: large CONUS airlift claim. Images: origin and destination base list. Treat as shadow-layer urgency, not confirmed operational intent.",
+      "media_items": [
+        {
+          "source_url": "https://pbs.twimg.com/media/sentdefender-airlift.jpg",
+          "local_artifact_path": "financial-analysis/skills/autoresearch-info-index/examples/fixtures/sentdefender-airlift.svg",
+          "ocr_text_raw": "35 C-17 flights from CONUS to the Middle East. Origins include Hunter Army Air Field and JBLM. Destinations include Ovda and King Faisal.",
+          "ocr_summary": "Chart-style image summarizing the airlift count and base pairs.",
+          "ocr_source": "image",
+          "ocr_confidence": 0.93,
+          "image_relevance_to_post": "high"
+        }
+      ]
+    },
+    {
+      "source_id": "axios-20260323-1",
+      "source_name": "Axios",
+      "source_type": "major_news",
+      "published_at": "2026-03-23T09:59:00+00:00",
+      "observed_at": "2026-03-23T09:59:00+00:00",
+      "url": "https://www.axios.com/2026/03/23/us-iran-envoy-channel-talks",
+      "access_mode": "blocked",
+      "claim_ids": [
+        "claim-negotiation"
+      ],
+      "claim_states": {
+        "claim-negotiation": "support"
+      },
+      "root_post_screenshot_path": "financial-analysis/skills/autoresearch-info-index/examples/fixtures/axios-blocked-card.svg",
+      "post_summary": "Blocked major-news page card indicating the envoy channel remains active, without full readable article text.",
+      "artifact_manifest": [
+        {
+          "kind": "screenshot",
+          "path": "financial-analysis/skills/autoresearch-info-index/examples/fixtures/axios-blocked-card.svg",
+          "caption": "Blocked page card kept only as a limitation-aware artifact.",
+          "source_url": "https://www.axios.com/2026/03/23/us-iran-envoy-channel-talks"
+        }
+      ]
+    },
+    {
+      "source_id": "ap-20260322-1",
+      "source_name": "AP",
+      "source_type": "major_news",
+      "published_at": "2026-03-22T06:00:00+00:00",
+      "observed_at": "2026-03-22T06:00:00+00:00",
+      "url": "https://apnews.com/article/us-iran-indirect-channel-20260322",
+      "text_excerpt": "Earlier reporting noted indirect channels but without fresh same-day confirmation.",
+      "claim_ids": [
+        "claim-negotiation"
+      ],
+      "claim_states": {
+        "claim-negotiation": "support"
+      }
+    },
+    {
+      "source_id": "almonitor-20260323-1",
+      "source_name": "Al-Monitor",
+      "source_type": "specialist_outlet",
+      "published_at": "2026-03-23T09:40:00+00:00",
+      "observed_at": "2026-03-23T09:41:00+00:00",
+      "url": "https://www.al-monitor.com/originals/2026/03/no-confirmed-us-iran-settlement-yet.html",
+      "text_excerpt": "Regional reporting says a deal may be close, but cites no direct confirmation and no signed settlement.",
+      "claim_ids": [
+        "claim-deal"
+      ],
+      "claim_states": {
+        "claim-deal": "support"
+      }
+    }
+  ]
+}

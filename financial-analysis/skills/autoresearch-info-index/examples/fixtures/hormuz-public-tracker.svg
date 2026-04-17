@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#0f172a"/>
+  <rect x="40" y="40" width="1200" height="640" rx="24" fill="#111827" stroke="#38bdf8" stroke-width="3"/>
+  <text x="90" y="110" fill="#e5e7eb" font-size="34" font-family="Segoe UI, Arial, sans-serif">Public ship tracker snapshot</text>
+  <text x="90" y="160" fill="#93c5fd" font-size="24" font-family="Segoe UI, Arial, sans-serif">Last public indication only</text>
+  <rect x="90" y="210" width="500" height="320" rx="20" fill="#1f2937" stroke="#22c55e" stroke-width="2"/>
+  <path d="M180 450 C 260 390, 340 340, 430 310 S 560 260, 700 280" fill="none" stroke="#22c55e" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="180" cy="450" r="12" fill="#f59e0b"/>
+  <circle cx="700" cy="280" r="12" fill="#ef4444"/>
+  <text x="120" y="570" fill="#cbd5e1" font-size="22" font-family="Segoe UI, Arial, sans-serif">Eastern Mediterranean watch area</text>
+  <text x="650" y="390" fill="#e5e7eb" font-size="30" font-family="Segoe UI, Arial, sans-serif">ETA range</text>
+  <text x="650" y="435" fill="#fde68a" font-size="48" font-family="Segoe UI, Arial, sans-serif">24h to 42h</text>
+  <text x="650" y="490" fill="#cbd5e1" font-size="24" font-family="Segoe UI, Arial, sans-serif">Source family: public AIS / public ship tracker</text>
+  <text x="650" y="530" fill="#cbd5e1" font-size="24" font-family="Segoe UI, Arial, sans-serif">Interpretation: movement signal, not confirmed intent</text>
+  <text x="90" y="645" fill="#94a3b8" font-size="20" font-family="Segoe UI, Arial, sans-serif">Offline fixture for article workflow smoke verification</text>
+</svg>

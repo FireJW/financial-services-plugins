@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "structured-verifier-v1",
+  "verdict": "FAIL",
+  "hasAdversarialProbe": true,
+  "checks": [
+    {
+      "title": "Contract scan",
+      "commandRun": "local contract validation",
+      "result": "FAIL",
+      "isAdversarialProbe": true
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "task_id": "bug-009",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of scheduled job skips records created near midnight boundary: A scheduled processing job misses records created near the midnight boundary because the time window is calculated incorrectly.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": false,
+    "fix_verified_after": false,
+    "no_new_critical_failures": false,
+    "scope_controlled": false,
+    "root_cause_aligned": false
+  },
+  "baseline_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "candidate_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "The boundary bug may come from timezone conversion, inclusive/exclusive comparisons, or truncation to local midnight.",
+  "loser_pattern": "A naive fix could stop skipping records but create duplicate processing on later runs.",
+  "source_bug": {
+    "bug_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\sample-pool\\bugs\\bug-009.json",
+    "title": "Scheduled job skips records created near midnight boundary",
+    "priority": "high",
+    "module_boundary": {
+      "allowed_paths": [
+        "src/jobs/scheduler",
+        "src/jobs/windowing",
+        "tests/jobs/scheduler"
+      ],
+      "forbidden_paths": [
+        "src/frontend",
+        "src/auth",
+        "src/reporting"
+      ]
+    },
+    "reproduction": {
+      "preconditions": [
+        "Scheduler tests can inject a fixed clock or timezone-aware fixtures",
+        "There are fixture records created around 23:59 and 00:01"
+      ],
+      "steps": [
+        "Run the scheduled job with the clock fixed at a day-boundary time",
+        "Inspect which fixture records are selected for processing",
+        "Compare the selected record IDs with the expected window"
+      ],
+      "expected_behavior": "Boundary records inside the intended window are processed exactly once.",
+      "actual_behavior": "At least one valid boundary record is skipped."
+    },
+    "validation": {
+      "primary_command": "npm test -- midnight-boundary",
+      "secondary_checks": [
+        "npm run lint -- src/jobs/scheduler src/jobs/windowing"
+      ],
+      "manual_checks": [
+        "Run the job with a fixed clock and confirm all expected boundary records are processed",
+        "Confirm records outside the window are still excluded"
+      ]
+    },
+    "rollback": {
+      "stable_version": "baseline-v1",
+      "rollback_rule": "Rollback on any hard-check failure or if the new logic begins reprocessing records outside the intended window.",
+      "notes": "Keep the last passing scheduler boundary patch ready for restore."
+    },
+    "scope_notes": "Limit the fix to window calculation, scheduler selection, and tests around date boundaries. Do not redesign the whole job orchestration layer.",
+    "tags": [
+      "scheduler",
+      "time",
+      "boundary",
+      "server"
+    ]
+  }
+}

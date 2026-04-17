@@ -1,0 +1,28 @@
+{
+  "topic": "AI Agent development trends",
+  "sources": [
+    "weibo",
+    "zhihu",
+    "36kr",
+    "google-news-search"
+  ],
+  "selected_topic_index": 1,
+  "audience_keywords": [
+    "AI",
+    "business",
+    "investing",
+    "industry"
+  ],
+  "account_name": "REPLACE_WITH_ACCOUNT_NAME",
+  "author": "REPLACE_WITH_AUTHOR_NAME",
+  "human_review_approved": true,
+  "human_review_approved_by": "REPLACE_WITH_REVIEWER_NAME",
+  "human_review_note": "Reviewed for factual accuracy and ready for draft push.",
+  "draft_mode": "balanced",
+  "image_strategy": "mixed",
+  "push_to_wechat": true,
+  "cover_image_url": "https://replace-with-your-cover-image.example.com/wechat-cover.jpg",
+  "show_cover_pic": 1,
+  "need_open_comment": false,
+  "only_fans_can_comment": false
+}

@@ -1,0 +1,71 @@
+{
+  "item_id": "news-005",
+  "title": "Flash PMI surprise interpreted as imminent stimulus",
+  "topic": "macro",
+  "analysis_date": "2026-02-24",
+  "claim_to_evaluate": "A weak flash PMI print was immediately framed as proof that fresh stimulus was coming. How reliable is that conclusion?",
+  "baseline_goal": "Train the workflow to split hard macro data from speculative policy inference and avoid writing narrative leap as fact.",
+  "required_output_sections": [
+    "what_is_confirmed",
+    "what_is_not_confirmed",
+    "credibility_judgment",
+    "market_relevance"
+  ],
+  "source_pack": {
+    "event_label": "PMI surprise and stimulus inference",
+    "sources": [
+      {
+        "name": "S&P Global PMI Release",
+        "type": "official_release",
+        "url": "https://example.com/spglobal/pmi-release",
+        "published_at": "2026-02-24",
+        "support": "The flash PMI came in below consensus and pointed to weaker near-term activity."
+      },
+      {
+        "name": "Financial TV Desk",
+        "type": "news",
+        "url": "https://example.com/tvdesk/stimulus-coming",
+        "published_at": "2026-02-24",
+        "support": "Commentators said the data almost guaranteed policy support within weeks."
+      },
+      {
+        "name": "Finance Ministry Briefing",
+        "type": "government_release",
+        "url": "https://example.com/ministry/briefing",
+        "published_at": "2026-02-25",
+        "support": "Officials said they were monitoring the economy but did not announce any new package."
+      }
+    ],
+    "key_claims": [
+      {
+        "claim": "The weak PMI print itself was confirmed data.",
+        "status": "confirmed_officially"
+      },
+      {
+        "claim": "A new stimulus package had already been announced.",
+        "status": "contradicted"
+      },
+      {
+        "claim": "The right summary is weak macro data plus policy speculation, not confirmed stimulus.",
+        "status": "analytical_judgment"
+      }
+    ]
+  },
+  "credibility_reference": {
+    "source_strength": "medium",
+    "source_agreement": "mixed",
+    "confidence_interval_pct": [
+      20,
+      40
+    ],
+    "expected_judgment": "Low-to-moderate confidence. The data are real, but the policy leap is speculative until officials act."
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback if the output upgrades market interpretation into confirmed policy action."
+  },
+  "notes": {
+    "winner_pattern_hint": "Keep the data release and the policy inference in separate buckets.",
+    "loser_pattern_hint": "Equating an ugly macro print with an already-decided stimulus package."
+  }
+}

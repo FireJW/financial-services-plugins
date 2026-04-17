@@ -1,0 +1,14 @@
+{
+  "pluginDirs": [
+    "financial-analysis",
+    "equity-research"
+  ],
+  "cliArgs": [
+    "--verbose",
+    "--print",
+    "--output-format",
+    "stream-json",
+    "--permission-mode",
+    "default"
+  ]
+}

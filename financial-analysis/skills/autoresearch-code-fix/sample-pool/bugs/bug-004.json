@@ -1,0 +1,71 @@
+{
+  "bug_id": "bug-004",
+  "title": "Bulk upload accepts duplicate external IDs in the same batch",
+  "priority": "high",
+  "module_boundary": {
+    "allowed_paths": [
+      "src/imports",
+      "src/imports/validation",
+      "tests/imports"
+    ],
+    "forbidden_paths": [
+      "src/ui",
+      "src/reporting",
+      "db/migrations"
+    ]
+  },
+  "bug_description": "A bulk upload path accepts two rows with the same external ID in one batch and processes them as if they were unique.",
+  "expected_behavior": "The upload should fail validation before processing and return a clear duplicate-ID error for the batch.",
+  "actual_behavior": "The batch is accepted and later steps overwrite or conflict with each other, producing inconsistent imported records.",
+  "reproduction": {
+    "preconditions": [
+      "Local import worker or import validation path is available",
+      "A fixture CSV or JSON batch with two rows sharing one external ID exists"
+    ],
+    "steps": [
+      "Run the bulk upload flow with a batch containing duplicate external IDs",
+      "Inspect the validation response and the resulting imported records"
+    ],
+    "expected_behavior": "The batch is rejected up front with a duplicate-ID validation message and no records are created or updated.",
+    "actual_behavior": "The batch passes validation and processing continues with conflicting row identity."
+  },
+  "evidence": {
+    "logs": [
+      "Import logs show both duplicate rows entering the processing stage instead of being rejected during validation"
+    ],
+    "related_files": [
+      "src/imports/validate-batch.ts",
+      "src/imports/process-upload.ts",
+      "tests/imports/duplicate-external-id.test.ts"
+    ]
+  },
+  "validation": {
+    "primary_command": "npm test -- duplicate-external-id",
+    "secondary_checks": [
+      "npm run lint -- src/imports src/imports/validation"
+    ],
+    "manual_checks": [
+      "Run the duplicate-ID fixture again and confirm the batch is rejected before processing",
+      "Confirm a valid batch with unique IDs still imports successfully"
+    ]
+  },
+  "rollback": {
+    "stable_version": "baseline-v1",
+    "rollback_rule": "Rollback on any hard-check failure or if valid uploads begin failing on unique IDs",
+    "notes": "Keep the last known passing batch-validation behavior and a valid fixture result for comparison."
+  },
+  "scope_notes": "Keep the change inside batch validation and direct import processing entrypoints. Do not redesign persistence or deduplication strategy beyond what is required to reject duplicates in one batch.",
+  "notes": {
+    "root_cause_hint": "Likely missing in-memory uniqueness validation before row processing begins",
+    "risk_hint": "A broad fix could accidentally reject legitimate repeated references across different import modes",
+    "similar_bugs": [
+      "duplicate email addresses accepted in invite upload",
+      "same account code imported twice in one spreadsheet"
+    ]
+  },
+  "tags": [
+    "imports",
+    "validation",
+    "batch-processing"
+  ]
+}

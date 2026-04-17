@@ -49,19 +49,6 @@ These plugins are built and maintained by our data partners, bringing their fina
 | **[LSEG](./partner-built/lseg)** | [LSEG](https://www.lseg.com/) | Price bonds, analyze yield curves, evaluate FX carry trades, value options, and build macro dashboards using LSEG financial data and analytics. 8 commands covering fixed income, FX, equities, and macro. |
 | **[S&P Global](./partner-built/spglobal)** | [S&P Global](https://www.spglobal.com/) | Generate company tearsheets, earnings previews, and funding digests powered by S&P Capital IQ data. Supports multiple audience types (equity research, IB/M&A, corp dev, sales). |
 
-### Office Add-in Deployment
-
-For Microsoft 365 admins deploying the [Claude Office add-in](https://pivot.claude.ai) with direct cloud access to your own Vertex AI, Bedrock, or LLM gateway.
-
-| Plugin | How it helps |
-|--------|-------------|
-| **[claude-in-office](./claude-in-office)** | Interactive setup wizard that provisions cloud resources, generates the customized add-in manifest, walks through Azure admin consent, and writes per-user config via Microsoft Graph extension attributes. |
-
-```bash
-claude plugin install claude-in-office@financial-services-plugins
-/claude-in-office:setup
-```
-
 ## Getting Started
 
 ### Cowork
@@ -110,9 +97,119 @@ plugin-name/
 
 - **Skills** encode the domain expertise, best practices, and step-by-step workflows Claude needs to deliver professional-quality financial work. Claude draws on them automatically when relevant.
 - **Commands** are explicit actions you trigger (e.g., `/comps`, `/earnings`, `/ic-memo`).
-- **Connectors** wire Claude to the external data sources your workflow depends on — financial data terminals, research platforms, document management, and more — via [MCP servers](https://modelcontextprotocol.io/).
+- **Connectors** wire Claude to the external data sources your workflow depends on - financial data terminals, research platforms, document management, and more - via [MCP servers](https://modelcontextprotocol.io/).
 
-Every component is file-based — markdown and JSON, no code, no infrastructure, no build steps.
+Every component is file-based - markdown and JSON, no code, no infrastructure, no build steps.
+
+## Capability-First Usage
+
+When a workflow already exists in a plugin, use the plugin's native command and
+runtime before reaching for generic browsing or one-off scraping.
+
+Preferred operator order:
+
+1. find a matching slash command under `commands/`
+2. follow the linked skill/runtime path
+3. use generic browser automation only when the repo does not provide a better native path
+
+## Workspace Safety
+
+Do not keep the canonical working copy of this repository under an agent
+scratch path such as `.gemini/antigravity/scratch/`.
+
+Recommended stable homes:
+
+- `D:\Users\rickylu\dev\financial-services-plugins`
+- WSL Linux home, for example `/home/<you>/dev/financial-services-plugins`
+
+The repository location can move to D drive without changing the user's active
+Codex home/config on C drive. Do not treat repo migration and Codex config
+migration as the same task.
+
+Useful local safety commands:
+
+```powershell
+.\scripts\check-workspace-safety.ps1
+.\scripts\repo-snapshot.ps1 -BackupRoot "D:\Users\rickylu\repo-safety-backups\financial-services-plugins" -MirrorLatest -IncludeGit
+.\scripts\prepare-safe-workspace.ps1 -TargetRoot "D:\Users\rickylu\dev" -IncludeGit -IncludeTmp -Execute
+.\scripts\promote-mainlines.ps1 -Execute
+```
+
+See `docs/runtime/workspace-safety.md` for the full workflow.
+
+## Local Obsidian KB Capture
+
+This repo also carries a local Obsidian KB sink under `obsidian-kb-local/`.
+
+When a user explicitly asks to persist a result into the local Obsidian KB
+using phrases such as:
+
+- `落进本地obsidian知识库`
+- `同步到obsidian知识库`
+- `记到obsidian`
+- `落到raw`
+- `存进本地知识库`
+
+the default behavior is:
+
+1. capture the current user request plus the assistant's final substantive answer
+2. write a manual raw note into `08-AI知识库/10-raw/manual/`
+3. use `node scripts/capture-codex-thread.mjs`
+4. prefer an explicit `codex://threads/...` source URI when available
+5. otherwise fall back to `codex://threads/current-thread`
+6. default to `--compile` for reusable knowledge-bearing content
+
+Canonical workflow details live in `CODEX_DEVELOPMENT_FLOW.md`.
+
+The live system view for this workflow is:
+
+- `08-AI知识库/30-views/00-System/08-Codex Thread Capture Status.md`
+- `08-AI知识库/30-views/00-System/09-Codex Thread Recovery Queue.md`
+- `08-AI知识库/30-views/00-System/10-Codex Thread Audit Log.md`
+
+Refresh it with:
+
+```powershell
+node .\obsidian-kb-local\scripts\refresh-wiki-views.mjs
+```
+
+The refresh script now defaults to "try Obsidian CLI first, then fall back to
+filesystem writes if the CLI stalls or fails". Use `--force-cli` only if you
+explicitly want strict CLI-only behavior.
+
+That status view now also includes the most recent `verify` and `reconcile`
+history, so missed thread captures are easier to spot from inside Obsidian.
+
+For a terminal summary, run:
+
+```powershell
+node .\obsidian-kb-local\scripts\codex-thread-audit-report.mjs
+node .\obsidian-kb-local\scripts\codex-thread-audit-doctor.mjs
+```
+
+To archive expired synthetic/demo audit entries:
+
+```powershell
+node .\obsidian-kb-local\scripts\backfill-codex-thread-audit-run-ids.mjs
+node .\obsidian-kb-local\scripts\backfill-codex-thread-audit-run-ids.mjs --apply
+node .\obsidian-kb-local\scripts\prune-codex-thread-audit-logs.mjs --days 7
+node .\obsidian-kb-local\scripts\prune-codex-thread-audit-logs.mjs --days 7 --apply
+```
+
+For historical multi-thread imports, use the batch manifest route:
+
+```powershell
+node .\obsidian-kb-local\scripts\init-codex-thread-batch.mjs --output-dir ".\obsidian-kb-local\.tmp-codex-thread-handoff-batch" --thread-id "019d5746-28de-7631-ad1c-d35ca5815b94" --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab" --topic "历史 Codex 线程沉淀" --title-prefix "历史线程待整理"
+node .\obsidian-kb-local\scripts\capture-codex-thread-batch.mjs --manifest ".\obsidian-kb-local\examples\codex-thread-batch.template.json" --compile --timeout-ms 240000
+node .\obsidian-kb-local\scripts\verify-codex-thread-capture.mjs --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab"
+node .\obsidian-kb-local\scripts\reconcile-codex-thread-capture.mjs --output-dir ".\obsidian-kb-local\.tmp-codex-thread-reconcile-smoke" --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab" --thread-id "019d-missing-demo-thread" --topic "历史 Codex 线程补录" --title-prefix "待补录线程"
+```
+
+Example: for X / Twitter thread collection, use `/x-index` first. On Windows,
+prefer `browser_session.strategy = "remote_debugging"` with a real signed-in
+Edge or Chrome session. Reuse the last successful X workflow before starting a
+fresh login-state bootstrap, prefer a new Edge window over interrupting current
+Edge pages, and use `cookie_file` only when remote debugging is not available.
 
 ## MCP Integrations
 
@@ -145,6 +242,16 @@ These plugins are starting points. They become much more useful when you customi
 - **Build new plugins** — Follow the structure above to create plugins for workflows we haven't covered yet.
 
 As your team builds and shares plugins, Claude becomes a cross-functional expert. The context you define gets baked into every relevant interaction, so leaders can spend less time enforcing processes and more time improving them.
+
+## Git Safety
+
+- Local runtime artifacts belong in `.tmp/`, `.tmp-*`, or root-level `tmp-*` paths and should stay out of git history.
+- This repo includes a versioned pre-commit guard under `.githooks/` that blocks staged temp artifacts, browser profile data, caches, and unusually large staged diffs.
+- For staging, prefer `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-stage-safe.ps1 <path>...` so accidental `.tmp` additions are scrubbed immediately instead of surviving until commit time.
+- For committing on Windows, if the shell-based hook launcher is flaky, prefer `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-commit-safe.ps1 -Message "<subject>" [-Body "<body>"]`. It runs the same PowerShell guard first, then commits with `--no-verify` to avoid the broken shell wrapper rather than skipping validation.
+- If an external tool already staged files, run `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-scrub-staged-runtime-artifacts.ps1` to clean the index before continuing.
+- Enable the guard in each clone with `git config core.hooksPath .githooks`.
+- If a generated artifact needs to live in the repo, move it to a stable non-temp location such as `examples/` or `tests/fixtures/`.
 
 ## Contributing
 

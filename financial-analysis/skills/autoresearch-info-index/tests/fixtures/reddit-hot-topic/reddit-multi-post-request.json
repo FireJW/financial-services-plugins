@@ -1,0 +1,80 @@
+{
+  "analysis_time": "2026-03-31T05:00:00+00:00",
+  "query": "market chatter snapshot",
+  "sources": [
+    "agent-reach:reddit"
+  ],
+  "agent_reach_channel_payloads": {
+    "reddit": [
+      {
+        "title": "NVIDIA Blackwell supplier checks",
+        "permalink": "/r/stocks/comments/nvda100/nvidia_blackwell_supplier_checks/",
+        "subreddit": "stocks",
+        "selftext": "Retail investors are debating AI infra supplier leverage, HBM bottlenecks, and timing.",
+        "score": 1860,
+        "num_comments": 420,
+        "upvote_ratio": 0.94,
+        "created_utc": "2026-03-31T04:28:00+00:00",
+        "listing": "hot"
+      },
+      {
+        "title": "NVIDIA Blackwell supplier checks",
+        "permalink": "/r/investing/comments/nvda101/nvidia_blackwell_supplier_checks/",
+        "subreddit": "investing",
+        "selftext": "Another thread focuses on AI infra demand, packaging constraints, and supplier leverage.",
+        "score": 1420,
+        "num_comments": 310,
+        "upvote_ratio": 0.92,
+        "created_utc": "2026-03-31T04:21:00+00:00",
+        "listing": "rising",
+        "time_filter": "day"
+      },
+      {
+        "title": "NVIDIA Blackwell supplier checks",
+        "permalink": "/r/SecurityAnalysis/comments/nvda102/nvidia_blackwell_supplier_checks/",
+        "subreddit": "SecurityAnalysis",
+        "selftext": "A deeper thread argues AI infra supplier checks still point to memory bottlenecks and tight capacity.",
+        "score": 980,
+        "num_comments": 190,
+        "upvote_ratio": 0.96,
+        "created_utc": "2026-03-31T04:12:00+00:00",
+        "listing": "top",
+        "time_filter": "week"
+      },
+      {
+        "title": "TSMC CoWoS bottleneck watch",
+        "permalink": "/r/stocks/comments/tsmc200/tsmc_cowos_bottleneck_watch/",
+        "subreddit": "stocks",
+        "selftext": "The thread debates AI infra packaging bottlenecks, CoWoS line constraints, and supplier pass-through.",
+        "score": 1240,
+        "num_comments": 280,
+        "upvote_ratio": 0.91,
+        "created_utc": "2026-03-31T04:18:00+00:00",
+        "listing": "hot"
+      },
+      {
+        "title": "TSMC CoWoS bottleneck watch",
+        "permalink": "/r/investing/comments/tsmc201/tsmc_cowos_bottleneck_watch/",
+        "subreddit": "investing",
+        "selftext": "Another subreddit debates packaging capacity, AI infra demand, and second-order suppliers.",
+        "score": 910,
+        "num_comments": 205,
+        "upvote_ratio": 0.9,
+        "created_utc": "2026-03-31T04:10:00+00:00",
+        "listing": "rising",
+        "time_filter": "day"
+      },
+      {
+        "title": "Broadcom custom silicon upside check",
+        "permalink": "/r/stocks/comments/avgo300/broadcom_custom_silicon_upside_check/",
+        "subreddit": "stocks",
+        "selftext": "This thread asks whether AI infra custom silicon demand could lift Broadcom supplier expectations.",
+        "score": 720,
+        "num_comments": 140,
+        "upvote_ratio": 0.89,
+        "created_utc": "2026-03-31T04:05:00+00:00",
+        "listing": "new"
+      }
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "mode": "batch",
+  "analysis_time": "2026-04-10T08:00:00+00:00",
+  "analysis_date": "2026-04-10",
+  "subject_registry_path": "C:\\path\\to\\x-stock-picker-style-subject-registry.json",
+  "selected_handles": [
+    "twikejin",
+    "tuolaji2024",
+    "aleabitoreddit",
+    "jukan05"
+  ],
+  "shared_request": {
+    "score_mode": "off",
+    "enable_live_resolution": false,
+    "enable_live_history": false,
+    "candidate_names": [],
+    "theme_aliases": {},
+    "ticker_resolution_by_name": {},
+    "history_by_ticker": {},
+    "x_index_request_template": {
+      "browser_session": {
+        "strategy": "remote_debugging",
+        "cdp_endpoint": "http://127.0.0.1:9222",
+        "required": true
+      },
+      "same_author_scan_window_hours": 168,
+      "same_author_scan_limit": 40
+    }
+  },
+  "subject_overrides_by_handle": {
+    "twikejin": {
+      "candidate_names": [
+        "卓郎智能",
+        "泰坦股份",
+        "中国巨石",
+        "国际复材",
+        "中材科技",
+        "宏和科技"
+      ],
+      "theme_aliases": {
+        "electronic_cloth": ["电子布", "织布机", "CCL", "覆铜板"]
+      }
+    },
+    "tuolaji2024": {
+      "candidate_names": [],
+      "theme_aliases": {}
+    }
+  }
+}

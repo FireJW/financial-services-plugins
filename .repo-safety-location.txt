@@ -1,0 +1,5 @@
+﻿Created at: 2026-04-14T23:08:43.9180615+08:00
+Source repo: C:\Users\rickylu\.gemini\antigravity\scratch\financial-services-plugins
+Target repo: D:\Users\rickylu\dev\financial-services-plugins
+Include .git: True
+Include .tmp*: True

@@ -1,0 +1,25 @@
+{
+  "site_profile": "broker-research-portal",
+  "source_policy": {
+    "source_type": "research_note",
+    "channel": "shadow",
+    "access_mode": "browser_session",
+    "allow_observed_at_fallback": true
+  },
+  "artifact_expectations": {
+    "preserve_roles": [
+      "page_screenshot",
+      "exported_pdf",
+      "download"
+    ],
+    "session_artifacts_must_stay_unversioned": true,
+    "normalized_json_must_stay_separate_from_runtime_artifacts": true
+  },
+  "routing_notes": {
+    "excluded_native_routes": [
+      "x",
+      "wechat"
+    ],
+    "default_import_posture": "shadow-first"
+  }
+}

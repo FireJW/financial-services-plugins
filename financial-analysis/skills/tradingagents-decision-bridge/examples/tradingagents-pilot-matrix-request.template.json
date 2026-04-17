@@ -1,0 +1,25 @@
+{
+  "output_dir": ".tmp/tradingagents-pilot-matrix",
+  "requests": [
+    {
+      "id": "nvda-control",
+      "path": "financial-analysis/skills/tradingagents-decision-bridge/examples/pilot-matrix/nvda.request.json"
+    },
+    {
+      "id": "aapl-control",
+      "path": "financial-analysis/skills/tradingagents-decision-bridge/examples/pilot-matrix/aapl.request.json"
+    },
+    {
+      "id": "chalco-a-share",
+      "path": "financial-analysis/skills/tradingagents-decision-bridge/examples/pilot-matrix/601600.ss.request.json"
+    },
+    {
+      "id": "envicool-a-share",
+      "path": "financial-analysis/skills/tradingagents-decision-bridge/examples/pilot-matrix/002837.sz.request.json"
+    },
+    {
+      "id": "tencent-hk",
+      "path": "financial-analysis/skills/tradingagents-decision-bridge/examples/pilot-matrix/00700.hk.request.json"
+    }
+  ]
+}

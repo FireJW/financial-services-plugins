@@ -1,0 +1,39 @@
+{
+  "input_dir": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-info-index\\sample-pool\\items",
+  "total_files": 5,
+  "valid_files": 5,
+  "invalid_files": 0,
+  "all_valid": true,
+  "results": [
+    {
+      "file": "news-001.json",
+      "item_id": "news-001",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "news-002.json",
+      "item_id": "news-002",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "news-003.json",
+      "item_id": "news-003",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "news-004.json",
+      "item_id": "news-004",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "news-005.json",
+      "item_id": "news-005",
+      "valid": true,
+      "errors": []
+    }
+  ]
+}

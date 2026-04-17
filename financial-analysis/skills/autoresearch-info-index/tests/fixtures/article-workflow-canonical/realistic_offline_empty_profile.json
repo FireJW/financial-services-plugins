@@ -1,0 +1,86 @@
+{
+  "source_kind": "news_index",
+  "quality_gate": "pass",
+  "rewrite_mode": "no_rewrite_needed",
+  "pre_rewrite_quality_gate": "pass",
+  "publication_readiness": "ready",
+  "workflow_publication_gate": {
+    "publication_readiness": "ready",
+    "manual_review_status": "not_required"
+  },
+  "manual_review": {
+    "status": "not_required",
+    "required": false,
+    "required_count": 0,
+    "high_priority_count": 0
+  },
+  "draft_metrics": {
+    "char_count": 1442,
+    "section_count": 5,
+    "image_count": 3,
+    "citation_count": 8
+  },
+  "title": "Hormuz negotiation realistic offline fixture",
+  "subtitle": "Before jumping to a verdict, put the few highest-signal observations on the table.",
+  "lede": "US and Iran are still in active indirect contacts today. What keeps this worth following is not the heat alone, but Crude and LNG price sensitivity.",
+  "section_headings": [
+    "First Signal",
+    "What The Images Add",
+    "Second Signal",
+    "Third Signal",
+    "What To Watch Next"
+  ],
+  "section_paragraphs": [
+    "Start with the points that can already stand on the record: US and Iran are still in active indirect contacts today. Hold those steady first, then widen the frame.",
+    "Images can restore a sense of scene, but they should support the story instead of replacing the judgment. The strongest visual thread here is: Key images kept for the article: Axios: Blocked page card kept only as a limitation-aware artifact.; MarineTraffic: Offline fixture screenshot for public ship-tracker evidence.; SentDefender: The post says at least 35 C-17 flights moved from CONUS bases to the Middle East and frames it as a....",
+    "The thing worth tracking is not the headline heat itself, but who it reaches and which decisions it changes next. The clearest read-through now is Crude and LNG price sensitivity and Shipping and defense headline sensitivity. That is where a topic stops being noise and becomes a variable.",
+    "The easiest place to overstate the story is A finalized settlement or ceasefire has already been agreed; A US amphibious group could reach a relevant public watch position within roughly one to two days. At this stage, restraint is part of the quality bar.",
+    "The next useful checkpoints are A finalized settlement or ceasefire has already been agreed; A US amphibious group could reach a relevant public watch position within roughly one to two days; Public tracking suggests a US amphibious posture shift, but it still does not confirm intent. Whichever of those gets verified first will move the story forward."
+  ],
+  "selected_images": [
+    {
+      "image_id": "IMG-01",
+      "role": "root_post_screenshot",
+      "source_name": "Axios",
+      "placement": "after_lede",
+      "status": "remote_only"
+    },
+    {
+      "image_id": "IMG-03",
+      "role": "root_post_screenshot",
+      "source_name": "MarineTraffic",
+      "placement": "after_section_2",
+      "status": "remote_only"
+    },
+    {
+      "image_id": "IMG-05",
+      "role": "root_post_screenshot",
+      "source_name": "SentDefender",
+      "placement": "after_section_3",
+      "status": "remote_only"
+    }
+  ],
+  "style_effective_request": {
+    "language_mode": "english",
+    "draft_mode": "image_first",
+    "image_strategy": "prefer_images",
+    "target_length_chars": 1000,
+    "human_signal_ratio": 35,
+    "headline_hook_mode": "auto",
+    "personal_phrase_bank": [],
+    "style_memory": {
+      "target_band": null,
+      "preferred_transitions": null,
+      "slot_lines": null
+    }
+  },
+  "feedback_profile_status": {
+    "global_exists": false,
+    "topic_exists": false,
+    "global_history_count": 0,
+    "topic_history_count": 0,
+    "global_style_memory_keys": [],
+    "topic_style_memory_keys": [],
+    "applied_paths_count": 0
+  }
+}

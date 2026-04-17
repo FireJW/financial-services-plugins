@@ -1,0 +1,95 @@
+{
+  "task_id": "bug-007",
+  "sample_set_version": "code-fix-sample-v1",
+  "task_goal": "Improve repeatable handling of csv import silently duplicates rows on retry: Retrying a failed CSV import creates duplicate rows instead of treating the retry as idempotent.",
+  "baseline_version": "baseline-v1",
+  "candidate_version": "candidate-v2",
+  "last_stable_version": "baseline-v1",
+  "hard_checks": {
+    "issue_reproduced_before": false,
+    "fix_verified_after": false,
+    "no_new_critical_failures": false,
+    "scope_controlled": false,
+    "root_cause_aligned": false
+  },
+  "baseline_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "candidate_scores": {
+    "root_cause_quality": 0,
+    "fix_minimality": 0,
+    "verification_completeness": 0,
+    "regression_risk_control": 0,
+    "debugging_efficiency": 0,
+    "reuse_value": 0
+  },
+  "thresholds": {
+    "min_improvement": 2,
+    "large_regression": 5
+  },
+  "history": {
+    "consecutive_small_gain_rounds": 0,
+    "consecutive_non_verifying_rounds": 0,
+    "recent_success_rate": 0.0,
+    "target_success_rate": 0.8
+  },
+  "winner_pattern": "The retry path may be missing a persisted-row identity check or idempotency token reuse.",
+  "loser_pattern": "An over-broad fix could skip legitimate new rows or break bulk-import throughput.",
+  "source_bug": {
+    "bug_file": "C:\\Users\\rickylu\\.gemini\\antigravity\\scratch\\financial-services-plugins\\financial-analysis\\skills\\autoresearch-code-fix\\sample-pool\\bugs\\bug-007.json",
+    "title": "CSV import silently duplicates rows on retry",
+    "priority": "high",
+    "module_boundary": {
+      "allowed_paths": [
+        "src/import/csv",
+        "src/jobs/import",
+        "tests/import/csv"
+      ],
+      "forbidden_paths": [
+        "src/frontend",
+        "src/auth",
+        "db/migrations"
+      ]
+    },
+    "reproduction": {
+      "preconditions": [
+        "Local import worker is running with a test CSV fixture",
+        "The fixture contains at least one row that will trigger a retryable failure on the first run"
+      ],
+      "steps": [
+        "Start the CSV import job with the retryable fixture",
+        "Allow the first attempt to fail after partial persistence",
+        "Trigger the retry path and inspect the imported row count"
+      ],
+      "expected_behavior": "After retry, each logical CSV row should appear exactly once.",
+      "actual_behavior": "Rows already inserted on the first attempt are inserted again on retry."
+    },
+    "validation": {
+      "primary_command": "npm test -- retry-import",
+      "secondary_checks": [
+        "npm run lint -- src/import/csv src/jobs/import"
+      ],
+      "manual_checks": [
+        "Re-run the import with the same fixture and confirm row counts stay stable after retry",
+        "Confirm downstream totals match the unique-row expectation"
+      ]
+    },
+    "rollback": {
+      "stable_version": "baseline-v1",
+      "rollback_rule": "Rollback on any hard-check failure or if successful imports begin skipping valid new rows.",
+      "notes": "Keep the last passing import patch or branch ready for restore."
+    },
+    "scope_notes": "Keep the fix inside import deduplication, retry handling, and the directly related tests. Do not redesign the full ingestion pipeline.",
+    "tags": [
+      "import",
+      "retry",
+      "idempotency",
+      "server"
+    ]
+  }
+}

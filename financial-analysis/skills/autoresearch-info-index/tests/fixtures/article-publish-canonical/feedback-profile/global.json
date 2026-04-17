@@ -1,0 +1,106 @@
+{
+  "scope": "global",
+  "topic": "global",
+  "request_defaults": {
+    "author": "不万能的阿伟",
+    "language_mode": "chinese",
+    "tone": "professional-calm",
+    "draft_mode": "balanced",
+    "image_strategy": "mixed",
+    "max_images": 3,
+    "human_signal_ratio": 72,
+    "headline_hook_mode": "traffic",
+    "personal_phrase_bank": [
+      "先说结论",
+      "回过头看",
+      "问题在于",
+      "更关键的是",
+      "最后盯三件事"
+    ],
+    "must_avoid": [
+      "哪些已经确认，哪些仍未确认",
+      "当前最稳妥的写法是",
+      "最稳妥的写法是",
+      "已确认与未确认",
+      "图片与截图",
+      "边界与待确认点",
+      "写作约束",
+      "当前索引结果",
+      "真实事件、趋势或公开争议",
+      "有解释价值，不只是情绪型热度",
+      "如果你说的是",
+      "更硬的变量",
+      "更实的变量",
+      "经营变量",
+      "经营层"
+    ]
+  },
+  "notes": [
+    "Target voice is between level 3 and level 4: clearly personal, concise, willing to judge, but still suitable for a public account draft that needs manual review.",
+    "Prefer opening with a practical conclusion or the most concrete observed change, then move into transmission, implication, and what to watch next."
+  ],
+  "style_memory": {
+    "target_band": "3档偏4档",
+    "voice_summary": "结论先行，判断明确，少讲流程和方法论黑话，多写到底发生了什么、为什么值得看、接下来会怎么走。",
+    "preferred_transitions": [
+      "先说结论",
+      "回过头看",
+      "问题在于",
+      "更关键的是",
+      "最后盯三件事"
+    ],
+    "must_land": [
+      "把影响路径写在前面",
+      "优先回答读者真正关心的变量",
+      "先写能确认的变化，再写判断和边界"
+    ],
+    "avoid_patterns": [
+      "当前最稳妥的写法是",
+      "这版内容基于当前索引结果生成",
+      "已确认与未确认",
+      "图片与截图",
+      "边界与待确认点",
+      "写作约束"
+    ],
+    "corpus_notes": [
+      "成文正文里避免出现作者对自己下指令的句子，比如“先把……写清”或“这一步最怕……”。",
+      "如果段落本身已经完整，就不要再补一层方法论式总结。"
+    ],
+    "slot_guidance": {
+      "title": [
+        "标题只保留对读者有价值的主题和判断，不要带来源品牌，不要写成事实核查栏目。",
+        "避免“哪些已经确认，哪些仍未确认”这类面向作者自己的流程标题。"
+      ],
+      "subtitle": [
+        "副题先拎硬变量，再引到影响路径，不要复述标题。",
+        "优先落在时间点、动作、价格、风险、权限、工作流这些更具体的东西上。"
+      ],
+      "lede": [
+        "开头先给判断，第二句马上解释为什么值得看。",
+        "不要先讲索引、来源、核查流程。"
+      ],
+      "impact": [
+        "影响段别空喊重要性，直接落到更具体的变化和判断上。",
+        "像作者在拆传导，不像模板在写总结。"
+      ],
+      "watch": [
+        "结尾像作者自己在盯盘或盯变量，不像 checklist。",
+        "优先写能把叙事坐实或打脸的硬信号。"
+      ]
+    },
+    "slot_lines": {
+      "subtitle": [
+        "先把最值得看的那条线拎出来，再看这件事接下来会怎么走。"
+      ],
+      "lede": [
+        "这事真正值得看的，不是热度本身，而是后面那几条会继续改写判断的硬线索。"
+      ],
+      "impact": [
+        "真正会影响判断的，还是那几条更具体的线会不会继续往下走。"
+      ],
+      "watch": [
+        "接下来别忙着站队，先盯那几个会把叙事坐实的硬信号。"
+      ]
+    }
+  }
+}

@@ -1,0 +1,109 @@
+<h2>Prompt 模板 + 3 个视觉方向变体</h2>
+<p class="subtitle">目标模型：GPT-4o Image Generation API（images/edits endpoint）· 输出 1242×1660px · 无文字</p>
+
+<div class="section">
+  <h3>主 Prompt 模板结构</h3>
+  <div class="mockup">
+    <div class="mockup-header">GPT-4o Image Gen — 主模板（5 段式）</div>
+    <div class="mockup-body" style="font-family:monospace;font-size:13px;line-height:1.8;white-space:pre-wrap;color:#e2e8f0;background:#1e293b;padding:20px;border-radius:8px;">
+<strong style="color:#fbbf24;">[1. 媒介与画幅]</strong>
+Vertical editorial photograph, 3:4 aspect ratio, shot on photojournalism camera.
+
+<strong style="color:#fbbf24;">[2. 主体与场景 — 从参考图提取]</strong>
+{根据参考新闻图描述主体}
+例: A wide-angle view of oil tankers anchored in the Strait of Hormuz at dusk, warm amber light reflecting off calm water, distant naval vessels on the horizon.
+
+<strong style="color:#fbbf24;">[3. 构图与安全区]</strong>
+Compose the main subject in the upper 65-70% of the frame. The bottom 30% should have lower visual density — soft gradient, out-of-focus foreground, or atmospheric haze — to serve as a text-safe zone for overlay. Do NOT leave the bottom blank or empty; maintain visual continuity.
+
+<strong style="color:#fbbf24;">[4. 气质与色调 — 从参考图提取]</strong>
+{根据参考图的视觉气质}
+例: Muted photojournalistic color grading, desaturated warm tones, natural available light, slight grain. The mood is tense and watchful, not dramatic or cinematic.
+
+<strong style="color:#fbbf24;">[5. 禁止项（内嵌 negative）]</strong>
+Do NOT include any text, titles, captions, watermarks, logos, UI elements, or typographic overlays in the image. Do NOT render the image as a poster, magazine cover, or advertisement layout. No stock photo aesthetics, no HDR over-processing, no artificial lens flare.</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>3 个视觉方向变体</h3>
+  <div class="cards">
+    <div class="card" data-choice="variant-a" onclick="toggleSelect(this)">
+      <div class="card-body" style="border-left:4px solid #3b82f6;">
+        <p class="label" style="color:#3b82f6;">变体 A — 纪实摄影感</p>
+        <h3>新闻现场 · 真实质感</h3>
+        <div style="font-family:monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;color:#94a3b8;background:#0f172a;padding:14px;border-radius:6px;margin-top:10px;">Vertical editorial photograph, 3:4 aspect ratio, photojournalism style.
+
+Wide-angle view of oil tankers anchored near the Strait of Hormuz at golden hour. Warm amber light reflects off still water. A distant naval patrol vessel sits on the horizon. Slight heat haze distorts the far shore.
+
+Main subject fills the upper 65% of the frame. The bottom 30% transitions into soft out-of-focus water surface with gentle light reflections — visually continuous but low-density for text overlay.
+
+Muted photojournalistic color grading: desaturated warm tones, natural available light, subtle film grain. The mood is tense, watchful, documentary. NOT dramatic, NOT cinematic, NOT heroic.
+
+No text, no titles, no captions, no watermarks, no logos, no UI elements. Not a poster. Not a magazine cover. Not an advertisement. No stock photo look. No HDR. No artificial lens flare. No oversaturated colors.</div>
+      </div>
+    </div>
+
+    <div class="card" data-choice="variant-b" onclick="toggleSelect(this)">
+      <div class="card-body" style="border-left:4px solid #f59e0b;">
+        <p class="label" style="color:#f59e0b;">变体 B — 数据可视化 / 信息图感</p>
+        <h3>地图 · 区域标注 · 地缘信息</h3>
+        <div style="font-family:monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;color:#94a3b8;background:#0f172a;padding:14px;border-radius:6px;margin-top:10px;">Vertical editorial infographic-style photograph, 3:4 aspect ratio.
+
+Aerial satellite-perspective view of the Persian Gulf and Strait of Hormuz. Stylized like a military situation room display — dark navy background, landmasses in muted olive and sand tones, water in deep teal. Subtle grid lines suggest a tactical map. A few abstract route lines (warm amber) trace shipping lanes through the strait.
+
+Main geographic detail concentrated in the upper 65%. The bottom 30% fades into deep ocean tone — dark, uniform, low-information-density area suitable for text overlay.
+
+Color palette: dark navy, deep teal, muted sand, warm amber accents. Restrained and serious. Think intelligence briefing, not infographic poster. Subtle paper texture.
+
+No text, no labels, no country names, no legends, no annotations, no watermarks. Not a PowerPoint slide. Not a textbook map. No bright primary colors. No cartoon styling. No 3D globe rendering.</div>
+      </div>
+    </div>
+
+    <div class="card" data-choice="variant-c" onclick="toggleSelect(this)">
+      <div class="card-body" style="border-left:4px solid #a855f7;">
+        <p class="label" style="color:#a855f7;">变体 C — 抽象隐喻感</p>
+        <h3>象征性视觉 · 情绪氛围</h3>
+        <div style="font-family:monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;color:#94a3b8;background:#0f172a;padding:14px;border-radius:6px;margin-top:10px;">Vertical editorial art photograph, 3:4 aspect ratio, fine art documentary style.
+
+A single chess piece (a dark king) standing on a reflective surface that resembles an oil slick — iridescent dark tones of petroleum blue and amber. The piece casts a long dramatic shadow. Behind it, a blurred horizon line suggests an uncertain boundary between sea and sky. The composition evokes strategic tension and high-stakes calculation.
+
+The chess piece occupies the upper-center 60% of the frame. The reflective surface extends into the bottom 30%, becoming progressively darker and more uniform — a natural text-safe zone.
+
+Color palette: deep petroleum blue, dark amber, near-black reflections, minimal warm highlights. Mood: ominous, contemplative, strategic. Shot with shallow depth of field, the background is intentionally abstract.
+
+No text, no titles, no symbols, no icons, no watermarks. Not a movie poster. Not a book cover. Not a stock photo. No chess board — only the single piece on the reflective surface. No bright colors. No fantasy lighting.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Negative Prompt / 禁止元素（通用）</h3>
+  <div class="mockup">
+    <div class="mockup-header">所有变体共用 — 复制到 system prompt 或 negative 字段</div>
+    <div class="mockup-body" style="font-family:monospace;font-size:12.5px;line-height:1.8;white-space:pre-wrap;color:#fca5a5;background:#1e293b;padding:18px;border-radius:8px;">
+<strong style="color:#f87171;">## 绝对禁止</strong>
+- Any text, typography, titles, captions, labels, watermarks, or logos
+- Any UI elements, buttons, frames, or decorative borders
+- Poster layout, magazine cover layout, advertisement composition
+- Stock photo aesthetics (over-lit, over-posed, generic smile)
+- HDR over-processing, artificial lens flare, chromatic aberration effects
+- Oversaturated or neon colors
+- 3D rendering, CGI look, video game aesthetic
+- Cartoon, illustration, or anime style
+- Multiple exposure or collage composition
+
+<strong style="color:#f87171;">## 气质禁止（避免 AI slop）</strong>
+- "Epic" or "cinematic" dramatic lighting (→ 用 "available light" 替代)
+- Symmetrical centered composition (→ 用 "slightly off-center" 替代)
+- Perfect skin / perfect weather / perfect everything (→ 加 "imperfect", "lived-in")
+- Hyper-detailed micro-textures (→ 用 "natural detail level" 替代)
+- "Award-winning photograph" (→ 这个词是 AI slop 的万恶之源，永远不要用)
+
+<strong style="color:#f87171;">## 安全区禁止</strong>
+- Do not place important subjects in the bottom 30% of the frame
+- Do not leave the bottom 30% completely blank or white
+- The bottom zone must have visual continuity but low information density</div>
+  </div>
+</div>

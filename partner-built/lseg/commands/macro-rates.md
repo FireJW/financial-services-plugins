@@ -1,65 +1,100 @@
----
-description: Build a macro and rates dashboard with economic indicators, yield curves, inflation, and swap spreads
-argument-hint: "<country e.g. US> [timeframe e.g. 5Y]"
----
+# API Reference
 
-# Macro & Rates Dashboard
+## Client-Side JavaScript API
 
-> This command uses LSEG macroeconomic data, yield curves, inflation curves, swap pricing, and historical data tools. See [CONNECTORS.md](../CONNECTORS.md) for available tools.
+The Turnstile JavaScript API is available at `window.turnstile` after loading the script.
 
-Build a comprehensive macroeconomic and rates dashboard showing key economic indicators, the yield curve with slope analysis, real rate decomposition, and swap spread context.
+### `turnstile.render(container, options)`
 
-See the **macro-rates-monitor** skill for domain knowledge on macro-rates analysis.
+Renders a Turnstile widget into a container element.
 
-## Workflow
+**Parameters:**
+- `container` (string | HTMLElement): CSS selector or DOM element
+- `options` (TurnstileOptions): Configuration object (see [configuration.md](configuration.md))
 
-### 1. Gather Input
+**Returns:** `string` - Widget ID for use with other API methods
 
-Ask the user for:
-- Country (required) — e.g., US, DE, GB, JP, CH
-- Timeframe for historical series (optional, default 3Y)
-- Any specific indicators of interest (optional)
+**Example:**
+```javascript
+const widgetId = window.turnstile.render('#my-container', {
+  sitekey: 'YOUR_SITE_KEY',
+  callback: (token) => console.log('Success:', token),
+  'error-callback': (code) => console.error('Error:', code)
+});
+```
 
-Map country to currency: US→USD, DE→EUR, GB→GBP, JP→JPY.
+### `turnstile.reset(widgetId)`
 
-### 2. Pull Macro Indicators
+Resets a widget (clears token, resets challenge state). Useful when form validation fails.
 
-Call `qa_macroeconomic` for key indicators:
-- GDP growth (quarterly series)
-- CPI/inflation (monthly series)
-- Unemployment rate (monthly series)
-- Policy rate / central bank rate
+**Parameters:**
+- `widgetId` (string): Widget ID from `render()`, or container element
 
-Use wildcard mnemonic patterns to discover available series (e.g., "US\*GDP\*", "US\*CPI\*").
+**Returns:** `void`
 
-### 3. Get the Yield Curve
+**Example:**
+```javascript
+// Reset on form error
+if (!validateForm()) {
+  window.turnstile.reset(widgetId);
+}
+```
 
-Call `interest_rate_curve` (list then calculate) for the country's government curve.
+### `turnstile.remove(widgetId)`
 
-Extract yields at standard tenors. Compute: 2s10s slope, 3M-10Y slope, 5s30s slope. Classify curve shape.
+Removes a widget from the DOM completely.
 
-### 4. Decompose Real Rates
+**Parameters:**
+- `widgetId` (string): Widget ID from `render()`
 
-Call `inflation_curve` (search then calculate) for the currency.
+**Returns:** `void`
 
-Compute real rate = nominal minus breakeven at key tenors. Assess whether real rates are accommodative or restrictive.
+**Example:**
+```javascript
+// Cleanup on navigation
+window.turnstile.remove(widgetId);
+```
 
-### 5. Swap Spread Analysis
+### `turnstile.getResponse(widgetId)`
 
-Call `ir_swap` (list then price) at 2Y, 5Y, 10Y.
+Gets the current token from a widget (if challenge completed).
 
-Compute swap spread = swap rate minus government yield at each tenor. Assess financial conditions.
+**Parameters:**
+- `widgetId` (string): Widget ID from `render()`, or container element
 
-### 6. Historical Yield Context
+**Returns:** `string | undefined` - Token string, or undefined if not ready
 
-Call `tscc_historical_pricing_summaries` for the benchmark yield RIC with the user's timeframe.
+**Example:**
+```javascript
+const token = window.turnstile.getResponse(widgetId);
+if (token) {
+  submitForm(token);
+}
+```
 
-Assess: where current yields sit in the historical range, trend direction.
+### `turnstile.isExpired(widgetId)`
 
-### 7. Synthesize the Dashboard
+Checks if a widget's token has expired (>5 minutes old).
 
-Present: macro summary table, yield curve with slope metrics, real rate decomposition, swap spread table, historical context, and overall macro-rates assessment (2-3 sentences).
+**Parameters:**
+- `widgetId` (string): Widget ID from `render()`
 
-## Output Format
+**Returns:** `boolean` - True if expired
 
-Present as a dashboard with clearly labeled sections. Lead with the overall macro assessment, then detail each component.
+**Example:**
+```javascript
+if (window.turnstile.isExpired(widgetId)) {
+  window.turnstile.reset(widgetId);
+}
+```
+
+## Callback Signatures
+
+```typescript
+type TurnstileCallback = (token: string) => void;
+type ErrorCallback = (errorCode: string) => void;
+type TimeoutCallback = () => void;
+type ExpiredCallback = () => void;
+type BeforeInteractiveCallback = () => void;
+type AfterInteractiveCallback = () => void;
+type UnsupportedCallback = () => vo

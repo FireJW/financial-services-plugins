@@ -1,0 +1,25 @@
+{
+  "topic": "China aluminum broker note check",
+  "analysis_time": "2026-04-03T08:00:00+00:00",
+  "questions": [
+    "What changed in the latest broker or company-facing materials?"
+  ],
+  "use_case": "opencli-bridge-demo",
+  "mode": "generic",
+  "claims": [
+    {
+      "claim_id": "driver-state-known",
+      "claim_text": "The latest external driver can be described with an exact date."
+    }
+  ],
+  "opencli": {
+    "site_profile": "broker-research-portal",
+    "result_path": "C:\\path\\to\\opencli-result.json",
+    "source_policy": {
+      "source_type": "research_note",
+      "channel": "shadow",
+      "access_mode": "browser_session",
+      "allow_observed_at_fallback": true
+    }
+  }
+}

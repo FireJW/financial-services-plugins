@@ -1,0 +1,25 @@
+{
+  "vaultPath": "D:\\OneDrive - zn\\文档\\Obsidian Vault",
+  "vaultName": "Obsidian Vault",
+  "machineRoot": "08-AI知识库",
+  "obsidian": {
+    "cliCandidates": [
+      "obsidian",
+      "Obsidian",
+      "obsidian.exe",
+      "Obsidian.exe",
+      "obsidian.com",
+      "Obsidian.com",
+      "C:\\Users\\rickylu\\AppData\\Local\\Programs\\Obsidian\\Obsidian.com",
+      "C:\\Users\\rickylu\\AppData\\Local\\Programs\\Obsidian\\Obsidian.exe",
+      "C:\\Users\\rickylu\\AppData\\Local\\Programs\\obsidian\\Obsidian.exe",
+      "C:\\Users\\rickylu\\AppData\\Local\\Programs\\obsidian\\obsidian.exe"
+    ],
+    "exeCandidates": [
+      "C:\\Users\\rickylu\\AppData\\Local\\Programs\\Obsidian\\Obsidian.exe",
+      "C:\\Users\\rickylu\\AppData\\Local\\Programs\\obsidian\\Obsidian.exe",
+      "C:\\Users\\rickylu\\AppData\\Local\\Programs\\obsidian\\obsidian.exe"
+    ]
+  }
+}
+

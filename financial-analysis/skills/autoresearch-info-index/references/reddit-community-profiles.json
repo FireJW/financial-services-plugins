@@ -1,0 +1,37 @@
+{
+  "broad_market_subreddits": [
+    "r/stocks",
+    "r/investing",
+    "r/StockMarket"
+  ],
+  "deep_research_subreddits": [
+    "r/SecurityAnalysis",
+    "r/ValueInvesting"
+  ],
+  "speculative_flow_subreddits": [
+    "r/wallstreetbets",
+    "r/options",
+    "r/pennystocks",
+    "r/Superstonk"
+  ],
+  "event_watch_subreddits": [
+    "r/geopolitics",
+    "r/worldnews",
+    "r/economics",
+    "r/CredibleDefense"
+  ],
+  "kind_score_multipliers": {
+    "broad_market": 1.0,
+    "deep_research": 1.06,
+    "speculative_flow": 0.88,
+    "event_watch": 0.96
+  },
+  "subreddit_score_overrides": {
+    "r/wallstreetbets": 0.86,
+    "r/options": 0.9
+  },
+  "low_signal_subreddits": [
+    "r/wallstreetbets",
+    "r/options"
+  ]
+}
