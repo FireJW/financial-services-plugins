@@ -77,7 +77,7 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
                 "chain_name": "lithium_chain",
                 "chain_role": "midstream_material",
                 "benefit_type": "direct",
-                "sources": [{"source_type": "official_filing", "summary": "公司披露一季报业绩预告，同比扭亏。"}],
+                "sources": [{"source_type": "official_filing", "summary": "公司披露一季报业绩预告，预计净利润160000万元至210000万元，同比扭亏。"}],
                 "market_validation": {"volume_multiple_5d": 2.1, "breakout": True, "relative_strength": "strong"},
             }
         ]
@@ -96,6 +96,14 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("技术", first["watch_points"]["technical"])
         self.assertIn("upgrade", first["triggers"])
         self.assertIn("operation_reminder", first)
+
+    def test_decision_flow_triggers_include_upgrade_downgrade_and_event_risk_when_available(self) -> None:
+        enriched = self._build_enriched_for_decision_flow()
+        card = enriched["decision_flow"][0]
+
+        self.assertIn("评分从 60.0 修复至 70.0+", card["triggers"]["upgrade"])
+        self.assertTrue(card["triggers"]["downgrade"])
+        self.assertIn("实际净利润低于预告下限 160000 万元", card["triggers"]["event_risk"])
 
     def test_enriches_result_with_blocked_candidate_summary_and_report_section(self) -> None:
         result = {

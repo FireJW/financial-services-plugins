@@ -5,6 +5,7 @@ from importlib.machinery import SourcelessFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any, Callable
 from copy import deepcopy
@@ -682,6 +683,7 @@ def build_decision_factor_entry(candidate: dict[str, Any], action: str) -> dict[
         "logic_summary": build_logic_factor_summary(candidate, action),
         "trade_layer_summary": build_trade_layer_summary(candidate, action),
         "next_watch_items": build_next_watch_items(candidate, action),
+        "hard_filter_failures": deepcopy(candidate.get("hard_filter_failures", [])),
     }
 
 
@@ -707,16 +709,28 @@ def build_decision_factors_from_result(enriched: dict[str, Any]) -> dict[str, li
 def build_upgrade_trigger(card: dict[str, Any], keep_threshold: float | int | None) -> str:
     action = clean_text(card.get("action"))
     score = card.get("score")
-    gap = card.get("keep_threshold_gap")
+    technical_summary = clean_text(card.get("technical_summary"))
+    event_summary = clean_text(card.get("event_summary"))
+    driver = "技术与事件验证继续强化"
+    if "均线多头结构" in technical_summary or "趋势模板通过" in technical_summary:
+        driver = "趋势结构和量价验证继续保持"
+    elif event_summary and "证据不足" not in event_summary:
+        driver = "关键事件催化继续强化"
     if action == "继续观察" and score not in (None, "") and keep_threshold not in (None, ""):
-        return f"若评分重新回到 `{keep_threshold}` 分以上，且技术与事件验证继续强化，可升级到执行层。"
-    if action == "不执行" and gap not in (None, ""):
+        return f"若评分从 {score} 修复至 {keep_threshold}+，且{driver}，可升级到执行层。"
+    if action == "不执行" and card.get("keep_threshold_gap") not in (None, ""):
         return "若当前硬伤消失，且分数重新回到 keep line 之上，才重新进入观察名单。"
     return "若技术、事件和资金验证继续改善，可考虑上调优先级。"
 
 
 def build_downgrade_trigger(card: dict[str, Any]) -> str:
     action = clean_text(card.get("action"))
+    failures = card.get("hard_filter_failures") if isinstance(card.get("hard_filter_failures"), list) else []
+    if failures:
+        return f"若 `{', '.join(failures)}` 继续存在或再次出现，维持当前降级结论。"
+    technical_summary = clean_text(card.get("technical_summary"))
+    if "均线多头结构" in technical_summary or "短中期均线仍偏强" in technical_summary:
+        return "若价格重新跌回关键均线下方或趋势模板转弱，应立即降级。"
     if action == "可执行":
         return "若技术承接转弱、事件验证回落或链条共振消失，应从执行层降回观察。"
     if action == "继续观察":
@@ -725,6 +739,14 @@ def build_downgrade_trigger(card: dict[str, Any]) -> str:
 
 
 def build_event_risk_trigger(card: dict[str, Any]) -> str:
+    key_evidence = card.get("key_evidence") if isinstance(card.get("key_evidence"), list) else []
+    for item in key_evidence:
+        text = clean_text(item)
+        if not text:
+            continue
+        matches = re.findall(r"(\d{3,})\s*万元", text)
+        if matches:
+            return f"若实际净利润低于预告下限 {matches[0]} 万元，应警惕事件预期落空。"
     event_risk = clean_text(card.get("expectation_risk_summary"))
     if event_risk:
         return event_risk
