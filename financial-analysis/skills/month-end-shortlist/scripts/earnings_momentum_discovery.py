@@ -25,10 +25,31 @@ SCHEDULE_ONLY_KEYWORDS = ("披露时间", "预约披露", "提前至", "将于",
 POSITIVE_EXPECTATION_KEYWORDS = ("超预期", "大超预期", "明显超预期", "很硬", "强劲", "弹性最大", "价格可能上行", "涨价", "景气", "环比增长", "稳中有升", "放量攀升")
 NEGATIVE_EXPECTATION_KEYWORDS = ("不及预期", "低于预期", "承压", "利空", "弱于预期", "低于一致预期")
 METRIC_PATTERN = re.compile(r"(?:\d+(?:\.\d+)?(?:%|x|X|GW|G|T|亿|亿元|万亿|万颗|万台|倍|万亿Token)|Q\d|\d+月\d+日)")
+TRADING_PROFILE_BUCKETS = (
+    "稳健核心",
+    "高弹性",
+    "补涨候选",
+    "预期差最大",
+    "兑现风险最高",
+)
 
 
 def clean_text(value: Any) -> str:
     return " ".join(str(value or "").split()).strip()
+
+
+def to_int_safe(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def to_float_safe(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def normalize_source_role(source_type: str) -> str:
@@ -72,7 +93,7 @@ def compute_rumor_confidence_range(candidate: dict[str, Any]) -> dict[str, Any]:
 def classify_market_validation(candidate: dict[str, Any]) -> dict[str, Any]:
     data = candidate.get("market_validation") if isinstance(candidate.get("market_validation"), dict) else {}
     score = 0
-    if float(data.get("volume_multiple_5d") or 0) >= 1.5:
+    if to_float_safe(data.get("volume_multiple_5d")) >= 1.5:
         score += 1
     if bool(data.get("breakout")):
         score += 1
@@ -288,7 +309,7 @@ def build_key_evidence(sources: list[dict[str, Any]], *, limit: int = 4) -> list
 
 def build_market_signal_summary(candidate: dict[str, Any]) -> str:
     data = candidate.get("market_validation") if isinstance(candidate.get("market_validation"), dict) else {}
-    volume_multiple = float(data.get("volume_multiple_5d") or 0.0)
+    volume_multiple = to_float_safe(data.get("volume_multiple_5d"))
     breakout = "yes" if bool(data.get("breakout")) else "no"
     relative_strength = clean_text(data.get("relative_strength")) or "unknown"
     chain_resonance = "yes" if bool(data.get("chain_resonance")) else "no"
@@ -425,6 +446,183 @@ def build_why_now_summary(candidate: dict[str, Any]) -> str:
     )
 
 
+def classify_trading_profile(candidate: dict[str, Any]) -> dict[str, str]:
+    name = clean_text(candidate.get("name")) or clean_text(candidate.get("ticker"))
+    leaders = {clean_text(item) for item in candidate.get("leaders", []) if clean_text(item)}
+    peer_tier_1 = {clean_text(item) for item in candidate.get("peer_tier_1", []) if clean_text(item)}
+    peer_tier_2 = {clean_text(item) for item in candidate.get("peer_tier_2", []) if clean_text(item)}
+    event_state = clean_text((candidate.get("event_state") or {}).get("label"))
+    trading_usability = clean_text((candidate.get("trading_usability") or {}).get("label"))
+    market_validation = clean_text((candidate.get("market_validation_summary") or {}).get("label"))
+    expectation_verdict = clean_text(candidate.get("expectation_verdict"))
+    event_phase = clean_text(candidate.get("event_phase"))
+    community_conviction = clean_text(candidate.get("community_conviction"))
+    benefit_type = clean_text(candidate.get("benefit_type")) or "mapping"
+    chain_role = clean_text(candidate.get("chain_role")) or "unknown"
+    priority_score = to_int_safe(candidate.get("priority_score"))
+    is_core_name = bool(name and (name in leaders or name in peer_tier_1))
+    is_secondary_name = bool(name and name in peer_tier_2)
+
+    if event_state == "response_denied":
+        return {
+            "bucket": "兑现风险最高",
+            "subtype": "澄清或证伪后的兑现风险",
+            "reason": "公司回应偏否认或澄清，继续交易原有预期的兑现风险最高。",
+        }
+
+    if (
+        event_phase in {"正式结果", "官方预告"}
+        and expectation_verdict in {"超预期", "市场押注超预期"}
+        and community_conviction == "high"
+        and market_validation == "strong"
+        and priority_score >= 90
+    ):
+        return {
+            "bucket": "兑现风险最高",
+            "subtype": "拥挤交易后的兑现风险",
+            "reason": "正式结果或官方预告已被强势交易，当前更像兑现风险最高的拥挤段。",
+        }
+
+    if (
+        event_phase in {"正式结果", "官方预告"}
+        and event_state in {"official_confirmed", "response_confirmed"}
+        and benefit_type == "direct"
+        and is_core_name
+        and priority_score >= 80
+        and expectation_verdict != "暂无一致预期"
+    ):
+        return {
+            "bucket": "兑现风险最高",
+            "subtype": "结果落地后的 sell-the-fact 风险",
+            "reason": "正式结果或官方预告已落入兑现窗口，作为核心直接受益票更需要防范 sell-the-fact 风险。",
+        }
+
+    if is_core_name and benefit_type == "direct":
+        if trading_usability in {"high", "medium"}:
+            return {
+                "bucket": "稳健核心",
+                "subtype": "核心稳健承载",
+                "reason": "位于链条核心且属于直接受益方向，当前更像稳定承载主线预期的核心票。",
+            }
+        return {
+            "bucket": "稳健核心",
+            "subtype": "弱验证下的核心锚点",
+            "reason": "虽然量价验证还不算充分，但作为链条核心且直接受益的锚点，仍应优先按稳健核心理解。",
+        }
+
+    if (
+        is_core_name
+        and benefit_type != "direct"
+        and event_phase == "预期交易"
+        and expectation_verdict == "市场押注超预期"
+        and trading_usability in {"high", "medium"}
+    ):
+        return {
+            "bucket": "高弹性",
+            "subtype": "核心链条攻击性弹性",
+            "reason": "处于核心链条但表达更偏攻击性，当前更适合作为高弹性方向而不是稳健承载。",
+        }
+
+    if is_secondary_name or benefit_type == "mapping" or chain_role in {"logic_support", "quote_only"}:
+        subtype = "链条扩散补涨"
+        if is_core_name:
+            subtype = "核心后的轮动补涨"
+        return {
+            "bucket": "补涨候选",
+            "subtype": subtype,
+            "reason": "更偏链条扩散或映射受益，当前更适合作为补涨候选跟踪。",
+        }
+
+    if (
+        benefit_type == "direct"
+        and not is_core_name
+        and not is_secondary_name
+        and market_validation in {"strong", "medium"}
+        and trading_usability in {"high", "medium"}
+    ):
+        subtype = "事件确认后攻击性弹性" if event_phase in {"正式结果", "官方预告"} else "预期博弈型弹性"
+        return {
+            "bucket": "高弹性",
+            "subtype": subtype,
+            "reason": "不是最稳的链条核心，但事件和量价都已具备交易性，更像高弹性表达。",
+        }
+
+    if expectation_verdict in {"市场押注超预期", "暂无一致预期"} or community_conviction == "low":
+        return {
+            "bucket": "预期差最大",
+            "subtype": "预期尚未充分定价",
+            "reason": "市场一致预期尚未完全收敛，当前更像预期差最大的博弈方向。",
+        }
+
+    return {
+        "bucket": "高弹性" if market_validation == "strong" else "预期差最大",
+        "subtype": "事件确认后攻击性弹性" if market_validation == "strong" else "预期尚未充分定价",
+        "reason": "当前更适合按弹性表达或预期差博弈理解，而不是按静态行业位次理解。",
+    }
+
+
+def build_trading_profile_playbook(candidate: dict[str, Any]) -> str:
+    bucket = clean_text(candidate.get("trading_profile_bucket") or candidate.get("bucket"))
+    subtype = clean_text(candidate.get("trading_profile_subtype") or candidate.get("subtype"))
+    if bucket == "稳健核心":
+        if subtype == "事件确认后攻击性弹性":
+            return "打法: 核心身份不变，但更适合按进攻节奏处理，优先等回踩确认后的主动进攻。"
+        if subtype == "弱验证下的核心锚点":
+            return "打法: 先按核心锚点跟踪，不急追价，等量价确认后再扩大进攻。"
+        return "打法: 以核心承载思路看待，优先关注回踩确认和趋势延续。"
+    if bucket == "高弹性":
+        if subtype == "核心链条攻击性弹性":
+            return "打法: 更像核心链条里的攻击性表达，适合顺着主线强化做进攻，而不是当补涨处理。"
+        if subtype == "事件确认后攻击性弹性":
+            return "打法: 事件已确认，适合按确认后的进攻弹性处理，重点看加速与回踩二选一。"
+        return "打法: 偏预期博弈型弹性，适合快进快出和节奏确认，不适合钝化持有。"
+    if bucket == "补涨候选":
+        if subtype == "核心后的轮动补涨":
+            return "打法: 更像核心票后的轮动补涨，优先等主线继续扩散而不是抢先孤立进攻。"
+        return "打法: 按链条扩散轮动补涨处理，关注板块共振和后排补涨窗口。"
+    if bucket == "兑现风险最高":
+        return "打法: 不再按新开仓进攻理解，优先防范 sell-the-fact 和高位兑现。"
+    return "打法: 当前更适合按预期差博弈处理，先等市场把预期交易得更清楚。"
+
+
+def build_trading_profile_judgment(candidate: dict[str, Any]) -> str:
+    phase = clean_text(candidate.get("event_phase"))
+    verdict = clean_text(candidate.get("expectation_verdict"))
+    bucket = clean_text(candidate.get("trading_profile_bucket") or candidate.get("bucket"))
+    subtype = clean_text(candidate.get("trading_profile_subtype") or candidate.get("subtype"))
+    reason = clean_text(candidate.get("trading_profile_reason") or candidate.get("reason"))
+
+    leading = ""
+    if phase and verdict and bucket:
+        leading = f"{phase}阶段先按{bucket}处理，当前{verdict}"
+    elif bucket and verdict:
+        leading = f"当前按{bucket}处理，市场判断偏{verdict}"
+    elif bucket:
+        leading = f"当前按{bucket}处理"
+    elif verdict:
+        leading = f"当前市场判断偏{verdict}"
+
+    if subtype and subtype != bucket:
+        if leading:
+            leading = f"{leading}（{subtype}）"
+        else:
+            leading = f"当前更像{subtype}"
+
+    clauses = [text for text in [leading, reason] if text]
+    if not clauses:
+        return "判断: 当前仍以观察预期交易方向为主。"
+    return f"判断: {'；'.join(text.rstrip('。') for text in clauses[:2])}。"
+
+
+def build_trading_profile_usage(candidate: dict[str, Any]) -> str:
+    playbook = clean_text(candidate.get("trading_profile_playbook"))
+    if not playbook:
+        return "用法: 先等市场把预期交易得更清楚，再决定是否进攻。"
+    if playbook.startswith("打法:"):
+        return f"用法:{playbook[len('打法:'):]}"
+    return f"用法: {playbook}"
+
+
 def build_event_cards(discovery_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     preferred_ticker_by_name: dict[str, str] = {}
     for row in discovery_rows:
@@ -479,7 +677,7 @@ def build_event_cards(discovery_rows: list[dict[str, Any]]) -> list[dict[str, An
                 if account:
                     all_accounts.append(account)
             validation = row.get("market_validation") if isinstance(row.get("market_validation"), dict) else {}
-            merged_validation["volume_multiple_5d"] = max(float(merged_validation.get("volume_multiple_5d") or 0), float(validation.get("volume_multiple_5d") or 0))
+            merged_validation["volume_multiple_5d"] = max(to_float_safe(merged_validation.get("volume_multiple_5d")), to_float_safe(validation.get("volume_multiple_5d")))
             merged_validation["breakout"] = bool(merged_validation.get("breakout")) or bool(validation.get("breakout"))
             merged_validation["chain_resonance"] = bool(merged_validation.get("chain_resonance")) or bool(validation.get("chain_resonance"))
             if clean_text(validation.get("relative_strength")).lower() == "strong":
@@ -536,19 +734,26 @@ def build_event_cards(discovery_rows: list[dict[str, Any]]) -> list[dict[str, An
             "priority_score": compute_event_priority_score(merged_candidate),
             "why_now": build_why_now_summary(merged_candidate),
         }
+        trading_profile = classify_trading_profile(card)
+        card["trading_profile_bucket"] = trading_profile["bucket"]
+        card["trading_profile_subtype"] = trading_profile["subtype"]
+        card["trading_profile_reason"] = trading_profile["reason"]
+        card["trading_profile_playbook"] = build_trading_profile_playbook(card)
+        card["trading_profile_judgment"] = build_trading_profile_judgment(card)
+        card["trading_profile_usage"] = build_trading_profile_usage(card)
         cards.append(card)
 
-    cards.sort(key=lambda item: (-int(item.get("priority_score") or 0), _state_priority(item.get("event_state", {}).get("label")), clean_text(item.get("ticker"))))
+    cards.sort(key=lambda item: (-to_int_safe(item.get("priority_score")), _state_priority(item.get("event_state", {}).get("label")), clean_text(item.get("ticker"))))
     return cards
 
 
 def build_market_validation_from_shortlist_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     trend = candidate.get("trend_template") if isinstance(candidate.get("trend_template"), dict) else {}
     price_snapshot = candidate.get("price_snapshot") if isinstance(candidate.get("price_snapshot"), dict) else {}
-    rs90 = float(price_snapshot.get("rs90") or 0)
-    distance_to_high = float(price_snapshot.get("distance_to_high52_pct") or 1000)
+    rs90 = to_float_safe(price_snapshot.get("rs90"))
+    distance_to_high = to_float_safe(price_snapshot.get("distance_to_high52_pct"), default=1000.0)
     return {
-        "volume_multiple_5d": float(candidate.get("volume_ratio") or 0),
+        "volume_multiple_5d": to_float_safe(candidate.get("volume_ratio")),
         "breakout": bool(trend.get("trend_pass")) and distance_to_high <= 25.0,
         "relative_strength": "strong" if rs90 >= 500 else "normal",
         "chain_resonance": False,
@@ -614,7 +819,7 @@ def build_auto_discovery_candidates(assessed_candidates: list[dict[str, Any]]) -
                     "ticker": clean_text(candidate.get("ticker")),
                     "name": clean_text(candidate.get("name")),
                     "event_type": infer_event_type_from_shortlist_candidate(candidate),
-                    "event_strength": "strong" if float((candidate.get("score_components") or {}).get("structured_catalyst_score") or 0) >= 12 else "medium",
+                    "event_strength": "strong" if to_float_safe((candidate.get("score_components") or {}).get("structured_catalyst_score")) >= 12 else "medium",
                     "chain_name": clean_text(candidate.get("sector")),
                     "chain_role": clean_text(candidate.get("chain_role")) or "unknown",
                     "benefit_type": "direct",

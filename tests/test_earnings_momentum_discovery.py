@@ -464,6 +464,132 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertIn("EML紧缺", cards[0]["expectation_basis_summary"])
         self.assertIn("毛利率改善", cards[0]["expectation_basis_summary"])
         self.assertIn("若财报兑现弱于这些线索", cards[0]["expectation_risk_summary"])
+        self.assertEqual(cards[0]["trading_profile_bucket"], "稳健核心")
+        self.assertIn("核心", cards[0]["trading_profile_reason"])
+        self.assertIn("打法", cards[0]["trading_profile_playbook"])
+
+    def test_classify_trading_profile_distinguishes_core_catchup_and_realization_risk(self) -> None:
+        core_profile = module_under_test.classify_trading_profile(
+            {
+                "name": "中际旭创",
+                "benefit_type": "direct",
+                "chain_role": "midstream_manufacturing",
+                "leaders": ["中际旭创", "新易盛"],
+                "peer_tier_1": ["中际旭创", "新易盛"],
+                "peer_tier_2": ["天孚通信"],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "high", "summary": "交易可用性高"},
+                "market_validation_summary": {"label": "strong", "summary": "强资金先行"},
+                "expectation_verdict": "市场押注超预期",
+                "community_conviction": "high",
+                "priority_score": 100,
+            }
+        )
+        catchup_profile = module_under_test.classify_trading_profile(
+            {
+                "name": "天孚通信",
+                "benefit_type": "mapping",
+                "chain_role": "logic_support",
+                "leaders": ["中际旭创", "新易盛"],
+                "peer_tier_1": ["中际旭创", "新易盛"],
+                "peer_tier_2": ["天孚通信"],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "medium", "summary": "交易可用性中等"},
+                "market_validation_summary": {"label": "medium", "summary": "中等资金先行"},
+                "expectation_verdict": "市场押注超预期",
+                "community_conviction": "medium",
+                "priority_score": 72,
+            }
+        )
+        elastic_profile = module_under_test.classify_trading_profile(
+            {
+                "name": "沪电股份",
+                "benefit_type": "direct",
+                "chain_role": "midstream_manufacturing",
+                "leaders": ["中际旭创", "新易盛"],
+                "peer_tier_1": [],
+                "peer_tier_2": [],
+                "event_phase": "官方预告",
+                "event_state": {"label": "official_confirmed"},
+                "trading_usability": {"label": "medium", "summary": "交易可用性中等"},
+                "market_validation_summary": {"label": "medium", "summary": "中等资金先行"},
+                "expectation_verdict": "符合预期",
+                "community_conviction": "low",
+                "priority_score": 75,
+            }
+        )
+        elastic_leader_profile = module_under_test.classify_trading_profile(
+            {
+                "name": "新易盛",
+                "benefit_type": "mapping",
+                "chain_role": "logic_support",
+                "leaders": ["中际旭创", "新易盛"],
+                "peer_tier_1": ["中际旭创", "新易盛"],
+                "peer_tier_2": ["天孚通信"],
+                "event_phase": "预期交易",
+                "event_state": {"label": "unconfirmed"},
+                "trading_usability": {"label": "medium", "summary": "交易可用性中等"},
+                "market_validation_summary": {"label": "medium", "summary": "中等资金先行"},
+                "expectation_verdict": "市场押注超预期",
+                "community_conviction": "medium",
+                "priority_score": 68,
+            }
+        )
+        realized_risk_profile = module_under_test.classify_trading_profile(
+            {
+                "name": "兆易创新",
+                "benefit_type": "direct",
+                "chain_role": "midstream_manufacturing",
+                "leaders": ["兆易创新"],
+                "peer_tier_1": ["兆易创新"],
+                "peer_tier_2": ["深科技", "澜起科技"],
+                "event_phase": "正式结果",
+                "event_state": {"label": "official_confirmed"},
+                "trading_usability": {"label": "medium", "summary": "交易可用性中等"},
+                "market_validation_summary": {"label": "medium", "summary": "中等资金先行"},
+                "expectation_verdict": "符合预期",
+                "community_conviction": "low",
+                "priority_score": 80,
+            }
+        )
+        risk_profile = module_under_test.classify_trading_profile(
+            {
+                "name": "宁德时代",
+                "benefit_type": "direct",
+                "chain_role": "downstream_brand",
+                "leaders": ["宁德时代", "赣锋锂业"],
+                "peer_tier_1": ["宁德时代", "赣锋锂业"],
+                "peer_tier_2": [],
+                "event_phase": "正式结果",
+                "event_state": {"label": "official_confirmed"},
+                "trading_usability": {"label": "high", "summary": "交易可用性高"},
+                "market_validation_summary": {"label": "strong", "summary": "强资金先行"},
+                "expectation_verdict": "超预期",
+                "community_conviction": "high",
+                "priority_score": 96,
+            }
+        )
+
+        self.assertEqual(core_profile["bucket"], "稳健核心")
+        self.assertIn("核心", core_profile["reason"])
+        self.assertEqual(catchup_profile["bucket"], "补涨候选")
+        self.assertIn("补涨", catchup_profile["reason"])
+        self.assertIn("扩散", catchup_profile["subtype"])
+        self.assertEqual(elastic_profile["bucket"], "高弹性")
+        self.assertIn("弹性", elastic_profile["reason"])
+        self.assertIn("事件确认", elastic_profile["subtype"])
+        self.assertEqual(elastic_leader_profile["bucket"], "高弹性")
+        self.assertIn("攻击性", elastic_leader_profile["subtype"])
+        self.assertEqual(realized_risk_profile["bucket"], "兑现风险最高")
+        self.assertIn("兑现", realized_risk_profile["reason"])
+        self.assertEqual(risk_profile["bucket"], "兑现风险最高")
+        self.assertIn("兑现", risk_profile["reason"])
+        self.assertIn("回踩确认", module_under_test.build_trading_profile_playbook(core_profile))
+        self.assertIn("轮动", module_under_test.build_trading_profile_playbook(catchup_profile))
+        self.assertIn("进攻", module_under_test.build_trading_profile_playbook(elastic_profile))
+        self.assertIn("兑现", module_under_test.build_trading_profile_playbook(realized_risk_profile))
 
     def test_build_event_cards_merges_name_only_signal_into_ticker_backed_card(self) -> None:
         rows = [
@@ -501,6 +627,23 @@ class EarningsMomentumDiscoveryTests(unittest.TestCase):
         self.assertEqual(cards[0]["ticker"], "300308.SZ")
         self.assertIn("tuolaji2024", cards[0]["source_accounts"])
         self.assertIn("midstream_manufacturing", cards[0]["chain_path_summary"])
+
+
+    def test_to_int_safe_handles_non_numeric_strings(self) -> None:
+        self.assertEqual(module_under_test.to_int_safe(42), 42)
+        self.assertEqual(module_under_test.to_int_safe("85"), 85)
+        self.assertEqual(module_under_test.to_int_safe("-"), 0)
+        self.assertEqual(module_under_test.to_int_safe("N/A"), 0)
+        self.assertEqual(module_under_test.to_int_safe(None), 0)
+        self.assertEqual(module_under_test.to_int_safe("", default=5), 5)
+        self.assertEqual(module_under_test.to_int_safe(0), 0)
+
+    def test_to_float_safe_handles_non_numeric_strings(self) -> None:
+        self.assertAlmostEqual(module_under_test.to_float_safe(1.5), 1.5)
+        self.assertAlmostEqual(module_under_test.to_float_safe("2.0"), 2.0)
+        self.assertAlmostEqual(module_under_test.to_float_safe("-"), 0.0)
+        self.assertAlmostEqual(module_under_test.to_float_safe("N/A"), 0.0)
+        self.assertAlmostEqual(module_under_test.to_float_safe(None), 0.0)
 
 
 if __name__ == "__main__":
