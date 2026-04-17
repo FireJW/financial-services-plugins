@@ -799,6 +799,18 @@ def enrich_event_cards_with_chain_context(event_cards: list[dict[str, Any]], dis
 
 def build_chain_map_entries(event_cards: list[dict[str, Any]], discovery_context: dict[str, Any] | None) -> list[dict[str, Any]]:
     rows = discovery_context.get("chain_map") if isinstance(discovery_context, dict) and isinstance(discovery_context.get("chain_map"), list) else []
+
+    chain_has_strong_validation: dict[str, bool] = {}
+    for card in (event_cards if isinstance(event_cards, list) else []):
+        if not isinstance(card, dict):
+            continue
+        chain_name = clean_text(card.get("chain_name"))
+        if not chain_name:
+            continue
+        validation_label = clean_text((card.get("market_validation_summary") or {}).get("label"))
+        if validation_label == "strong":
+            chain_has_strong_validation[chain_name] = True
+
     grouped: dict[str, dict[str, Any]] = {}
     for item in rows:
         if not isinstance(item, dict):
@@ -809,15 +821,19 @@ def build_chain_map_entries(event_cards: list[dict[str, Any]], discovery_context
         leaders = unique_strings(item.get("leaders") or [])
         tier_1 = unique_strings(item.get("tier_1") or [])
         tier_2 = unique_strings(item.get("tier_2") or [])
-        all_candidates = unique_strings(item.get("all_candidates") or (leaders + tier_1 + tier_2))
-        high_beta = [name for name in tier_1 if name not in leaders]
-        assigned = set(leaders + high_beta + tier_2)
-        expectation_gap = [name for name in all_candidates if name and name not in assigned]
+        has_strong = chain_has_strong_validation.get(chain_name, False)
+        high_beta_candidates = [name for name in tier_1 if name not in leaders]
+        if has_strong:
+            high_beta = high_beta_candidates
+            catchup = tier_2
+        else:
+            high_beta = []
+            catchup = unique_strings(high_beta_candidates + tier_2)
         profiles = {
             "稳健核心": leaders,
             "高弹性": high_beta,
-            "补涨候选": tier_2,
-            "预期差最大": expectation_gap,
+            "补涨候选": catchup,
+            "预期差最大": [],
             "兑现风险最高": [],
         }
         grouped[chain_name] = {

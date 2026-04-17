@@ -904,6 +904,84 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
             self.assertNotIn("  - 阶段:", line)
             self.assertNotIn("  - 预期判断:", line)
 
+    def test_chain_map_does_not_produce_expectation_gap_without_evidence(self) -> None:
+        """B5: chain map should not assign names to 预期差最大 without evidence."""
+        entries = module_under_test.build_chain_map_entries(
+            event_cards=[],
+            discovery_context={
+                "chain_map": [
+                    {
+                        "chain_name": "光模块",
+                        "leaders": ["中际旭创"],
+                        "tier_1": ["中际旭创", "新易盛"],
+                        "tier_2": ["天孚通信"],
+                        "all_candidates": ["中际旭创", "新易盛", "天孚通信", "ExtraName"],
+                    }
+                ]
+            },
+        )
+        self.assertEqual(len(entries), 1)
+        profiles = entries[0]["profiles"]
+        self.assertEqual(profiles["预期差最大"], [])
+
+    def test_chain_map_tier1_gets_elastic_when_chain_has_strong_validation(self) -> None:
+        """B5: tier_1 names should get 高弹性 when an event_card in the same chain has strong validation."""
+        event_cards = [
+            {
+                "ticker": "000001.SZ",
+                "name": "中际旭创",
+                "chain_name": "光模块",
+                "trading_profile_bucket": "稳健核心",
+                "market_validation_summary": {"label": "strong", "summary": "强"},
+            }
+        ]
+        entries = module_under_test.build_chain_map_entries(
+            event_cards=event_cards,
+            discovery_context={
+                "chain_map": [
+                    {
+                        "chain_name": "光模块",
+                        "leaders": ["中际旭创"],
+                        "tier_1": ["中际旭创", "新易盛"],
+                        "tier_2": ["天孚通信"],
+                    }
+                ]
+            },
+        )
+        self.assertEqual(len(entries), 1)
+        profiles = entries[0]["profiles"]
+        # 新易盛 is tier_1 (not leader), chain has strong validation → 高弹性
+        self.assertIn("新易盛", profiles["高弹性"])
+        # 天孚通信 is tier_2 → 补涨候选
+        self.assertIn("天孚通信", profiles["补涨候选"])
+
+    def test_chain_map_tier1_gets_catchup_when_chain_has_weak_validation(self) -> None:
+        """B5: tier_1 names should get 补涨候选 when no event_card in chain has strong validation."""
+        event_cards = [
+            {
+                "ticker": "000001.SZ",
+                "name": "中际旭创",
+                "chain_name": "光模块",
+                "trading_profile_bucket": "稳健核心",
+                "market_validation_summary": {"label": "weak", "summary": "弱"},
+            }
+        ]
+        entries = module_under_test.build_chain_map_entries(
+            event_cards=event_cards,
+            discovery_context={
+                "chain_map": [
+                    {
+                        "chain_name": "光模块",
+                        "leaders": ["中际旭创"],
+                        "tier_1": ["中际旭创", "新易盛"],
+                        "tier_2": ["天孚通信"],
+                    }
+                ]
+            },
+        )
+        profiles = entries[0]["profiles"]
+        self.assertIn("新易盛", profiles["补涨候选"])
+
 
 if __name__ == "__main__":
     unittest.main()
