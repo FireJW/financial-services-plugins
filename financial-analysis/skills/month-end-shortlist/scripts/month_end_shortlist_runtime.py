@@ -596,6 +596,112 @@ def apply_catalyst_waiver(
     return waiver_candidates
 
 
+def evaluate_with_coverage_fallback(
+    candidates: list[dict[str, Any]],
+    bars_data: dict[str, Any],
+    profile: str,
+    assess_fn: Callable,
+) -> tuple[list[dict[str, Any]], str, str]:
+    """
+    Two-round evaluation. If Round 1 produces < TWO_ROUND_THRESHOLD
+    top_picks and profile is not already broad_coverage_mode,
+    re-evaluate all candidates with broad_coverage_mode.
+
+    Returns: (all_assessed, profile_used, round_info)
+    """
+    # Round 1
+    all_assessed: list[dict[str, Any]] = []
+    for c in candidates:
+        result = assess_fn(c, bars_data, profile)
+        all_assessed.append(result)
+
+    top_picks = [c for c in all_assessed if c.get("keep")]
+
+    if len(top_picks) >= TWO_ROUND_THRESHOLD or profile == "broad_coverage_mode":
+        return all_assessed, profile, "round_1"
+
+    # Round 2: re-evaluate everything with broad_coverage_mode
+    all_assessed_r2: list[dict[str, Any]] = []
+    for c in candidates:
+        result = assess_fn(c, bars_data, "broad_coverage_mode")
+        all_assessed_r2.append(result)
+
+    return all_assessed_r2, "broad_coverage_mode", "round_2"
+
+
+def apply_floor_policy(
+    tiers: dict[str, list[dict[str, Any]]],
+    all_assessed: list[dict[str, Any]],
+    discovery_results: dict[str, list[dict[str, Any]]],
+    keep_threshold: float,
+) -> dict[str, list[dict[str, Any]]]:
+    """
+    If total names < MIN_COVERAGE_TARGET, supplement from:
+    1. Expanded near-miss (gap=NEAR_MISS_FLOOR_GAP)
+    2. Relaxed discovery watch/track
+    3. Score-sorted remaining candidates
+
+    Never includes HARD_EXCLUSION_FAILURES candidates.
+    Tags all supplemented names with [coverage_fill].
+    """
+    total = sum(len(v) for v in tiers.values())
+    if total >= MIN_COVERAGE_TARGET:
+        return tiers
+
+    assigned_tickers: set[str] = set()
+    for tier_list in tiers.values():
+        for c in tier_list:
+            assigned_tickers.add(c.get("ticker"))
+
+    def is_excluded(c: dict[str, Any]) -> bool:
+        failures = set(c.get("hard_filter_failures", []))
+        return bool(HARD_EXCLUSION_FAILURES.intersection(failures))
+
+    # Priority 1: expanded near-miss (gap=NEAR_MISS_FLOOR_GAP)
+    for c in all_assessed:
+        if total >= MIN_COVERAGE_TARGET:
+            break
+        if c.get("ticker") in assigned_tickers or is_excluded(c):
+            continue
+        score = c.get("adjusted_total_score", 0)
+        gap = keep_threshold - score
+        if 0 < gap <= NEAR_MISS_FLOOR_GAP:
+            c["wrapper_tier"] = "T3"
+            c["tier_tags"] = c.get("tier_tags", []) + ["coverage_fill"]
+            tiers["T3"].append(c)
+            assigned_tickers.add(c.get("ticker"))
+            total += 1
+
+    # Priority 2: relaxed discovery watch/track
+    for c in discovery_results.get("watch", []) + discovery_results.get("track", []):
+        if total >= MIN_COVERAGE_TARGET:
+            break
+        if c.get("ticker") in assigned_tickers or is_excluded(c):
+            continue
+        c["wrapper_tier"] = "T3"
+        c["tier_tags"] = c.get("tier_tags", []) + ["coverage_fill"]
+        tiers["T3"].append(c)
+        assigned_tickers.add(c.get("ticker"))
+        total += 1
+
+    # Priority 3: score-sorted remaining
+    remaining = [
+        c for c in all_assessed
+        if c.get("ticker") not in assigned_tickers and not is_excluded(c)
+    ]
+    remaining.sort(key=lambda x: x.get("adjusted_total_score", 0), reverse=True)
+    for c in remaining:
+        if total >= MIN_COVERAGE_TARGET:
+            break
+        c["wrapper_tier"] = "T3"
+        c["tier_tags"] = c.get("tier_tags", []) + ["coverage_fill"]
+        tiers["T3"].append(c)
+        assigned_tickers.add(c.get("ticker"))
+        total += 1
+
+    return tiers
+
+
 def build_near_miss_candidates(
     diagnostic_scorecard: list[dict[str, Any]],
     *,
