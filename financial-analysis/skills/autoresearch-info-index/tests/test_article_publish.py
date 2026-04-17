@@ -1853,6 +1853,80 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         )
         self.assertIn("Amazon + Anthropic; Enterprise AI Flywheel", filtered_titles)
 
+    def test_cluster_merges_reddit_and_x_oil_items(self) -> None:
+        raw_items = [
+            {
+                "title": "Is an oil shock almost unavoidable?",
+                "summary": "Oil supply disruption risks are rising.",
+                "url": "https://www.reddit.com/r/stocks/comments/oil111/oil_shock/",
+                "source_name": "Reddit r/stocks",
+                "source_type": "social",
+                "published_at": "2026-04-16T12:21:04+00:00",
+                "subreddit": "r/stocks",
+                "tags": ["provider:agent-reach:reddit", "subreddit:r/stocks"],
+            },
+            {
+                "title": "The current oil situation in Europe",
+                "text": "Europe can survive without oil from Iran. Oil supply chains are shifting.",
+                "source_name": "agent-reach:x",
+                "source_type": "social",
+                "published_at": "2026-04-16T14:00:00+00:00",
+                "tags": ["provider:agent-reach:x"],
+            },
+        ]
+        clusters = hot_topic_discovery_runtime.cluster_discovered_items(raw_items, "")
+        self.assertEqual(len(clusters), 1, "Reddit and X oil items should merge into one cluster")
+        self.assertEqual(len(clusters[0]), 2)
+
+    def test_cluster_merges_reddit_and_x_semiconductor_items(self) -> None:
+        raw_items = [
+            {
+                "title": "AMD GPU supply crunch forces hyperscalers to re-bid Q3 capacity",
+                "summary": "AMD chip supply constraints are hitting cloud providers hard.",
+                "url": "https://www.reddit.com/r/hardware/comments/amd111/amd_gpu_supply/",
+                "source_name": "Reddit r/hardware",
+                "source_type": "social",
+                "published_at": "2026-04-16T12:51:13+00:00",
+                "subreddit": "r/hardware",
+                "tags": ["provider:agent-reach:reddit", "subreddit:r/hardware"],
+            },
+            {
+                "title": "AMD GPU supply crunch deepens",
+                "text": "AMD GPU supply constraints are now affecting hyperscaler capacity bids for Q3.",
+                "source_name": "agent-reach:x",
+                "source_type": "social",
+                "published_at": "2026-04-16T15:00:00+00:00",
+                "tags": ["provider:agent-reach:x"],
+            },
+        ]
+        clusters = hot_topic_discovery_runtime.cluster_discovered_items(raw_items, "")
+        self.assertEqual(len(clusters), 1, "Reddit and X AMD GPU supply items should merge")
+        self.assertEqual(len(clusters[0]), 2)
+
+    def test_cluster_does_not_merge_unrelated_cross_platform_items(self) -> None:
+        raw_items = [
+            {
+                "title": "Netflix earnings beat by $0.44, revenue topped estimates",
+                "summary": "Netflix Q1 EPS beat expectations.",
+                "url": "https://www.reddit.com/r/stocks/comments/nflx111/netflix_earnings/",
+                "source_name": "Reddit r/stocks",
+                "source_type": "social",
+                "published_at": "2026-04-16T20:13:29+00:00",
+                "subreddit": "r/stocks",
+                "tags": ["provider:agent-reach:reddit", "subreddit:r/stocks"],
+            },
+            {
+                "title": "The current oil situation in Europe",
+                "text": "Europe can survive without oil from Iran. Oil supply chains are shifting.",
+                "source_name": "agent-reach:x",
+                "source_type": "social",
+                "published_at": "2026-04-16T14:00:00+00:00",
+                "tags": ["provider:agent-reach:x"],
+            },
+        ]
+        clusters = hot_topic_discovery_runtime.cluster_discovered_items(raw_items, "")
+        self.assertEqual(len(clusters), 2, "Netflix earnings and oil situation should stay separate")
+
     def test_article_publish_exports_wechat_draft_package(self) -> None:
         result = run_article_publish(
             {

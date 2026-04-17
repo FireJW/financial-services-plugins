@@ -290,7 +290,7 @@ OBITUARY_KEYWORDS = {
 }
 RUMOR_KEYWORDS = {"传闻", "爆料", "据传", "网传", "疑似", "或本周上线", "或将", "rumor"}
 VERIFICATION_KEYWORDS = {"实名", "认证", "验证", "封号", "证件", "手持证件", "自拍"}
-NON_REDDIT_STORY_KEYWORDS = {
+CROSS_PLATFORM_STORY_KEYWORDS = {
     "claude",
     "anthropic",
     "opus",
@@ -309,7 +309,8 @@ NON_REDDIT_STORY_KEYWORDS = {
     "发布",
     "传闻",
 }
-NON_REDDIT_BRAND_TOKENS = {
+CROSS_PLATFORM_ENTITY_TOKENS = {
+    # AI companies
     "claude",
     "anthropic",
     "openai",
@@ -324,8 +325,39 @@ NON_REDDIT_BRAND_TOKENS = {
     "豆包",
     "英伟达",
     "nvidia",
+    # Semiconductors / chips
+    "semiconductor",
+    "asml",
+    "tsmc",
+    "amd",
+    "intel",
+    "qualcomm",
+    "hbm",
+    "gpu",
+    "chip",
+    # Major tickers / companies
+    "netflix",
+    "nflx",
+    "tesla",
+    "tsla",
+    "nio",
+    "amazon",
+    "amzn",
+    "apple",
+    "aapl",
+    "microsoft",
+    "msft",
+    "google",
+    "meta",
+    # Industry / macro
+    "oil",
+    "crude",
+    "opec",
+    "earnings",
+    "robotaxi",
+    "ev",
 }
-NON_REDDIT_TOKEN_STOPWORDS = {"突发", "本周", "直接", "必须", "否则", "开始", "消息", "引入", "正式"}
+CROSS_PLATFORM_TOKEN_STOPWORDS = {"突发", "本周", "直接", "必须", "否则", "开始", "消息", "引入", "正式"}
 INTERNATIONAL_PRIMARY_SOURCES = ["agent-reach:reddit", "agent-reach:x"]
 INTERNATIONAL_FALLBACK_SOURCES = ["google-news-world", "36kr"]
 GENERIC_FEATURE_KEYWORDS = {"我们和", "聊了聊", "有人转型", "有人想逃", "牛马", "人物故事", "采访"}
@@ -885,7 +917,7 @@ def is_low_specificity_reddit_platform_candidate(candidate: dict[str, Any]) -> b
             "summary": candidate.get("summary", ""),
         }
     )
-    if non_reddit_brand_tokens(tokens):
+    if cross_platform_entity_tokens(tokens):
         return False
     specific_tokens = tokens - REDDIT_CLUSTER_GENERIC_QUERY_TOKENS - REDDIT_LOW_SPECIFICITY_GENERIC_TOKENS
     return len(specific_tokens) <= 1
@@ -1792,11 +1824,12 @@ def tokenize_title(title: str) -> list[str]:
     return tokens
 
 
-def non_reddit_story_tokens(item: dict[str, Any]) -> set[str]:
+def cross_platform_story_tokens(item: dict[str, Any]) -> set[str]:
     combined = " ".join(
         [
             clean_text(item.get("title")),
             clean_text(item.get("summary")),
+            clean_text(item.get("text")),
             clean_text(item.get("source_name")),
         ]
     )
@@ -1804,16 +1837,16 @@ def non_reddit_story_tokens(item: dict[str, Any]) -> set[str]:
     tokens: set[str] = set()
     for token in tokenize_title(combined):
         normalized = token.lower()
-        if normalized and normalized not in {value.lower() for value in NON_REDDIT_TOKEN_STOPWORDS}:
+        if normalized and normalized not in {value.lower() for value in CROSS_PLATFORM_TOKEN_STOPWORDS}:
             tokens.add(normalized)
-    for keyword in NON_REDDIT_STORY_KEYWORDS:
+    for keyword in CROSS_PLATFORM_STORY_KEYWORDS:
         if keyword.lower() in lowered:
             tokens.add(keyword.lower())
     return tokens
 
 
-def non_reddit_brand_tokens(tokens: set[str]) -> set[str]:
-    return {token for token in tokens if token in {value.lower() for value in NON_REDDIT_BRAND_TOKENS}}
+def cross_platform_entity_tokens(tokens: set[str]) -> set[str]:
+    return {token for token in tokens if token in {value.lower() for value in CROSS_PLATFORM_ENTITY_TOKENS}}
 
 
 def is_reddit_discovered_item(item: dict[str, Any]) -> bool:
@@ -2112,13 +2145,13 @@ def reddit_cluster_has_strong_query_match(tokens: set[str], query_tokens: set[st
 
 
 def new_item_cluster(title_key: str, item: dict[str, Any]) -> dict[str, Any]:
-    story_tokens = non_reddit_story_tokens(item) if not is_reddit_discovered_item(item) else set()
+    story_tokens = cross_platform_story_tokens(item)
     return {
         "title_keys": {title_key} if title_key else set(),
         "reddit_outbound_urls": {reddit_cluster_outbound_url(item)} if reddit_cluster_outbound_url(item) else set(),
         "reddit_tokens": reddit_cluster_tokens(item) if is_reddit_discovered_item(item) else set(),
         "story_tokens": story_tokens,
-        "brand_tokens": non_reddit_brand_tokens(story_tokens),
+        "entity_tokens": cross_platform_entity_tokens(story_tokens),
         "items": [item],
     }
 
@@ -2131,10 +2164,9 @@ def merge_item_into_cluster(cluster: dict[str, Any], title_key: str, item: dict[
         cluster["reddit_outbound_urls"].add(outbound_url)
     if is_reddit_discovered_item(item):
         cluster["reddit_tokens"].update(reddit_cluster_tokens(item))
-    else:
-        story_tokens = non_reddit_story_tokens(item)
-        cluster["story_tokens"].update(story_tokens)
-        cluster["brand_tokens"].update(non_reddit_brand_tokens(story_tokens))
+    story_tokens = cross_platform_story_tokens(item)
+    cluster["story_tokens"].update(story_tokens)
+    cluster["entity_tokens"].update(cross_platform_entity_tokens(story_tokens))
     cluster["items"].append(item)
 
 
@@ -2148,19 +2180,25 @@ def cluster_discovered_items(raw_items: list[dict[str, Any]], query: Any = "") -
         item_outbound_url = reddit_cluster_outbound_url(item) if item_is_reddit else ""
         item_tokens = reddit_cluster_tokens(item) if item_is_reddit else set()
         item_entity_groups = reddit_cluster_token_entity_groups(item_tokens, query_entity_groups) if item_is_reddit else set()
-        item_story_tokens = non_reddit_story_tokens(item) if not item_is_reddit else set()
-        item_brand_tokens = non_reddit_brand_tokens(item_story_tokens) if item_story_tokens else set()
+        item_story_tokens = cross_platform_story_tokens(item)
+        item_entity_tok = cross_platform_entity_tokens(item_story_tokens)
 
         matching_indexes: list[int] = []
         for index, cluster in enumerate(clusters):
             if title_key and title_key in cluster["title_keys"]:
                 matching_indexes.append(index)
                 continue
-            if not item_is_reddit:
-                shared_story_tokens = item_story_tokens & set(cluster.get("story_tokens", set()))
-                shared_brand_tokens = item_brand_tokens & set(cluster.get("brand_tokens", set()))
-                if shared_brand_tokens and len(shared_story_tokens) >= 2:
+            # Entity-based match — for cross-platform pairs and non-Reddit-to-non-Reddit pairs.
+            # Skipped when both item and cluster are Reddit-only (use Reddit-specific path instead).
+            cluster_all_reddit = bool(cluster.get("reddit_tokens")) and all(is_reddit_discovered_item(ci) for ci in cluster["items"])
+            skip_entity_match = item_is_reddit and cluster_all_reddit
+            if not skip_entity_match:
+                shared_entities = item_entity_tok & cluster.get("entity_tokens", set())
+                shared_story = item_story_tokens & cluster.get("story_tokens", set())
+                if shared_entities and len(shared_story) >= 2:
                     matching_indexes.append(index)
+                    continue
+            if not item_is_reddit:
                 continue
             if item_outbound_url and item_outbound_url in cluster["reddit_outbound_urls"]:
                 matching_indexes.append(index)
@@ -2200,7 +2238,7 @@ def cluster_discovered_items(raw_items: list[dict[str, Any]], query: Any = "") -
             primary_cluster["reddit_outbound_urls"].update(secondary_cluster["reddit_outbound_urls"])
             primary_cluster["reddit_tokens"].update(secondary_cluster["reddit_tokens"])
             primary_cluster["story_tokens"].update(secondary_cluster.get("story_tokens", set()))
-            primary_cluster["brand_tokens"].update(secondary_cluster.get("brand_tokens", set()))
+            primary_cluster["entity_tokens"].update(secondary_cluster.get("entity_tokens", set()))
             primary_cluster["items"].extend(secondary_cluster["items"])
 
     return [cluster["items"] for cluster in clusters]
