@@ -704,6 +704,138 @@ def build_decision_factors_from_result(enriched: dict[str, Any]) -> dict[str, li
     return factors
 
 
+def build_upgrade_trigger(card: dict[str, Any], keep_threshold: float | int | None) -> str:
+    action = clean_text(card.get("action"))
+    score = card.get("score")
+    gap = card.get("keep_threshold_gap")
+    if action == "继续观察" and score not in (None, "") and keep_threshold not in (None, ""):
+        return f"若评分重新回到 `{keep_threshold}` 分以上，且技术与事件验证继续强化，可升级到执行层。"
+    if action == "不执行" and gap not in (None, ""):
+        return "若当前硬伤消失，且分数重新回到 keep line 之上，才重新进入观察名单。"
+    return "若技术、事件和资金验证继续改善，可考虑上调优先级。"
+
+
+def build_downgrade_trigger(card: dict[str, Any]) -> str:
+    action = clean_text(card.get("action"))
+    if action == "可执行":
+        return "若技术承接转弱、事件验证回落或链条共振消失，应从执行层降回观察。"
+    if action == "继续观察":
+        return "若技术结构转弱、事件兑现不及预期或链条共振消失，应降级为不执行。"
+    return "若当前硬伤继续恶化，维持不执行。"
+
+
+def build_event_risk_trigger(card: dict[str, Any]) -> str:
+    event_risk = clean_text(card.get("expectation_risk_summary"))
+    if event_risk:
+        return event_risk
+    event_summary = clean_text(card.get("event_summary"))
+    if "证据不足" in event_summary:
+        return "若关键事件仍未进入窗口或验证继续缺失，不进入执行判断。"
+    return ""
+
+
+def build_decision_flow_card(
+    factor: dict[str, Any],
+    *,
+    keep_threshold: float | None,
+    event_card: dict[str, Any] | None,
+    chain_entry: dict[str, Any] | None,
+) -> dict[str, Any]:
+    card = deepcopy(factor)
+    event_context = event_card if isinstance(event_card, dict) else {}
+    chain_context = chain_entry if isinstance(chain_entry, dict) else {}
+    action = clean_text(card.get("action"))
+    ticker = clean_text(card.get("ticker")) or "unknown"
+    score = card.get("score")
+    gap = card.get("keep_threshold_gap")
+    fallback_bucket = {"可执行": "稳健核心", "继续观察": "继续观察", "不执行": "不执行"}.get(action, "继续观察")
+    trading_profile_bucket = clean_text(event_context.get("trading_profile_bucket")) or fallback_bucket
+    conclusion_bits = []
+    if score not in (None, ""):
+        conclusion_bits.append(f"评分 `{score}`")
+    if gap not in (None, ""):
+        conclusion_bits.append(f"与 keep line 差距 `{gap}`")
+    conclusion_bits.append(f"当前动作 `{action}`")
+    technical_summary = clean_text(card.get("technical_summary")) or "技术形态证据不足。"
+    event_summary = clean_text(card.get("event_summary")) or clean_text(event_context.get("expectation_basis_summary")) or "事件证据不足。"
+    chain_summary = (
+        clean_text(chain_context.get("chain_playbook"))
+        or clean_text(event_context.get("chain_path_summary"))
+        or clean_text(event_context.get("trading_profile_usage"))
+        or "链条共振证据不足。"
+    )
+    flow_card = {
+        "ticker": ticker,
+        "name": clean_text(card.get("name")) or ticker,
+        "action": action,
+        "status": clean_text(card.get("status")) or clean_text(card.get("midday_status")),
+        "score": score,
+        "keep_threshold_gap": gap,
+        "trading_profile_bucket": trading_profile_bucket,
+        "conclusion": "；".join(conclusion_bits) + "。",
+        "watch_points": {
+            "technical": f"技术: {technical_summary}",
+            "event": f"事件: {event_summary}",
+            "chain": f"链条: {chain_summary}",
+        },
+        "triggers": {
+            "upgrade": build_upgrade_trigger(card, keep_threshold),
+            "downgrade": build_downgrade_trigger(card),
+        },
+        "operation_reminder": clean_text(event_context.get("trading_profile_usage")) or clean_text(card.get("trade_layer_summary")) or "操作提醒: 先等更多确认。",
+    }
+    event_risk = build_event_risk_trigger({**event_context, **card})
+    if event_risk:
+        flow_card["triggers"]["event_risk"] = event_risk
+    return flow_card
+
+
+def build_decision_flow(enriched: dict[str, Any]) -> list[dict[str, Any]]:
+    decision_factors = enriched.get("decision_factors")
+    if not isinstance(decision_factors, dict):
+        decision_factors = build_decision_factors_from_result(enriched)
+    keep_threshold = None
+    filter_summary = enriched.get("filter_summary")
+    if isinstance(filter_summary, dict) and filter_summary.get("keep_threshold") not in (None, ""):
+        keep_threshold = float(filter_summary.get("keep_threshold"))
+
+    event_card_map = {
+        clean_text(item.get("ticker")): item
+        for item in enriched.get("event_cards", [])
+        if isinstance(item, dict) and clean_text(item.get("ticker"))
+    }
+    chain_entry_map = {
+        clean_text(item.get("chain_name")): item
+        for item in enriched.get("chain_map_entries", [])
+        if isinstance(item, dict) and clean_text(item.get("chain_name"))
+    }
+    ordered: list[dict[str, Any]] = []
+    section_order = ("qualified", "near_miss", "blocked")
+    for key in section_order:
+        rows = decision_factors.get(key, [])
+        if not isinstance(rows, list):
+            continue
+        sorted_rows = sorted(
+            [item for item in rows if isinstance(item, dict)],
+            key=lambda item: float(item.get("score") or 0.0),
+            reverse=(key == "near_miss"),
+        )
+        for item in sorted_rows:
+            event_card = event_card_map.get(clean_text(item.get("ticker")))
+            chain_entry = None
+            if isinstance(event_card, dict):
+                chain_entry = chain_entry_map.get(clean_text(event_card.get("chain_name")))
+            ordered.append(
+                build_decision_flow_card(
+                    item,
+                    keep_threshold=keep_threshold,
+                    event_card=event_card,
+                    chain_entry=chain_entry,
+                )
+            )
+    return ordered
+
+
 def prepare_request_with_candidate_snapshots(request: dict[str, Any], *, bars_fetcher: BarsFetcher) -> dict[str, Any]:
     prepared = deepcopy(request)
     candidate_tickers = [clean_text(item) for item in prepared.get("candidate_tickers", []) if clean_text(item)]
@@ -952,6 +1084,7 @@ def enrich_live_result_reporting(
     decision_factors = build_decision_factors_from_result(enriched)
     if any(decision_factors.values()):
         enriched["decision_factors"] = decision_factors
+        enriched["decision_flow"] = build_decision_flow(enriched)
 
     report_markdown = str(enriched.get("report_markdown") or "").rstrip()
     if "## Dropped Candidates" in report_markdown:
@@ -1221,6 +1354,11 @@ for _extra in (
     "build_midday_action_summary_from_result",
     "build_decision_factor_entry",
     "build_decision_factors_from_result",
+    "build_upgrade_trigger",
+    "build_downgrade_trigger",
+    "build_event_risk_trigger",
+    "build_decision_flow_card",
+    "build_decision_flow",
     "midday_action_for_status",
     "prepare_request_with_candidate_snapshots",
     "wrap_assess_candidate_with_bars_failure_fallback",

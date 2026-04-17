@@ -20,6 +20,83 @@ import month_end_shortlist_runtime as module_under_test
 
 
 class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
+    def _build_enriched_for_decision_flow(self) -> dict[str, object]:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 70.0},
+            "dropped": [
+                {"ticker": "001309.SZ", "name": "德明利", "drop_reason": "no_structured_catalyst_within_window"},
+                {"ticker": "002460.SZ", "name": "赣锋锂业", "drop_reason": "score_below_keep_threshold"},
+            ],
+            "top_picks": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-30\n",
+        }
+        assessed_candidates = [
+            {
+                "ticker": "001309.SZ",
+                "name": "德明利",
+                "keep": False,
+                "scores": {"adjusted_total_score": 65.0},
+                "score_components": {
+                    "trend_template_score": 25.0,
+                    "rs_and_leadership_score": 15.0,
+                    "structured_catalyst_score": 15.0,
+                    "liquidity_and_participation_score": 4.0,
+                },
+                "price_snapshot": {"close": 118.0, "ma20": 112.0, "ma50": 108.0, "ma150": 95.0, "ma200": 88.0, "rsi14": 63.0, "rs90": 104.0},
+                "trend_template": {"trend_pass": True, "passed_count": 8},
+                "structured_catalyst_snapshot": {"earnings_events": []},
+                "hard_filter_failures": ["no_structured_catalyst_within_window"],
+            },
+            {
+                "ticker": "002460.SZ",
+                "name": "赣锋锂业",
+                "keep": False,
+                "scores": {"adjusted_total_score": 60.0},
+                "score_components": {
+                    "trend_template_score": 24.0,
+                    "rs_and_leadership_score": 15.0,
+                    "structured_catalyst_score": 17.0,
+                    "liquidity_and_participation_score": 4.0,
+                },
+                "price_snapshot": {"close": 45.0, "ma20": 42.0, "ma50": 40.0, "ma150": 37.0, "ma200": 35.0, "rsi14": 58.0, "rs90": 101.0},
+                "trend_template": {"trend_pass": True, "passed_count": 8},
+                "structured_catalyst_snapshot": {
+                    "earnings_events": [
+                        {"event_date": "2026-04-16", "headline": "一季报业绩预告", "kind": "quarterly_preview"}
+                    ]
+                },
+                "hard_filter_failures": [],
+            },
+        ]
+        discovery_candidates = [
+            {
+                "ticker": "002460.SZ",
+                "name": "赣锋锂业",
+                "event_type": "quarterly_preview",
+                "event_strength": "strong",
+                "chain_name": "lithium_chain",
+                "chain_role": "midstream_material",
+                "benefit_type": "direct",
+                "sources": [{"source_type": "official_filing", "summary": "公司披露一季报业绩预告，同比扭亏。"}],
+                "market_validation": {"volume_multiple_5d": 2.1, "breakout": True, "relative_strength": "strong"},
+            }
+        ]
+        return module_under_test.enrich_live_result_reporting(result, [], assessed_candidates, discovery_candidates)
+
+    def test_enrich_live_result_reporting_adds_decision_flow_cards(self) -> None:
+        enriched = self._build_enriched_for_decision_flow()
+
+        self.assertIn("decision_flow", enriched)
+        self.assertEqual([item["ticker"] for item in enriched["decision_flow"]], ["002460.SZ", "001309.SZ"])
+
+        first = enriched["decision_flow"][0]
+        self.assertEqual(first["action"], "继续观察")
+        self.assertEqual(first["trading_profile_bucket"], "高弹性")
+        self.assertIn("评分", first["conclusion"])
+        self.assertIn("技术", first["watch_points"]["technical"])
+        self.assertIn("upgrade", first["triggers"])
+        self.assertIn("operation_reminder", first)
+
     def test_enriches_result_with_blocked_candidate_summary_and_report_section(self) -> None:
         result = {
             "filter_summary": {"kept_count": 0},
