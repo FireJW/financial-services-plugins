@@ -92,8 +92,13 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         first = enriched["decision_flow"][0]
         self.assertEqual(first["action"], "继续观察")
         self.assertEqual(first["trading_profile_bucket"], "高弹性")
+        self.assertEqual(first["keep_threshold"], 70.0)
+        self.assertEqual(first["gap"], -10.0)
+        self.assertEqual(first["chain_name"], "lithium_chain")
+        self.assertEqual(first["chain_role"], "midstream_material")
+        self.assertIsNone(first["trigger_overrides"])
         self.assertIn("评分", first["conclusion"])
-        self.assertIn("技术", first["watch_points"]["technical"])
+        self.assertIn("均线多头结构", first["watch_points"]["technical"])
         self.assertIn("upgrade", first["triggers"])
         self.assertIn("operation_reminder", first)
 
@@ -237,6 +242,8 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertNotIn("## Chain Map", report)
         self.assertIn("## Decision Factors", report)
         self.assertIn("## Event Cards", report)
+        self.assertLess(report.index("## 直接可执行"), report.index("## 决策流"))
+        self.assertLess(report.index("## 决策流"), report.index("## Event Cards"))
 
     def test_enrich_live_result_reporting_renders_response_state_for_discovery_candidates(self) -> None:
         result = {
@@ -946,10 +953,17 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         flow = report.split("## 决策流", 1)[1].split("## Decision Factors", 1)[0] if "## 决策流" in report else ""
 
         self.assertIn("### 002460.SZ | 继续观察 | 60.0分 | 高弹性", flow)
-        self.assertIn("结论", flow)
+        self.assertIn("结论：当前没有硬伤", flow)
+        self.assertIn("评分 60.0", flow)
+        self.assertIn("执行门槛 70.0", flow)
         self.assertIn("盘中观察点", flow)
+        self.assertIn("社区一致性: low", flow)
+        self.assertIn("量价验证: strong", flow)
+        self.assertIn("lithium_chain", flow)
+        self.assertIn("高弹性", flow)
         self.assertIn("触发条件", flow)
         self.assertIn("操作提醒", flow)
+        self.assertIn("等待下一次趋势确认或分数修复后再评估", flow)
 
     def test_chain_map_does_not_produce_expectation_gap_without_evidence(self) -> None:
         """B5: chain map should not assign names to 预期差最大 without evidence."""
