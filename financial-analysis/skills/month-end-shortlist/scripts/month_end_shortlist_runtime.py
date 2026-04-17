@@ -442,6 +442,119 @@ def build_diagnostic_scorecard_entry(candidate: dict[str, Any], keep_threshold: 
     return entry
 
 
+def compute_independent_source_count(candidate: dict[str, Any]) -> int:
+    """Count independent information sources for T2 admission."""
+    sources: set[tuple[str, str]] = set()
+    for x in candidate.get("x_style_inputs", []):
+        if x.get("source_account"):
+            sources.add(("x", x["source_account"]))
+    for ev in candidate.get("event_cards", []):
+        src_type = ev.get("source_type", "")
+        if src_type == "filing":
+            sources.add(("filing", ev.get("source_id", "filing")))
+        elif src_type == "company_event":
+            sources.add(("company_event", ev.get("source_id", "company_event")))
+    for d in candidate.get("discovery_candidates", []):
+        sources.add(("discovery", d.get("ticker", "unknown")))
+    return len(sources)
+
+
+def should_promote_near_miss_to_event_driven(candidate: dict[str, Any]) -> bool:
+    """Check if a near-miss candidate qualifies for T2 promotion."""
+    if candidate.get("structured_catalyst_score", 0) >= 10:
+        return True
+    if candidate.get("discovery_bucket") == "qualified":
+        return True
+    if compute_independent_source_count(candidate) >= 2:
+        return True
+    return False
+
+
+def assign_tiers(
+    top_picks: list[dict[str, Any]],
+    near_miss_candidates: list[dict[str, Any]],
+    discovery_results: dict[str, list[dict[str, Any]]],
+    all_assessed: list[dict[str, Any]],
+    keep_threshold: float,
+) -> dict[str, list[dict[str, Any]]]:
+    """
+    Assign candidates to T1/T2/T3/T4 tiers.
+
+    Returns dict with keys "T1", "T2", "T3", "T4", each a list of
+    candidate dicts with added "wrapper_tier" and "tier_tags" fields.
+    """
+    assigned_tickers: set[str] = set()
+    tiers: dict[str, list[dict[str, Any]]] = {"T1": [], "T2": [], "T3": [], "T4": []}
+
+    # --- T1: top_picks from compiled core ---
+    for c in sorted(
+        top_picks,
+        key=lambda x: x.get("adjusted_total_score", 0),
+        reverse=True,
+    )[:TIER_CAPS["T1"]]:
+        c["wrapper_tier"] = "T1"
+        c["tier_tags"] = c.get("tier_tags", [])
+        tiers["T1"].append(c)
+        assigned_tickers.add(c.get("ticker"))
+
+    # --- T2 Path A: promoted near-miss ---
+    for c in near_miss_candidates:
+        if c.get("ticker") in assigned_tickers:
+            continue
+        if should_promote_near_miss_to_event_driven(c):
+            c["wrapper_tier"] = "T2"
+            c["tier_tags"] = c.get("tier_tags", []) + ["near_miss_promoted"]
+            tiers["T2"].append(c)
+            assigned_tickers.add(c.get("ticker"))
+            if len(tiers["T2"]) >= TIER_CAPS["T2"]:
+                break
+
+    # --- T2 Path B: discovery qualified ---
+    for c in discovery_results.get("qualified", []):
+        if c.get("ticker") in assigned_tickers:
+            continue
+        if len(tiers["T2"]) >= TIER_CAPS["T2"]:
+            break
+        c["wrapper_tier"] = "T2"
+        c["tier_tags"] = c.get("tier_tags", []) + ["discovery_qualified"]
+        tiers["T2"].append(c)
+        assigned_tickers.add(c.get("ticker"))
+
+    # --- T3: remaining near-miss + discovery watch ---
+    for c in near_miss_candidates:
+        if c.get("ticker") in assigned_tickers:
+            continue
+        if len(tiers["T3"]) >= TIER_CAPS["T3"]:
+            break
+        c["wrapper_tier"] = "T3"
+        c["tier_tags"] = c.get("tier_tags", [])
+        tiers["T3"].append(c)
+        assigned_tickers.add(c.get("ticker"))
+
+    for c in discovery_results.get("watch", []):
+        if c.get("ticker") in assigned_tickers:
+            continue
+        if len(tiers["T3"]) >= TIER_CAPS["T3"]:
+            break
+        c["wrapper_tier"] = "T3"
+        c["tier_tags"] = c.get("tier_tags", []) + ["discovery_watch"]
+        tiers["T3"].append(c)
+        assigned_tickers.add(c.get("ticker"))
+
+    # --- T4: discovery track + chain/sympathy ---
+    for c in discovery_results.get("track", []):
+        if c.get("ticker") in assigned_tickers:
+            continue
+        if len(tiers["T4"]) >= TIER_CAPS["T4"]:
+            break
+        c["wrapper_tier"] = "T4"
+        c["tier_tags"] = c.get("tier_tags", []) + ["discovery_track"]
+        tiers["T4"].append(c)
+        assigned_tickers.add(c.get("ticker"))
+
+    return tiers
+
+
 def build_near_miss_candidates(
     diagnostic_scorecard: list[dict[str, Any]],
     *,
