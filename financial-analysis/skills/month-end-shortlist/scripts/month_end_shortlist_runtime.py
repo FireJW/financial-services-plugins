@@ -333,6 +333,179 @@ def normalize_macro_geopolitics_candidate_input(raw: Any) -> dict[str, Any] | No
     return normalized or None
 
 
+def synthesize_geopolitics_evidence_block(candidate_input: dict[str, Any] | None) -> dict[str, list[dict[str, Any]]]:
+    if not isinstance(candidate_input, dict):
+        return {"news_evidence": [], "x_evidence": [], "market_evidence": []}
+
+    def make_row(
+        source_type: str,
+        signal_family: str,
+        direction: str,
+        strength: str,
+        summary: str,
+    ) -> dict[str, Any]:
+        return {
+            "source_type": source_type,
+            "signal_family": signal_family,
+            "direction": direction,
+            "strength": strength,
+            "summary": summary,
+        }
+
+    news_rows: list[dict[str, Any]] = []
+    for row in candidate_input.get("news_signals", []):
+        if not isinstance(row, dict):
+            continue
+        direction = clean_text(row.get("direction_hint"))
+        if direction in GEOPOLITICS_CANDIDATE_DIRECTIONS:
+            news_rows.append(
+                make_row(
+                    "news",
+                    "headline_flow",
+                    direction,
+                    "medium",
+                    clean_text(row.get("summary") or row.get("headline") or "news signal"),
+                )
+            )
+
+    x_rows: list[dict[str, Any]] = []
+    for row in candidate_input.get("x_signals", []):
+        if not isinstance(row, dict):
+            continue
+        direction = clean_text(row.get("direction_hint"))
+        if direction in GEOPOLITICS_CANDIDATE_DIRECTIONS:
+            x_rows.append(
+                make_row(
+                    "x",
+                    "x_discussion",
+                    direction,
+                    "medium",
+                    clean_text(row.get("summary") or "x signal"),
+                )
+            )
+
+    market_rows: list[dict[str, Any]] = []
+    market = candidate_input.get("market_signals")
+    if isinstance(market, dict):
+        if market.get("oil") == "up":
+            market_rows.append(make_row("market", "oil", "escalation", "medium", "Oil is confirming upside risk."))
+        if market.get("oil") == "down":
+            market_rows.append(make_row("market", "oil", "de_escalation", "medium", "Oil is unwinding risk premium."))
+        if market.get("gold") == "up":
+            market_rows.append(make_row("market", "gold", "escalation", "medium", "Gold is confirming safety demand."))
+        if market.get("gold") == "down":
+            market_rows.append(make_row("market", "gold", "de_escalation", "low", "Gold is easing with lower safety demand."))
+        if market.get("shipping") == "up":
+            market_rows.append(make_row("market", "shipping", "escalation", "medium", "Shipping tape is repricing disruption risk."))
+        if market.get("shipping") == "down":
+            market_rows.append(make_row("market", "shipping", "de_escalation", "low", "Shipping tape is easing disruption risk."))
+        if market.get("risk_style") == "risk_off":
+            market_rows.append(make_row("market", "risk_style", "escalation", "medium", "Risk style is defensive."))
+        if market.get("risk_style") == "risk_on":
+            market_rows.append(make_row("market", "risk_style", "de_escalation", "medium", "Risk style is improving."))
+        if market.get("risk_style") == "mixed":
+            market_rows.append(make_row("market", "risk_style", "whipsaw", "low", "Risk style is mixed."))        
+        if market.get("usd_rates") == "tightening":
+            market_rows.append(make_row("market", "usd_rates", "escalation", "low", "USD/rates backdrop is tighter."))
+        if market.get("usd_rates") == "loosening":
+            market_rows.append(make_row("market", "usd_rates", "de_escalation", "low", "USD/rates backdrop is easing."))
+        if market.get("airlines") == "down":
+            market_rows.append(make_row("market", "airlines", "escalation", "medium", "Airlines are lagging."))
+        if market.get("airlines") == "up":
+            market_rows.append(make_row("market", "airlines", "de_escalation", "low", "Airlines are recovering."))
+        if market.get("industrials") == "down":
+            market_rows.append(make_row("market", "industrials", "escalation", "low", "Industrials are under pressure."))
+        if market.get("industrials") == "up":
+            market_rows.append(make_row("market", "industrials", "de_escalation", "low", "Industrials are stabilizing."))
+
+    return {
+        "news_evidence": news_rows,
+        "x_evidence": x_rows,
+        "market_evidence": market_rows,
+    }
+
+
+def build_macro_geopolitics_candidate(candidate_input: dict[str, Any] | None) -> dict[str, Any]:
+    evidence = synthesize_geopolitics_evidence_block(candidate_input)
+    all_rows = evidence["news_evidence"] + evidence["x_evidence"] + evidence["market_evidence"]
+    if not all_rows:
+        return {
+            "candidate_regime": "insufficient_signal",
+            "confidence": "low",
+            "signal_alignment": "none",
+            "status": "insufficient_signal",
+            "evidence_summary": ["No usable geopolitical candidate signals were provided."],
+            "evidence_block": evidence,
+        }
+
+    score = {"escalation": 0, "de_escalation": 0, "whipsaw": 0}
+    source_directions: dict[str, dict[str, int]] = {}
+    weights = {"low": 1, "medium": 2, "high": 3}
+    for row in all_rows:
+        direction = row.get("direction")
+        if direction not in score:
+            continue
+        weight = weights.get(clean_text(row.get("strength")), 1)
+        score[direction] += weight
+        source_type = clean_text(row.get("source_type"))
+        source_directions.setdefault(source_type, {})
+        source_directions[source_type][direction] = source_directions[source_type].get(direction, 0) + weight
+
+    top_by_source: dict[str, str] = {}
+    for source_type, direction_scores in source_directions.items():
+        if not direction_scores:
+            continue
+        top_direction = max(direction_scores.items(), key=lambda kv: kv[1])[0]
+        top_by_source[source_type] = top_direction
+
+    aligned_pairs = []
+    for pair in ("news+x", "news+market", "x+market"):
+        left, right = pair.split("+")
+        if left in top_by_source and right in top_by_source and top_by_source[left] == top_by_source[right]:
+            aligned_pairs.append(pair)
+
+    ordered_scores = sorted(score.items(), key=lambda kv: kv[1], reverse=True)
+    top_regime, top_score = ordered_scores[0]
+    second_score = ordered_scores[1][1] if len(ordered_scores) > 1 else 0
+    has_full_alignment = {"news", "x", "market"}.issubset(top_by_source) and len({top_by_source["news"], top_by_source["x"], top_by_source["market"]}) == 1
+
+    if not aligned_pairs or top_score - second_score < 2:
+        return {
+            "candidate_regime": "insufficient_signal",
+            "confidence": "low",
+            "signal_alignment": "mixed",
+            "status": "insufficient_signal",
+            "evidence_summary": [clean_text(row.get("summary")) for row in all_rows[:3] if clean_text(row.get("summary"))],
+            "evidence_block": evidence,
+        }
+
+    candidate_regime = top_regime
+    confidence = "high" if top_score >= 6 else "medium"
+    signal_alignment = "news+x+market" if has_full_alignment else aligned_pairs[0]
+    return {
+        "candidate_regime": candidate_regime,
+        "confidence": confidence,
+        "signal_alignment": signal_alignment,
+        "status": "candidate_only",
+        "evidence_summary": [clean_text(row.get("summary")) for row in all_rows[:3] if clean_text(row.get("summary"))],
+        "beneficiary_bias": (
+            ["oil_shipping", "energy", "gold", "defense"]
+            if candidate_regime == "escalation"
+            else ["airlines", "export_chain", "high_beta_growth"]
+            if candidate_regime == "de_escalation"
+            else []
+        ),
+        "headwind_bias": (
+            ["airlines", "cost_sensitive_chemicals", "export_chain", "high_beta_growth"]
+            if candidate_regime == "escalation"
+            else ["oil_shipping", "energy", "gold", "defense"]
+            if candidate_regime == "de_escalation"
+            else []
+        ),
+        "evidence_block": evidence,
+    }
+
+
 def extract_x_style_overlays_from_result(batch_payload: dict[str, Any], selected_handles: list[str] | None = None) -> tuple[list[str], list[dict[str, Any]]]:
     desired = unique_strings([clean_text(item).lstrip("@") for item in (selected_handles or [])])
     handles: list[str] = []
@@ -1958,6 +2131,14 @@ def enrich_live_result_reporting(
 ) -> dict[str, Any]:
     enriched = enrich_degraded_live_result(result, failure_candidates)
     request_obj = enriched.get("request") if isinstance(enriched.get("request"), dict) else {}
+    geopolitics_candidate_input = (
+        request_obj.get("macro_geopolitics_candidate_input")
+        if isinstance(request_obj.get("macro_geopolitics_candidate_input"), dict)
+        else None
+    )
+    enriched["macro_geopolitics_candidate"] = build_macro_geopolitics_candidate(
+        geopolitics_candidate_input
+    )
     dropped = [item for item in enriched.get("dropped", []) if isinstance(item, dict)]
 
     filter_summary = dict(enriched.get("filter_summary") or {})
@@ -2463,6 +2644,15 @@ def merge_track_results(
     merged: dict[str, Any] = {}
     merged["track_results"] = track_results
     merged["request"] = base_request or {}
+    request_obj = merged["request"] if isinstance(merged.get("request"), dict) else {}
+    geopolitics_candidate_input = (
+        request_obj.get("macro_geopolitics_candidate_input")
+        if isinstance(request_obj.get("macro_geopolitics_candidate_input"), dict)
+        else None
+    )
+    merged["macro_geopolitics_candidate"] = build_macro_geopolitics_candidate(
+        geopolitics_candidate_input
+    )
 
     # Combine top_picks, dropped, diagnostic_scorecard, near_miss, midday_action
     all_top_picks: list[dict[str, Any]] = []

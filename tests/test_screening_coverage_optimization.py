@@ -475,7 +475,83 @@ class TestGeopoliticsRankingBias(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Class 8: TestDiscoveryThresholdRelaxation
+# Class 8: TestGeopoliticsCandidateSynthesis
+# ---------------------------------------------------------------------------
+class TestGeopoliticsCandidateSynthesis(unittest.TestCase):
+    def test_builds_escalation_candidate_from_news_x_market_alignment(self):
+        candidate_input = {
+            "news_signals": [
+                {
+                    "headline": "Shipping risk rises",
+                    "summary": "Disruption fears climb.",
+                    "direction_hint": "escalation",
+                }
+            ],
+            "x_signals": [
+                {
+                    "account": "MacroDesk",
+                    "summary": "Supply risk repricing resumes.",
+                    "direction_hint": "escalation",
+                }
+            ],
+            "market_signals": {
+                "oil": "up",
+                "gold": "up",
+                "shipping": "up",
+                "risk_style": "risk_off",
+                "airlines": "down",
+            },
+        }
+
+        candidate = runtime.build_macro_geopolitics_candidate(candidate_input)
+        self.assertEqual(candidate["candidate_regime"], "escalation")
+        self.assertEqual(candidate["signal_alignment"], "news+x+market")
+        self.assertEqual(candidate["status"], "candidate_only")
+
+    def test_returns_insufficient_signal_when_only_one_signal_class_supports_direction(self):
+        candidate_input = {
+            "news_signals": [
+                {
+                    "headline": "Shipping risk rises",
+                    "summary": "Disruption fears climb.",
+                    "direction_hint": "escalation",
+                }
+            ],
+        }
+
+        candidate = runtime.build_macro_geopolitics_candidate(candidate_input)
+        self.assertEqual(candidate["candidate_regime"], "insufficient_signal")
+
+    def test_whipsaw_requires_cross_source_conflict(self):
+        candidate_input = {
+            "news_signals": [
+                {
+                    "headline": "Talks resume",
+                    "summary": "Transit may normalize.",
+                    "direction_hint": "de_escalation",
+                }
+            ],
+            "x_signals": [
+                {
+                    "account": "MacroDesk",
+                    "summary": "Headline reversal risk is rising.",
+                    "direction_hint": "whipsaw",
+                }
+            ],
+            "market_signals": {
+                "oil": "up",
+                "gold": "up",
+                "risk_style": "mixed",
+            },
+        }
+
+        candidate = runtime.build_macro_geopolitics_candidate(candidate_input)
+        self.assertIn(candidate["candidate_regime"], {"whipsaw", "insufficient_signal"})
+        self.assertTrue(candidate["evidence_summary"])
+
+
+# ---------------------------------------------------------------------------
+# Class 9: TestDiscoveryThresholdRelaxation
 # ---------------------------------------------------------------------------
 class TestDiscoveryThresholdRelaxation(unittest.TestCase):
     """Test that discovery thresholds were relaxed per Step 1."""
@@ -524,7 +600,7 @@ class TestDiscoveryThresholdRelaxation(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Class 9: TestCapEnforcement
+# Class 10: TestCapEnforcement
 # ---------------------------------------------------------------------------
 class TestCapEnforcement(unittest.TestCase):
     def _make_candidate(self, ticker, score=70):
@@ -576,7 +652,7 @@ class TestCapEnforcement(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Class 10: TestBackwardCompatibility
+# Class 11: TestBackwardCompatibility
 # ---------------------------------------------------------------------------
 class TestBackwardCompatibility(unittest.TestCase):
     def test_old_fields_still_populated(self):
