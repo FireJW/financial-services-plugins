@@ -83,6 +83,64 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         ]
         return module_under_test.enrich_live_result_reporting(result, [], assessed_candidates, discovery_candidates)
 
+    def _build_enriched_for_geopolitics_overlay(self) -> dict[str, object]:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 70.0},
+            "request": {
+                "macro_geopolitics_overlay": {
+                    "regime_label": "escalation",
+                    "confidence": "medium",
+                    "headline_risk": "high",
+                    "beneficiary_chains": ["oil_shipping"],
+                    "headwind_chains": ["airlines"],
+                    "notes": "Hormuz disruption risk repriced.",
+                }
+            },
+            "dropped": [
+                {"ticker": "601975.SS", "name": "招商南油", "drop_reason": "score_below_keep_threshold"},
+            ],
+            "top_picks": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-21\n",
+        }
+        assessed_candidates = [
+            {
+                "ticker": "601975.SS",
+                "name": "招商南油",
+                "keep": False,
+                "scores": {"adjusted_total_score": 60.0},
+                "score_components": {
+                    "adjusted_total_score": 60.0,
+                    "trend_template_score": 24.0,
+                    "rs_and_leadership_score": 15.0,
+                    "structured_catalyst_score": 14.0,
+                    "liquidity_and_participation_score": 4.0,
+                },
+                "price_snapshot": {"close": 5.8, "ma20": 5.5, "ma50": 5.3, "ma150": 4.9, "ma200": 4.5, "rsi14": 58.0, "rs90": 102.0},
+                "trend_template": {"trend_pass": True, "passed_count": 8},
+                "structured_catalyst_snapshot": {
+                    "structured_company_events": [
+                        {"date": "2026-04-21", "event_type": "油运景气跟踪"}
+                    ]
+                },
+                "trade_card": {"watch_action": "等强势承接", "invalidation": "跌破关键均线"},
+                "hard_filter_failures": [],
+            }
+        ]
+        discovery_candidates = [
+            {
+                "ticker": "601975.SS",
+                "name": "招商南油",
+                "event_type": "structured_catalyst",
+                "event_strength": "moderate",
+                "chain_name": "oil_shipping",
+                "chain_role": "direct_beneficiary",
+                "benefit_type": "direct",
+                "sources": [{"source_type": "x_summary", "account": "macroalpha", "summary": "油运受益于航线风险溢价回升"}],
+                "market_validation": {"volume_multiple_5d": 1.7, "breakout": True, "relative_strength": "strong"},
+            }
+        ]
+        return module_under_test.enrich_live_result_reporting(result, [], assessed_candidates, discovery_candidates)
+
     def test_enrich_live_result_reporting_adds_decision_flow_cards(self) -> None:
         enriched = self._build_enriched_for_decision_flow()
 
@@ -1021,6 +1079,21 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("触发条件", flow)
         self.assertIn("操作提醒", flow)
         self.assertIn("等待下一次趋势确认或分数修复后再评估", flow)
+
+    def test_decision_flow_markdown_surfaces_geopolitics_regime(self) -> None:
+        enriched = self._build_enriched_for_geopolitics_overlay()
+        report = enriched["report_markdown"]
+        flow = report.split("## 决策流", 1)[1].split("## Decision Factors", 1)[0] if "## 决策流" in report else ""
+
+        self.assertIn("地缘 regime: `escalation`", flow)
+
+    def test_decision_flow_card_includes_geopolitics_bias_and_execution_constraint(self) -> None:
+        enriched = self._build_enriched_for_geopolitics_overlay()
+        report = enriched["report_markdown"]
+        flow = report.split("## 决策流", 1)[1].split("## Decision Factors", 1)[0] if "## 决策流" in report else ""
+
+        self.assertIn("链条偏置：地缘升级下的受益链条", flow)
+        self.assertIn("执行约束：轻仓，不追高，隔夜谨慎", flow)
 
     def test_chain_map_does_not_produce_expectation_gap_without_evidence(self) -> None:
         """B5: chain map should not assign names to 预期差最大 without evidence."""

@@ -1400,12 +1400,38 @@ def build_event_risk_trigger(card: dict[str, Any]) -> str:
     return ""
 
 
+def build_geopolitics_bias_summary(chain_name: str, overlay: dict[str, Any] | None) -> str:
+    regime = clean_text((overlay or {}).get("regime_label"))
+    if regime not in GEOPOLITICS_REGIME_LABELS:
+        return ""
+    bias_kind = classify_geopolitics_chain_bias(chain_name, overlay)
+    if not bias_kind:
+        return ""
+    if regime == "escalation":
+        return "链条偏置：地缘升级下的受益链条" if bias_kind == "beneficiary" else "链条偏置：地缘升级下的承压链条"
+    if regime == "de_escalation":
+        return "链条偏置：地缘缓和下的受益链条" if bias_kind == "beneficiary" else "链条偏置：地缘缓和下的承压链条"
+    return "链条偏置：whipsaw 阶段优先看确认，不看情绪先手"
+
+
+def build_geopolitics_execution_constraint(action: str, overlay: dict[str, Any] | None) -> str:
+    regime = clean_text((overlay or {}).get("regime_label"))
+    if regime == "escalation":
+        return "执行约束：轻仓，不追高，隔夜谨慎"
+    if regime == "de_escalation":
+        return "执行约束：优先跟随确认后的风险偏好修复，不把地缘缓和单独当成追价理由"
+    if regime == "whipsaw":
+        return "执行约束：headline reversal risk 高，优先等确认，不做激进隔夜博弈"
+    return ""
+
+
 def build_decision_flow_card(
     factor: dict[str, Any],
     *,
     keep_threshold: float | None,
     event_card: dict[str, Any] | None,
     chain_entry: dict[str, Any] | None,
+    geopolitics_overlay: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     card = deepcopy(factor)
     event_context = event_card if isinstance(event_card, dict) else {}
@@ -1436,12 +1462,16 @@ def build_decision_flow_card(
             f"角色: {chain_role}" if chain_role and chain_role != 'unknown' else "",
             f"交易属性: {trading_profile_bucket}" if trading_profile_bucket else "",
             clean_text(chain_context.get("chain_playbook")) or clean_text(event_context.get("chain_path_summary")) or "",
+            build_geopolitics_bias_summary(chain_name, geopolitics_overlay),
         ]
         if bit
     ) or "链条共振证据不足。"
     operation_parts = [
         clean_text(event_context.get("trading_profile_usage")) or clean_text(card.get("trade_layer_summary")) or "先等更多确认。",
     ]
+    geopolitics_constraint = build_geopolitics_execution_constraint(action, geopolitics_overlay)
+    if geopolitics_constraint:
+        operation_parts.append(geopolitics_constraint)
     next_watch_items = card.get("next_watch_items") if isinstance(card.get("next_watch_items"), list) else []
     if next_watch_items:
         operation_parts.append(clean_text(next_watch_items[0]))
@@ -1495,6 +1525,12 @@ def build_decision_flow(enriched: dict[str, Any]) -> list[dict[str, Any]]:
         for item in enriched.get("chain_map_entries", [])
         if isinstance(item, dict) and clean_text(item.get("chain_name"))
     }
+    request_obj = enriched.get("request")
+    geopolitics_overlay = (
+        request_obj.get("macro_geopolitics_overlay")
+        if isinstance(request_obj, dict) and isinstance(request_obj.get("macro_geopolitics_overlay"), dict)
+        else None
+    )
     ordered: list[dict[str, Any]] = []
     section_order = ("qualified", "near_miss", "blocked")
     for key in section_order:
@@ -1517,13 +1553,30 @@ def build_decision_flow(enriched: dict[str, Any]) -> list[dict[str, Any]]:
                     keep_threshold=keep_threshold,
                     event_card=event_card,
                     chain_entry=chain_entry,
+                    geopolitics_overlay=geopolitics_overlay,
                 )
             )
     return ordered
 
 
-def build_decision_flow_markdown(decision_flow: list[dict[str, Any]]) -> list[str]:
+def build_decision_flow_markdown(
+    decision_flow: list[dict[str, Any]],
+    geopolitics_overlay: dict[str, Any] | None = None,
+) -> list[str]:
     lines = ["", "## 决策流", ""]
+    regime = clean_text((geopolitics_overlay or {}).get("regime_label"))
+    if regime in GEOPOLITICS_REGIME_LABELS:
+        lines.append(f"- 地缘 regime: `{regime}`")
+        confidence = clean_text((geopolitics_overlay or {}).get("confidence"))
+        headline_risk = clean_text((geopolitics_overlay or {}).get("headline_risk"))
+        meta_bits: list[str] = []
+        if confidence:
+            meta_bits.append(f"confidence=`{confidence}`")
+        if headline_risk:
+            meta_bits.append(f"headline_risk=`{headline_risk}`")
+        if meta_bits:
+            lines.append(f"- {' | '.join(meta_bits)}")
+        lines.append("")
     for item in decision_flow:
         lines.append(
             f"### {item.get('ticker')} | {item.get('action')} | {item.get('score')}分 | {item.get('trading_profile_bucket')}"
@@ -1805,6 +1858,7 @@ def enrich_live_result_reporting(
     discovery_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     enriched = enrich_degraded_live_result(result, failure_candidates)
+    request_obj = enriched.get("request") if isinstance(enriched.get("request"), dict) else {}
     dropped = [item for item in enriched.get("dropped", []) if isinstance(item, dict)]
 
     filter_summary = dict(enriched.get("filter_summary") or {})
@@ -1824,7 +1878,6 @@ def enrich_live_result_reporting(
     ]
     if diagnostic_scorecard:
         # Apply board-specific threshold overrides before near-miss / tier logic
-        request_obj = enriched.get("request") or {}
         active_profile = clean_text(
             filter_summary.get("profile")
             or filter_summary.get("filter_profile")
@@ -2039,7 +2092,8 @@ def enrich_live_result_reporting(
 
     event_cards = enriched.get("event_cards", [])
     if decision_flow and "## 决策流" not in "\n".join(lines):
-        lines.extend(build_decision_flow_markdown(decision_flow))
+        geopolitics_overlay = request_obj.get("macro_geopolitics_overlay") if isinstance(request_obj.get("macro_geopolitics_overlay"), dict) else None
+        lines.extend(build_decision_flow_markdown(decision_flow, geopolitics_overlay))
     if isinstance(event_cards, list) and event_cards and "## Event Cards" not in "\n".join(lines):
         lines.extend(["", "## Event Cards", ""])
         for item in event_cards:
@@ -2462,7 +2516,8 @@ def merge_track_results(
             report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
 
     if decision_flow:
-        report_lines.extend(build_decision_flow_markdown(decision_flow))
+        geopolitics_overlay = request_obj.get("macro_geopolitics_overlay") if isinstance(request_obj.get("macro_geopolitics_overlay"), dict) else None
+        report_lines.extend(build_decision_flow_markdown(decision_flow, geopolitics_overlay))
 
     event_cards = merged.get("event_cards", [])
     if isinstance(event_cards, list) and event_cards:
