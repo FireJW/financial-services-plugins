@@ -55,6 +55,26 @@ class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
                 html_fetcher=lambda *args, **kwargs: "",
             )
 
+    def test_bars_fetch_failure_record_keeps_original_error_text(self) -> None:
+        wrapped = module_under_test.wrap_assess_candidate_with_bars_failure_fallback(
+            lambda candidate, request, benchmark_rows, *, bars_fetcher, html_fetcher: (_ for _ in ()).throw(
+                RuntimeError(
+                    "bars_fetch_failed for `601975.SS`: Eastmoney request failed: Remote end closed connection without response"
+                )
+            )
+        )
+
+        result = wrapped(
+            {"ticker": "601975.SS", "name": "招商南油"},
+            {},
+            [],
+            bars_fetcher=lambda *args, **kwargs: [],
+            html_fetcher=lambda *args, **kwargs: "",
+        )
+
+        self.assertIn("bars_fetch_failed", result["hard_filter_failures"])
+        self.assertIn("Eastmoney request failed", result["bars_fetch_error"])
+
 
 if __name__ == "__main__":
     unittest.main()

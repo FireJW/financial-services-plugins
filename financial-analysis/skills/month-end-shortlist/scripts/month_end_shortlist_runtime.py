@@ -1175,6 +1175,96 @@ def apply_catalyst_waiver(
     return waiver_candidates
 
 
+def local_market_snapshot_for_candidate(ticker: str, analysis_date: str) -> dict[str, Any] | None:
+    from tradingagents_decision_bridge_runtime import (
+        smart_free_profile_name,
+        summarize_local_market_snapshot,
+    )
+
+    normalized_ticker = clean_text(ticker)
+    normalized_date = clean_text(analysis_date)[:10]
+    if not normalized_ticker or not normalized_date:
+        return None
+    profile_name = smart_free_profile_name(normalized_ticker)
+    if profile_name not in {"free_eastmoney_market", "free_tushare_market"}:
+        return None
+    try:
+        snapshot = summarize_local_market_snapshot(
+            profile_name=profile_name,
+            normalized_ticker=normalized_ticker,
+            analysis_date=normalized_date,
+            failure_message="month_end_shortlist bars fallback",
+        )
+    except Exception:
+        return None
+    if not isinstance(snapshot, dict):
+        return None
+    return {
+        "profile_name": profile_name,
+        "close": snapshot.get("latest_close"),
+        "pct_chg": snapshot.get("latest_pct_chg"),
+        "sma20": snapshot.get("sma20"),
+        "sma50": snapshot.get("sma50"),
+        "rsi14": snapshot.get("rsi14"),
+        "volume_ratio": snapshot.get("volume_ratio"),
+    }
+
+
+def classify_fallback_support_reason(candidate: dict[str, Any]) -> str:
+    structured_snapshot = candidate.get("structured_catalyst_snapshot")
+    structured_snapshot = structured_snapshot if isinstance(structured_snapshot, dict) else {}
+    if structured_snapshot.get("structured_company_events"):
+        return "structured_catalyst"
+    discovery_bucket = clean_text(candidate.get("discovery_bucket"))
+    if discovery_bucket == "qualified":
+        return "discovery_qualified"
+    if discovery_bucket == "watch":
+        return "discovery_watch"
+    if clean_text(candidate.get("chain_name")) or clean_text(candidate.get("trading_profile_bucket")):
+        return "chain_support"
+    return ""
+
+
+def snapshot_allows_fallback_observation(snapshot: dict[str, Any] | None) -> bool:
+    if not isinstance(snapshot, dict):
+        return False
+    try:
+        close = float(snapshot.get("close"))
+        pct_chg = float(snapshot.get("pct_chg"))
+        sma20 = float(snapshot.get("sma20"))
+        sma50 = float(snapshot.get("sma50"))
+        rsi14 = float(snapshot.get("rsi14"))
+    except (TypeError, ValueError):
+        return False
+    if close < min(sma20, sma50):
+        return False
+    if rsi14 < 35.0:
+        return False
+    if pct_chg <= -5.0:
+        return False
+    return True
+
+
+def build_bars_fallback_rescue_candidate(
+    candidate: dict[str, Any],
+    snapshot: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    support_reason = classify_fallback_support_reason(candidate)
+    if not support_reason or not snapshot_allows_fallback_observation(snapshot):
+        return None
+    rescued = deepcopy(candidate)
+    rescued["keep"] = False
+    rescued["midday_status"] = "near_miss"
+    rescued["wrapper_tier"] = "T3"
+    rescued["fallback_support_reason"] = support_reason
+    rescued["fallback_snapshot"] = deepcopy(snapshot)
+    rescued["fallback_snapshot_only"] = True
+    rescued["tier_tags"] = unique_strings(
+        list(rescued.get("tier_tags", [])) + ["low_confidence_fallback", "fallback_snapshot_only"]
+    )
+    return rescued
+
+
 def evaluate_with_coverage_fallback(
     candidates: list[dict[str, Any]],
     bars_data: dict[str, Any],
@@ -3053,6 +3143,10 @@ for _extra in (
     "midday_action_for_status",
     "prepare_request_with_candidate_snapshots",
     "wrap_assess_candidate_with_bars_failure_fallback",
+    "local_market_snapshot_for_candidate",
+    "classify_fallback_support_reason",
+    "snapshot_allows_fallback_observation",
+    "build_bars_fallback_rescue_candidate",
     "TRACK_CONFIGS",
     "split_universe_by_board",
     "enrich_track_result",

@@ -682,5 +682,71 @@ class TestBackwardCompatibility(unittest.TestCase):
             self.assertIsInstance(enriched["diagnostic_scorecard"], list)
 
 
+class TestBarsFallbackRescue(unittest.TestCase):
+    def _make_failed_candidate(self, ticker="601975.SS", **overrides):
+        base = {
+            "ticker": ticker,
+            "name": ticker,
+            "adjusted_total_score": 0.0,
+            "score": 0.0,
+            "keep": False,
+            "midday_status": "blocked",
+            "hard_filter_failures": ["bars_fetch_failed"],
+            "bars_fetch_error": f"bars_fetch_failed for `{ticker}`: boom",
+            "tier_tags": [],
+            "structured_catalyst_snapshot": {},
+            "track_name": "main_board",
+        }
+        base.update(overrides)
+        return base
+
+    def test_bars_failed_candidate_with_structured_support_and_snapshot_is_rescued_to_t3(self):
+        candidate = self._make_failed_candidate(
+            structured_catalyst_snapshot={
+                "structured_company_events": [{"date": "2026-04-21", "event_type": "油运景气跟踪"}]
+            },
+        )
+        snapshot = {
+            "close": 5.8,
+            "pct_chg": 1.2,
+            "sma20": 5.5,
+            "sma50": 5.3,
+            "rsi14": 58.0,
+            "volume_ratio": 1.4,
+        }
+        rescued = runtime.build_bars_fallback_rescue_candidate(candidate, snapshot)
+        self.assertIsNotNone(rescued)
+        self.assertIn("low_confidence_fallback", rescued["tier_tags"])
+        self.assertIn("fallback_snapshot_only", rescued["tier_tags"])
+        self.assertEqual(rescued["fallback_support_reason"], "structured_catalyst")
+        self.assertEqual(rescued["wrapper_tier"], "T3")
+
+    def test_bars_failed_candidate_without_support_is_not_rescued(self):
+        candidate = self._make_failed_candidate()
+        snapshot = {
+            "close": 5.8,
+            "pct_chg": 1.2,
+            "sma20": 5.5,
+            "sma50": 5.3,
+            "rsi14": 58.0,
+            "volume_ratio": 1.4,
+        }
+        rescued = runtime.build_bars_fallback_rescue_candidate(candidate, snapshot)
+        self.assertIsNone(rescued)
+
+    def test_bars_failed_candidate_with_broken_snapshot_is_not_rescued(self):
+        candidate = self._make_failed_candidate(discovery_bucket="watch")
+        snapshot = {
+            "close": 4.2,
+            "pct_chg": -6.0,
+            "sma20": 5.5,
+            "sma50": 5.3,
+            "rsi14": 31.0,
+            "volume_ratio": 0.6,
+        }
+        rescued = runtime.build_bars_fallback_rescue_candidate(candidate, snapshot)
+        self.assertIsNone(rescued)
+
+
 if __name__ == "__main__":
     unittest.main()
