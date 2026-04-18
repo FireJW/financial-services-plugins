@@ -1923,6 +1923,11 @@ def enrich_track_result(
 
         # Tier assignment with track-specific caps
         top_picks = [item for item in diagnostic_scorecard if item.get("keep")]
+        enriched["top_picks"] = top_picks
+        filter_summary["universe_count"] = len(diagnostic_scorecard) + len(dropped)
+        filter_summary["kept_count"] = len(top_picks)
+        filter_summary["top_pick_count"] = len(top_picks)
+        enriched["filter_summary"] = filter_summary
         near_miss_for_tiers = enriched.get("near_miss_candidates", [])
         # Discovery results are empty at track level — merged later
         discovery_results: dict[str, list[dict[str, Any]]] = {"qualified": [], "watch": [], "track": []}
@@ -2074,22 +2079,34 @@ def merge_track_results(
     for track_name, enriched in track_results.items():
         cfg = track_configs.get(track_name, {})
         fs = enriched.get("filter_summary", {})
+        track_top_picks = enriched.get("top_picks", []) if isinstance(enriched.get("top_picks"), list) else []
+        track_dropped = enriched.get("dropped", []) if isinstance(enriched.get("dropped"), list) else []
+        track_diagnostic = enriched.get("diagnostic_scorecard", []) if isinstance(enriched.get("diagnostic_scorecard"), list) else []
+        universe_count = fs.get("universe_count")
+        if universe_count in (None, ""):
+            universe_count = len(track_diagnostic) + len(track_dropped)
+        top_pick_count = fs.get("top_pick_count")
+        if top_pick_count in (None, ""):
+            top_pick_count = len(track_top_picks)
+        kept_count = fs.get("kept_count")
+        if kept_count in (None, ""):
+            kept_count = len(track_top_picks)
         per_track_summary[track_name] = {
             "label": cfg.get("label", track_name),
             "keep_threshold": fs.get("keep_threshold"),
             "strict_top_pick_threshold": fs.get("strict_top_pick_threshold"),
-            "universe_count": fs.get("universe_count", 0),
-            "kept_count": fs.get("kept_count", 0),
-            "top_pick_count": fs.get("top_pick_count", 0),
+            "universe_count": universe_count,
+            "kept_count": kept_count,
+            "top_pick_count": top_pick_count,
             "diagnostic_scorecard_count": fs.get("diagnostic_scorecard_count", 0),
             "near_miss_candidate_count": fs.get("near_miss_candidate_count", 0),
         }
-        total_universe += fs.get("universe_count", 0)
-        total_kept += fs.get("kept_count", 0)
+        total_universe += int(universe_count or 0)
+        total_kept += int(kept_count or 0)
 
-        all_top_picks.extend(enriched.get("top_picks", []))
-        all_dropped.extend(enriched.get("dropped", []))
-        all_diagnostic_scorecard.extend(enriched.get("diagnostic_scorecard", []))
+        all_top_picks.extend(track_top_picks)
+        all_dropped.extend(track_dropped)
+        all_diagnostic_scorecard.extend(track_diagnostic)
         all_near_miss.extend(enriched.get("near_miss_candidates", []))
         all_midday_action.extend(enriched.get("midday_action_summary", []))
 

@@ -261,6 +261,45 @@ class MergeTrackResultsTests(unittest.TestCase):
         self.assertEqual(per_track["main_board"]["label"], "主板")
         self.assertEqual(per_track["chinext"]["label"], "创业板")
 
+    def test_per_track_summary_counts_use_actual_track_result_contents(self):
+        """Per-track summary should reflect actual lists even when filter_summary omits counts."""
+        results = {
+            "main_board": {
+                "top_picks": [{"ticker": "000988.SZ"}],
+                "dropped": [{"ticker": "600519.SS"}],
+                "diagnostic_scorecard": [{"ticker": "000988.SZ"}],
+                "near_miss_candidates": [{"ticker": "002384.SZ"}],
+                "midday_action_summary": [],
+                "tier_output": {"T1": [{"ticker": "000988.SZ"}], "T2": [], "T3": [{"ticker": "002384.SZ"}], "T4": []},
+                "filter_summary": {
+                    "kept_count": 1,
+                    "keep_threshold": 58.0,
+                },
+                "_track_name": "main_board",
+            },
+            "chinext": {
+                "top_picks": [{"ticker": "300857.SZ"}, {"ticker": "300620.SZ"}],
+                "dropped": [{"ticker": "300476.SZ"}],
+                "diagnostic_scorecard": [{"ticker": "300857.SZ"}, {"ticker": "300620.SZ"}],
+                "near_miss_candidates": [{"ticker": "300308.SZ"}],
+                "midday_action_summary": [],
+                "tier_output": {"T1": [{"ticker": "300857.SZ"}, {"ticker": "300620.SZ"}], "T2": [], "T3": [{"ticker": "300308.SZ"}], "T4": []},
+                "filter_summary": {
+                    "kept_count": 2,
+                    "keep_threshold": 56.0,
+                },
+                "_track_name": "chinext",
+            },
+        }
+        merged = m.merge_track_results(results, m.TRACK_CONFIGS)
+        per_track = merged["filter_summary"]["per_track"]
+        self.assertEqual(per_track["main_board"]["top_pick_count"], 1)
+        self.assertEqual(per_track["chinext"]["top_pick_count"], 2)
+        self.assertEqual(per_track["main_board"]["universe_count"], 2)
+        self.assertEqual(per_track["chinext"]["universe_count"], 3)
+        self.assertEqual(merged["filter_summary"]["top_pick_count"], 3)
+        self.assertEqual(merged["filter_summary"]["universe_count"], 5)
+
     def test_report_markdown_has_track_sections(self):
         """Report markdown should have separate sections for each track."""
         results = {
