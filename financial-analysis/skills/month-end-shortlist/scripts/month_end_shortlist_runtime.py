@@ -149,6 +149,26 @@ TRACK_CONFIGS: dict[str, dict[str, Any]] = {
     },
 }
 
+GEOPOLITICS_REGIME_LABELS = frozenset({
+    "escalation",
+    "de_escalation",
+    "whipsaw",
+})
+
+GEOPOLITICS_BENEFICIARY_CHAINS = frozenset({
+    "oil_shipping",
+    "energy",
+    "gold",
+    "defense",
+})
+
+GEOPOLITICS_HEADWIND_CHAINS = frozenset({
+    "cost_sensitive_chemicals",
+    "airlines",
+    "export_chain",
+    "high_beta_growth",
+})
+
 
 def wrap_bars_fetcher_with_benchmark_fallback(base_fetcher: BarsFetcher) -> BarsFetcher:
     def wrapped(ticker: str, start_date: str, end_date: str) -> list[dict[str, Any]]:
@@ -184,6 +204,41 @@ def unique_strings(values: list[Any]) -> list[str]:
         if text and text not in result:
             result.append(text)
     return result
+
+
+def normalize_macro_geopolitics_overlay(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    regime_label = clean_text(raw.get("regime_label"))
+    if regime_label not in GEOPOLITICS_REGIME_LABELS:
+        return None
+
+    overlay: dict[str, Any] = {"regime_label": regime_label}
+    confidence = clean_text(raw.get("confidence"))
+    if confidence:
+        overlay["confidence"] = confidence
+    headline_risk = clean_text(raw.get("headline_risk"))
+    if headline_risk:
+        overlay["headline_risk"] = headline_risk
+
+    beneficiary_chains = [
+        item for item in unique_strings(raw.get("beneficiary_chains") or [])
+        if item in GEOPOLITICS_BENEFICIARY_CHAINS
+    ]
+    if beneficiary_chains:
+        overlay["beneficiary_chains"] = beneficiary_chains
+
+    headwind_chains = [
+        item for item in unique_strings(raw.get("headwind_chains") or [])
+        if item in GEOPOLITICS_HEADWIND_CHAINS
+    ]
+    if headwind_chains:
+        overlay["headwind_chains"] = headwind_chains
+
+    notes = clean_text(raw.get("notes"))
+    if notes:
+        overlay["notes"] = notes
+    return overlay
 
 
 def extract_x_style_overlays_from_result(batch_payload: dict[str, Any], selected_handles: list[str] | None = None) -> tuple[list[str], list[dict[str, Any]]]:
@@ -271,6 +326,11 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
         raw_payload,
         compiled_normalize_request(raw_payload),
     )
+    geopolitics_overlay = normalize_macro_geopolitics_overlay(raw_payload.get("macro_geopolitics_overlay"))
+    if geopolitics_overlay:
+        normalized["macro_geopolitics_overlay"] = geopolitics_overlay
+    else:
+        normalized.pop("macro_geopolitics_overlay", None)
     batch_path = clean_text(normalized.get("x_style_batch_result_path"))
     if batch_path:
         path = Path(batch_path).expanduser().resolve()

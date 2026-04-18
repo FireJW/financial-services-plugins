@@ -21,6 +21,48 @@ import month_end_shortlist_runtime as module_under_test
 
 
 class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
+    def test_normalize_request_preserves_cleaned_geopolitics_overlay(self) -> None:
+        normalized = module_under_test.normalize_request(
+            {
+                "template_name": "month_end_shortlist",
+                "target_date": "2026-04-21",
+                "filter_profile": "month_end_event_support_transition",
+                "macro_geopolitics_overlay": {
+                    "regime_label": "escalation",
+                    "confidence": "medium",
+                    "headline_risk": "high",
+                    "beneficiary_chains": ["oil_shipping", "gold", "unknown_chain"],
+                    "headwind_chains": ["airlines", "high_beta_growth", "mystery"],
+                    "notes": "Hormuz disruption risk repriced.",
+                    "extra_field": "drop-me",
+                },
+            }
+        )
+
+        self.assertIn("macro_geopolitics_overlay", normalized)
+        overlay = normalized["macro_geopolitics_overlay"]
+        self.assertEqual(overlay["regime_label"], "escalation")
+        self.assertEqual(overlay["beneficiary_chains"], ["oil_shipping", "gold"])
+        self.assertEqual(overlay["headwind_chains"], ["airlines", "high_beta_growth"])
+        self.assertEqual(overlay["notes"], "Hormuz disruption risk repriced.")
+        self.assertNotIn("extra_field", overlay)
+
+    def test_normalize_request_drops_invalid_geopolitics_overlay(self) -> None:
+        normalized = module_under_test.normalize_request(
+            {
+                "template_name": "month_end_shortlist",
+                "target_date": "2026-04-21",
+                "filter_profile": "month_end_event_support_transition",
+                "macro_geopolitics_overlay": {
+                    "regime_label": "headline_noise",
+                    "beneficiary_chains": ["oil_shipping"],
+                    "headwind_chains": ["airlines"],
+                },
+            }
+        )
+
+        self.assertNotIn("macro_geopolitics_overlay", normalized)
+
     def test_normalize_request_preserves_event_support_transition_profile(self) -> None:
         normalized = module_under_test.normalize_request(
             {
