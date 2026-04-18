@@ -13,6 +13,8 @@ from article_workflow_runtime import run_article_workflow
 from hot_topic_discovery_runtime import run_hot_topic_discovery
 from news_index_runtime import isoformat_or_blank, load_json, parse_datetime, short_excerpt, write_json
 from workflow_publication_gate_runtime import build_workflow_publication_gate
+from toutiao_fast_card_runtime import build_toutiao_fast_card_package
+from toutiao_draftbox_runtime import push_fast_card_to_toutiao
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -168,6 +170,10 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "discovery_top_n": int(payload.get("discovery_top_n", 3) or 3),
         "output_dir": output_dir,
         "push_to_wechat": bool(payload.get("push_to_wechat")),
+        "push_to_toutiao": bool(payload.get("push_to_toutiao")),
+        "toutiao_browser_session": safe_dict(payload.get("toutiao_browser_session")),
+        "wechat_cta_text": clean_text(payload.get("wechat_cta_text")),
+        "boundary_statement": clean_text(payload.get("boundary_statement")),
         "human_review_approved": bool(payload.get("human_review_approved")),
         "human_review_approved_by": clean_text(payload.get("human_review_approved_by")),
         "human_review_note": clean_text(payload.get("human_review_note")),
@@ -1358,6 +1364,18 @@ def build_report_markdown(result: dict[str, Any]) -> str:
     ]
     if clean_text(push_stage.get("error_message")):
         lines.append(f"- Error: {clean_text(push_stage.get('error_message'))}")
+    toutiao_stage = safe_dict(result.get("toutiao_stage"))
+    if toutiao_stage.get("status") != "not_requested":
+        lines.append("")
+        lines.append("## Toutiao Fast Card Push")
+        lines.append("")
+        lines.append(f"- Status: {clean_text(toutiao_stage.get('status'))}")
+        if clean_text(toutiao_stage.get("article_url")):
+            lines.append(f"- Article URL: {clean_text(toutiao_stage.get('article_url'))}")
+        if clean_text(toutiao_stage.get("blocked_reason")):
+            lines.append(f"- Blocked: {clean_text(toutiao_stage.get('blocked_reason'))}")
+        if clean_text(toutiao_stage.get("error_message")):
+            lines.append(f"- Error: {clean_text(toutiao_stage.get('error_message'))}")
     if style_memory:
         lines.extend(
             [
@@ -1505,6 +1523,48 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
                 push_stage["blocked_reason"] = "push_failed"
                 push_stage["error_message"] = clean_text(exc)
 
+    # --- Toutiao Fast Card ---
+    toutiao_stage = {
+        "attempted": False,
+        "status": "not_requested",
+        "review_gate_status": review_gate["status"],
+        "result_path": str(request["output_dir"] / "toutiao-push-result.json"),
+    }
+    toutiao_fast_card_package = None
+
+    if request["push_to_toutiao"]:
+        toutiao_fast_card_package = build_toutiao_fast_card_package(
+            workflow_result, selected_topic, request,
+        )
+        toutiao_card_path = request["output_dir"] / "toutiao-fast-card-package.json"
+        write_json(toutiao_card_path, toutiao_fast_card_package)
+
+        if not review_gate["approved"]:
+            toutiao_stage["status"] = "blocked_review_gate"
+            toutiao_stage["blocked_reason"] = "human_review_not_approved"
+        else:
+            toutiao_stage["attempted"] = True
+            try:
+                toutiao_push_result = push_fast_card_to_toutiao(
+                    {
+                        "fast_card_package": toutiao_fast_card_package,
+                        "push_backend": clean_text(request.get("push_backend")) or "browser_session",
+                        "human_review_approved": request["human_review_approved"],
+                        "human_review_approved_by": request["human_review_approved_by"],
+                        "human_review_note": request["human_review_note"],
+                        "timeout_seconds": request["timeout_seconds"],
+                        "browser_session": request["toutiao_browser_session"],
+                    },
+                    browser_runner=None,
+                )
+                write_json(Path(toutiao_stage["result_path"]), toutiao_push_result)
+                toutiao_stage["status"] = clean_text(toutiao_push_result.get("status")) or "ok"
+                toutiao_stage["article_url"] = clean_text(toutiao_push_result.get("article_url"))
+            except Exception as exc:
+                toutiao_stage["status"] = "error"
+                toutiao_stage["blocked_reason"] = "push_failed"
+                toutiao_stage["error_message"] = clean_text(exc)
+
     result = {
         "status": status,
         "workflow_kind": "article_publish",
@@ -1528,6 +1588,8 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "workflow_manual_review": safe_dict(workflow_publication_gate.get("manual_review")),
         "workflow_publication_gate": workflow_publication_gate,
         "push_stage": push_stage,
+        "toutiao_stage": toutiao_stage,
+        "toutiao_fast_card_package": toutiao_fast_card_package,
         "topic": clean_text(selected_topic.get("title")),
         "next_push_command": f"financial-analysis\\skills\\autoresearch-info-index\\scripts\\run_wechat_push_draft.cmd \"{publish_package_path}\"",
     }
