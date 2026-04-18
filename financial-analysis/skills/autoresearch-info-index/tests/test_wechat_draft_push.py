@@ -619,6 +619,47 @@ class WechatDraftPushTests(unittest.TestCase):
         self.assertTrue(Path(result["publish_package_path"]).exists())
         self.assertTrue(Path(result["wechat_html_path"]).exists())
 
+    def test_article_publish_builds_toutiao_fast_card_when_requested(self) -> None:
+        fake_wechat_push_result = {
+            "status": "ok",
+            "review_gate": {"status": "approved"},
+            "workflow_publication_gate": {"publication_readiness": "ready", "manual_review": {}},
+            "draft_result": {"media_id": "draft-123"},
+            "uploaded_cover": {"media_id": "cover-123"},
+            "uploaded_inline_images": [],
+        }
+        fake_toutiao_push_result = {
+            "status": "ok",
+            "push_backend": "browser_session",
+            "review_gate": {"status": "approved"},
+            "browser_session": {"manifest_path": "", "result_path": ""},
+            "article_url": "",
+        }
+        with patch("article_publish_runtime.push_publish_package_to_wechat", return_value=fake_wechat_push_result):
+            with patch("article_publish_runtime.push_fast_card_to_toutiao", return_value=fake_toutiao_push_result):
+                result = run_article_publish(
+                    {
+                        "analysis_time": "2026-04-18T10:00:00+00:00",
+                        "manual_topic_candidates": self.manual_topic_candidates(),
+                        "audience_keywords": ["AI", "business"],
+                        "output_dir": str(self.temp_dir / "publish-toutiao"),
+                        "push_to_wechat": True,
+                        "push_to_toutiao": True,
+                        "human_review_approved": True,
+                        "human_review_approved_by": "Editor",
+                        "wechat_app_id": "wx-test",
+                        "wechat_app_secret": "secret-test",
+                        "allow_insecure_inline_credentials": True,
+                        "cover_image_path": str(self.image_path),
+                    }
+                )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["toutiao_stage"]["status"], "ok")
+        self.assertTrue(result["toutiao_stage"]["attempted"])
+        self.assertIsNotNone(result["toutiao_fast_card_package"])
+        self.assertEqual(result["toutiao_fast_card_package"]["contract_version"], "toutiao-fast-card-package/v1")
+        self.assertIn("## Toutiao Fast Card Push", result["report_markdown"])
+
 
 if __name__ == "__main__":
     unittest.main()
