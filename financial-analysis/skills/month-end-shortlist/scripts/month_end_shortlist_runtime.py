@@ -104,12 +104,48 @@ WRAPPER_FILTER_PROFILE_OVERRIDES: dict[str, dict[str, float]] = {
     # Recovered from a validated historical artifact until the compiled runtime
     # regains native support for this documented profile.
     "month_end_event_support_transition": {
-        "keep_threshold": 58.0,
-        "strict_top_pick_threshold": 59.0,
+        "keep_threshold": 56.0,
+        "strict_top_pick_threshold": 58.0,
     },
     "broad_coverage_mode": {
         "keep_threshold": 55.0,
         "strict_top_pick_threshold": 57.0,
+    },
+}
+
+# Board-specific threshold adjustments (legacy single-pool mode).
+# Retained for backward compatibility; multi-track mode uses TRACK_CONFIGS.
+BOARD_THRESHOLD_OVERRIDES: dict[str, dict[str, float]] = {
+    "main_board": {
+        "keep_threshold": 58.0,
+        "strict_top_pick_threshold": 59.0,
+    },
+}
+
+# Multi-track board-separated pipeline configuration.
+# Each key is a track name; board_values lists the return values of
+# _compiled.classify_board(ticker) that belong to this track.
+# Candidates whose board is not covered by any track are dropped with
+# "outside_track_scope".  To add a new track (e.g. star / 科创板),
+# simply add an entry here.
+TRACK_CONFIGS: dict[str, dict[str, Any]] = {
+    "main_board": {
+        "label": "主板",
+        "board_values": ("main_board",),
+        "keep_threshold": 58.0,
+        "strict_top_pick_threshold": 59.0,
+        "tier_caps": {"T1": 10, "T2": 5, "T3": 8, "T4": 5},
+        "min_coverage_target": 10,
+        "two_round_threshold": 3,
+    },
+    "chinext": {
+        "label": "创业板",
+        "board_values": ("chinext",),
+        "keep_threshold": 56.0,
+        "strict_top_pick_threshold": 58.0,
+        "tier_caps": {"T1": 10, "T2": 5, "T3": 8, "T4": 5},
+        "min_coverage_target": 10,
+        "two_round_threshold": 3,
     },
 }
 
@@ -187,6 +223,18 @@ def apply_wrapper_filter_profile_override(raw_payload: dict[str, Any], normalize
         normalized[key] = value
         profile_settings[key] = value
     normalized["profile_settings"] = profile_settings
+
+    # In multi-track mode, per-track payloads carry track-specific thresholds
+    # that must override the profile-level defaults applied above.
+    track_name = raw_payload.get("_track_name")
+    if track_name:
+        track_cfg = raw_payload.get("_track_config") or TRACK_CONFIGS.get(track_name, {})
+        for key in ("keep_threshold", "strict_top_pick_threshold"):
+            if key in track_cfg:
+                normalized[key] = track_cfg[key]
+                profile_settings[key] = track_cfg[key]
+        normalized["profile_settings"] = profile_settings
+
     return normalized
 
 
@@ -441,6 +489,137 @@ def build_diagnostic_scorecard_entry(candidate: dict[str, Any], keep_threshold: 
         "liquidity": score_components.get("liquidity_and_participation_score"),
     }
     return entry
+
+
+def apply_board_threshold_overrides(
+    scorecard: list[dict[str, Any]],
+    profile: str,
+    base_keep_threshold: float,
+) -> tuple[list[dict[str, Any]], dict[str, float]]:
+    """Re-evaluate keep / gap per candidate using board-specific thresholds.
+
+    The compiled runtime runs with the *lowest* keep_threshold so no candidate
+    is prematurely discarded.  This function tightens the gate for boards that
+    have a higher threshold (e.g. main_board 58 vs chinext 56).
+
+    Returns (updated_scorecard, effective_thresholds_by_board).
+    Only active for ``month_end_event_support_transition`` profile.
+    """
+    if profile != "month_end_event_support_transition" or not BOARD_THRESHOLD_OVERRIDES:
+        return scorecard, {}
+
+    effective: dict[str, float] = {}
+    for entry in scorecard:
+        ticker = str(entry.get("ticker") or "")
+        board = _compiled.classify_board(ticker)
+        override = BOARD_THRESHOLD_OVERRIDES.get(board)
+        board_keep = override["keep_threshold"] if override else base_keep_threshold
+        effective[board] = board_keep
+
+        score = entry.get("score")
+        if score is None:
+            continue
+
+        old_gap = entry.get("keep_threshold_gap")
+        new_gap = round(float(score) - board_keep, 2)
+        entry["keep_threshold_gap"] = new_gap
+        entry["board"] = board
+        entry["board_keep_threshold"] = board_keep
+
+        # Demote: core said keep but score < board threshold
+        if entry.get("keep") and score < board_keep:
+            entry["keep"] = False
+            entry["tier_tags"] = entry.get("tier_tags", []) + ["board_demoted"]
+
+        # Promote: core said not-keep but score >= board threshold and no hard failures
+        hard_failures = set(entry.get("hard_filter_failures") or [])
+        if (
+            not entry.get("keep")
+            and score >= board_keep
+            and not hard_failures - {"score_below_keep_threshold"}
+        ):
+            entry["keep"] = True
+            entry["tier_tags"] = entry.get("tier_tags", []) + ["board_promoted"]
+
+    return scorecard, effective
+
+
+def split_universe_by_board(
+    prepared_payload: dict[str, Any],
+    track_configs: dict[str, dict[str, Any]] | None = None,
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+    """Split a prepared request into per-track payloads by board classification.
+
+    Returns ``(track_payloads, out_of_scope)`` where *track_payloads* maps
+    track name to a deep-copied request whose ``universe_candidates`` and
+    ``candidate_tickers`` contain only candidates belonging to that track, and
+    *out_of_scope* is a list of candidate dicts that did not match any track
+    (e.g. star-board tickers).
+
+    Each track payload also has ``keep_threshold`` and
+    ``strict_top_pick_threshold`` overridden from the track config.
+    """
+    configs = track_configs or TRACK_CONFIGS
+    # Build a reverse lookup: board_value -> track_name
+    board_to_track: dict[str, str] = {}
+    for track_name, cfg in configs.items():
+        for bv in cfg.get("board_values", ()):
+            board_to_track[bv] = track_name
+
+    universe = prepared_payload.get("universe_candidates") or []
+    candidate_tickers = [clean_text(t) for t in prepared_payload.get("candidate_tickers", []) if clean_text(t)]
+    history_by_ticker = prepared_payload.get("history_by_ticker") or {}
+
+    # Classify each candidate
+    track_candidates: dict[str, list[dict[str, Any]]] = {name: [] for name in configs}
+    track_tickers: dict[str, list[str]] = {name: [] for name in configs}
+    out_of_scope: list[dict[str, Any]] = []
+
+    for candidate in universe:
+        ticker = clean_text(candidate.get("ticker"))
+        if not ticker:
+            continue
+        board = _compiled.classify_board(ticker)
+        track_name = board_to_track.get(board)
+        if track_name:
+            track_candidates[track_name].append(candidate)
+        else:
+            out_of_scope.append({
+                "ticker": ticker,
+                "name": clean_text(candidate.get("name")) or ticker,
+                "board": board,
+                "drop_reason": "outside_track_scope",
+            })
+
+    # Also split candidate_tickers (for requests that use tickers instead of universe)
+    for ticker in candidate_tickers:
+        board = _compiled.classify_board(ticker)
+        track_name = board_to_track.get(board)
+        if track_name:
+            track_tickers[track_name].append(ticker)
+
+    # Build per-track payloads
+    track_payloads: dict[str, dict[str, Any]] = {}
+    for track_name, cfg in configs.items():
+        payload = deepcopy(prepared_payload)
+        payload["universe_candidates"] = track_candidates[track_name]
+        if candidate_tickers:
+            payload["candidate_tickers"] = track_tickers[track_name]
+        # Filter history_by_ticker to only this track's tickers
+        track_ticker_set = {clean_text(c.get("ticker")) for c in track_candidates[track_name]}
+        if history_by_ticker:
+            payload["history_by_ticker"] = {
+                k: v for k, v in history_by_ticker.items() if k in track_ticker_set
+            }
+        # Apply track-specific thresholds
+        payload["keep_threshold"] = cfg["keep_threshold"]
+        payload["strict_top_pick_threshold"] = cfg["strict_top_pick_threshold"]
+        # Tag the track
+        payload["_track_name"] = track_name
+        payload["_track_config"] = cfg
+        track_payloads[track_name] = payload
+
+    return track_payloads, out_of_scope
 
 
 def compute_independent_source_count(candidate: dict[str, Any]) -> int:
@@ -1374,6 +1553,7 @@ def build_chain_map_playbook(profiles: dict[str, list[str]] | None) -> str:
 
 def apply_rendered_caps(
     tiers: dict[str, list[dict[str, Any]]],
+    tier_caps: dict[str, int] | None = None,
 ) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
     """
     Enforce per-tier caps. Overflow candidates get [tier_cap_overflow] tag
@@ -1381,10 +1561,11 @@ def apply_rendered_caps(
 
     Returns: (capped_tiers, overflow_list)
     """
+    caps = tier_caps or TIER_CAPS
     overflow: list[dict[str, Any]] = []
     capped: dict[str, list[dict[str, Any]]] = {}
     for tier_name, candidates in tiers.items():
-        cap = TIER_CAPS.get(tier_name, 10)
+        cap = caps.get(tier_name, 10)
         sorted_candidates = sorted(
             candidates,
             key=lambda x: x.get("adjusted_total_score", 0),
@@ -1423,6 +1604,21 @@ def enrich_live_result_reporting(
         if isinstance(item, dict)
     ]
     if diagnostic_scorecard:
+        # Apply board-specific threshold overrides before near-miss / tier logic
+        request_obj = enriched.get("request") or {}
+        active_profile = clean_text(
+            filter_summary.get("profile")
+            or filter_summary.get("filter_profile")
+            or request_obj.get("filter_profile")
+        )
+        base_keep = float(filter_summary.get("keep_threshold", 60.0))
+        diagnostic_scorecard, board_thresholds = apply_board_threshold_overrides(
+            diagnostic_scorecard, active_profile, base_keep,
+        )
+        if board_thresholds:
+            filter_summary["board_thresholds"] = board_thresholds
+            enriched["filter_summary"] = filter_summary
+
         near_miss_candidates = build_near_miss_candidates(diagnostic_scorecard)
         near_miss_tickers = {clean_text(item.get("ticker")) for item in near_miss_candidates}
         for item in diagnostic_scorecard:
@@ -1658,6 +1854,369 @@ def enrich_live_result_reporting(
     return enriched
 
 
+# ---------------------------------------------------------------------------
+# Multi-track pipeline helpers
+# ---------------------------------------------------------------------------
+
+def enrich_track_result(
+    result: dict[str, Any],
+    failure_candidates: list[dict[str, Any]],
+    assessed_candidates: list[dict[str, Any]] | None = None,
+    *,
+    track_name: str = "",
+    track_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Enrich a single track's compiled-runtime result.
+
+    Similar to ``enrich_live_result_reporting`` but uses the track's own
+    keep_threshold and tier_caps instead of applying board overrides.
+    Discovery / event-card enrichment is intentionally omitted here; it
+    is handled once in ``merge_track_results`` across all tracks.
+    """
+    cfg = track_config or {}
+    enriched = enrich_degraded_live_result(result, failure_candidates)
+    dropped = [item for item in enriched.get("dropped", []) if isinstance(item, dict)]
+
+    filter_summary = dict(enriched.get("filter_summary") or {})
+    keep_threshold = float(cfg.get("keep_threshold") or filter_summary.get("keep_threshold", 60.0))
+    # Override filter_summary thresholds with track config
+    filter_summary["keep_threshold"] = keep_threshold
+    filter_summary["strict_top_pick_threshold"] = float(
+        cfg.get("strict_top_pick_threshold") or filter_summary.get("strict_top_pick_threshold", 62.0)
+    )
+    if track_name:
+        filter_summary["track_name"] = track_name
+        filter_summary["track_label"] = cfg.get("label", track_name)
+
+    if dropped:
+        drop_reason_counts: dict[str, int] = {}
+        for item in dropped:
+            for reason in split_drop_reasons(item.get("drop_reason")):
+                drop_reason_counts[reason] = drop_reason_counts.get(reason, 0) + 1
+        if drop_reason_counts:
+            filter_summary["drop_reason_counts"] = drop_reason_counts
+    enriched["filter_summary"] = filter_summary
+
+    diagnostic_scorecard = [
+        build_diagnostic_scorecard_entry(item, keep_threshold)
+        for item in (assessed_candidates or [])
+        if isinstance(item, dict)
+    ]
+    if diagnostic_scorecard:
+        # No board overrides needed — each track already has the correct threshold
+        near_miss_candidates = build_near_miss_candidates(diagnostic_scorecard)
+        near_miss_tickers = {clean_text(item.get("ticker")) for item in near_miss_candidates}
+        for item in diagnostic_scorecard:
+            item["midday_status"] = classify_midday_status(item, near_miss_tickers)
+            item["track_name"] = track_name
+        filter_summary["diagnostic_scorecard_count"] = len(diagnostic_scorecard)
+        enriched["filter_summary"] = filter_summary
+        enriched["diagnostic_scorecard"] = diagnostic_scorecard
+        enriched["midday_action_summary"] = build_midday_action_summary(diagnostic_scorecard)
+        if near_miss_candidates:
+            for item in near_miss_candidates:
+                item["midday_status"] = classify_midday_status(item, near_miss_tickers)
+                item["track_name"] = track_name
+            filter_summary["near_miss_candidate_count"] = len(near_miss_candidates)
+            enriched["filter_summary"] = filter_summary
+            enriched["near_miss_candidates"] = near_miss_candidates
+
+        # Tier assignment with track-specific caps
+        top_picks = [item for item in diagnostic_scorecard if item.get("keep")]
+        near_miss_for_tiers = enriched.get("near_miss_candidates", [])
+        # Discovery results are empty at track level — merged later
+        discovery_results: dict[str, list[dict[str, Any]]] = {"qualified": [], "watch": [], "track": []}
+        tiers = assign_tiers(
+            top_picks, near_miss_for_tiers,
+            discovery_results, diagnostic_scorecard, keep_threshold,
+        )
+        track_tier_caps = cfg.get("tier_caps", TIER_CAPS)
+        capped_tiers, overflow = apply_rendered_caps(tiers, tier_caps=track_tier_caps)
+        enriched["tier_output"] = {
+            tier_name: [
+                {
+                    "ticker": clean_text(c.get("ticker")),
+                    "name": clean_text(c.get("name")),
+                    "score": c.get("score") or c.get("adjusted_total_score"),
+                    "wrapper_tier": c.get("wrapper_tier"),
+                    "tier_tags": c.get("tier_tags", []),
+                    "track_name": track_name,
+                }
+                for c in candidates
+            ]
+            for tier_name, candidates in capped_tiers.items()
+        }
+        enriched["tier_metadata"] = {
+            "total_rendered": sum(len(v) for v in capped_tiers.values()),
+            "overflow_count": len(overflow),
+            "floor_policy_applied": any(
+                "coverage_fill" in c.get("tier_tags", [])
+                for tier in capped_tiers.values() for c in tier
+            ),
+            "track_name": track_name,
+        }
+
+    enriched["_track_name"] = track_name
+    enriched["_track_config"] = cfg
+    return enriched
+
+
+def _build_track_report_section(
+    track_name: str,
+    track_config: dict[str, Any],
+    enriched: dict[str, Any],
+) -> list[str]:
+    """Build markdown lines for a single track's section in the report."""
+    label = track_config.get("label", track_name)
+    lines: list[str] = [f"## {label} ({track_name})"]
+
+    top_picks = enriched.get("top_picks", [])
+    if isinstance(top_picks, list) and top_picks:
+        lines.extend(["", "### Top Picks", ""])
+        for item in top_picks:
+            ticker = clean_text(item.get("ticker")) or "unknown"
+            name = clean_text(item.get("name")) or ticker
+            lines.append(f"- `{ticker}` {name}")
+    else:
+        lines.extend(["", "### Top Picks", "", "- None"])
+
+    dropped = [item for item in enriched.get("dropped", []) if isinstance(item, dict)]
+    if dropped:
+        lines.extend(["", "### Dropped Candidates", ""])
+        for item in dropped:
+            ticker = clean_text(item.get("ticker")) or "unknown"
+            name = clean_text(item.get("name")) or ticker
+            reason = clean_text(item.get("drop_reason")) or "dropped"
+            lines.append(f"- `{ticker}` {name}: `{reason}`")
+
+    diagnostic_scorecard = enriched.get("diagnostic_scorecard", [])
+    if diagnostic_scorecard:
+        lines.extend(["", "### Diagnostic Scorecard", ""])
+        for item in diagnostic_scorecard:
+            ticker = clean_text(item.get("ticker")) or "unknown"
+            name = clean_text(item.get("name")) or ticker
+            score = item.get("score")
+            gap = item.get("keep_threshold_gap")
+            failures = ",".join(item.get("hard_filter_failures", [])) if isinstance(item.get("hard_filter_failures"), list) else clean_text(item.get("hard_filter_failures"))
+            components = item.get("diagnostic_components") if isinstance(item.get("diagnostic_components"), dict) else {}
+            component_summary = " / ".join(
+                f"{lbl}=`{components[lbl]}`"
+                for lbl in ("trend", "rs", "catalyst", "liquidity")
+                if components.get(lbl) not in (None, "")
+            )
+            lines.append(
+                f"- `{ticker}` {name}: status=`{item.get('midday_status')}` score=`{score}` gap=`{gap}`"
+                + (f" {component_summary}" if component_summary else "")
+                + f" failures=`{failures or 'none'}`"
+            )
+
+    near_miss_candidates = enriched.get("near_miss_candidates", [])
+    if isinstance(near_miss_candidates, list) and near_miss_candidates:
+        lines.extend(["", "### Near Miss Candidates", ""])
+        for item in near_miss_candidates:
+            ticker = clean_text(item.get("ticker")) or "unknown"
+            name = clean_text(item.get("name")) or ticker
+            score = item.get("score")
+            gap = item.get("keep_threshold_gap")
+            lines.append(f"- `{ticker}` {name}: status=`{item.get('midday_status')}` score=`{score}` gap=`{gap}`")
+
+    midday_action_summary = enriched.get("midday_action_summary", [])
+    if isinstance(midday_action_summary, list) and midday_action_summary:
+        lines.extend(["", "### 午盘操作建议摘要", ""])
+        for item in midday_action_summary:
+            ticker = clean_text(item.get("ticker")) or "unknown"
+            name = clean_text(item.get("name")) or ticker
+            action = clean_text(item.get("action")) or "继续观察"
+            score = item.get("score")
+            gap = item.get("keep_threshold_gap")
+            lines.append(f"- `{ticker}` {name}: `{action}` score=`{score}` gap=`{gap}`")
+
+    return lines
+
+
+def merge_track_results(
+    track_results: dict[str, dict[str, Any]],
+    track_configs: dict[str, dict[str, Any]],
+    *,
+    discovery_candidates: list[dict[str, Any]] | None = None,
+    discovery_context: dict[str, Any] | None = None,
+    all_assessed: list[dict[str, Any]] | None = None,
+    out_of_scope_dropped: list[dict[str, Any]] | None = None,
+    base_request: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Merge per-track enriched results into a single output dict.
+
+    Produces a unified result with:
+    - ``track_results``: the per-track enriched dicts (keyed by track name)
+    - ``filter_summary``: merged summary with per-track breakdowns
+    - ``diagnostic_scorecard``: combined from all tracks
+    - ``dropped``: combined from all tracks + out-of-scope
+    - ``top_picks``: combined from all tracks
+    - ``report_markdown``: per-track sections + shared discovery section
+    - Discovery / event-card enrichment applied once across all tracks
+    """
+    merged: dict[str, Any] = {}
+    merged["track_results"] = track_results
+    merged["request"] = base_request or {}
+
+    # Combine top_picks, dropped, diagnostic_scorecard, near_miss, midday_action
+    all_top_picks: list[dict[str, Any]] = []
+    all_dropped: list[dict[str, Any]] = list(out_of_scope_dropped or [])
+    all_diagnostic_scorecard: list[dict[str, Any]] = []
+    all_near_miss: list[dict[str, Any]] = []
+    all_midday_action: list[dict[str, Any]] = []
+    combined_tier_output: dict[str, list[dict[str, Any]]] = {"T1": [], "T2": [], "T3": [], "T4": []}
+
+    per_track_summary: dict[str, dict[str, Any]] = {}
+    total_universe = 0
+    total_kept = 0
+
+    for track_name, enriched in track_results.items():
+        cfg = track_configs.get(track_name, {})
+        fs = enriched.get("filter_summary", {})
+        per_track_summary[track_name] = {
+            "label": cfg.get("label", track_name),
+            "keep_threshold": fs.get("keep_threshold"),
+            "strict_top_pick_threshold": fs.get("strict_top_pick_threshold"),
+            "universe_count": fs.get("universe_count", 0),
+            "kept_count": fs.get("kept_count", 0),
+            "top_pick_count": fs.get("top_pick_count", 0),
+            "diagnostic_scorecard_count": fs.get("diagnostic_scorecard_count", 0),
+            "near_miss_candidate_count": fs.get("near_miss_candidate_count", 0),
+        }
+        total_universe += fs.get("universe_count", 0)
+        total_kept += fs.get("kept_count", 0)
+
+        all_top_picks.extend(enriched.get("top_picks", []))
+        all_dropped.extend(enriched.get("dropped", []))
+        all_diagnostic_scorecard.extend(enriched.get("diagnostic_scorecard", []))
+        all_near_miss.extend(enriched.get("near_miss_candidates", []))
+        all_midday_action.extend(enriched.get("midday_action_summary", []))
+
+        tier_output = enriched.get("tier_output", {})
+        for tier_name in combined_tier_output:
+            combined_tier_output[tier_name].extend(tier_output.get(tier_name, []))
+
+    merged["top_picks"] = all_top_picks
+    merged["dropped"] = all_dropped
+    merged["diagnostic_scorecard"] = all_diagnostic_scorecard
+    merged["near_miss_candidates"] = all_near_miss
+    merged["midday_action_summary"] = all_midday_action
+    merged["tier_output"] = combined_tier_output
+    merged["filter_summary"] = {
+        "universe_count": total_universe,
+        "kept_count": total_kept,
+        "top_pick_count": len(all_top_picks),
+        "per_track": per_track_summary,
+    }
+
+    # --- Discovery / event-card enrichment (shared across tracks) ---
+    all_assessed_combined = list(all_assessed or [])
+    auto_discovery_candidates = build_auto_discovery_candidates(all_assessed_combined)
+    discovery_rows = build_discovery_candidates(
+        merge_discovery_candidate_inputs(list(discovery_candidates or []), auto_discovery_candidates)
+    )
+    if discovery_rows:
+        event_cards = enrich_event_cards_with_chain_context(build_event_cards(discovery_rows), discovery_context)
+        merged["event_cards"] = event_cards
+        merged["discovery_lane_summary"] = build_discovery_lane_summary(event_cards)
+        merged["chain_map_entries"] = build_chain_map_entries(event_cards, discovery_context)
+        merged["directly_actionable"] = [row for row in event_cards if row.get("discovery_bucket") == "qualified"][:MAX_REPORTED_TOP_PICKS]
+        merged["priority_watchlist"] = [row for row in event_cards if row.get("discovery_bucket") == "watch"][:MAX_REPORTED_NEAR_MISS]
+        merged["chain_tracking"] = [row for row in event_cards if row.get("discovery_bucket") not in {"qualified", "watch"}][:MAX_REPORTED_BLOCKED]
+
+    # Decision factors & flow (across all tracks)
+    decision_factors = build_decision_factors_from_result(merged)
+    decision_flow: list[dict[str, Any]] = []
+    if any(decision_factors.values()):
+        merged["decision_factors"] = decision_factors
+        decision_flow = build_decision_flow(merged)
+        merged["decision_flow"] = decision_flow
+
+    # --- Report markdown ---
+    request_obj = base_request or {}
+    target_date = clean_text(request_obj.get("target_date") or request_obj.get("analysis_time") or "")
+    profile = clean_text(request_obj.get("filter_profile") or "")
+    header_lines = [
+        f"# Month-End Shortlist Report: {target_date}",
+        "",
+        f"- Template: `{clean_text(request_obj.get('template_name') or 'month_end_shortlist')}`",
+        f"- Filter profile: `{profile}`",
+        f"- Total universe: `{total_universe}`",
+        f"- Total kept: `{total_kept}`",
+    ]
+    for track_name, summary in per_track_summary.items():
+        header_lines.append(f"- {summary['label']}: universe=`{summary['universe_count']}` kept=`{summary['kept_count']}` keep_threshold=`{summary['keep_threshold']}`")
+
+    report_lines = header_lines
+
+    # Per-track sections
+    for track_name in track_configs:
+        enriched = track_results.get(track_name)
+        if not enriched:
+            continue
+        cfg = track_configs[track_name]
+        report_lines.append("")
+        report_lines.extend(_build_track_report_section(track_name, cfg, enriched))
+
+    # Out-of-scope dropped
+    if out_of_scope_dropped:
+        report_lines.extend(["", "## Out-of-Scope Dropped", ""])
+        for item in out_of_scope_dropped:
+            ticker = clean_text(item.get("ticker")) or "unknown"
+            name = clean_text(item.get("name")) or ticker
+            reason = clean_text(item.get("drop_reason")) or "outside_track_scope"
+            report_lines.append(f"- `{ticker}` {name}: `{reason}`")
+
+    # Shared discovery sections
+    directly_actionable = merged.get("directly_actionable", [])
+    if isinstance(directly_actionable, list) and directly_actionable:
+        report_lines.extend(["", "## 直接可执行", ""])
+        for item in directly_actionable:
+            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
+            report_lines.append(f"  - 事件: `{item.get('event_type')}`")
+            report_lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
+            report_lines.append(f"  - 链条: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
+
+    priority_watchlist = merged.get("priority_watchlist", [])
+    if isinstance(priority_watchlist, list) and priority_watchlist:
+        report_lines.extend(["", "## 重点观察", ""])
+        for item in priority_watchlist:
+            confidence = item.get("rumor_confidence_range", {})
+            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
+            report_lines.append(f"  - 事件: `{item.get('event_type')}`")
+            report_lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
+            report_lines.append(f"  - 可信度区间: `{confidence.get('label')}` `{confidence.get('range')}`")
+
+    chain_tracking = merged.get("chain_tracking", [])
+    if isinstance(chain_tracking, list) and chain_tracking:
+        report_lines.extend(["", "## 链条跟踪", ""])
+        for item in chain_tracking:
+            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
+
+    if decision_flow:
+        report_lines.extend(build_decision_flow_markdown(decision_flow))
+
+    event_cards = merged.get("event_cards", [])
+    if isinstance(event_cards, list) and event_cards:
+        report_lines.extend(["", "## Event Cards", ""])
+        for item in event_cards:
+            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
+            report_lines.append(f"  - 阶段: `{item.get('event_phase')}`")
+            report_lines.append(f"  - 预期判断: `{item.get('expectation_verdict')}`")
+            report_lines.append(f"  - {item.get('trading_profile_judgment')}")
+            report_lines.append(f"  - {item.get('trading_profile_usage')}")
+            metrics = item.get("headline_metrics") if isinstance(item.get("headline_metrics"), list) else []
+            if metrics:
+                report_lines.append(f"  - 关键数据: `{', '.join(metrics[:4])}`")
+            report_lines.append(f"  - primary_event_type: `{item.get('primary_event_type')}`")
+            report_lines.append(f"  - event_state: `{item.get('event_state', {}).get('label')}`")
+            report_lines.append(f"  - trading_usability: `{item.get('trading_usability', {}).get('label')}`")
+
+    merged["report_markdown"] = "\n".join(report_lines).strip() + "\n"
+    return merged
+
+
 def wrap_assess_candidate_with_bars_failure_fallback(
     base_assess_candidate: AssessCandidate,
     failure_log: list[dict[str, Any]] | None = None,
@@ -1705,6 +2264,13 @@ def run_month_end_shortlist(
     bars_fetcher: Any = default_bars_fetcher,
     html_fetcher: Any = _compiled.fetch_html,
 ) -> dict[str, Any]:
+    """Multi-track month-end shortlist pipeline.
+
+    1. Normalize and prepare the request (shared).
+    2. Split the universe by board into independent tracks.
+    3. Run the compiled core + per-track enrichment for each track.
+    4. Merge track results with shared discovery/event enrichment.
+    """
     failure_log: list[dict[str, Any]] = []
     assessed_log: list[dict[str, Any]] = []
     original_assess_candidate = _compiled.assess_candidate
@@ -1716,19 +2282,93 @@ def run_month_end_shortlist(
     )
     _compiled.normalize_request = lambda payload: normalize_request_with_compiled(payload, original_normalize_request)
     try:
+        safe_bars = wrap_bars_fetcher_with_benchmark_fallback(bars_fetcher)
         prepared_payload = prepare_request_with_candidate_snapshots(
             normalize_request_with_compiled(raw_payload, original_normalize_request),
-            bars_fetcher=wrap_bars_fetcher_with_benchmark_fallback(bars_fetcher),
+            bars_fetcher=safe_bars,
         )
         discovery_candidates = deepcopy(prepared_payload.get("event_discovery_candidates") or [])
         discovery_context = deepcopy(prepared_payload.get("x_discovery_context") or {})
-        result = _compiled.run_month_end_shortlist(
-            prepared_payload,
-            universe_fetcher=universe_fetcher,
-            bars_fetcher=wrap_bars_fetcher_with_benchmark_fallback(bars_fetcher),
-            html_fetcher=html_fetcher,
+
+        # --- Fetch full universe once, then split by board ---
+        full_universe = universe_fetcher(prepared_payload)
+        board_to_track: dict[str, str] = {}
+        for tn, cfg in TRACK_CONFIGS.items():
+            for bv in cfg.get("board_values", ()):
+                board_to_track[bv] = tn
+
+        track_universes: dict[str, list[dict[str, Any]]] = {tn: [] for tn in TRACK_CONFIGS}
+        out_of_scope: list[dict[str, Any]] = []
+        for candidate in full_universe:
+            ticker = str(candidate.get("ticker") or candidate.get("f12") or "").strip()
+            board = _compiled.classify_board(ticker)
+            tn = board_to_track.get(board)
+            if tn:
+                track_universes[tn].append(candidate)
+            else:
+                out_of_scope.append({
+                    "ticker": ticker,
+                    "name": str(candidate.get("name") or candidate.get("f14") or ticker),
+                    "board": board,
+                    "drop_reason": "outside_track_scope",
+                })
+
+        # --- Run each track independently ---
+        track_results: dict[str, dict[str, Any]] = {}
+        all_assessed: list[dict[str, Any]] = []
+        for track_name, track_cfg in TRACK_CONFIGS.items():
+            track_universe = track_universes[track_name]
+            # Build a frozen universe_fetcher that returns only this track's candidates
+            def make_track_fetcher(candidates: list[dict[str, Any]]):
+                def fetcher(request: dict[str, Any]) -> list[dict[str, Any]]:
+                    return candidates
+                return fetcher
+
+            # Build per-track payload with track-specific thresholds
+            track_payload = deepcopy(prepared_payload)
+            track_payload["keep_threshold"] = track_cfg["keep_threshold"]
+            track_payload["strict_top_pick_threshold"] = track_cfg["strict_top_pick_threshold"]
+            profile_settings = dict(track_payload.get("profile_settings") or {})
+            profile_settings["keep_threshold"] = track_cfg["keep_threshold"]
+            profile_settings["strict_top_pick_threshold"] = track_cfg["strict_top_pick_threshold"]
+            track_payload["profile_settings"] = profile_settings
+            # Tag so monkey-patched normalize_request applies track-specific thresholds
+            track_payload["_track_name"] = track_name
+            track_payload["_track_config"] = track_cfg
+
+            # Each track gets its own failure/assessed logs
+            track_failure_log: list[dict[str, Any]] = []
+            track_assessed_log: list[dict[str, Any]] = []
+            _compiled.assess_candidate = wrap_assess_candidate_with_bars_failure_fallback(
+                original_assess_candidate,
+                track_failure_log,
+                track_assessed_log,
+            )
+            result = _compiled.run_month_end_shortlist(
+                track_payload,
+                universe_fetcher=make_track_fetcher(track_universe),
+                bars_fetcher=safe_bars,
+                html_fetcher=html_fetcher,
+            )
+            enriched = enrich_track_result(
+                result,
+                track_failure_log,
+                track_assessed_log,
+                track_name=track_name,
+                track_config=track_cfg,
+            )
+            track_results[track_name] = enriched
+            all_assessed.extend(track_assessed_log)
+
+        return merge_track_results(
+            track_results,
+            TRACK_CONFIGS,
+            discovery_candidates=discovery_candidates,
+            discovery_context=discovery_context,
+            all_assessed=all_assessed,
+            out_of_scope_dropped=out_of_scope,
+            base_request=prepared_payload,
         )
-        return enrich_live_result_reporting(result, failure_log, assessed_log, discovery_candidates, discovery_context)
     finally:
         _compiled.assess_candidate = original_assess_candidate
         _compiled.normalize_request = original_normalize_request
@@ -1745,6 +2385,8 @@ for _extra in (
     "enrich_degraded_live_result",
     "enrich_live_result_reporting",
     "build_diagnostic_scorecard_entry",
+    "apply_board_threshold_overrides",
+    "BOARD_THRESHOLD_OVERRIDES",
     "build_near_miss_candidates",
     "classify_midday_status",
     "build_midday_action_summary",
@@ -1761,6 +2403,10 @@ for _extra in (
     "midday_action_for_status",
     "prepare_request_with_candidate_snapshots",
     "wrap_assess_candidate_with_bars_failure_fallback",
+    "TRACK_CONFIGS",
+    "split_universe_by_board",
+    "enrich_track_result",
+    "merge_track_results",
 ):
     if _extra not in __all__:
         __all__.append(_extra)

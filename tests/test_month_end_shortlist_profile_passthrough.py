@@ -32,10 +32,10 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
         )
 
         self.assertEqual(normalized["filter_profile"], "month_end_event_support_transition")
-        self.assertEqual(normalized["keep_threshold"], 58.0)
-        self.assertEqual(normalized["strict_top_pick_threshold"], 59.0)
-        self.assertEqual(normalized["profile_settings"]["keep_threshold"], 58.0)
-        self.assertEqual(normalized["profile_settings"]["strict_top_pick_threshold"], 59.0)
+        self.assertEqual(normalized["keep_threshold"], 56.0)
+        self.assertEqual(normalized["strict_top_pick_threshold"], 58.0)
+        self.assertEqual(normalized["profile_settings"]["keep_threshold"], 56.0)
+        self.assertEqual(normalized["profile_settings"]["strict_top_pick_threshold"], 58.0)
 
     def test_run_month_end_shortlist_preserves_profile_inside_compiled_runtime(self) -> None:
         captured: dict[str, object] = {}
@@ -66,8 +66,8 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
             )
 
         self.assertEqual(result["request"]["filter_profile"], "month_end_event_support_transition")
-        self.assertEqual(result["request"]["keep_threshold"], 58.0)
-        self.assertEqual(result["request"]["strict_top_pick_threshold"], 59.0)
+        self.assertEqual(result["request"]["keep_threshold"], 56.0)
+        self.assertEqual(result["request"]["strict_top_pick_threshold"], 58.0)
 
 
 if __name__ == "__main__":
