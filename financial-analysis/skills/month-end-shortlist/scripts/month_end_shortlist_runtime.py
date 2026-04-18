@@ -1831,9 +1831,39 @@ def build_decision_flow(enriched: dict[str, Any]) -> list[dict[str, Any]]:
     return ordered
 
 
+def build_geopolitics_candidate_summary_lines(
+    candidate: dict[str, Any] | None,
+    overlay: dict[str, Any] | None = None,
+) -> list[str]:
+    if not isinstance(candidate, dict):
+        return []
+
+    regime = clean_text(candidate.get("candidate_regime")) or "insufficient_signal"
+    confidence = clean_text(candidate.get("confidence")) or "low"
+    signal_alignment = clean_text(candidate.get("signal_alignment")) or "mixed"
+    status = clean_text(candidate.get("status")) or "candidate_only"
+    status_text = {
+        "candidate_only": "候选判断，尚未写入正式 overlay",
+        "accepted_as_overlay": "候选已被采纳为正式 overlay",
+        "conflicts_with_overlay": "候选与正式 overlay 不一致",
+        "insufficient_signal": "当前多源信号不足以形成稳定候选",
+    }.get(status, "候选判断，尚未写入正式 overlay")
+
+    lines = [
+        f"- 地缘候选判断：`{regime}`（{confidence}）",
+        f"- 信号对齐：{signal_alignment}",
+        f"- 状态：{status_text}",
+    ]
+    overlay_regime = clean_text((overlay or {}).get("regime_label"))
+    if overlay_regime:
+        lines.append(f"- 正式 overlay：`{overlay_regime}`")
+    return lines
+
+
 def build_decision_flow_markdown(
     decision_flow: list[dict[str, Any]],
     geopolitics_overlay: dict[str, Any] | None = None,
+    geopolitics_candidate: dict[str, Any] | None = None,
 ) -> list[str]:
     lines = ["", "## 决策流", ""]
     regime = clean_text((geopolitics_overlay or {}).get("regime_label"))
@@ -1848,6 +1878,13 @@ def build_decision_flow_markdown(
             meta_bits.append(f"headline_risk=`{headline_risk}`")
         if meta_bits:
             lines.append(f"- {' | '.join(meta_bits)}")
+        lines.append("")
+    candidate_lines = build_geopolitics_candidate_summary_lines(
+        geopolitics_candidate,
+        geopolitics_overlay,
+    )
+    if candidate_lines:
+        lines.extend(candidate_lines)
         lines.append("")
     for item in decision_flow:
         lines.append(
@@ -2373,7 +2410,8 @@ def enrich_live_result_reporting(
     event_cards = enriched.get("event_cards", [])
     if decision_flow and "## 决策流" not in "\n".join(lines):
         geopolitics_overlay = request_obj.get("macro_geopolitics_overlay") if isinstance(request_obj.get("macro_geopolitics_overlay"), dict) else None
-        lines.extend(build_decision_flow_markdown(decision_flow, geopolitics_overlay))
+        geopolitics_candidate = enriched.get("macro_geopolitics_candidate") if isinstance(enriched.get("macro_geopolitics_candidate"), dict) else None
+        lines.extend(build_decision_flow_markdown(decision_flow, geopolitics_overlay, geopolitics_candidate))
     if isinstance(event_cards, list) and event_cards and "## Event Cards" not in "\n".join(lines):
         lines.extend(["", "## Event Cards", ""])
         for item in event_cards:
@@ -2806,7 +2844,8 @@ def merge_track_results(
 
     if decision_flow:
         geopolitics_overlay = request_obj.get("macro_geopolitics_overlay") if isinstance(request_obj.get("macro_geopolitics_overlay"), dict) else None
-        report_lines.extend(build_decision_flow_markdown(decision_flow, geopolitics_overlay))
+        geopolitics_candidate = merged.get("macro_geopolitics_candidate") if isinstance(merged.get("macro_geopolitics_candidate"), dict) else None
+        report_lines.extend(build_decision_flow_markdown(decision_flow, geopolitics_overlay, geopolitics_candidate))
 
     event_cards = merged.get("event_cards", [])
     if isinstance(event_cards, list) and event_cards:
