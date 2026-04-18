@@ -21,6 +21,77 @@ import month_end_shortlist_runtime as module_under_test
 
 
 class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
+    def test_normalize_request_preserves_cleaned_geopolitics_candidate_input(self) -> None:
+        normalized = module_under_test.normalize_request(
+            {
+                "template_name": "month_end_shortlist",
+                "target_date": "2026-04-21",
+                "filter_profile": "month_end_event_support_transition",
+                "macro_geopolitics_candidate_input": {
+                    "news_signals": [
+                        {
+                            "source": "ap",
+                            "headline": "Shipping disruption fears rise",
+                            "summary": "Hormuz disruption risk repriced.",
+                            "direction_hint": "escalation",
+                            "timestamp": "2026-04-18T09:30:00+08:00",
+                        }
+                    ],
+                    "x_signals": [
+                        {
+                            "account": "MacroDesk",
+                            "url": "https://x.com/example/status/1",
+                            "summary": "Energy traders lean toward renewed supply fear.",
+                            "direction_hint": "escalation",
+                            "timestamp": "2026-04-18T09:40:00+08:00",
+                        }
+                    ],
+                    "market_signals": {
+                        "oil": "up",
+                        "gold": "up",
+                        "shipping": "up",
+                        "risk_style": "risk_off",
+                        "usd_rates": "tightening",
+                        "airlines": "down",
+                        "industrials": "down",
+                    },
+                    "ignored_field": "drop-me",
+                },
+            }
+        )
+
+        self.assertIn("macro_geopolitics_candidate_input", normalized)
+        candidate_input = normalized["macro_geopolitics_candidate_input"]
+        self.assertEqual(candidate_input["news_signals"][0]["direction_hint"], "escalation")
+        self.assertEqual(candidate_input["x_signals"][0]["account"], "MacroDesk")
+        self.assertEqual(candidate_input["market_signals"]["oil"], "up")
+        self.assertNotIn("ignored_field", candidate_input)
+
+    def test_candidate_input_does_not_auto_create_formal_overlay(self) -> None:
+        normalized = module_under_test.normalize_request(
+            {
+                "template_name": "month_end_shortlist",
+                "target_date": "2026-04-21",
+                "filter_profile": "month_end_event_support_transition",
+                "macro_geopolitics_candidate_input": {
+                    "news_signals": [
+                        {
+                            "headline": "Talks resume",
+                            "summary": "Transit may normalize.",
+                            "direction_hint": "de_escalation",
+                        }
+                    ],
+                    "market_signals": {
+                        "oil": "down",
+                        "gold": "down",
+                    },
+                },
+            }
+        )
+
+        self.assertIn("macro_geopolitics_candidate_input", normalized)
+        self.assertNotIn("macro_geopolitics_overlay", normalized)
+
     def test_normalize_request_preserves_cleaned_geopolitics_overlay(self) -> None:
         normalized = module_under_test.normalize_request(
             {

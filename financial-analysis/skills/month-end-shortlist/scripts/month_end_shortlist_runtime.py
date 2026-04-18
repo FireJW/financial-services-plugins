@@ -169,6 +169,22 @@ GEOPOLITICS_HEADWIND_CHAINS = frozenset({
     "high_beta_growth",
 })
 
+GEOPOLITICS_CANDIDATE_DIRECTIONS = frozenset({
+    "escalation",
+    "de_escalation",
+    "whipsaw",
+})
+
+GEOPOLITICS_MARKET_SIGNAL_VALUES: dict[str, frozenset[str]] = {
+    "oil": frozenset({"up", "down", "flat"}),
+    "gold": frozenset({"up", "down", "flat"}),
+    "shipping": frozenset({"up", "down", "flat"}),
+    "risk_style": frozenset({"risk_on", "risk_off", "mixed"}),
+    "usd_rates": frozenset({"tightening", "loosening", "mixed"}),
+    "airlines": frozenset({"up", "down", "flat"}),
+    "industrials": frozenset({"up", "down", "flat"}),
+}
+
 
 def wrap_bars_fetcher_with_benchmark_fallback(base_fetcher: BarsFetcher) -> BarsFetcher:
     def wrapped(ticker: str, start_date: str, end_date: str) -> list[dict[str, Any]]:
@@ -239,6 +255,82 @@ def normalize_macro_geopolitics_overlay(raw: Any) -> dict[str, Any] | None:
     if notes:
         overlay["notes"] = notes
     return overlay
+
+
+def normalize_candidate_signal_row(raw: Any, source_type: str) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    row: dict[str, Any] = {}
+    if source_type == "news":
+        source = clean_text(raw.get("source"))
+        headline = clean_text(raw.get("headline"))
+        if source:
+            row["source"] = source
+        if headline:
+            row["headline"] = headline
+    elif source_type == "x":
+        account = clean_text(raw.get("account"))
+        url = clean_text(raw.get("url"))
+        if account:
+            row["account"] = account
+        if url:
+            row["url"] = url
+
+    summary = clean_text(raw.get("summary"))
+    if summary:
+        row["summary"] = summary
+
+    direction_hint = clean_text(raw.get("direction_hint"))
+    if direction_hint in GEOPOLITICS_CANDIDATE_DIRECTIONS:
+        row["direction_hint"] = direction_hint
+
+    timestamp = clean_text(raw.get("timestamp"))
+    if timestamp:
+        row["timestamp"] = timestamp
+
+    return row or None
+
+
+def normalize_macro_geopolitics_candidate_input(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    normalized: dict[str, Any] = {}
+
+    news_rows = [
+        item
+        for item in (
+            normalize_candidate_signal_row(candidate, "news")
+            for candidate in (raw.get("news_signals") or [])
+        )
+        if item
+    ]
+    if news_rows:
+        normalized["news_signals"] = news_rows
+
+    x_rows = [
+        item
+        for item in (
+            normalize_candidate_signal_row(candidate, "x")
+            for candidate in (raw.get("x_signals") or [])
+        )
+        if item
+    ]
+    if x_rows:
+        normalized["x_signals"] = x_rows
+
+    market_raw = raw.get("market_signals")
+    if isinstance(market_raw, dict):
+        market_signals: dict[str, str] = {}
+        for key, allowed_values in GEOPOLITICS_MARKET_SIGNAL_VALUES.items():
+            value = clean_text(market_raw.get(key))
+            if value in allowed_values:
+                market_signals[key] = value
+        if market_signals:
+            normalized["market_signals"] = market_signals
+
+    return normalized or None
 
 
 def extract_x_style_overlays_from_result(batch_payload: dict[str, Any], selected_handles: list[str] | None = None) -> tuple[list[str], list[dict[str, Any]]]:
@@ -331,6 +423,13 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
         normalized["macro_geopolitics_overlay"] = geopolitics_overlay
     else:
         normalized.pop("macro_geopolitics_overlay", None)
+    geopolitics_candidate_input = normalize_macro_geopolitics_candidate_input(
+        raw_payload.get("macro_geopolitics_candidate_input")
+    )
+    if geopolitics_candidate_input:
+        normalized["macro_geopolitics_candidate_input"] = geopolitics_candidate_input
+    else:
+        normalized.pop("macro_geopolitics_candidate_input", None)
     batch_path = clean_text(normalized.get("x_style_batch_result_path"))
     if batch_path:
         path = Path(batch_path).expanduser().resolve()
