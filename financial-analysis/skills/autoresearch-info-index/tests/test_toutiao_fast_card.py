@@ -96,6 +96,47 @@ class ToutiaoFastCardTests(unittest.TestCase):
         self.assertTrue(result["plain_text"])
         self.assertIn("toutiao-fast-card-package/v1", result["contract_version"])
 
+    def test_falls_back_to_topic_summary_when_body_is_empty(self) -> None:
+        workflow_result = self._make_workflow_result()
+        workflow_result["final_article_result"]["body_markdown"] = ""
+        workflow_result["final_article_result"]["article_markdown"] = ""
+        result = build_toutiao_fast_card_package(
+            workflow_result,
+            self._make_selected_topic(),
+            self._make_request(),
+        )
+        self.assertEqual(result["contract_version"], "toutiao-fast-card-package/v1")
+        self.assertTrue(result["title"])
+        # takeaway falls back to topic summary
+        self.assertIn("Fed holds rates", result["one_line_takeaway"])
+        # conflict and watch use defaults
+        self.assertTrue(result["conflict_point"])
+        self.assertTrue(result["next_watch"])
+        self.assertEqual(len(result["segments"]), 7)
+
+    def test_custom_boundary_and_cta_override(self) -> None:
+        request = self._make_request()
+        request["wechat_cta_text"] = "关注公众号获取完整分析"
+        request["boundary_statement"] = "本文仅供研究参考"
+        result = build_toutiao_fast_card_package(
+            self._make_workflow_result(),
+            self._make_selected_topic(),
+            request,
+        )
+        self.assertEqual(result["cta"], "关注公众号获取完整分析")
+        self.assertEqual(result["boundary"], "本文仅供研究参考")
+        self.assertIn("关注公众号", result["plain_text"])
+
+    def test_keywords_propagated_from_topic(self) -> None:
+        result = build_toutiao_fast_card_package(
+            self._make_workflow_result(),
+            self._make_selected_topic(),
+            self._make_request(),
+        )
+        self.assertEqual(result["keywords"], ["Fed", "利率", "科技股"])
+        self.assertEqual(result["author"], "Codex")
+        self.assertEqual(result["analysis_time"], "2026-04-18T10:00:00+00:00")
+
 
 if __name__ == "__main__":
     unittest.main()
