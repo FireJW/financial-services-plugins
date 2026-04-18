@@ -699,6 +699,67 @@ def compute_independent_source_count(candidate: dict[str, Any]) -> int:
     return len(sources)
 
 
+def classify_geopolitics_chain_bias(chain_name: str, overlay: dict[str, Any] | None) -> str:
+    if not isinstance(overlay, dict):
+        return ""
+    chain = clean_text(chain_name)
+    if not chain:
+        return ""
+    if chain in set(overlay.get("beneficiary_chains") or []):
+        return "beneficiary"
+    if chain in set(overlay.get("headwind_chains") or []):
+        return "headwind"
+    return ""
+
+
+def compute_geopolitics_bias(candidate: dict[str, Any], overlay: dict[str, Any] | None) -> float:
+    if not isinstance(overlay, dict):
+        return 0.0
+    regime = clean_text(overlay.get("regime_label"))
+    if regime not in GEOPOLITICS_REGIME_LABELS:
+        return 0.0
+    chain_name = clean_text(candidate.get("chain_name") or candidate.get("sector_or_chain"))
+    bias_kind = classify_geopolitics_chain_bias(chain_name, overlay)
+    if not bias_kind:
+        return 0.0
+    magnitude_map = {
+        "escalation": 1.5,
+        "de_escalation": 1.5,
+        "whipsaw": 0.5,
+    }
+    magnitude = magnitude_map.get(regime, 0.0)
+    if regime == "escalation":
+        return magnitude if bias_kind == "beneficiary" else -magnitude
+    if regime == "de_escalation":
+        return -magnitude if bias_kind == "beneficiary" else magnitude
+    if regime == "whipsaw":
+        return magnitude if bias_kind == "beneficiary" else -magnitude
+    return 0.0
+
+
+def sort_candidates_with_geopolitics_bias(
+    candidates: list[dict[str, Any]],
+    overlay: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    ordered: list[dict[str, Any]] = []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        bias = compute_geopolitics_bias(item, overlay)
+        enriched = item
+        enriched["macro_geopolitics_bias"] = bias
+        enriched["macro_geopolitics_bias_label"] = classify_geopolitics_chain_bias(
+            clean_text(item.get("chain_name") or item.get("sector_or_chain")),
+            overlay,
+        )
+        ordered.append(enriched)
+    ordered.sort(
+        key=lambda x: (x.get("adjusted_total_score", 0) + x.get("macro_geopolitics_bias", 0.0)),
+        reverse=True,
+    )
+    return ordered
+
+
 def should_promote_near_miss_to_event_driven(candidate: dict[str, Any]) -> bool:
     """Check if a near-miss candidate qualifies for T2 promotion."""
     if candidate.get("structured_catalyst_score", 0) >= 10:
@@ -716,6 +777,8 @@ def assign_tiers(
     discovery_results: dict[str, list[dict[str, Any]]],
     all_assessed: list[dict[str, Any]],
     keep_threshold: float,
+    *,
+    geopolitics_overlay: dict[str, Any] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """
     Assign candidates to T1/T2/T3/T4 tiers.
@@ -738,7 +801,11 @@ def assign_tiers(
         assigned_tickers.add(c.get("ticker"))
 
     # --- T2 Path A: promoted near-miss ---
-    for c in near_miss_candidates:
+    ordered_near_miss = sort_candidates_with_geopolitics_bias(near_miss_candidates, geopolitics_overlay)
+    ordered_watch = sort_candidates_with_geopolitics_bias(discovery_results.get("watch", []), geopolitics_overlay)
+    ordered_track = sort_candidates_with_geopolitics_bias(discovery_results.get("track", []), geopolitics_overlay)
+
+    for c in ordered_near_miss:
         if c.get("ticker") in assigned_tickers:
             continue
         if should_promote_near_miss_to_event_driven(c):
@@ -761,7 +828,7 @@ def assign_tiers(
         assigned_tickers.add(c.get("ticker"))
 
     # --- T3: remaining near-miss + discovery watch ---
-    for c in near_miss_candidates:
+    for c in ordered_near_miss:
         if c.get("ticker") in assigned_tickers:
             continue
         if len(tiers["T3"]) >= TIER_CAPS["T3"]:
@@ -771,7 +838,7 @@ def assign_tiers(
         tiers["T3"].append(c)
         assigned_tickers.add(c.get("ticker"))
 
-    for c in discovery_results.get("watch", []):
+    for c in ordered_watch:
         if c.get("ticker") in assigned_tickers:
             continue
         if len(tiers["T3"]) >= TIER_CAPS["T3"]:
@@ -782,7 +849,7 @@ def assign_tiers(
         assigned_tickers.add(c.get("ticker"))
 
     # --- T4: discovery track + chain/sympathy ---
-    for c in discovery_results.get("track", []):
+    for c in ordered_track:
         if c.get("ticker") in assigned_tickers:
             continue
         if len(tiers["T4"]) >= TIER_CAPS["T4"]:
@@ -1763,6 +1830,7 @@ def enrich_live_result_reporting(
             or filter_summary.get("filter_profile")
             or request_obj.get("filter_profile")
         )
+        geopolitics_overlay = request_obj.get("macro_geopolitics_overlay")
         base_keep = float(filter_summary.get("keep_threshold", 60.0))
         diagnostic_scorecard, board_thresholds = apply_board_threshold_overrides(
             diagnostic_scorecard, active_profile, base_keep,
@@ -1822,6 +1890,7 @@ def enrich_live_result_reporting(
         tiers = assign_tiers(
             top_picks, near_miss_candidates_for_tiers,
             discovery_results, diagnostic_scorecard, keep_threshold,
+            geopolitics_overlay=geopolitics_overlay if isinstance(geopolitics_overlay, dict) else None,
         )
         capped_tiers, overflow = apply_rendered_caps(tiers)
         enriched["tier_output"] = {
@@ -2060,6 +2129,7 @@ def enrich_track_result(
             or filter_summary.get("filter_profile")
             or (enriched.get("request") or {}).get("filter_profile")
         )
+        geopolitics_overlay = (enriched.get("request") or {}).get("macro_geopolitics_overlay")
         # No board overrides needed — each track already has the correct threshold
         near_miss_candidates = build_near_miss_candidates(diagnostic_scorecard)
         waiver_candidates = apply_catalyst_waiver(
@@ -2104,6 +2174,7 @@ def enrich_track_result(
         tiers = assign_tiers(
             top_picks, near_miss_for_tiers,
             discovery_results, diagnostic_scorecard, keep_threshold,
+            geopolitics_overlay=geopolitics_overlay if isinstance(geopolitics_overlay, dict) else None,
         )
         tiers = apply_floor_policy(
             tiers,

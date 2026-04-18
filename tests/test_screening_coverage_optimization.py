@@ -360,7 +360,122 @@ class TestTrackLevelCoverageIntegration(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Class 7: TestDiscoveryThresholdRelaxation
+# Class 7: TestGeopoliticsRankingBias
+# ---------------------------------------------------------------------------
+class TestGeopoliticsRankingBias(unittest.TestCase):
+    def _make_candidate(self, ticker, score=55.0, keep=False, chain_name=""):
+        return {
+            "ticker": ticker,
+            "name": ticker,
+            "adjusted_total_score": score,
+            "score": score,
+            "scores": {"adjusted_total_score": score},
+            "score_components": {"adjusted_total_score": score},
+            "keep": keep,
+            "chain_name": chain_name,
+            "hard_filter_failures": [],
+            "tier_tags": [],
+        }
+
+    def test_beneficiary_chain_ranks_ahead_in_escalation(self):
+        overlay = {
+            "regime_label": "escalation",
+            "beneficiary_chains": ["oil_shipping"],
+            "headwind_chains": ["airlines"],
+        }
+        oil = self._make_candidate("OIL.SS", score=55.0, chain_name="oil_shipping")
+        neutral = self._make_candidate("NEUTRAL.SS", score=55.0, chain_name="neutral_chain")
+
+        tiers = runtime.assign_tiers(
+            [],
+            [neutral, oil],
+            {"qualified": [], "watch": [], "track": []},
+            [neutral, oil],
+            60.0,
+            geopolitics_overlay=overlay,
+        )
+
+        self.assertEqual([row["ticker"] for row in tiers["T3"][:2]], ["OIL.SS", "NEUTRAL.SS"])
+
+    def test_headwind_chain_ranks_lower_in_escalation(self):
+        overlay = {
+            "regime_label": "escalation",
+            "beneficiary_chains": ["oil_shipping"],
+            "headwind_chains": ["airlines"],
+        }
+        neutral = self._make_candidate("NEUTRAL.SS", score=55.0, chain_name="neutral_chain")
+        airline = self._make_candidate("AIR.SS", score=55.0, chain_name="airlines")
+
+        tiers = runtime.assign_tiers(
+            [],
+            [airline, neutral],
+            {"qualified": [], "watch": [], "track": []},
+            [airline, neutral],
+            60.0,
+            geopolitics_overlay=overlay,
+        )
+
+        self.assertEqual([row["ticker"] for row in tiers["T3"][:2]], ["NEUTRAL.SS", "AIR.SS"])
+
+    def test_t1_membership_does_not_change_due_to_overlay(self):
+        overlay = {
+            "regime_label": "escalation",
+            "beneficiary_chains": ["oil_shipping"],
+            "headwind_chains": ["airlines"],
+        }
+        top_pick = self._make_candidate("TOP.SS", score=61.0, keep=True, chain_name="airlines")
+        observer = self._make_candidate("WATCH.SS", score=55.0, keep=False, chain_name="oil_shipping")
+
+        tiers = runtime.assign_tiers(
+            [top_pick],
+            [observer],
+            {"qualified": [], "watch": [], "track": []},
+            [top_pick, observer],
+            60.0,
+            geopolitics_overlay=overlay,
+        )
+
+        self.assertEqual([row["ticker"] for row in tiers["T1"]], ["TOP.SS"])
+        self.assertNotIn("WATCH.SS", [row["ticker"] for row in tiers["T1"]])
+
+    def test_enrich_track_result_uses_geopolitics_overlay_for_t3_order(self):
+        result = {
+            "filter_summary": {
+                "kept_count": 0,
+                "keep_threshold": 58.0,
+                "profile": "month_end_event_support_transition",
+            },
+            "request": {
+                "macro_geopolitics_overlay": {
+                    "regime_label": "escalation",
+                    "beneficiary_chains": ["oil_shipping"],
+                    "headwind_chains": ["airlines"],
+                }
+            },
+            "dropped": [],
+            "report_markdown": "# Test\n",
+        }
+        assessed = [
+            self._make_candidate("NEUTRAL.SS", score=55.0, chain_name="neutral_chain"),
+            self._make_candidate("OIL.SS", score=55.0, chain_name="oil_shipping"),
+        ]
+
+        enriched = runtime.enrich_track_result(
+            result,
+            [],
+            assessed_candidates=assessed,
+            track_name="main_board",
+            track_config=runtime.TRACK_CONFIGS["main_board"],
+        )
+
+        self.assertEqual(
+            [row["ticker"] for row in enriched["tier_output"]["T3"][:2]],
+            ["OIL.SS", "NEUTRAL.SS"],
+        )
+
+
+# ---------------------------------------------------------------------------
+# Class 8: TestDiscoveryThresholdRelaxation
 # ---------------------------------------------------------------------------
 class TestDiscoveryThresholdRelaxation(unittest.TestCase):
     """Test that discovery thresholds were relaxed per Step 1."""
@@ -409,7 +524,7 @@ class TestDiscoveryThresholdRelaxation(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Class 8: TestCapEnforcement
+# Class 9: TestCapEnforcement
 # ---------------------------------------------------------------------------
 class TestCapEnforcement(unittest.TestCase):
     def _make_candidate(self, ticker, score=70):
@@ -461,7 +576,7 @@ class TestCapEnforcement(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Class 9: TestBackwardCompatibility
+# Class 10: TestBackwardCompatibility
 # ---------------------------------------------------------------------------
 class TestBackwardCompatibility(unittest.TestCase):
     def test_old_fields_still_populated(self):
