@@ -873,6 +873,63 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("下一步推演", enriched["report_markdown"])
         self.assertIn("观察点", enriched["report_markdown"])
 
+    def test_decision_factors_near_miss_can_source_from_rendered_t3(self) -> None:
+        enriched = {
+            "top_picks": [],
+            "near_miss_candidates": [],
+            "diagnostic_scorecard": [
+                {
+                    "ticker": "300476.SZ",
+                    "name": "胜宏科技",
+                    "score": 67.88,
+                    "keep_threshold_gap": -2.12,
+                    "midday_status": "near_miss",
+                    "price_snapshot": {
+                        "close": 120.0,
+                        "ma20": 110.0,
+                        "ma50": 100.0,
+                        "ma150": 90.0,
+                        "ma200": 80.0,
+                        "ma200_slope_20d": 3.0,
+                        "rsi14": 62.0,
+                        "rs90": 1500.0,
+                    },
+                    "trend_template": {"passed_count": 8, "trend_pass": True},
+                    "structured_catalyst_snapshot": {
+                        "structured_catalyst_within_window": True,
+                        "structured_company_events": [
+                            {"date": "2026-04-21", "event_type": "股东大会"}
+                        ],
+                    },
+                    "trade_card": {"watch_action": "等强势承接", "invalidation": "跌破关键均线"},
+                    "hard_filter_failures": [],
+                    "tier_tags": [],
+                }
+            ],
+            "tier_output": {
+                "T1": [],
+                "T2": [],
+                "T3": [
+                    {
+                        "ticker": "300476.SZ",
+                        "name": "胜宏科技",
+                        "score": 67.88,
+                        "wrapper_tier": "T3",
+                        "tier_tags": ["coverage_fill"],
+                        "track_name": "chinext",
+                    }
+                ],
+                "T4": [],
+            },
+        }
+
+        factors = module_under_test.build_decision_factors_from_result(enriched)
+
+        self.assertEqual(len(factors["near_miss"]), 1)
+        factor = factors["near_miss"][0]
+        self.assertEqual(factor["ticker"], "300476.SZ")
+        self.assertIn("继续观察", factor["logic_summary"])
+
     def test_blocked_decision_factor_mentions_event_support_weakness_when_missing(self) -> None:
         result = {
             "filter_summary": {"kept_count": 0, "keep_threshold": 70.0},

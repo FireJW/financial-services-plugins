@@ -311,6 +311,49 @@ class MergeTrackResultsTests(unittest.TestCase):
         self.assertIn("## 主板 (main_board)", md)
         self.assertIn("## 创业板 (chinext)", md)
 
+    def test_merge_track_results_applies_total_rendered_cap_to_merged_tiers(self):
+        """Merged tier_output should be globally capped without dropping T1 first."""
+        original_cap = m.TOTAL_RENDERED_CAP
+        m.TOTAL_RENDERED_CAP = 3
+        try:
+            results = {
+                "main_board": {
+                    **self._make_track_result("main_board", [{"ticker": "000988.SZ"}]),
+                    "tier_output": {
+                        "T1": [{"ticker": "000988.SZ", "score": 58.0, "track_name": "main_board"}],
+                        "T2": [],
+                        "T3": [
+                            {"ticker": "002384.SZ", "score": 57.0, "track_name": "main_board"},
+                            {"ticker": "002463.SZ", "score": 56.0, "track_name": "main_board"},
+                        ],
+                        "T4": [],
+                    },
+                },
+                "chinext": {
+                    **self._make_track_result("chinext", [{"ticker": "300857.SZ"}]),
+                    "tier_output": {
+                        "T1": [{"ticker": "300857.SZ", "score": 56.0, "track_name": "chinext"}],
+                        "T2": [],
+                        "T3": [
+                            {"ticker": "300308.SZ", "score": 55.0, "track_name": "chinext"},
+                            {"ticker": "300394.SZ", "score": 54.0, "track_name": "chinext"},
+                        ],
+                        "T4": [],
+                    },
+                },
+            }
+            merged = m.merge_track_results(results, m.TRACK_CONFIGS)
+        finally:
+            m.TOTAL_RENDERED_CAP = original_cap
+
+        merged_t1 = [row["ticker"] for row in merged["tier_output"]["T1"]]
+        merged_t3 = [row["ticker"] for row in merged["tier_output"]["T3"]]
+        total = sum(len(v) for v in merged["tier_output"].values())
+
+        self.assertEqual(total, 3)
+        self.assertEqual(merged_t1, ["000988.SZ", "300857.SZ"])
+        self.assertEqual(merged_t3, ["002384.SZ"])
+
 
 if __name__ == "__main__":
     unittest.main()

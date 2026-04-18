@@ -293,7 +293,74 @@ class TestFloorPolicy(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Class 6: TestDiscoveryThresholdRelaxation
+# Class 6: TestTrackLevelCoverageIntegration
+# ---------------------------------------------------------------------------
+class TestTrackLevelCoverageIntegration(unittest.TestCase):
+    def _make_assessed(self, ticker, score, keep=False, failures=None):
+        return {
+            "ticker": ticker,
+            "name": ticker,
+            "adjusted_total_score": score,
+            "keep": keep,
+            "hard_filter_failures": failures or [],
+            "tier_tags": [],
+            "scores": {"adjusted_total_score": score},
+            "score_components": {"structured_catalyst_score": 0},
+        }
+
+    def test_enrich_track_result_applies_waiver_and_floor_before_caps(self):
+        result = {
+            "filter_summary": {
+                "kept_count": 1,
+                "keep_threshold": 58.0,
+                "profile": "month_end_event_support_transition",
+            },
+            "dropped": [],
+            "report_markdown": "# Test\n",
+        }
+        assessed = [
+            self._make_assessed("000988.SZ", 60, keep=True),
+            self._make_assessed(
+                "002460.SZ",
+                53,
+                keep=False,
+                failures=["no_structured_catalyst_within_window"],
+            ),
+            self._make_assessed("600176.SS", 36, keep=False),
+            self._make_assessed(
+                "688256.SH",
+                57,
+                keep=False,
+                failures=["bars_fetch_failed"],
+            ),
+        ]
+
+        enriched = runtime.enrich_track_result(
+            result,
+            [],
+            assessed_candidates=assessed,
+            track_name="main_board",
+            track_config=runtime.TRACK_CONFIGS["main_board"],
+        )
+
+        self.assertTrue(enriched["tier_metadata"]["floor_policy_applied"])
+        self.assertEqual(
+            [row["ticker"] for row in enriched["tier_output"]["T1"]],
+            ["000988.SZ"],
+        )
+        t3_rows = {
+            row["ticker"]: row
+            for row in enriched["tier_output"]["T3"]
+        }
+        self.assertIn("002460.SZ", t3_rows)
+        self.assertIn("catalyst_waived", t3_rows["002460.SZ"]["tier_tags"])
+        self.assertIn("600176.SS", t3_rows)
+        self.assertIn("coverage_fill", t3_rows["600176.SS"]["tier_tags"])
+        self.assertNotIn("688256.SH", t3_rows)
+
+
+# ---------------------------------------------------------------------------
+# Class 7: TestDiscoveryThresholdRelaxation
 # ---------------------------------------------------------------------------
 class TestDiscoveryThresholdRelaxation(unittest.TestCase):
     """Test that discovery thresholds were relaxed per Step 1."""
@@ -342,7 +409,7 @@ class TestDiscoveryThresholdRelaxation(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Class 7: TestCapEnforcement
+# Class 8: TestCapEnforcement
 # ---------------------------------------------------------------------------
 class TestCapEnforcement(unittest.TestCase):
     def _make_candidate(self, ticker, score=70):
@@ -394,7 +461,7 @@ class TestCapEnforcement(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Class 8: TestBackwardCompatibility
+# Class 9: TestBackwardCompatibility
 # ---------------------------------------------------------------------------
 class TestBackwardCompatibility(unittest.TestCase):
     def test_old_fields_still_populated(self):

@@ -87,7 +87,7 @@ MAX_REPORTED_WATCH_ITEMS = 3
 # --- Screening Coverage Optimization constants ---
 NEAR_MISS_FLOOR_GAP = 25.0        # used by floor policy supplementation
 TIER_CAPS = {"T1": 10, "T2": 5, "T3": 8, "T4": 5}
-TOTAL_RENDERED_CAP = 28            # sum of tier caps
+TOTAL_RENDERED_CAP = 12            # final merged display budget across all tiers
 MIN_COVERAGE_TARGET = 10
 TWO_ROUND_THRESHOLD = 3            # top_picks < this triggers Round 2
 CATALYST_WAIVER_SCORE_GAP = 10.0   # keep_threshold - this = waiver floor
@@ -1152,7 +1152,64 @@ def build_decision_factors_from_result(enriched: dict[str, Any]) -> dict[str, li
     for item in enriched.get("top_picks", []) if isinstance(enriched.get("top_picks"), list) else []:
         if isinstance(item, dict):
             factors["qualified"].append(build_decision_factor_entry(item, "可执行"))
-    for item in enriched.get("near_miss_candidates", []) if isinstance(enriched.get("near_miss_candidates"), list) else []:
+    near_miss_candidates = (
+        enriched.get("near_miss_candidates", [])
+        if isinstance(enriched.get("near_miss_candidates"), list)
+        else []
+    )
+    diagnostic_scorecard = (
+        enriched.get("diagnostic_scorecard", [])
+        if isinstance(enriched.get("diagnostic_scorecard"), list)
+        else []
+    )
+    candidate_lookup: dict[str, dict[str, Any]] = {}
+    for item in near_miss_candidates + diagnostic_scorecard:
+        if not isinstance(item, dict):
+            continue
+        ticker = clean_text(item.get("ticker"))
+        if ticker and ticker not in candidate_lookup:
+            candidate_lookup[ticker] = deepcopy(item)
+
+    near_miss_source: list[dict[str, Any]] = []
+    seen_near_miss: set[str] = set()
+    tier_output = enriched.get("tier_output", {}) if isinstance(enriched.get("tier_output"), dict) else {}
+    rendered_t3 = tier_output.get("T3", []) if isinstance(tier_output.get("T3"), list) else []
+    if rendered_t3:
+        for row in rendered_t3:
+            if not isinstance(row, dict):
+                continue
+            ticker = clean_text(row.get("ticker"))
+            if not ticker or ticker in seen_near_miss:
+                continue
+            base = deepcopy(candidate_lookup.get(ticker) or row)
+            base.setdefault("ticker", ticker)
+            if row.get("name") not in (None, ""):
+                base["name"] = row.get("name")
+            if row.get("score") not in (None, "") and base.get("score") in (None, ""):
+                base["score"] = row.get("score")
+            if row.get("track_name") not in (None, ""):
+                base["track_name"] = row.get("track_name")
+            if isinstance(row.get("tier_tags"), list):
+                merged_tags = list(base.get("tier_tags", []))
+                for tag in row.get("tier_tags", []):
+                    if tag not in merged_tags:
+                        merged_tags.append(tag)
+                base["tier_tags"] = merged_tags
+            base["midday_status"] = "near_miss"
+            near_miss_source.append(base)
+            seen_near_miss.add(ticker)
+    else:
+        for item in near_miss_candidates:
+            if not isinstance(item, dict):
+                continue
+            ticker = clean_text(item.get("ticker"))
+            if ticker and ticker in seen_near_miss:
+                continue
+            near_miss_source.append(item)
+            if ticker:
+                seen_near_miss.add(ticker)
+
+    for item in near_miss_source:
         if isinstance(item, dict):
             factors["near_miss"].append(build_decision_factor_entry(item, "继续观察"))
     for item in enriched.get("diagnostic_scorecard", []) if isinstance(enriched.get("diagnostic_scorecard"), list) else []:
@@ -1578,6 +1635,41 @@ def apply_rendered_caps(
     return capped, overflow
 
 
+def apply_total_rendered_cap(
+    tiers: dict[str, list[dict[str, Any]]],
+    *,
+    total_cap: int | None = None,
+) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
+    """Apply a final merged-tier display budget across T1/T2/T3/T4.
+
+    Preserves tier priority by consuming the budget in T1 -> T2 -> T3 -> T4
+    order, while sorting candidates within each tier by score descending.
+    """
+    budget = TOTAL_RENDERED_CAP if total_cap is None else int(total_cap)
+    remaining = max(budget, 0)
+    capped: dict[str, list[dict[str, Any]]] = {}
+    overflow: list[dict[str, Any]] = []
+    for tier_name in ("T1", "T2", "T3", "T4"):
+        candidates = sorted(
+            list(tiers.get(tier_name, [])),
+            key=lambda x: x.get("score", x.get("adjusted_total_score", 0)),
+            reverse=True,
+        )
+        if remaining <= 0:
+            capped[tier_name] = []
+            for c in candidates:
+                c["tier_tags"] = c.get("tier_tags", []) + ["total_rendered_cap_overflow"]
+                overflow.append(c)
+            continue
+        kept = candidates[:remaining]
+        capped[tier_name] = kept
+        for c in candidates[remaining:]:
+            c["tier_tags"] = c.get("tier_tags", []) + ["total_rendered_cap_overflow"]
+            overflow.append(c)
+        remaining -= len(kept)
+    return capped, overflow
+
+
 def enrich_live_result_reporting(
     result: dict[str, Any],
     failure_candidates: list[dict[str, Any]],
@@ -1903,8 +1995,26 @@ def enrich_track_result(
         if isinstance(item, dict)
     ]
     if diagnostic_scorecard:
+        active_profile = clean_text(
+            filter_summary.get("profile")
+            or filter_summary.get("filter_profile")
+            or (enriched.get("request") or {}).get("filter_profile")
+        )
         # No board overrides needed — each track already has the correct threshold
         near_miss_candidates = build_near_miss_candidates(diagnostic_scorecard)
+        waiver_candidates = apply_catalyst_waiver(
+            diagnostic_scorecard, active_profile, keep_threshold,
+        )
+        if waiver_candidates:
+            near_miss_by_ticker = {
+                clean_text(item.get("ticker")): item for item in near_miss_candidates
+            }
+            for item in waiver_candidates:
+                ticker = clean_text(item.get("ticker"))
+                if not ticker or ticker in near_miss_by_ticker:
+                    continue
+                near_miss_candidates.append(item)
+                near_miss_by_ticker[ticker] = item
         near_miss_tickers = {clean_text(item.get("ticker")) for item in near_miss_candidates}
         for item in diagnostic_scorecard:
             item["midday_status"] = classify_midday_status(item, near_miss_tickers)
@@ -1934,6 +2044,12 @@ def enrich_track_result(
         tiers = assign_tiers(
             top_picks, near_miss_for_tiers,
             discovery_results, diagnostic_scorecard, keep_threshold,
+        )
+        tiers = apply_floor_policy(
+            tiers,
+            diagnostic_scorecard,
+            discovery_results,
+            keep_threshold,
         )
         track_tier_caps = cfg.get("tier_caps", TIER_CAPS)
         capped_tiers, overflow = apply_rendered_caps(tiers, tier_caps=track_tier_caps)
@@ -2119,12 +2235,15 @@ def merge_track_results(
     merged["diagnostic_scorecard"] = all_diagnostic_scorecard
     merged["near_miss_candidates"] = all_near_miss
     merged["midday_action_summary"] = all_midday_action
+    combined_tier_output, merged_overflow = apply_total_rendered_cap(combined_tier_output)
     merged["tier_output"] = combined_tier_output
     merged["filter_summary"] = {
         "universe_count": total_universe,
         "kept_count": total_kept,
         "top_pick_count": len(all_top_picks),
         "per_track": per_track_summary,
+        "total_rendered_cap": TOTAL_RENDERED_CAP,
+        "merged_overflow_count": len(merged_overflow),
     }
 
     # --- Discovery / event-card enrichment (shared across tracks) ---
