@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT_DIR = (
@@ -1258,6 +1259,50 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         )
         profiles = entries[0]["profiles"]
         self.assertIn("新易盛", profiles["补涨候选"])
+
+    def test_decision_flow_marks_rescued_name_as_low_confidence_fallback(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 70.0},
+            "request": {"analysis_time": "2026-04-19T12:00:00+08:00"},
+            "dropped": [],
+            "top_picks": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-21\n",
+        }
+        assessed_candidates = [
+            {
+                "ticker": "601975.SS",
+                "name": "招商南油",
+                "adjusted_total_score": 0.0,
+                "keep": False,
+                "hard_filter_failures": ["bars_fetch_failed"],
+                "bars_fetch_error": "bars_fetch_failed for `601975.SS`: Eastmoney request failed",
+                "structured_catalyst_snapshot": {
+                    "structured_company_events": [
+                        {"date": "2026-04-21", "event_type": "油运景气跟踪"}
+                    ]
+                },
+                "tier_tags": [],
+                "trade_card": {"watch_action": "等强势承接", "invalidation": "跌破关键均线"},
+                "scores": {"adjusted_total_score": 0.0},
+                "score_components": {"structured_catalyst_score": 0.0},
+            }
+        ]
+        snapshot = {
+            "close": 5.8,
+            "pct_chg": 1.2,
+            "sma20": 5.5,
+            "sma50": 5.3,
+            "rsi14": 58.0,
+            "volume_ratio": 1.4,
+        }
+
+        with patch.object(module_under_test, "local_market_snapshot_for_candidate", return_value=snapshot):
+            enriched = module_under_test.enrich_live_result_reporting(result, [], assessed_candidates)
+
+        flow = enriched["report_markdown"].split("## 决策流", 1)[1]
+        self.assertIn("继续观察（low-confidence fallback）", flow)
+        self.assertIn("数据路径降级：local market snapshot only", flow)
+        self.assertIn("保留原因：structured_catalyst", flow)
 
 
 if __name__ == "__main__":

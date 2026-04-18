@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPT_DIR = (
     Path(__file__).resolve().parents[1]
@@ -357,6 +358,104 @@ class TestTrackLevelCoverageIntegration(unittest.TestCase):
         self.assertIn("600176.SS", t3_rows)
         self.assertIn("coverage_fill", t3_rows["600176.SS"]["tier_tags"])
         self.assertNotIn("688256.SH", t3_rows)
+
+    def test_enrich_track_result_rescues_structured_support_name_into_low_confidence_t3(self):
+        result = {
+            "filter_summary": {
+                "kept_count": 0,
+                "keep_threshold": 58.0,
+                "profile": "month_end_event_support_transition",
+            },
+            "request": {"analysis_time": "2026-04-19T12:00:00+08:00"},
+            "dropped": [],
+            "report_markdown": "# Test\n",
+        }
+        assessed = [
+            {
+                "ticker": "601975.SS",
+                "name": "招商南油",
+                "adjusted_total_score": 0.0,
+                "keep": False,
+                "hard_filter_failures": ["bars_fetch_failed"],
+                "bars_fetch_error": "bars_fetch_failed for `601975.SS`: Eastmoney request failed",
+                "structured_catalyst_snapshot": {
+                    "structured_company_events": [{"date": "2026-04-21", "event_type": "油运景气跟踪"}]
+                },
+                "tier_tags": [],
+                "scores": {"adjusted_total_score": 0.0},
+                "score_components": {"structured_catalyst_score": 0},
+            }
+        ]
+        snapshot = {
+            "close": 5.8,
+            "pct_chg": 1.2,
+            "sma20": 5.5,
+            "sma50": 5.3,
+            "rsi14": 58.0,
+            "volume_ratio": 1.4,
+        }
+
+        with patch.object(runtime, "local_market_snapshot_for_candidate", return_value=snapshot):
+            enriched = runtime.enrich_track_result(
+                result,
+                [],
+                assessed_candidates=assessed,
+                track_name="main_board",
+                track_config=runtime.TRACK_CONFIGS["main_board"],
+            )
+
+        tickers = [row["ticker"] for row in enriched["tier_output"]["T3"]]
+        self.assertIn("601975.SS", tickers)
+        rescued = next(row for row in enriched["tier_output"]["T3"] if row["ticker"] == "601975.SS")
+        self.assertIn("low_confidence_fallback", rescued["tier_tags"])
+        self.assertEqual(rescued["fallback_support_reason"], "structured_catalyst")
+
+    def test_enrich_track_result_never_promotes_fallback_name_to_t1(self):
+        result = {
+            "filter_summary": {
+                "kept_count": 0,
+                "keep_threshold": 58.0,
+                "profile": "month_end_event_support_transition",
+            },
+            "request": {"analysis_time": "2026-04-19T12:00:00+08:00"},
+            "dropped": [],
+            "report_markdown": "# Test\n",
+        }
+        assessed = [
+            {
+                "ticker": "601975.SS",
+                "name": "招商南油",
+                "adjusted_total_score": 88.0,
+                "keep": False,
+                "hard_filter_failures": ["bars_fetch_failed"],
+                "bars_fetch_error": "bars_fetch_failed for `601975.SS`: Eastmoney request failed",
+                "structured_catalyst_snapshot": {
+                    "structured_company_events": [{"date": "2026-04-21", "event_type": "油运景气跟踪"}]
+                },
+                "tier_tags": [],
+                "scores": {"adjusted_total_score": 88.0},
+                "score_components": {"structured_catalyst_score": 0},
+            }
+        ]
+        snapshot = {
+            "close": 5.8,
+            "pct_chg": 1.2,
+            "sma20": 5.5,
+            "sma50": 5.3,
+            "rsi14": 58.0,
+            "volume_ratio": 1.4,
+        }
+
+        with patch.object(runtime, "local_market_snapshot_for_candidate", return_value=snapshot):
+            enriched = runtime.enrich_track_result(
+                result,
+                [],
+                assessed_candidates=assessed,
+                track_name="main_board",
+                track_config=runtime.TRACK_CONFIGS["main_board"],
+            )
+
+        self.assertNotIn("601975.SS", [row["ticker"] for row in enriched["tier_output"]["T1"]])
 
 
 # ---------------------------------------------------------------------------

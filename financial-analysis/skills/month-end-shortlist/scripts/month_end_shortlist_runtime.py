@@ -1633,6 +1633,9 @@ def build_decision_factor_entry(candidate: dict[str, Any], action: str) -> dict[
         "trade_layer_summary": build_trade_layer_summary(candidate, action),
         "next_watch_items": build_next_watch_items(candidate, action),
         "hard_filter_failures": deepcopy(candidate.get("hard_filter_failures", [])),
+        "tier_tags": deepcopy(candidate.get("tier_tags", [])),
+        "fallback_support_reason": clean_text(candidate.get("fallback_support_reason")),
+        "fallback_snapshot_only": bool(candidate.get("fallback_snapshot_only")),
     }
 
 
@@ -1684,6 +1687,10 @@ def build_decision_factors_from_result(enriched: dict[str, Any]) -> dict[str, li
                     if tag not in merged_tags:
                         merged_tags.append(tag)
                 base["tier_tags"] = merged_tags
+            if clean_text(row.get("fallback_support_reason")):
+                base["fallback_support_reason"] = clean_text(row.get("fallback_support_reason"))
+            if row.get("fallback_snapshot_only"):
+                base["fallback_snapshot_only"] = True
             base["midday_status"] = "near_miss"
             near_miss_source.append(base)
             seen_near_miss.add(ticker)
@@ -1796,9 +1803,14 @@ def build_decision_flow_card(
     geopolitics_overlay: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     card = deepcopy(factor)
+    tier_tags = set(card.get("tier_tags", [])) if isinstance(card.get("tier_tags"), list) else set()
     event_context = event_card if isinstance(event_card, dict) else {}
     chain_context = chain_entry if isinstance(chain_entry, dict) else {}
     action = clean_text(card.get("action"))
+    is_fallback = "low_confidence_fallback" in tier_tags
+    action_label = action
+    if is_fallback and action == "继续观察":
+        action_label = "继续观察（low-confidence fallback）"
     ticker = clean_text(card.get("ticker")) or "unknown"
     score = card.get("score")
     gap = card.get("keep_threshold_gap")
@@ -1831,6 +1843,11 @@ def build_decision_flow_card(
     operation_parts = [
         clean_text(event_context.get("trading_profile_usage")) or clean_text(card.get("trade_layer_summary")) or "先等更多确认。",
     ]
+    if is_fallback:
+        operation_parts.append("数据路径降级：local market snapshot only")
+        fallback_reason = clean_text(card.get("fallback_support_reason"))
+        if fallback_reason:
+            operation_parts.append(f"保留原因：{fallback_reason}")
     geopolitics_constraint = build_geopolitics_execution_constraint(action, geopolitics_overlay)
     if geopolitics_constraint:
         operation_parts.append(geopolitics_constraint)
@@ -1841,6 +1858,7 @@ def build_decision_flow_card(
         "ticker": ticker,
         "name": clean_text(card.get("name")) or ticker,
         "action": action,
+        "action_label": action_label,
         "status": clean_text(card.get("status")) or clean_text(card.get("midday_status")),
         "score": score,
         "keep_threshold": keep_threshold,
@@ -1978,7 +1996,7 @@ def build_decision_flow_markdown(
         lines.append("")
     for item in decision_flow:
         lines.append(
-            f"### {item.get('ticker')} | {item.get('action')} | {item.get('score')}分 | {item.get('trading_profile_bucket')}"
+            f"### {item.get('ticker')} | {item.get('action_label', item.get('action'))} | {item.get('score')}分 | {item.get('trading_profile_bucket')}"
         )
         lines.append("")
         lines.append(f"- 结论：{item.get('conclusion')}")
@@ -2300,6 +2318,28 @@ def enrich_live_result_reporting(
             enriched["filter_summary"] = filter_summary
 
         near_miss_candidates = build_near_miss_candidates(diagnostic_scorecard)
+        analysis_date = clean_text(request_obj.get("analysis_time") or request_obj.get("target_date"))
+        rescued_fallback_rows: list[dict[str, Any]] = []
+        near_miss_index_by_ticker = {
+            clean_text(item.get("ticker")): idx
+            for idx, item in enumerate(near_miss_candidates)
+            if clean_text(item.get("ticker"))
+        }
+        for item in diagnostic_scorecard:
+            failures = set(item.get("hard_filter_failures", []))
+            if "bars_fetch_failed" not in failures:
+                continue
+            snapshot = local_market_snapshot_for_candidate(clean_text(item.get("ticker")), analysis_date)
+            rescued = build_bars_fallback_rescue_candidate(item, snapshot)
+            if not rescued:
+                continue
+            ticker = clean_text(rescued.get("ticker"))
+            rescued_fallback_rows.append(rescued)
+            if ticker in near_miss_index_by_ticker:
+                near_miss_candidates[near_miss_index_by_ticker[ticker]] = rescued
+            else:
+                near_miss_index_by_ticker[ticker] = len(near_miss_candidates)
+                near_miss_candidates.append(rescued)
         near_miss_tickers = {clean_text(item.get("ticker")) for item in near_miss_candidates}
         for item in diagnostic_scorecard:
             item["midday_status"] = classify_midday_status(item, near_miss_tickers)
@@ -2352,6 +2392,26 @@ def enrich_live_result_reporting(
             discovery_results, diagnostic_scorecard, keep_threshold,
             geopolitics_overlay=geopolitics_overlay if isinstance(geopolitics_overlay, dict) else None,
         )
+        rescued_by_ticker = {
+            clean_text(item.get("ticker")): item
+            for item in rescued_fallback_rows
+            if clean_text(item.get("ticker"))
+        }
+        if rescued_by_ticker:
+            for tier_name in ("T1", "T2", "T4"):
+                tiers[tier_name] = [
+                    item
+                    for item in tiers.get(tier_name, [])
+                    if clean_text(item.get("ticker")) not in rescued_by_ticker
+                ]
+            t3_rows = [
+                item
+                for item in tiers.get("T3", [])
+                if clean_text(item.get("ticker")) not in rescued_by_ticker
+            ]
+            t3_rows.extend(rescued_by_ticker.values())
+            tiers["T3"] = t3_rows
+            enriched["bars_fallback_rescues"] = list(rescued_by_ticker.values())
         capped_tiers, overflow = apply_rendered_caps(tiers)
         enriched["tier_output"] = {
             tier_name: [
@@ -2361,6 +2421,8 @@ def enrich_live_result_reporting(
                     "score": c.get("score") or c.get("adjusted_total_score"),
                     "wrapper_tier": c.get("wrapper_tier"),
                     "tier_tags": c.get("tier_tags", []),
+                    "fallback_support_reason": clean_text(c.get("fallback_support_reason")),
+                    "fallback_snapshot_only": bool(c.get("fallback_snapshot_only")),
                 }
                 for c in candidates
             ]
@@ -2607,6 +2669,33 @@ def enrich_track_result(
                     continue
                 near_miss_candidates.append(item)
                 near_miss_by_ticker[ticker] = item
+        analysis_date = clean_text(
+            (result.get("request") or {}).get("analysis_time")
+            or (result.get("request") or {}).get("target_date")
+            or (enriched.get("request") or {}).get("analysis_time")
+            or (enriched.get("request") or {}).get("target_date")
+        )
+        rescued_fallback_rows: list[dict[str, Any]] = []
+        near_miss_index_by_ticker = {
+            clean_text(item.get("ticker")): idx
+            for idx, item in enumerate(near_miss_candidates)
+            if clean_text(item.get("ticker"))
+        }
+        for item in diagnostic_scorecard:
+            failures = set(item.get("hard_filter_failures", []))
+            if "bars_fetch_failed" not in failures:
+                continue
+            snapshot = local_market_snapshot_for_candidate(clean_text(item.get("ticker")), analysis_date)
+            rescued = build_bars_fallback_rescue_candidate(item, snapshot)
+            if not rescued:
+                continue
+            ticker = clean_text(rescued.get("ticker"))
+            rescued_fallback_rows.append(rescued)
+            if ticker in near_miss_index_by_ticker:
+                near_miss_candidates[near_miss_index_by_ticker[ticker]] = rescued
+            else:
+                near_miss_index_by_ticker[ticker] = len(near_miss_candidates)
+                near_miss_candidates.append(rescued)
         near_miss_tickers = {clean_text(item.get("ticker")) for item in near_miss_candidates}
         for item in diagnostic_scorecard:
             item["midday_status"] = classify_midday_status(item, near_miss_tickers)
@@ -2644,6 +2733,26 @@ def enrich_track_result(
             discovery_results,
             keep_threshold,
         )
+        rescued_by_ticker = {
+            clean_text(item.get("ticker")): item
+            for item in rescued_fallback_rows
+            if clean_text(item.get("ticker"))
+        }
+        if rescued_by_ticker:
+            for tier_name in ("T1", "T2", "T4"):
+                tiers[tier_name] = [
+                    item
+                    for item in tiers.get(tier_name, [])
+                    if clean_text(item.get("ticker")) not in rescued_by_ticker
+                ]
+            t3_rows = [
+                item
+                for item in tiers.get("T3", [])
+                if clean_text(item.get("ticker")) not in rescued_by_ticker
+            ]
+            t3_rows.extend(rescued_by_ticker.values())
+            tiers["T3"] = t3_rows
+            enriched["bars_fallback_rescues"] = list(rescued_by_ticker.values())
         track_tier_caps = cfg.get("tier_caps", TIER_CAPS)
         capped_tiers, overflow = apply_rendered_caps(tiers, tier_caps=track_tier_caps)
         enriched["tier_output"] = {
@@ -2655,6 +2764,8 @@ def enrich_track_result(
                     "wrapper_tier": c.get("wrapper_tier"),
                     "tier_tags": c.get("tier_tags", []),
                     "track_name": track_name,
+                    "fallback_support_reason": clean_text(c.get("fallback_support_reason")),
+                    "fallback_snapshot_only": bool(c.get("fallback_snapshot_only")),
                 }
                 for c in candidates
             ]
@@ -2667,6 +2778,7 @@ def enrich_track_result(
                 "coverage_fill" in c.get("tier_tags", [])
                 for tier in capped_tiers.values() for c in tier
             ),
+            "bars_fallback_rescue_count": len(rescued_fallback_rows),
             "track_name": track_name,
         }
 
