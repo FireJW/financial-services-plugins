@@ -1220,6 +1220,91 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
 
         self.assertIn("状态：候选判断，尚未写入正式 overlay", flow)
 
+    def test_report_renders_weekend_candidate_before_decision_flow(self) -> None:
+        enriched = self._build_enriched_for_decision_flow()
+        enriched["request"] = {
+            "weekend_market_candidate_input": {
+                "x_seed_inputs": [
+                    {
+                        "handle": "seed_one",
+                        "tags": ["optical_interconnect"],
+                        "candidate_names": ["中际旭创", "新易盛", "太辰光"],
+                    },
+                    {
+                        "handle": "seed_two",
+                        "tags": ["optical_interconnect"],
+                        "candidate_names": ["中际旭创", "新易盛", "仕佳光子"],
+                    },
+                ],
+                "x_expansion_inputs": [
+                    {
+                        "handle": "expansion_one",
+                        "theme_overlap": ["optical_interconnect"],
+                        "candidate_names": ["太辰光", "仕佳光子"],
+                    }
+                ],
+                "reddit_inputs": [
+                    {
+                        "subreddit": "stocks",
+                        "thread_summary": "AI networking demand still supports optics",
+                        "theme_tags": ["optical_interconnect"],
+                        "direction_hint": "confirming",
+                    }
+                ],
+            }
+        }
+
+        rendered = module_under_test.enrich_live_result_reporting(enriched, failure_candidates=[], assessed_candidates=[])
+        report = rendered["report_markdown"]
+
+        self.assertIn("## 周末主线候选", report)
+        self.assertIn("## 周一优先盯的方向", report)
+        self.assertIn("## 方向参考映射", report)
+        self.assertLess(report.index("## 周末主线候选"), report.index("## 决策流"))
+
+    def test_direction_reference_map_is_marked_as_reference_only(self) -> None:
+        lines = module_under_test.build_weekend_market_candidate_markdown(
+            {"candidate_topics": [], "priority_watch_directions": [], "evidence_summary": [], "status": "candidate_only"},
+            [
+                {
+                    "direction_key": "optical_interconnect",
+                    "direction_label": "光通信 / 光模块",
+                    "leaders": [{"ticker": "300308.SZ", "name": "中际旭创"}],
+                    "high_beta_names": [{"ticker": "300570.SZ", "name": "太辰光"}],
+                    "mapping_note": "Direction reference only. Not a formal execution layer.",
+                }
+            ],
+        )
+        text = "\n".join(lines)
+        self.assertIn("Direction reference only. Not a formal execution layer.", text)
+
+    def test_weekend_reference_map_does_not_create_formal_tiers(self) -> None:
+        result = {
+            "top_picks": [],
+            "filter_summary": {},
+            "near_miss_candidates": [],
+            "request": {
+                "analysis_date": "2026-04-21",
+                "weekend_market_candidate_input": {
+                    "x_seed_inputs": [
+                        {
+                            "handle": "seed_one",
+                            "tags": ["optical_interconnect"],
+                            "candidate_names": ["中际旭创", "新易盛", "太辰光"],
+                        }
+                    ]
+                },
+            },
+            "dropped": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-21\n",
+        }
+
+        enriched = module_under_test.enrich_live_result_reporting(result, failure_candidates=[], assessed_candidates=[])
+
+        self.assertEqual(enriched.get("top_picks", []), [])
+        self.assertIn("## 方向参考映射", enriched["report_markdown"])
+        self.assertNotIn("正式执行层", enriched["report_markdown"].split("## 方向参考映射", 1)[0])
+
     def test_chain_map_does_not_produce_expectation_gap_without_evidence(self) -> None:
         """B5: chain map should not assign names to 预期差最大 without evidence."""
         entries = module_under_test.build_chain_map_entries(

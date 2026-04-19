@@ -2292,6 +2292,58 @@ def build_decision_flow_markdown(
     return lines
 
 
+def build_weekend_market_candidate_markdown(
+    weekend_candidate: dict[str, Any] | None,
+    direction_reference_map: list[dict[str, Any]] | None,
+) -> list[str]:
+    if not isinstance(weekend_candidate, dict) or weekend_candidate.get("status") == "insufficient_signal":
+        return []
+
+    lines: list[str] = ["", "## 周末主线候选", ""]
+    for item in weekend_candidate.get("candidate_topics", []):
+        if not isinstance(item, dict):
+            continue
+        lines.append(f"- `{clean_text(item.get('topic_label') or item.get('topic_name'))}` / `{clean_text(item.get('signal_strength'))}`")
+        why_it_matters = clean_text(item.get("why_it_matters"))
+        if why_it_matters:
+            lines.append(f"  - 为什么重要: {why_it_matters}")
+        monday_watch = clean_text(item.get("monday_watch"))
+        if monday_watch:
+            lines.append(f"  - 周一先看: {monday_watch}")
+
+    directions = weekend_candidate.get("priority_watch_directions")
+    if isinstance(directions, list) and directions:
+        lines.extend(["", "## 周一优先盯的方向", ""])
+        for direction in directions:
+            text = clean_text(direction)
+            if text:
+                lines.append(f"- {text}")
+
+    if isinstance(direction_reference_map, list) and direction_reference_map:
+        lines.extend(["", "## 方向参考映射", ""])
+        for item in direction_reference_map:
+            if not isinstance(item, dict):
+                continue
+            lines.append(f"- `{clean_text(item.get('direction_label') or item.get('direction_key'))}`")
+            leaders = [
+                " ".join(part for part in [clean_text(row.get("name")), clean_text(row.get("ticker"))] if part)
+                for row in item.get("leaders", [])
+                if isinstance(row, dict)
+            ]
+            high_beta_names = [
+                " ".join(part for part in [clean_text(row.get("name")), clean_text(row.get("ticker"))] if part)
+                for row in item.get("high_beta_names", [])
+                if isinstance(row, dict)
+            ]
+            lines.append(f"  - 龙头股: {', '.join(leaders) or 'none'}")
+            lines.append(f"  - 弹性股: {', '.join(high_beta_names) or 'none'}")
+            mapping_note = clean_text(item.get("mapping_note"))
+            if mapping_note:
+                lines.append(f"  - 说明: {mapping_note}")
+
+    return lines
+
+
 def prepare_request_with_candidate_snapshots(request: dict[str, Any], *, bars_fetcher: BarsFetcher) -> dict[str, Any]:
     prepared = deepcopy(request)
     candidate_tickers = [clean_text(item) for item in prepared.get("candidate_tickers", []) if clean_text(item)]
@@ -2825,6 +2877,19 @@ def enrich_live_result_reporting(
             tags = ", ".join(item.get("tier_tags", []))
             lines.append(f"| `{ticker}` {name} | {score} | {tags} | T2 |")
 
+    weekend_candidate = enriched.get("weekend_market_candidate") if isinstance(enriched.get("weekend_market_candidate"), dict) else None
+    direction_reference_map = enriched.get("direction_reference_map") if isinstance(enriched.get("direction_reference_map"), list) else None
+    weekend_lines = build_weekend_market_candidate_markdown(weekend_candidate, direction_reference_map)
+    if weekend_lines and "## 周末主线候选" not in "\n".join(lines):
+        if report_markdown and "## 决策流" in report_markdown:
+            lines[0] = report_markdown.replace(
+                "## 决策流",
+                "\n".join(weekend_lines).strip() + "\n\n## 决策流",
+                1,
+            )
+        else:
+            lines.extend(weekend_lines)
+
     directly_actionable = enriched.get("directly_actionable", [])
     if isinstance(directly_actionable, list) and directly_actionable and "## 直接可执行" not in "\n".join(lines):
         lines.extend(["", "## 直接可执行", ""])
@@ -3337,6 +3402,12 @@ def merge_track_results(
             report_lines.append(f"- `{ticker}` {name}: `{reason}`")
 
     # Shared discovery sections
+    weekend_candidate = merged.get("weekend_market_candidate") if isinstance(merged.get("weekend_market_candidate"), dict) else None
+    direction_reference_map = merged.get("direction_reference_map") if isinstance(merged.get("direction_reference_map"), list) else None
+    weekend_lines = build_weekend_market_candidate_markdown(weekend_candidate, direction_reference_map)
+    if weekend_lines:
+        report_lines.extend(weekend_lines)
+
     directly_actionable = merged.get("directly_actionable", [])
     if isinstance(directly_actionable, list) and directly_actionable:
         report_lines.extend(["", "## 直接可执行", ""])
@@ -3612,6 +3683,7 @@ for _extra in (
     "build_decision_flow_card",
     "build_decision_flow",
     "build_decision_flow_markdown",
+    "build_weekend_market_candidate_markdown",
     "midday_action_for_status",
     "prepare_request_with_candidate_snapshots",
     "wrap_assess_candidate_with_bars_failure_fallback",
