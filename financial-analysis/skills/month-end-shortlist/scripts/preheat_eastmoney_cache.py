@@ -3,8 +3,27 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import date, datetime, timedelta
 from pathlib import Path
+import sys
 from typing import Iterable
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+TRADINGAGENTS_SCRIPT_DIR = SCRIPT_DIR.parents[1] / "tradingagents-decision-bridge" / "scripts"
+if str(TRADINGAGENTS_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(TRADINGAGENTS_SCRIPT_DIR))
+
+from tradingagents_eastmoney_market import fetch_daily_bars as fetch_eastmoney_daily_bars
+from tradingagents_eastmoney_market import (
+    EASTMONEY_DEFAULT_UT,
+    cache_path,
+    eastmoney_secid,
+    format_date_yyyymmdd,
+)
+
+
+DEFAULT_LOOKBACK_DAYS = 120
 
 
 def unique_tickers(values: Iterable[str]) -> list[str]:
@@ -41,6 +60,63 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def eastmoney_cache_already_exists(ticker: str, start_date: str, end_date: str) -> bool:
+    query = {
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+        "klt": "101",
+        "fqt": "0",
+        "lmt": "10000",
+        "ut": EASTMONEY_DEFAULT_UT,
+        "secid": eastmoney_secid(ticker),
+        "beg": format_date_yyyymmdd(start_date),
+        "end": format_date_yyyymmdd(end_date),
+    }
+    cache_name = f"kline-{json.dumps(query, ensure_ascii=True, sort_keys=True)}.json"
+    return cache_path(cache_name).exists()
+
+
+def preheat_ticker(ticker: str, target_date: str) -> dict[str, str]:
+    ticker = unique_tickers([ticker])[0]
+    target_dt = date.fromisoformat(target_date[:10])
+    start_date = (target_dt - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat()
+    if eastmoney_cache_already_exists(ticker, start_date, target_dt.isoformat()):
+        return {"ticker": ticker, "status": "cache_hit", "message": ""}
+    try:
+        rows = fetch_eastmoney_daily_bars(ticker, start_date, target_dt.isoformat())
+    except Exception as exc:
+        return {"ticker": ticker, "status": "failed", "message": str(exc)}
+    if not rows:
+        return {"ticker": ticker, "status": "failed", "message": "No rows returned"}
+    return {"ticker": ticker, "status": "cache_written", "message": ""}
+
+
+def build_summary(results: list[dict[str, str]]) -> dict[str, int]:
+    summary = {"total": len(results), "cache_hit": 0, "cache_written": 0, "failed": 0}
+    for row in results:
+        status = row.get("status")
+        if status in summary:
+            summary[status] += 1
+    return summary
+
+
+def print_results(results: list[dict[str, str]]) -> None:
+    for row in results:
+        status = row["status"]
+        ticker = row["ticker"]
+        message = row.get("message", "")
+        if message:
+            print(f"[{status}] {ticker} - {message}")
+        else:
+            print(f"[{status}] {ticker}")
+    summary = build_summary(results)
+    print("Summary:")
+    print(f"- total: {summary['total']}")
+    print(f"- cache_hit: {summary['cache_hit']}")
+    print(f"- cache_written: {summary['cache_written']}")
+    print(f"- failed: {summary['failed']}")
+
+
 def main() -> int:
     parser = build_arg_parser()
     args = parser.parse_args()
@@ -50,9 +126,10 @@ def main() -> int:
     tickers = unique_tickers(tickers)
     if not tickers:
         parser.error("Provide --tickers or --tickers-file.")
-    for ticker in tickers:
-        print(ticker)
-    return 0
+    target_date = datetime.now().date().isoformat()
+    results = [preheat_ticker(ticker, target_date) for ticker in tickers]
+    print_results(results)
+    return 0 if any(row["status"] != "failed" for row in results) else 1
 
 
 if __name__ == "__main__":
