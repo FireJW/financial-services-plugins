@@ -2299,6 +2299,8 @@ def build_weekend_market_candidate_markdown(
     if not isinstance(weekend_candidate, dict) or weekend_candidate.get("status") == "insufficient_signal":
         return []
 
+    logic_labels = {"high": "高", "medium": "中", "low": "低"}
+    rank_labels = {1: "第一", 2: "第二", 3: "第三"}
     lines: list[str] = ["", "## 周末主线候选", ""]
     for item in weekend_candidate.get("candidate_topics", []):
         if not isinstance(item, dict):
@@ -2310,6 +2312,40 @@ def build_weekend_market_candidate_markdown(
         monday_watch = clean_text(item.get("monday_watch"))
         if monday_watch:
             lines.append(f"  - 周一先看: {monday_watch}")
+
+        ranking_logic = item.get("ranking_logic") if isinstance(item.get("ranking_logic"), dict) else {}
+        ranking_reason = clean_text(item.get("ranking_reason"))
+        key_sources = item.get("key_sources") if isinstance(item.get("key_sources"), list) else []
+        priority_rank_raw = item.get("priority_rank")
+        priority_rank = int(priority_rank_raw) if isinstance(priority_rank_raw, int) or (isinstance(priority_rank_raw, str) and priority_rank_raw.isdigit()) else None
+
+        if ranking_logic:
+            lines.append("")
+            lines.append("### 排序逻辑")
+            lines.append(f"- 种子共振：{logic_labels.get(clean_text(ranking_logic.get('seed_alignment')), clean_text(ranking_logic.get('seed_alignment')))}")
+            lines.append(f"- 扩展确认：{logic_labels.get(clean_text(ranking_logic.get('expansion_confirmation')), clean_text(ranking_logic.get('expansion_confirmation')))}")
+            lines.append(f"- Reddit 验证：{logic_labels.get(clean_text(ranking_logic.get('reddit_confirmation')), clean_text(ranking_logic.get('reddit_confirmation')))}")
+            lines.append(f"- 分歧 / 噪音：{logic_labels.get(clean_text(ranking_logic.get('noise_or_disagreement')), clean_text(ranking_logic.get('noise_or_disagreement')))}")
+
+        if ranking_reason:
+            lines.append("")
+            rank_text = rank_labels.get(priority_rank, f"第{priority_rank}" if priority_rank else "当前")
+            lines.append(f"### 为什么排{rank_text}")
+            lines.append(ranking_reason)
+
+        if key_sources:
+            lines.append("")
+            lines.append("### 最关键 source")
+            for row in key_sources[:3]:
+                if not isinstance(row, dict):
+                    continue
+                lines.append(f"- `{clean_text(row.get('source_name'))}`")
+                url = clean_text(row.get("url"))
+                if url:
+                    lines.append(f"  - 链接：{url}")
+                summary = clean_text(row.get("summary"))
+                if summary:
+                    lines.append(f"  - 摘要：{summary}")
 
     directions = weekend_candidate.get("priority_watch_directions")
     if isinstance(directions, list) and directions:

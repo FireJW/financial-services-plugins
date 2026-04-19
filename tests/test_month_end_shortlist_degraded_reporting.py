@@ -1278,6 +1278,80 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         text = "\n".join(lines)
         self.assertIn("Direction reference only. Not a formal execution layer.", text)
 
+    def test_weekend_candidate_markdown_renders_ranking_logic_and_key_sources(self) -> None:
+        lines = module_under_test.build_weekend_market_candidate_markdown(
+            {
+                "candidate_topics": [
+                    {
+                        "topic_name": "optical_interconnect",
+                        "topic_label": "光通信 / 光模块",
+                        "priority_rank": 1,
+                        "signal_strength": "high",
+                        "why_it_matters": "Preferred X seeds aligned.",
+                        "monday_watch": "Watch optics first on Monday.",
+                        "ranking_logic": {
+                            "seed_alignment": "high",
+                            "expansion_confirmation": "high",
+                            "reddit_confirmation": "high",
+                            "noise_or_disagreement": "low",
+                        },
+                        "ranking_reason": "This direction ranks first because seed and confirmation layers aligned most cleanly.",
+                        "key_sources": [
+                            {
+                                "source_name": "aleabitoreddit",
+                                "source_kind": "x_seed",
+                                "url": "https://x.com/aleabitoreddit",
+                                "summary": "Continued to frame photonics as an AI bottleneck.",
+                            }
+                        ],
+                    }
+                ],
+                "priority_watch_directions": ["光通信 / 光模块"],
+                "status": "candidate_only",
+            },
+            [
+                {
+                    "direction_key": "optical_interconnect",
+                    "direction_label": "光通信 / 光模块",
+                    "leaders": [{"ticker": "300308.SZ", "name": "中际旭创"}],
+                    "high_beta_names": [{"ticker": "300570.SZ", "name": "太辰光"}],
+                    "mapping_note": "Direction reference only. Not a formal execution layer.",
+                }
+            ],
+        )
+        text = "\n".join(lines)
+        self.assertIn("### 排序逻辑", text)
+        self.assertIn("种子共振：高", text)
+        self.assertIn("扩展确认：高", text)
+        self.assertIn("Reddit 验证：高", text)
+        self.assertIn("分歧 / 噪音：低", text)
+        self.assertIn("### 为什么排第一", text)
+        self.assertIn("### 最关键 source", text)
+        self.assertIn("aleabitoreddit", text)
+        self.assertIn("https://x.com/aleabitoreddit", text)
+
+    def test_weekend_candidate_markdown_falls_back_when_rich_fields_are_missing(self) -> None:
+        text = "\n".join(
+            module_under_test.build_weekend_market_candidate_markdown(
+                {
+                    "candidate_topics": [
+                        {
+                            "topic_name": "oil_shipping",
+                            "topic_label": "油运",
+                            "signal_strength": "high",
+                            "why_it_matters": "Shipping risk remains elevated.",
+                            "monday_watch": "Watch oil shipping first on Monday.",
+                        }
+                    ],
+                    "priority_watch_directions": ["油运"],
+                    "status": "candidate_only",
+                },
+                [],
+            )
+        )
+        self.assertIn("为什么重要: Shipping risk remains elevated.", text)
+        self.assertNotIn("### 排序逻辑", text)
+
     def test_weekend_reference_map_does_not_create_formal_tiers(self) -> None:
         result = {
             "top_picks": [],
