@@ -21,6 +21,57 @@ import month_end_shortlist_runtime as module_under_test
 
 
 class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
+    def test_last_cached_trade_date_from_row_sets_picks_latest_available_date(self) -> None:
+        row_sets = [
+            [{"date": "2026-04-17"}, {"date": "2026-04-18"}],
+            [{"date": "2026-04-16"}, {"date": "2026-04-18"}],
+            [],
+        ]
+        self.assertEqual(
+            module_under_test.last_cached_trade_date_from_row_sets(row_sets),
+            "2026-04-18",
+        )
+
+    def test_resolve_cache_baseline_metadata_reports_baseline_only_when_cache_lags_target(self) -> None:
+        metadata = module_under_test.resolve_cache_baseline_metadata(
+            "2026-04-20",
+            [
+                [{"date": "2026-04-17"}, {"date": "2026-04-18"}],
+                [{"date": "2026-04-18"}],
+            ],
+        )
+        self.assertEqual(metadata["baseline_trade_date"], "2026-04-18")
+        self.assertTrue(metadata["cache_baseline_only"])
+
+    def test_resolve_cache_baseline_metadata_stays_empty_when_target_is_covered(self) -> None:
+        metadata = module_under_test.resolve_cache_baseline_metadata(
+            "2026-04-18",
+            [
+                [{"date": "2026-04-17"}, {"date": "2026-04-18"}],
+            ],
+        )
+        self.assertEqual(metadata["baseline_trade_date"], "")
+        self.assertFalse(metadata["cache_baseline_only"])
+
+    def test_attach_cache_baseline_metadata_uses_recent_cached_rows(self) -> None:
+        result = {"request": {"analysis_time": "2026-04-20T10:00:00+08:00"}}
+        candidates = [
+            {"ticker": "000988.SZ"},
+            {"ticker": "002384.SZ"},
+        ]
+        with patch.object(
+            module_under_test,
+            "eastmoney_cached_bars_for_candidate",
+            side_effect=[
+                [{"date": "2026-04-17"}, {"date": "2026-04-18"}],
+                [{"date": "2026-04-18"}],
+            ],
+        ):
+            enriched = module_under_test.attach_cache_baseline_metadata(result, candidates)
+        self.assertEqual(enriched["filter_summary"]["cache_baseline_trade_date"], "2026-04-18")
+        self.assertTrue(enriched["filter_summary"]["cache_baseline_only"])
+        self.assertEqual(enriched["filter_summary"]["live_supplement_status"], "unavailable")
+
     def test_wrap_assess_candidate_converts_bars_fetch_failure_to_drop_record(self) -> None:
         wrapped = module_under_test.wrap_assess_candidate_with_bars_failure_fallback(
             lambda candidate, request, benchmark_rows, *, bars_fetcher, html_fetcher: (_ for _ in ()).throw(

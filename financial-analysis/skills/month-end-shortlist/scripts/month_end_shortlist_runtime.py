@@ -731,6 +731,40 @@ def last_bar_date_from_rows(rows: list[dict[str, Any]]) -> str:
     return ""
 
 
+def last_cached_trade_date_from_row_sets(row_sets: list[list[dict[str, Any]]]) -> str:
+    latest = ""
+    for rows in row_sets:
+        current = last_bar_date_from_rows(rows or [])
+        if current and (not latest or current > latest):
+            latest = current
+    return latest
+
+
+def resolve_cache_baseline_metadata(
+    target_trade_date: str,
+    row_sets: list[list[dict[str, Any]]],
+) -> dict[str, Any]:
+    target = clean_text(target_trade_date)[:10]
+    baseline = last_cached_trade_date_from_row_sets(row_sets)
+    if not target or not baseline:
+        return {
+            "baseline_trade_date": "",
+            "cache_baseline_only": False,
+            "live_supplement_status": "",
+        }
+    if baseline >= target:
+        return {
+            "baseline_trade_date": "",
+            "cache_baseline_only": False,
+            "live_supplement_status": "",
+        }
+    return {
+        "baseline_trade_date": baseline,
+        "cache_baseline_only": True,
+        "live_supplement_status": "unavailable",
+    }
+
+
 def classify_eastmoney_cache_freshness(
     rows: list[dict[str, Any]] | None,
     target_trade_date: str,
@@ -842,6 +876,37 @@ def eastmoney_cached_bars_for_candidate(
         return []
     rows = parse_daily_items(payload)
     return rows if isinstance(rows, list) else []
+
+
+def attach_cache_baseline_metadata(
+    result: dict[str, Any],
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    enriched = deepcopy(result)
+    request_obj = dict(enriched.get("request") or {})
+    target_trade_date = clean_text(request_obj.get("analysis_time") or request_obj.get("target_date"))[:10]
+    if not target_trade_date or not candidates:
+        return enriched
+
+    target_dt = parse_date(target_trade_date)
+    if not target_dt:
+        return enriched
+
+    start_date = (target_dt - timedelta(days=420)).isoformat()
+    row_sets: list[list[dict[str, Any]]] = []
+    for candidate in candidates:
+        ticker = clean_text(candidate.get("ticker"))
+        if not ticker:
+            continue
+        row_sets.append(eastmoney_cached_bars_for_candidate(ticker, start_date, target_trade_date))
+
+    metadata = resolve_cache_baseline_metadata(target_trade_date, row_sets)
+    filter_summary = dict(enriched.get("filter_summary") or {})
+    filter_summary["cache_baseline_trade_date"] = metadata["baseline_trade_date"]
+    filter_summary["cache_baseline_only"] = bool(metadata["cache_baseline_only"])
+    filter_summary["live_supplement_status"] = metadata["live_supplement_status"]
+    enriched["filter_summary"] = filter_summary
+    return enriched
 
 
 def enrich_degraded_live_result(result: dict[str, Any], failure_candidates: list[dict[str, Any]]) -> dict[str, Any]:
@@ -3400,7 +3465,7 @@ def run_month_end_shortlist(
             track_results[track_name] = enriched
             all_assessed.extend(track_assessed_log)
 
-        return merge_track_results(
+        merged = merge_track_results(
             track_results,
             TRACK_CONFIGS,
             discovery_candidates=discovery_candidates,
@@ -3409,6 +3474,8 @@ def run_month_end_shortlist(
             out_of_scope_dropped=out_of_scope,
             base_request=prepared_payload,
         )
+        merged = attach_cache_baseline_metadata(merged, all_assessed)
+        return merged
     finally:
         _compiled.assess_candidate = original_assess_candidate
         _compiled.normalize_request = original_normalize_request
@@ -3427,6 +3494,9 @@ for _extra in (
     "choose_eastmoney_cache_recovery_mode",
     "build_bars_cache_rescue_candidate",
     "eastmoney_cached_bars_for_candidate",
+    "last_cached_trade_date_from_row_sets",
+    "resolve_cache_baseline_metadata",
+    "attach_cache_baseline_metadata",
     "enrich_degraded_live_result",
     "enrich_live_result_reporting",
     "build_diagnostic_scorecard_entry",
