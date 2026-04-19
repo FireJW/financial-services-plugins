@@ -13,6 +13,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from publication_contract_runtime import load_publication_contract, validate_publication_contract
 from workflow_publication_gate_runtime import build_workflow_publication_gate
 
 
@@ -354,7 +355,10 @@ def push_publish_package_to_wechat(
     browser_runner=None,
 ) -> dict[str, Any]:
     request = safe_dict(raw_request)
-    publish_package = safe_dict(request.get("publish_package"))
+    publish_package = load_publication_contract(request)
+    validation = validate_publication_contract(publish_package)
+    if validation["status"] != "ok":
+        raise ValueError(f"Invalid publish_package: missing {validation['missing_fields']}")
     workflow_publication_gate = build_workflow_publication_gate(publish_package)
     review_gate = build_review_gate(request)
     if not review_gate["approved"]:

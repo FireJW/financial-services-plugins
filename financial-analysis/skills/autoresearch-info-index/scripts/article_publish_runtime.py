@@ -12,6 +12,7 @@ from typing import Any
 from article_workflow_runtime import run_article_workflow
 from hot_topic_discovery_runtime import run_hot_topic_discovery
 from news_index_runtime import isoformat_or_blank, load_json, parse_datetime, short_excerpt, write_json
+from publication_contract_runtime import SHARED_PUBLICATION_CONTRACT_VERSION
 from workflow_publication_gate_runtime import build_workflow_publication_gate
 from toutiao_fast_card_runtime import build_toutiao_fast_card_package
 from toutiao_draftbox_runtime import push_fast_card_to_toutiao
@@ -170,6 +171,8 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "discovery_top_n": int(payload.get("discovery_top_n", 3) or 3),
         "output_dir": output_dir,
         "push_to_wechat": bool(payload.get("push_to_wechat")),
+        "push_to_channel": bool(payload.get("push_to_channel")),
+        "publish_channel": clean_text(payload.get("publish_channel")) or "wechat",
         "push_to_toutiao": bool(payload.get("push_to_toutiao")),
         "toutiao_browser_session": safe_dict(payload.get("toutiao_browser_session")),
         "wechat_cta_text": clean_text(payload.get("wechat_cta_text")),
@@ -1234,12 +1237,32 @@ def build_publish_package(workflow_result: dict[str, Any], selected_topic: dict[
     effective_framework = clean_text(article_package.get("article_framework")) or clean_text(safe_dict(draft_result.get("request")).get("article_framework"))
     if not effective_framework or effective_framework == "auto":
         effective_framework = "deep_analysis" if clean_text(request.get("article_framework")) in {"", "auto"} else clean_text(request.get("article_framework"))
+    sections = [safe_dict(item) for item in safe_list(article_package.get("sections")) if isinstance(item, dict)]
+    lede = clean_text(article_package.get("lede"))
+    draft_thesis = clean_text(article_package.get("draft_thesis")) or clean_text(selected_topic.get("recommended_angle")) or clean_text(selected_topic.get("summary"))
+    preferred_image_slots = clean_string_list([item.get("placement") for item in selected_images])
+    section_emphasis = clean_string_list([section.get("heading") for section in sections])[:3]
+    platform_hints = {
+        "preferred_image_slots": preferred_image_slots,
+        "section_emphasis": section_emphasis,
+        "heading_density": "dense" if len(section_emphasis) >= 3 else "normal",
+    }
+    operator_notes = clean_string_list(safe_list(article_package.get("editor_notes")))
+    if clean_text(request.get("image_strategy")) == "prefer_images":
+        operator_notes.append("Prefer real images over generated graphics when the platform crop is aggressive.")
+    if is_chinese_mode(request):
+        operator_notes.append("Use content_markdown as the editing baseline before platform-specific conversion.")
     return {
-        "contract_version": "wechat-draft-package/v1",
+        "contract_version": SHARED_PUBLICATION_CONTRACT_VERSION,
         "account_name": request["account_name"],
         "author": request["author"],
         "title": title,
         "subtitle": clean_text(article_package.get("subtitle")),
+        "lede": lede,
+        "sections": sections,
+        "selected_images": selected_images,
+        "draft_thesis": draft_thesis,
+        "citations": citations,
         "digest": digest,
         "keywords": clean_string_list(selected_topic.get("keywords")),
         "cover_image_path": request["cover_image_path"],
@@ -1252,7 +1275,9 @@ def build_publish_package(workflow_result: dict[str, Any], selected_topic: dict[
         "editor_anchor_visibility": "review_only" if request["editor_anchor_mode"] == "hidden" else "visible_inline",
         "editor_anchors": editor_anchors,
         "image_assets": image_assets,
+        "platform_hints": platform_hints,
         "style_profile_applied": style_profile_applied,
+        "operator_notes": operator_notes,
         "feedback_profile_status": safe_dict(article_package.get("feedback_profile_status") or draft_result.get("feedback_profile_status")),
         "workflow_manual_review": safe_dict(final_article.get("manual_review") or workflow_result.get("manual_review")),
         "publication_readiness": clean_text(final_article.get("publication_readiness") or workflow_result.get("publication_readiness")) or "ready",
@@ -1376,6 +1401,21 @@ def build_report_markdown(result: dict[str, Any]) -> str:
             lines.append(f"- Blocked: {clean_text(toutiao_stage.get('blocked_reason'))}")
         if clean_text(toutiao_stage.get("error_message")):
             lines.append(f"- Error: {clean_text(toutiao_stage.get('error_message'))}")
+    channel_push_stage = safe_dict(result.get("channel_push_stage"))
+    if channel_push_stage.get("status") != "not_requested":
+        lines.append("")
+        lines.append(f"## Shared Channel Push ({clean_text(channel_push_stage.get('channel')) or 'unknown'})")
+        lines.append("")
+        lines.append(f"- Status: {clean_text(channel_push_stage.get('status'))}")
+        lines.append(f"- Attempted: {'yes' if channel_push_stage.get('attempted') else 'no'}")
+        if clean_text(channel_push_stage.get("blocked_reason")):
+            lines.append(f"- Blocked: {clean_text(channel_push_stage.get('blocked_reason'))}")
+        if clean_text(channel_push_stage.get("article_url")):
+            lines.append(f"- Article URL: {clean_text(channel_push_stage.get('article_url'))}")
+        if clean_text(channel_push_stage.get("draft_media_id")):
+            lines.append(f"- Draft media id: {clean_text(channel_push_stage.get('draft_media_id'))}")
+        if clean_text(channel_push_stage.get("error_message")):
+            lines.append(f"- Error: {clean_text(channel_push_stage.get('error_message'))}")
     if style_memory:
         lines.extend(
             [
@@ -1393,6 +1433,12 @@ def build_report_markdown(result: dict[str, Any]) -> str:
 
 def push_publish_package_to_wechat(*args: Any, **kwargs: Any) -> dict[str, Any]:
     from wechat_draftbox_runtime import push_publish_package_to_wechat as inner
+
+    return inner(*args, **kwargs)
+
+
+def push_publish_package_to_toutiao(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    from toutiao_article_draftbox_runtime import push_publish_package_to_toutiao as inner
 
     return inner(*args, **kwargs)
 
@@ -1531,6 +1577,13 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "result_path": str(request["output_dir"] / "toutiao-push-result.json"),
     }
     toutiao_fast_card_package = None
+    channel_push_stage = {
+        "channel": request["publish_channel"],
+        "attempted": False,
+        "status": "not_requested",
+        "review_gate_status": review_gate["status"],
+        "result_path": str(request["output_dir"] / f"{request['publish_channel']}-shared-push-result.json"),
+    }
 
     if request["push_to_toutiao"]:
         toutiao_fast_card_package = build_toutiao_fast_card_package(
@@ -1565,6 +1618,60 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
                 toutiao_stage["blocked_reason"] = "push_failed"
                 toutiao_stage["error_message"] = clean_text(exc)
 
+    if request["push_to_channel"]:
+        if not review_gate["approved"]:
+            status = "blocked_review_gate"
+            channel_push_stage["status"] = "blocked_review_gate"
+            channel_push_stage["blocked_reason"] = "human_review_not_approved"
+        elif request["publish_channel"] == "wechat" and clean_text(safe_dict(publish_package.get("push_readiness")).get("status")) != "ready_for_api_push":
+            status = "blocked_push_readiness"
+            channel_push_stage["status"] = "blocked_push_readiness"
+            channel_push_stage["blocked_reason"] = f"push_not_ready:{clean_text(safe_dict(publish_package.get('push_readiness')).get('status'))}"
+        else:
+            channel_push_stage["attempted"] = True
+            try:
+                if request["publish_channel"] == "wechat":
+                    channel_push_result = push_publish_package_to_wechat(
+                        {
+                            "publish_package": publish_package,
+                            "push_backend": request["push_backend"],
+                            "human_review_approved": request["human_review_approved"],
+                            "human_review_approved_by": request["human_review_approved_by"],
+                            "human_review_note": request["human_review_note"],
+                            "wechat_app_id": request["wechat_app_id"],
+                            "wechat_app_secret": request["wechat_app_secret"],
+                            "allow_insecure_inline_credentials": request["allow_insecure_inline_credentials"],
+                            "cover_image_path": request["cover_image_path"],
+                            "cover_image_url": request["cover_image_url"],
+                            "timeout_seconds": request["timeout_seconds"],
+                            "browser_session": request["browser_session"],
+                        }
+                    )
+                    channel_push_stage["draft_media_id"] = clean_text(safe_dict(channel_push_result.get("draft_result")).get("media_id"))
+                elif request["publish_channel"] == "toutiao":
+                    channel_push_result = push_publish_package_to_toutiao(
+                        {
+                            "publish_package": publish_package,
+                            "push_backend": clean_text(request.get("push_backend")) or "browser_session",
+                            "human_review_approved": request["human_review_approved"],
+                            "human_review_approved_by": request["human_review_approved_by"],
+                            "human_review_note": request["human_review_note"],
+                            "timeout_seconds": request["timeout_seconds"],
+                            "browser_session": request["toutiao_browser_session"] or request["browser_session"],
+                        }
+                    )
+                    channel_push_stage["article_url"] = clean_text(channel_push_result.get("article_url"))
+                else:
+                    raise ValueError(f"Unsupported publish_channel: {request['publish_channel']}")
+                write_json(Path(channel_push_stage["result_path"]), channel_push_result)
+                channel_push_stage["status"] = clean_text(channel_push_result.get("status")) or "ok"
+                channel_push_stage["push_backend"] = clean_text(channel_push_result.get("push_backend"))
+            except Exception as exc:
+                status = "push_error"
+                channel_push_stage["status"] = "error"
+                channel_push_stage["blocked_reason"] = "push_failed"
+                channel_push_stage["error_message"] = clean_text(exc)
+
     result = {
         "status": status,
         "workflow_kind": "article_publish",
@@ -1588,10 +1695,15 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "workflow_manual_review": safe_dict(workflow_publication_gate.get("manual_review")),
         "workflow_publication_gate": workflow_publication_gate,
         "push_stage": push_stage,
+        "channel_push_stage": channel_push_stage,
         "toutiao_stage": toutiao_stage,
         "toutiao_fast_card_package": toutiao_fast_card_package,
         "topic": clean_text(selected_topic.get("title")),
-        "next_push_command": f"financial-analysis\\skills\\autoresearch-info-index\\scripts\\run_wechat_push_draft.cmd \"{publish_package_path}\"",
+        "next_push_command": (
+            f"financial-analysis\\skills\\autoresearch-info-index\\scripts\\run_wechat_push_draft.cmd \"{publish_package_path}\""
+            if request["publish_channel"] == "wechat"
+            else ""
+        ),
     }
     result["report_markdown"] = build_report_markdown(result)
     return result
@@ -1611,4 +1723,5 @@ __all__ = [
     "safe_dict",
     "safe_list",
     "push_publish_package_to_wechat",
+    "push_publish_package_to_toutiao",
 ]

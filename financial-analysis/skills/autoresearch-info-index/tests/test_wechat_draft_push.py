@@ -34,10 +34,20 @@ class WechatDraftPushTests(unittest.TestCase):
         preview_src = self.image_path.resolve().as_uri()
         html = f'<article><h1>Agent hiring reset</h1><img src="{preview_src}" alt="hero" /></article>'
         return {
-            "contract_version": "wechat-draft-package/v1",
+            "contract_version": "publish-package/v1",
             "title": "Agent hiring reset",
+            "subtitle": "A short subtitle",
+            "lede": "This is the opening paragraph.",
+            "sections": [{"heading": "What changed", "paragraph": "The market is repricing the story."}],
+            "draft_thesis": "The rebound is real enough to matter.",
             "author": "Codex",
+            "content_markdown": "# Agent hiring reset\n\nThe market is repricing the story.",
             "content_html": html,
+            "selected_images": [],
+            "platform_hints": {"preferred_image_slots": ["after_lede"], "section_emphasis": ["What changed"], "heading_density": "normal"},
+            "style_profile_applied": {},
+            "operator_notes": [],
+            "citations": [],
             "image_assets": [
                 {
                     "asset_id": "hero-01",
@@ -72,6 +82,21 @@ class WechatDraftPushTests(unittest.TestCase):
                 ]
             },
         }
+
+    def test_push_publish_package_validates_shared_publication_contract(self) -> None:
+        broken_package = self.build_publish_package()
+        broken_package.pop("title")
+
+        with self.assertRaises(ValueError):
+            push_publish_package_to_wechat(
+                {
+                    "publish_package": broken_package,
+                    "wechat_app_id": "wx-test",
+                    "wechat_app_secret": "secret-test",
+                    "allow_insecure_inline_credentials": True,
+                    "human_review_approved": True,
+                }
+            )
 
     def manual_topic_candidates(self) -> list[dict]:
         return [

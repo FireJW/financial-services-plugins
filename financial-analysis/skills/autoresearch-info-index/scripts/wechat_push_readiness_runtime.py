@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from pathlib import Path
 from typing import Any
 
 from article_publish_runtime import build_push_readiness
 from news_index_runtime import write_json
+from publication_contract_runtime import load_publication_contract, validate_publication_contract
 from wechat_draftbox_runtime import (
     build_workflow_publication_gate,
     default_request_fn,
@@ -30,16 +30,12 @@ def safe_list(value: Any) -> list[Any]:
 
 def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     payload = deepcopy(raw_payload)
-    publish_package = safe_dict(payload.get("publish_package"))
-    if not publish_package:
-        publish_package_path = clean_text(payload.get("publish_package_path") or payload.get("input_path"))
-        if publish_package_path:
-            import json
-
-            loaded = json.loads(Path(publish_package_path).read_text(encoding="utf-8-sig"))
-            publish_package = loaded if isinstance(loaded, dict) else {}
+    publish_package = load_publication_contract(payload)
     if not publish_package:
         raise ValueError("wechat push readiness audit requires publish_package or publish_package_path")
+    validation = validate_publication_contract(publish_package)
+    if validation["status"] != "ok":
+        raise ValueError(f"Invalid publish_package: missing {validation['missing_fields']}")
 
     return {
         "publish_package": publish_package,
