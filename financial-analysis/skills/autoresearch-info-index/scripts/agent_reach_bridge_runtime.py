@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import shlex
 import shutil
@@ -33,104 +32,6 @@ SUPPORTED_CHANNELS = ("web", "github", "youtube", "rss", "x", "wechat", "reddit"
 CHANNEL_ALIASES = {"twitter": "x", "x_twitter": "x", "web_jina": "web"}
 COLLECTION_KEYS = ("findings", "items", "results", "entries", "records", "data")
 DEFAULT_CHANNELS = ["github", "youtube"]
-QUERYLESS_REDDIT_SUBREDDIT_LIMITS = [
-    ("r/stocks", 2),
-    ("r/investing", 1),
-    ("r/SecurityAnalysis", 2),
-    ("r/ValueInvesting", 1),
-    ("r/wallstreetbets", 1),
-    ("r/MachineLearning", 2),
-    ("r/hardware", 2),
-    ("r/geopolitics", 1),
-    ("r/CredibleDefense", 1),
-]
-QUERYLESS_REDDIT_SEARCH_QUERIES = [
-    "AI chips semiconductors",
-    "OpenAI Claude Anthropic",
-    "robotaxi Tesla",
-    "oil shipping Hormuz",
-    "jet fuel shortage Europe",
-    "Netflix NFLX earnings revenue",
-    "tariffs trade war supply chain",
-]
-QUERYLESS_REDDIT_SEARCH_SUBREDDITS = [
-    "r/MachineLearning",
-    "r/hardware",
-    "r/stocks",
-    "r/SecurityAnalysis",
-    "r/CredibleDefense",
-    "r/wallstreetbets",
-]
-QUERYLESS_REDDIT_META_TITLE_KEYWORDS = {
-    "rate my portfolio",
-    "daily discussion",
-    "discussion and advice thread",
-    "questions and discussions thread",
-    "who's hiring",
-    "self-promotion thread",
-    "self promotion thread",
-    "reminder:",
-    "letters & reports",
-    "letters and reports",
-    "quarterly thread",
-    "monthly who's hiring",
-    "active conflicts & news megathread",
-}
-QUERYLESS_REDDIT_META_TITLE_PREFIXES = ("[d] ", "[week ")
-QUERYLESS_REDDIT_STALE_MAX_AGE_DAYS = 45
-QUERYLESS_REDDIT_THEMATIC_KEYWORDS = {
-    "earnings",
-    "eps",
-    "revenue",
-    "guidance",
-    "market share",
-    "catalyst",
-    "amd",
-    "ryzen",
-    "x3d",
-    "semiconductor",
-    "semiconductors",
-    "chip",
-    "chips",
-    "hbm",
-    "gpu",
-    "nvidia",
-    "foundry",
-    "packaging",
-    "robotaxi",
-    "autonomous",
-    "tesla",
-    "openai",
-    "claude",
-    "anthropic",
-    "gemini",
-    "model",
-    "models",
-    "inference",
-    "cost curve",
-    "ai agent",
-    "agents",
-    "oil",
-    "hormuz",
-    "jet fuel",
-    "blockade",
-    "supply chain",
-    "tariff",
-    "tariffs",
-    "export control",
-    "defence",
-    "defense",
-    "ukraine",
-}
-QUERYLESS_X_SEARCH_QUERIES = [
-    "NVIDIA AMD TSMC chips HBM semiconductors",
-    "OpenAI Anthropic Claude Gemini AI agents",
-    "robotaxi autonomous driving Tesla",
-    "oil shipping Hormuz jet fuel sanctions",
-    "Netflix NFLX earnings revenue EPS",
-    "tariffs trade war supply chain macro",
-]
-QUERYLESS_X_PER_QUERY_TIMEOUT_SECONDS = 8
 DEFAULT_TIMEOUT_PER_CHANNEL = 30
 DEFAULT_DEDUPE_WINDOW_HOURS = 6
 BRAND_BY_HOST_FRAGMENT = {
@@ -260,53 +161,17 @@ def load_agent_reach_config(home_root: Path | None = None) -> dict[str, Any]:
         return {}
 
 
-def parse_env_assignments(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        normalized_key = clean_text(key)
-        if not normalized_key:
-            continue
-        values[normalized_key] = value.strip().strip('"').strip("'")
-    return values
-
-
-def first_credential_value(mapping: dict[str, Any], *keys: str) -> str:
-    for key in keys:
-        value = clean_text(mapping.get(key))
-        if value:
-            return value
-    return ""
-
-
-def resolve_twitter_credentials(config: dict[str, Any], pseudo_home: Path) -> dict[str, str]:
-    auth_token = first_credential_value(config, "twitter_auth_token", "x_auth_token", "auth_token")
-    ct0 = first_credential_value(config, "twitter_ct0", "x_ct0", "ct0")
-    if auth_token and ct0:
-        return {"auth_token": auth_token, "ct0": ct0, "source": "config"}
-    bird_env_path = pseudo_home / ".config" / "bird" / "credentials.env"
-    if bird_env_path.exists():
-        try:
-            bird_env_values = parse_env_assignments(bird_env_path.read_text(encoding="utf-8", errors="replace"))
-        except OSError:
-            bird_env_values = {}
-        auth_token = first_credential_value(bird_env_values, "AUTH_TOKEN", "TWITTER_AUTH_TOKEN")
-        ct0 = first_credential_value(bird_env_values, "CT0", "TWITTER_CT0")
-        if auth_token and ct0:
-            return {"auth_token": auth_token, "ct0": ct0, "source": "bird_env"}
-    auth_token = first_credential_value(os.environ, "AUTH_TOKEN", "TWITTER_AUTH_TOKEN")
-    ct0 = first_credential_value(os.environ, "CT0", "TWITTER_CT0")
-    if auth_token and ct0:
-        return {"auth_token": auth_token, "ct0": ct0, "source": "process_env"}
-    return {"auth_token": "", "ct0": "", "source": ""}
-
-
 def has_twitter_credentials(config: dict[str, Any], pseudo_home: Path) -> bool:
-    credentials = resolve_twitter_credentials(config, pseudo_home)
-    return bool(credentials["auth_token"] and credentials["ct0"])
+    if clean_text(config.get("twitter_auth_token")) and clean_text(config.get("twitter_ct0")):
+        return True
+    bird_env_path = pseudo_home / ".config" / "bird" / "credentials.env"
+    if not bird_env_path.exists():
+        return False
+    try:
+        bird_env_text = bird_env_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "AUTH_TOKEN=" in bird_env_text and "CT0=" in bird_env_text
 
 
 def default_live_channels(
@@ -330,7 +195,6 @@ def preferred_binary_path(name: str) -> str:
     candidates: dict[str, list[Path]] = {
         "yt-dlp": [default_vendor_root() / "yt-dlp" / "yt-dlp.exe", Path("yt-dlp")],
         "gh": [default_vendor_root() / "gh" / "bin" / "gh.exe", Path("gh")],
-        "bird": [default_vendor_root() / "bird" / "bird.cmd", Path("bird")],
     }
     for candidate in candidates.get(name, [Path(name)]):
         if candidate.is_absolute() and candidate.exists():
@@ -549,14 +413,7 @@ def build_source_name(channel: str, url: str, item: dict[str, Any]) -> str:
         subreddit = normalize_reddit_subreddit(item.get("subreddit_name_prefixed") or item.get("subreddit"))
         return f"Reddit {subreddit}".strip() if subreddit else "Reddit"
     if channel == "x":
-        author_dict = safe_dict(item.get("author"))
-        author = clean_text(
-            item.get("author_handle")
-            or item.get("handle")
-            or item.get("username")
-            or author_dict.get("username")
-            or author_dict.get("screen_name")
-        )
+        author = clean_text(item.get("author_handle") or item.get("handle") or item.get("username"))
         return f"X @{author.lstrip('@')}" if author else "X"
     return brand_for_host(host_for(url)) or channel
 
@@ -584,20 +441,6 @@ def primary_url(channel: str, item: dict[str, Any]) -> str:
     url = clean_text(item.get("url") or item.get("html_url") or item.get("htmlUrl") or item.get("webpage_url") or item.get("permalink") or item.get("link") or item.get("post_url"))
     if url:
         return normalize_reddit_url(url) if channel == "reddit" else url
-    if channel == "x":
-        author_dict = safe_dict(item.get("author"))
-        author = clean_text(
-            item.get("author_handle")
-            or item.get("handle")
-            or item.get("username")
-            or author_dict.get("username")
-            or author_dict.get("screen_name")
-        ).lstrip("@")
-        status_id = clean_text(item.get("id") or item.get("status_id"))
-        if status_id and author:
-            return f"https://x.com/{author}/status/{status_id}"
-        if status_id:
-            return f"https://x.com/i/web/status/{status_id}"
     if channel == "youtube":
         video_id = clean_text(item.get("id"))
         if video_id:
@@ -649,91 +492,10 @@ def parse_rss_xml_text(xml_text: str) -> list[dict[str, Any]]:
     return [item for item in items if item.get("title") and item.get("url")]
 
 
-def subreddit_from_reddit_permalink(url: str) -> str:
-    parsed = urllib.parse.urlparse(normalize_reddit_url(url))
-    match = re.search(r"/r/([^/]+)/comments/", parsed.path)
-    if not match:
-        return ""
-    return normalize_reddit_subreddit(f"r/{match.group(1)}")
-
-
-def parse_reddit_atom_feed(xml_text: str, *, listing: str, listing_window: str) -> list[dict[str, Any]]:
-    root = ET.fromstring(xml_text)
-    namespace = {"atom": "http://www.w3.org/2005/Atom"}
-    records: list[dict[str, Any]] = []
-    for entry in root.findall("atom:entry", namespace):
-        title = clean_text(entry.findtext("atom:title", default="", namespaces=namespace))
-        link_element = entry.find("atom:link", namespace)
-        url = clean_text(link_element.get("href") if link_element is not None else "")
-        content = clean_text(entry.findtext("atom:content", default="", namespaces=namespace))
-        updated = clean_text(entry.findtext("atom:updated", default="", namespaces=namespace))
-        subreddit = subreddit_from_reddit_permalink(url)
-        records.append(
-            {
-                "title": title,
-                "permalink": normalize_reddit_url(url),
-                "subreddit_name_prefixed": subreddit,
-                "selftext": content,
-                "published_at": updated,
-                "listing": listing,
-                "listing_window": listing_window,
-            }
-        )
-    return [item for item in records if item.get("title") and item.get("permalink")]
-
-
-def is_queryless_reddit_meta_title(title: Any) -> bool:
-    text = clean_text(title).lower()
-    if not text:
-        return False
-    if text.startswith(QUERYLESS_REDDIT_META_TITLE_PREFIXES):
-        return True
-    return any(keyword in text for keyword in QUERYLESS_REDDIT_META_TITLE_KEYWORDS)
-
-
-def is_queryless_reddit_stale_record(item: dict[str, Any], analysis_time: datetime) -> bool:
-    normalized_timestamp, _ = normalize_timestamp(
-        item.get("published_at") or item.get("updated") or item.get("created_utc"),
-        analysis_time,
-    )
-    if not normalized_timestamp:
-        return False
-    published_at = parse_datetime(normalized_timestamp, fallback=None)
-    if not published_at:
-        return False
-    return analysis_time - published_at > timedelta(days=QUERYLESS_REDDIT_STALE_MAX_AGE_DAYS)
-
-
-def should_skip_queryless_reddit_record(item: dict[str, Any], analysis_time: datetime) -> bool:
-    return (
-        is_queryless_reddit_meta_title(item.get("title"))
-        or is_queryless_reddit_stale_record(item, analysis_time)
-        or not is_queryless_reddit_thematic_record(item)
-    )
-
-
-def is_queryless_reddit_thematic_record(item: dict[str, Any]) -> bool:
-    title = clean_text(item.get("title")).lower()
-    for keyword in QUERYLESS_REDDIT_THEMATIC_KEYWORDS:
-        lowered = keyword.lower()
-        if re.search(r"[a-z0-9]", lowered):
-            pattern = rf"(?<![a-z0-9]){re.escape(lowered)}(?![a-z0-9])"
-            if re.search(pattern, title):
-                return True
-            continue
-        if lowered in title:
-            return True
-    return False
-
-
 def flatten_channel_payload(channel: str, payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     if isinstance(payload, dict):
-        nested = safe_dict(payload.get("results_by_channel") or payload.get("channels"))
-        nested_payload = safe_dict(nested.get(channel))
-        if nested_payload:
-            return flatten_channel_payload(channel, nested_payload)
         for key in ("entries", "items", "results", "tweets", "data", "posts"):
             if isinstance(payload.get(key), list):
                 return [item for item in payload[key] if isinstance(item, dict)]
@@ -772,136 +534,6 @@ def rss_default_records(query: str, request: dict[str, Any]) -> list[dict[str, A
     return records[: request["max_results_per_channel"]]
 
 
-def reddit_default_records(query: str, request: dict[str, Any]) -> list[dict[str, Any]]:
-    limit = request["max_results_per_channel"]
-    analysis_time = request.get("analysis_time")
-    if not isinstance(analysis_time, datetime):
-        analysis_time = now_utc()
-    if not clean_text(query):
-        records: list[dict[str, Any]] = []
-        seen_permalinks: set[str] = set()
-        per_query_limit = max(1, min(3, limit))
-        for default_query in QUERYLESS_REDDIT_SEARCH_QUERIES:
-            encoded_query = urllib.parse.quote_plus(default_query)
-            for subreddit in QUERYLESS_REDDIT_SEARCH_SUBREDDITS:
-                search_url = f"https://www.reddit.com/{subreddit}/search.json?q={encoded_query}&restrict_sr=on&sort=top&t=day&limit={per_query_limit}"
-                http_request = urllib.request.Request(search_url, headers={"User-Agent": "Codex-AgentReachBridge/1.0"})
-                try:
-                    with urllib.request.urlopen(http_request, timeout=request["timeout_per_channel"]) as response:
-                        payload = json.loads(response.read().decode("utf-8"))
-                except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError):
-                    continue
-                children = safe_list(safe_dict(safe_dict(payload).get("data")).get("children"))
-                for child in children:
-                    item = safe_dict(child).get("data") if isinstance(child, dict) else {}
-                    item = safe_dict(item)
-                    if not item:
-                        continue
-                    permalink = normalize_reddit_url(item.get("permalink"))
-                    if not permalink or permalink in seen_permalinks:
-                        continue
-                    record = {
-                        "title": clean_text(item.get("title")),
-                        "permalink": permalink,
-                        "subreddit_name_prefixed": normalize_reddit_subreddit(item.get("subreddit_name_prefixed") or item.get("subreddit") or subreddit),
-                        "selftext": clean_text(item.get("selftext") or item.get("body") or item.get("text")),
-                        "score": item.get("score"),
-                        "num_comments": item.get("num_comments"),
-                        "created_utc": item.get("created_utc"),
-                        "listing": "top",
-                        "listing_window": "day",
-                    }
-                    if should_skip_queryless_reddit_record(record, analysis_time):
-                        continue
-                    seen_permalinks.add(permalink)
-                    records.append(record)
-                    if len(records) >= max(limit, 8):
-                        return records[: max(limit, 8)]
-        for subreddit, take_count in QUERYLESS_REDDIT_SUBREDDIT_LIMITS:
-            rss_request = urllib.request.Request(
-                f"https://www.reddit.com/{subreddit}/hot.rss",
-                headers={"User-Agent": "Codex-AgentReachBridge/1.0"},
-            )
-            try:
-                kept_count = 0
-                with urllib.request.urlopen(rss_request, timeout=request["timeout_per_channel"]) as response:
-                    for item in parse_reddit_atom_feed(
-                        response.read().decode("utf-8"),
-                        listing="hot",
-                        listing_window="day",
-                    ):
-                        permalink = normalize_reddit_url(item.get("permalink"))
-                        if not permalink or permalink in seen_permalinks:
-                            continue
-                        if should_skip_queryless_reddit_record(item, analysis_time):
-                            continue
-                        seen_permalinks.add(permalink)
-                        records.append(item)
-                        kept_count += 1
-                        if kept_count >= take_count:
-                            break
-            except (urllib.error.HTTPError, urllib.error.URLError, OSError, ET.ParseError):
-                continue
-            if len(records) >= max(limit, 8):
-                break
-        return records[: max(limit, 8)]
-
-    encoded_query = urllib.parse.quote_plus(query)
-    url = f"https://www.reddit.com/search.json?q={encoded_query}&sort=top&t=day&limit={limit}"
-    http_request = urllib.request.Request(url, headers={"User-Agent": "Codex-AgentReachBridge/1.0"})
-    with urllib.request.urlopen(http_request, timeout=request["timeout_per_channel"]) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    records: list[dict[str, Any]] = []
-    children = safe_list(safe_dict(safe_dict(payload).get("data")).get("children"))
-    for child in children:
-        item = safe_dict(child).get("data") if isinstance(child, dict) else {}
-        item = safe_dict(item)
-        if not item:
-            continue
-        records.append(
-            {
-                "title": clean_text(item.get("title")),
-                "permalink": normalize_reddit_url(item.get("permalink")),
-                "subreddit_name_prefixed": normalize_reddit_subreddit(item.get("subreddit_name_prefixed") or item.get("subreddit")),
-                "selftext": clean_text(item.get("selftext") or item.get("body") or item.get("text")),
-                "score": item.get("score"),
-                "num_comments": item.get("num_comments"),
-                "created_utc": item.get("created_utc"),
-                "listing": "top",
-                "listing_window": "day",
-            }
-        )
-    return [item for item in records if item.get("title") and item.get("permalink")]
-
-
-def x_queryless_records(request: dict[str, Any], extra_env: dict[str, str] | None = None) -> list[dict[str, Any]]:
-    limit = request["max_results_per_channel"]
-    per_query_limit = max(1, min(3, limit))
-    per_query_timeout = max(6, min(QUERYLESS_X_PER_QUERY_TIMEOUT_SECONDS, int(request["timeout_per_channel"])))
-    aggregated: list[dict[str, Any]] = []
-    seen_urls: set[str] = set()
-    for query in QUERYLESS_X_SEARCH_QUERIES:
-        command = [preferred_binary_path("bird"), "search", query, "--json", "-n", str(per_query_limit)]
-        try:
-            payload = run_channel_subprocess(command, per_query_timeout, extra_env)
-        except subprocess.TimeoutExpired:
-            continue
-        except Exception:
-            continue
-        for item in normalize_channel_records("x", payload):
-            if clean_text(item.get("inReplyToStatusId") or item.get("in_reply_to_status_id")):
-                continue
-            url = clean_text(item.get("url"))
-            dedupe_key = url or clean_text(item.get("text"))
-            if not dedupe_key or dedupe_key in seen_urls:
-                continue
-            seen_urls.add(dedupe_key)
-            aggregated.append(item)
-            if len(aggregated) >= max(limit, 8):
-                return aggregated[: max(limit, 8)]
-    return aggregated[: max(limit, 8)]
-
-
 def github_default_records(query: str, request: dict[str, Any]) -> list[dict[str, Any]]:
     encoded_query = urllib.parse.quote_plus(query)
     url = f"https://api.github.com/search/repositories?q={encoded_query}&sort=updated&order=desc&per_page={request['max_results_per_channel']}"
@@ -936,25 +568,6 @@ def default_live_command(channel: str, request: dict[str, Any]) -> list[str] | N
             command.extend(["--cookies-from-browser", youtube_cookies_from])
         command.extend(["--flat-playlist", "--dump-single-json", f"ytsearch{limit}:{query}"])
         return command
-    if channel == "x":
-        command = [preferred_binary_path("bird")]
-        if query:
-            command.extend(["search", query, "--json", "-n", str(limit)])
-        else:
-            command.extend(
-                [
-                    "news",
-                    "--json",
-                    "-n",
-                    str(limit),
-                    "--ai-only",
-                    "--news-only",
-                    "--with-tweets",
-                    "--tweets-per-item",
-                    "3",
-                ]
-            )
-        return command
     return None
 
 
@@ -967,20 +580,8 @@ def substitute_tokens(command: Any, *, channel: str, query: str, limit: int) -> 
     return []
 
 
-def run_channel_subprocess(command: list[str], timeout_seconds: int, extra_env: dict[str, str] | None = None) -> Any:
-    run_kwargs: dict[str, Any] = {
-        "capture_output": True,
-        "text": True,
-        "encoding": "utf-8",
-        "errors": "replace",
-        "timeout": timeout_seconds,
-        "check": False,
-    }
-    if extra_env:
-        env = os.environ.copy()
-        env.update(extra_env)
-        run_kwargs["env"] = env
-    completed = subprocess.run(command, **run_kwargs)
+def run_channel_subprocess(command: list[str], timeout_seconds: int) -> Any:
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout_seconds, check=False)
     if completed.returncode != 0:
         raise RuntimeError(clean_text(completed.stderr or completed.stdout) or f"command exited {completed.returncode}")
     return parse_jsonish_output(completed.stdout)
@@ -1010,40 +611,8 @@ def channel_fetch_worker(channel: str, request: dict[str, Any]) -> dict[str, Any
             return {"channel": channel, "status": "failed", "reason": clean_text(exc.reason or exc), "items": [], "fetched_at": fetched_at}
         except OSError as exc:
             return {"channel": channel, "status": "failed", "reason": clean_text(exc), "items": [], "fetched_at": fetched_at}
-    if channel == "reddit":
-        try:
-            return {
-                "channel": channel,
-                "status": "ok",
-                "reason": "",
-                "items": reddit_default_records(request["topic"], request),
-                "fetched_at": fetched_at,
-            }
-        except urllib.error.HTTPError as exc:
-            return {"channel": channel, "status": "failed", "reason": f"http_{exc.code}", "items": [], "fetched_at": fetched_at}
-        except urllib.error.URLError as exc:
-            return {"channel": channel, "status": "failed", "reason": clean_text(exc.reason or exc), "items": [], "fetched_at": fetched_at}
-        except OSError as exc:
-            return {"channel": channel, "status": "failed", "reason": clean_text(exc), "items": [], "fetched_at": fetched_at}
     if channel == "rss" and request.get("rss_feeds"):
         return {"channel": channel, "status": "ok", "reason": "", "items": rss_default_records(request["topic"], request), "fetched_at": fetched_at}
-    if channel == "x" and not has_twitter_credentials(request.get("agent_reach_config", {}), request["pseudo_home"]):
-        return {"channel": channel, "status": "failed", "reason": "missing_credentials", "items": [], "fetched_at": fetched_at}
-    subprocess_env: dict[str, str] | None = None
-    if channel == "x":
-        credentials = resolve_twitter_credentials(request.get("agent_reach_config", {}), request["pseudo_home"])
-        if credentials["auth_token"] and credentials["ct0"]:
-            subprocess_env = {"AUTH_TOKEN": credentials["auth_token"], "CT0": credentials["ct0"]}
-        if not clean_text(request["topic"]):
-            try:
-                items = x_queryless_records(request, subprocess_env)
-            except subprocess.TimeoutExpired:
-                return {"channel": channel, "status": "failed", "reason": f"timeout after {request['timeout_per_channel']}s", "items": [], "fetched_at": fetched_at}
-            except Exception as exc:  # noqa: BLE001
-                return {"channel": channel, "status": "failed", "reason": clean_text(exc), "items": [], "fetched_at": fetched_at}
-            if not items:
-                return {"channel": channel, "status": "failed", "reason": "no queryless x results", "items": [], "fetched_at": fetched_at}
-            return {"channel": channel, "status": "ok", "reason": "", "items": items[: request["max_results_per_channel"]], "fetched_at": fetched_at}
     command = substitute_tokens(request["channel_commands"].get(channel), channel=channel, query=request["topic"], limit=request["max_results_per_channel"]) or default_live_command(channel, request)
     if not command:
         return {"channel": channel, "status": "failed", "reason": "live fetch not configured for this channel", "items": [], "fetched_at": fetched_at}
@@ -1051,10 +620,7 @@ def channel_fetch_worker(channel: str, request: dict[str, Any]) -> dict[str, Any
     if not Path(executable).exists() and not shutil.which(command[0]):
         return {"channel": channel, "status": "failed", "reason": f"{command[0]} not installed", "items": [], "fetched_at": fetched_at}
     try:
-        if subprocess_env:
-            payload = run_channel_subprocess(command, request["timeout_per_channel"], subprocess_env)
-        else:
-            payload = run_channel_subprocess(command, request["timeout_per_channel"])
+        payload = run_channel_subprocess(command, request["timeout_per_channel"])
     except subprocess.TimeoutExpired:
         return {"channel": channel, "status": "failed", "reason": f"timeout after {request['timeout_per_channel']}s", "items": [], "fetched_at": fetched_at}
     except Exception as exc:  # noqa: BLE001
@@ -1186,17 +752,7 @@ def normalize_candidate_record(item: dict[str, Any], channel: str, request: dict
     url = primary_url(channel, item)
     if not title or not url:
         return None
-    published_at, timestamp_unparseable = normalize_timestamp(
-        item.get("published_at")
-        or item.get("posted_at")
-        or item.get("created_at")
-        or item.get("createdAt")
-        or item.get("updatedAt")
-        or item.get("upload_date")
-        or item.get("pubDate")
-        or item.get("timestamp"),
-        fetched_at,
-    )
+    published_at, timestamp_unparseable = normalize_timestamp(item.get("published_at") or item.get("posted_at") or item.get("created_at") or item.get("updatedAt") or item.get("upload_date") or item.get("pubDate") or item.get("timestamp"), fetched_at)
     claim_ids = normalize_claim_ids(item, request)
     raw_states = safe_dict(item.get("claim_states"))
     return {

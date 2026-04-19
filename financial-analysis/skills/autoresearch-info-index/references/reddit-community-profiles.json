@@ -28,10 +28,14 @@
   },
   "subreddit_score_overrides": {
     "r/wallstreetbets": 0.86,
-    "r/options": 0.9
+    "r/options": 0.9,
+    "r/pennystocks": 0.82,
+    "r/Superstonk": 0.8
   },
   "low_signal_subreddits": [
     "r/wallstreetbets",
-    "r/options"
+    "r/options",
+    "r/pennystocks",
+    "r/Superstonk"
   ]
 }

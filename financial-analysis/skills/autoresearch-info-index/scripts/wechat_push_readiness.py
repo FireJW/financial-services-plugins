@@ -39,13 +39,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_payload(args: argparse.Namespace) -> dict[str, object]:
-    input_path = Path(args.input).resolve()
-    payload = load_json(input_path)
+    payload = load_json(Path(args.input).resolve())
     if not isinstance(payload, dict):
         raise ValueError("Input file must contain a JSON object")
-    payload["_input_path"] = str(input_path)
-    if "publish_package" not in payload and "publish_package_path" not in payload:
-        payload["publish_package_path"] = str(input_path)
+    payload["_input_path"] = str(Path(args.input).resolve())
     if args.cover_image_path:
         payload["cover_image_path"] = args.cover_image_path
     if args.cover_image_url:

@@ -26,7 +26,6 @@ from article_revise_flow_runtime import build_article_revision
 from news_index_runtime import isoformat_or_blank, parse_datetime, run_news_index, slugify
 from runtime_paths import runtime_subdir
 from workflow_publication_gate_runtime import build_workflow_publication_gate
-from last30days_bridge_runtime import run_last30days_bridge
 from workflow_source_runtime import (
     augment_news_payload_with_workflow_sources,
     build_agent_reach_augmentation_lines,
@@ -124,8 +123,6 @@ def prepare_source_payload(request: dict[str, Any]) -> tuple[dict[str, Any], str
     opencli_stage: dict[str, Any] = {}
     if payload_kind == "x_request":
         return run_x_index(request["payload"]), "x_index", agent_reach_stage, opencli_stage
-    if payload_kind == "last30days_request":
-        return run_last30days_bridge(request["payload"]), "last30days_bridge", agent_reach_stage, opencli_stage
     if payload_kind == "news_request":
         merged_payload, agent_reach_stage, opencli_stage = augment_news_payload_with_workflow_sources(
             request,

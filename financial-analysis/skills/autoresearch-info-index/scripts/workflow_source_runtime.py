@@ -90,8 +90,6 @@ def resolve_indexed_source_kind(source_payload: dict[str, Any]) -> str:
     payload = safe_dict(source_payload)
     if safe_list(payload.get("x_posts")) or safe_dict(payload.get("evidence_pack")):
         return "x_index"
-    if safe_dict(payload.get("import_summary")) and safe_dict(payload.get("retrieval_result")):
-        return "last30days_bridge"
     return "news_index"
 
 
@@ -202,8 +200,6 @@ def detect_payload_kind(payload: dict[str, Any]) -> str:
         return "indexed_result"
     if any(key in payload for key in ("x_posts", "evidence_pack", "retrieval_result", "observations", "verdict_output")):
         return "indexed_result"
-    if any(key in payload for key in ("last30days_result_path", "last30days_output_path", "last30days_result", "last30days_payload")):
-        return "last30days_request"
     if any(
         key in payload
         for key in ("seed_posts", "manual_urls", "account_allowlist", "include_threads", "include_images", "max_thread_posts")

@@ -1,0 +1,4 @@
+Build the P0/P1 runtime hardening layer first.
+Highest priority is file safety and disk safety.
+Do not break the current headless runtime regression tests.
+Do not implement the full Dream Memory pipeline in this step.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run a one-shot Reddit import and bridge it into news-index.
+Run a one-shot Reddit result import and bridge it into news-index.
 """
 
 from __future__ import annotations
@@ -27,12 +27,11 @@ def emit_json(payload: dict, *, stream: object = sys.stdout) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Bridge a Reddit export or request payload into the recency-first news-index workflow."
+        description="Bridge exported Reddit results into the recency-first news-index workflow."
     )
     parser.add_argument("input", nargs="?", help="Optional path to a Reddit bridge request JSON file")
-    parser.add_argument("--file", help="Optional path to a saved Reddit export JSON/CSV payload")
+    parser.add_argument("--file", help="Optional path to a Reddit result file or exported directory")
     parser.add_argument("--topic", help="Optional topic override")
-    parser.add_argument("--analysis-time", help="Optional analysis time override")
     parser.add_argument("--output", help="Optional path to save the result JSON")
     parser.add_argument("--markdown-output", help="Optional path to save the markdown report")
     parser.add_argument(
@@ -49,9 +48,6 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["reddit_result_path"] = args.file
     if args.topic:
         payload["topic"] = args.topic
-        payload.setdefault("query", args.topic)
-    if args.analysis_time:
-        payload["analysis_time"] = args.analysis_time
     return payload
 
 
@@ -67,7 +63,7 @@ def main() -> None:
             output_path = Path(args.markdown_output).resolve()
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(result.get("report_markdown", ""), encoding="utf-8")
-        sys.exit(0)
+        sys.exit(0 if result.get("import_summary", {}).get("imported_candidate_count") else 1)
     except Exception as exc:
         emit_json({"status": "ERROR", "message": str(exc)}, stream=sys.stderr)
         sys.exit(1)

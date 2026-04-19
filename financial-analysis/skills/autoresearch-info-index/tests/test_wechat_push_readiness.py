@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import py_compile
 import shutil
 import sys
 import unittest
@@ -12,23 +14,24 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from wechat_push_readiness import build_payload, parse_args
 from wechat_push_readiness_runtime import run_wechat_push_readiness_audit
 
 
 class WechatPushReadinessTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = Path(__file__).resolve().parent / ".tmp-wechat-push-readiness"
+        self.temp_dir = Path(__file__).resolve().parent / ".tmp-wechat-readiness"
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir, ignore_errors=True)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.cover_path = self.temp_dir / "cover.png"
-        self.cover_path.write_bytes(b"fake-cover")
+        self.cover_path.write_bytes(b"cover-image")
 
     def tearDown(self) -> None:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def build_publish_package(self) -> dict:
+    def build_publish_package(self, *, asset_local_path: str = "", asset_source_url: str = "") -> dict:
+        preview_src = Path(asset_local_path).resolve().as_uri() if asset_local_path and Path(asset_local_path).exists() else asset_source_url
+        html = "<article><h1>Agent hiring reset</h1><p>Preview body</p></article>"
         return {
             "contract_version": "publish-package/v1",
             "title": "Agent hiring reset",
@@ -43,22 +46,26 @@ class WechatPushReadinessTests(unittest.TestCase):
             "draft_thesis": "The rebound is real enough to matter.",
             "citations": [],
             "author": "Codex",
-            "content_html": "<article><h1>Agent hiring reset</h1></article>",
-            "image_assets": [],
+            "digest": "A short digest",
+            "content_html": html,
+            "image_assets": [
+                {
+                    "asset_id": "hero-01",
+                    "placement": "after_lede",
+                    "caption": "Hero chart",
+                    "source_name": "fixture",
+                    "local_path": asset_local_path,
+                    "source_url": asset_source_url,
+                    "render_src": preview_src,
+                    "upload_token": "{{WECHAT_IMAGE_hero-01}}",
+                    "upload_required": True,
+                    "status": "local_ready" if asset_local_path else "remote_only",
+                }
+            ],
             "cover_plan": {
-                "selected_cover_asset_id": "",
-                "selected_cover_role": "",
-                "selected_cover_caption": "",
-                "selection_mode": "manual_required",
-                "selection_reason": "No usable cover candidate is ready yet. Provide cover_image_path or cover_image_url.",
-                "cover_source": "missing",
-            },
-            "push_readiness": {
-                "status": "missing_cover_image",
-                "ready_for_api_push": False,
-                "cover_source": "missing",
-                "missing_upload_source_asset_ids": [],
-                "next_step": "Provide cover_image_path or cover_image_url before a real WeChat push.",
+                "primary_image_asset_id": "hero-01",
+                "primary_image_render_src": preview_src,
+                "thumb_media_id_placeholder": "{{WECHAT_THUMB_MEDIA_ID}}",
             },
             "draftbox_payload_template": {
                 "articles": [
@@ -66,7 +73,7 @@ class WechatPushReadinessTests(unittest.TestCase):
                         "title": "Agent hiring reset",
                         "author": "Codex",
                         "digest": "A short digest",
-                        "content": "<article><h1>Agent hiring reset</h1></article>",
+                        "content": html,
                         "content_source_url": "",
                         "thumb_media_id": "{{WECHAT_THUMB_MEDIA_ID}}",
                         "need_open_comment": 0,
@@ -77,78 +84,158 @@ class WechatPushReadinessTests(unittest.TestCase):
             },
         }
 
-    def test_audit_blocks_when_review_cover_and_credentials_are_missing(self) -> None:
-        with patch("wechat_push_readiness_runtime.inspect_wechat_credentials") as inspect_mock:
-            inspect_mock.return_value = {
-                "ready": False,
-                "status": "missing",
-                "source": "none",
-                "warning": "",
-                "error_message": "No usable WeChat credentials were found",
-            }
-            result = run_wechat_push_readiness_audit({"publish_package": self.build_publish_package()})
+    def test_readiness_audit_blocks_when_upload_source_and_credentials_are_missing(self) -> None:
+        missing_path = str(self.temp_dir / "missing-cover.png")
+        with patch.dict(
+            os.environ,
+            {"WECHAT_APP_ID": "", "WECHAT_APP_SECRET": "", "WECHAT_APPID": "", "WECHAT_APPSECRET": ""},
+            clear=False,
+        ):
+            with patch("wechat_draftbox_runtime.load_local_wechat_credentials", return_value={}):
+                result = run_wechat_push_readiness_audit(
+                    {
+                        "publish_package": self.build_publish_package(asset_local_path=missing_path),
+                    }
+                )
+
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["readiness_level"], "blocked")
         self.assertFalse(result["ready_for_real_push"])
         self.assertEqual(result["push_readiness"]["status"], "missing_cover_image")
-        self.assertEqual(result["workflow_publication_gate"]["publication_readiness"], "ready")
-        self.assertIn("Human review approval is still required before a real WeChat push.", result["blockers"])
-        self.assertIn("Provide cover_image_path or cover_image_url before a real WeChat push.", result["blockers"])
-        self.assertIn("No usable WeChat credentials were found", result["blockers"])
+        self.assertEqual(result["credential_check"]["status"], "missing_credentials")
+        self.assertIn("hero-01", result["push_readiness"]["missing_upload_source_asset_ids"])
+        self.assertIn("Human review approval is still required", "\n".join(result["blockers"]))
 
-    def test_audit_can_be_ready_with_cover_override_human_review_and_inline_credentials(self) -> None:
-        with patch("wechat_push_readiness_runtime.inspect_wechat_credentials") as inspect_mock:
-            inspect_mock.return_value = {
-                "ready": True,
-                "status": "ready",
-                "source": "inline_override",
-                "warning": "inline_override",
-                "error_message": "",
-            }
-            result = run_wechat_push_readiness_audit(
-                {
-                    "publish_package": self.build_publish_package(),
-                    "cover_image_path": str(self.cover_path),
-                    "human_review_approved": True,
-                    "human_review_approved_by": "Editor",
-                    "wechat_app_id": "wx-test",
-                    "wechat_app_secret": "secret-test",
-                    "allow_insecure_inline_credentials": True,
-                }
-            )
-        self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["readiness_level"], "warning")
-        self.assertFalse(result["ready_for_real_push"])
-        self.assertEqual(result["push_readiness"]["status"], "ready_for_api_push")
-        self.assertEqual(result["credential_check"]["status"], "ready")
-        self.assertFalse(result["blockers"])
-        self.assertTrue(result["warnings"])
-
-    def test_build_payload_maps_positional_publish_package_path(self) -> None:
-        package_path = self.temp_dir / "publish-package.json"
-        package_path.write_text(json.dumps(self.build_publish_package(), ensure_ascii=False), encoding="utf-8")
-        with patch.object(sys, "argv", ["wechat_push_readiness.py", str(package_path)]):
-            args = parse_args()
-        payload = build_payload(args)
-        self.assertEqual(payload["publish_package_path"], str(package_path.resolve()))
-        self.assertEqual(payload["_input_path"], str(package_path.resolve()))
-
-    def test_audit_accepts_explicit_wechat_env_file_from_request(self) -> None:
+    def test_readiness_audit_ready_with_local_env_file_and_live_auth(self) -> None:
         env_file = self.temp_dir / ".env.wechat.local"
         env_file.write_text(
-            "WECHAT_APP_ID=wx-explicit-test\nWECHAT_APP_SECRET=explicit-secret-test\n",
+            "WECHAT_APP_ID=wx-local-test\nWECHAT_APP_SECRET=local-secret-test\n",
             encoding="utf-8",
         )
+
+        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
+            self.assertEqual(method, "GET")
+            self.assertIn("cgi-bin/token", url)
+            return json.dumps({"access_token": "token-123", "expires_in": 7200}).encode("utf-8")
+
+        with patch.dict(os.environ, {"WECHAT_ENV_FILE": str(env_file)}, clear=False):
+            result = run_wechat_push_readiness_audit(
+                {
+                    "publish_package": self.build_publish_package(asset_local_path=str(self.cover_path)),
+                    "human_review_approved": True,
+                    "human_review_approved_by": "Editor",
+                    "validate_live_auth": True,
+                },
+                request_fn=fake_request,
+            )
+
+        self.assertEqual(result["readiness_level"], "ready")
+        self.assertTrue(result["ready_for_real_push"])
+        self.assertEqual(result["credential_check"]["source"], "env_file")
+        self.assertEqual(result["live_auth_check"]["status"], "ok")
+        self.assertEqual(result["push_readiness"]["status"], "ready_for_api_push")
+
+    def test_readiness_audit_accepts_utf8_bom_env_file(self) -> None:
+        env_file = self.temp_dir / ".env.wechat.local"
+        env_file.write_text(
+            "WECHAT_APP_ID=wx-local-bom\nWECHAT_APP_SECRET=local-secret-bom\n",
+            encoding="utf-8-sig",
+        )
+
+        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
+            self.assertEqual(method, "GET")
+            self.assertIn("appid=wx-local-bom", url)
+            return json.dumps({"access_token": "token-bom", "expires_in": 7200}).encode("utf-8")
+
+        with patch.dict(os.environ, {"WECHAT_ENV_FILE": str(env_file)}, clear=False):
+            result = run_wechat_push_readiness_audit(
+                {
+                    "publish_package": self.build_publish_package(asset_local_path=str(self.cover_path)),
+                    "human_review_approved": True,
+                    "validate_live_auth": True,
+                },
+                request_fn=fake_request,
+            )
+
+        self.assertEqual(result["readiness_level"], "ready")
+        self.assertEqual(result["credential_check"]["source"], "env_file")
+        self.assertEqual(result["live_auth_check"]["status"], "ok")
+
+    def test_readiness_audit_warns_on_insecure_inline_credentials(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"WECHAT_APP_ID": "", "WECHAT_APP_SECRET": "", "WECHAT_APPID": "", "WECHAT_APPSECRET": ""},
+            clear=False,
+        ):
+            with patch("wechat_draftbox_runtime.load_local_wechat_credentials", return_value={}):
+                result = run_wechat_push_readiness_audit(
+                    {
+                        "publish_package": self.build_publish_package(asset_local_path=str(self.cover_path)),
+                        "human_review_approved": True,
+                        "wechat_app_id": "wx-test-inline",
+                        "wechat_app_secret": "secret-test-inline",
+                        "allow_insecure_inline_credentials": True,
+                    }
+                )
+
+        self.assertEqual(result["readiness_level"], "warning")
+        self.assertFalse(result["ready_for_real_push"])
+        self.assertEqual(result["credential_check"]["status"], "warning_insecure_inline")
+        self.assertEqual(result["push_readiness"]["status"], "ready_for_api_push")
+        self.assertIn("insecure inline override", "\n".join(result["warnings"]))
+
+    def test_readiness_audit_accepts_dedicated_cover_from_cover_plan(self) -> None:
+        publish_package = self.build_publish_package(asset_local_path="")
+        publish_package["image_assets"] = []
+        publish_package["cover_plan"] = {
+            "primary_image_asset_id": "cover-99",
+            "selected_cover_asset_id": "cover-99",
+            "selected_cover_local_path": str(self.cover_path),
+            "selected_cover_render_src": self.cover_path.resolve().as_uri(),
+            "selection_mode": "dedicated_candidate",
+            "thumb_media_id_placeholder": "{{WECHAT_THUMB_MEDIA_ID}}",
+        }
+
         result = run_wechat_push_readiness_audit(
             {
-                "publish_package": self.build_publish_package(),
-                "cover_image_path": str(self.cover_path),
+                "publish_package": publish_package,
                 "human_review_approved": True,
-                "wechat_env_file": str(env_file),
             }
         )
-        self.assertEqual(result["credential_check"]["status"], "ready")
-        self.assertEqual(result["credential_check"]["source"], "env_file")
+
+        self.assertEqual(result["push_readiness"]["status"], "ready_for_api_push")
+        self.assertEqual(result["push_readiness"]["cover_source"], "dedicated_cover_candidate")
+
+    def test_readiness_audit_surfaces_workflow_publication_gate(self) -> None:
+        publish_package = self.build_publish_package(asset_local_path=str(self.cover_path))
+        publish_package["workflow_manual_review"] = {
+            "required": True,
+            "status": "awaiting_reddit_operator_review",
+            "required_count": 1,
+            "high_priority_count": 1,
+            "next_step": "Review the queued Reddit comment signals before publication.",
+        }
+        publish_package["publication_readiness"] = "blocked_by_reddit_operator_review"
+
+        result = run_wechat_push_readiness_audit(
+            {
+                "publish_package": publish_package,
+                "human_review_approved": True,
+            }
+        )
+
+        self.assertEqual(result["workflow_publication_gate"]["publication_readiness"], "blocked_by_reddit_operator_review")
+        self.assertEqual(result["workflow_publication_gate"]["manual_review"]["status"], "awaiting_reddit_operator_review")
+        self.assertIn("## Workflow Publication Gate", result["report_markdown"])
+        self.assertIn("blocked_by_reddit_operator_review", result["report_markdown"])
+        self.assertIn("awaiting_reddit_operator_review", result["report_markdown"])
+
+    def test_readiness_scripts_compile_cleanly(self) -> None:
+        for name in [
+            "wechat_push_readiness_runtime.py",
+            "wechat_push_readiness.py",
+        ]:
+            py_compile.compile(str(SCRIPT_DIR / name), doraise=True)
 
 
 if __name__ == "__main__":

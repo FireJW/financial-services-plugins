@@ -12,6 +12,13 @@ This router does not replace the underlying workflows. It selects the right
 case pattern, then sends the work into the repository's native commands and
 skills.
 
+## Dual-Track Hints
+
+- classify as `Complex` if the request touches 3 or more files, 2 or more repos, or moving facts
+- check `D:\Users\rickylu\dev\financial-services-plugins\routing-index.md` before picking a case path
+- load `financial-services-docs/docs/runtime/codex-dual-track/complexity-classification.md` for escalation decisions
+- before re-solving a recurring case, search `obsidian-kb-v2` for `#recurring/2` or `#promoted`
+
 ## Use This When
 
 - the user wants latest event verification on a fast-moving topic

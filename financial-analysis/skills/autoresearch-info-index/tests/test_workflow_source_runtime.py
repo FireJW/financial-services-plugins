@@ -17,7 +17,6 @@ from workflow_source_runtime import (
     build_agent_reach_augmentation_lines,
     build_opencli_augmentation_lines,
     build_source_stage_file_lines,
-    detect_payload_kind,
     resolve_indexed_source_kind,
     write_source_stage_outputs,
 )
@@ -265,14 +264,6 @@ class WorkflowSourceRuntimeTests(unittest.TestCase):
         self.assertEqual(resolve_indexed_source_kind({"x_posts": [{"post_id": "1"}]}), "x_index")
         self.assertEqual(resolve_indexed_source_kind({"evidence_pack": {"root_posts": []}}), "x_index")
         self.assertEqual(resolve_indexed_source_kind({"observations": []}), "news_index")
-        self.assertEqual(
-            resolve_indexed_source_kind({"import_summary": {"imported_candidate_count": 1}, "retrieval_result": {"observations": []}}),
-            "last30days_bridge",
-        )
-
-    def test_detect_payload_kind_recognizes_last30days_entry(self) -> None:
-        self.assertEqual(detect_payload_kind({"last30days_result_path": "C:\\tmp\\last30days.json"}), "last30days_request")
-        self.assertEqual(detect_payload_kind({"last30days_result": {"results": []}}), "last30days_request")
 
 
 if __name__ == "__main__":

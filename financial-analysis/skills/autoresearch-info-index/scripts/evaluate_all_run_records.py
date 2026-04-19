@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 """
-Evaluate all run-record JSON files in a directory.
-
-For each ``*-run-record.json`` (or any ``.json``) in the input directory, this
-script calls ``evaluate_info_index.build_result()`` and writes the evaluated
-output to the ``--output-dir`` directory.
-
-CLI usage (matches ``run_evaluate_all_run_records.cmd``)::
-
-    python evaluate_all_run_records.py <input_dir> --output-dir <dir> [--quiet]
+Evaluate all phase 1 info-index run records in one directory.
 """
 
 from __future__ import annotations
@@ -17,7 +9,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -31,18 +22,23 @@ def parse_args() -> argparse.Namespace:
     default_output = SCRIPT_DIR.parent / "examples" / "batch-evaluated"
 
     parser = argparse.ArgumentParser(
-        description="Evaluate all run-record JSON files in a directory."
+        description="Evaluate all info-index run-record JSON files in one directory."
     )
     parser.add_argument(
         "input_dir",
         nargs="?",
         default=str(default_input),
-        help="Directory containing run-record JSON files. Defaults to ../examples/batch-run-records",
+        help="Directory containing *-run-record.json files. Defaults to ../examples/batch-run-records",
     )
     parser.add_argument(
         "--output-dir",
         default=str(default_output),
-        help="Directory to write evaluated JSON files. Defaults to ../examples/batch-evaluated",
+        help="Directory to write *-evaluated.json files. Defaults to ../examples/batch-evaluated",
+    )
+    parser.add_argument(
+        "--summary-name",
+        default="evaluation-summary.json",
+        help="Filename for the written summary JSON inside the output directory",
     )
     parser.add_argument(
         "--quiet",
@@ -53,47 +49,95 @@ def parse_args() -> argparse.Namespace:
 
 
 def iter_run_record_files(input_dir: Path) -> list[Path]:
-    """Return sorted list of JSON files in *input_dir*, excluding templates."""
-    files = sorted(
-        path
-        for path in input_dir.glob("*.json")
-        if path.name != "item-template.json"
-    )
+    files = sorted(input_dir.glob("*-run-record.json"))
     if not files:
-        raise ValueError(f"No run-record JSON files found in {input_dir}")
+        raise ValueError(f"No *-run-record.json files found in {input_dir}")
     return files
 
 
-def output_path_for(output_dir: Path, source_name: str) -> Path:
-    """Derive the evaluated output filename from the source filename."""
-    stem = source_name
-    if stem.endswith("-run-record"):
-        stem = stem[: -len("-run-record")]
-    return output_dir / f"{stem}-evaluated.json"
+def output_path_for(output_dir: Path, run_record_path: Path) -> Path:
+    return output_dir / run_record_path.name.replace("-run-record.json", "-evaluated.json")
 
 
-def evaluate_one(run_record_path: Path) -> dict[str, Any]:
-    """Load and evaluate a single run-record file."""
+def evaluate_one(run_record_path: Path, output_dir: Path) -> dict:
     payload = load_input(run_record_path)
-    return build_result(payload)
+    result = build_result(payload)
 
+    output_path = output_path_for(output_dir, run_record_path)
+    output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
-def build_summary(
-    input_dir: Path,
-    output_dir: Path,
-    results: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Build a summary dict of the batch evaluation."""
-    keep_count = sum(1 for r in results if r.get("keep"))
-    rollback_count = sum(1 for r in results if not r.get("keep"))
-
+    metrics = result.get("credibility_metrics", {})
+    retrieval_quality = result.get("retrieval_quality_metrics", {})
+    observability = result.get("retrieval_observability", {})
+    alignment = result.get("benchmark_alignment", {})
     return {
+        "task_id": result.get("task_id", ""),
+        "input_file": str(run_record_path),
+        "output_file": str(output_path),
+        "keep": bool(result.get("decision", {}).get("keep", False)),
+        "rollback_to": result.get("decision", {}).get("rollback_to", ""),
+        "candidate_total": result.get("soft_scores", {}).get("candidate_total"),
+        "baseline_total": result.get("soft_scores", {}).get("baseline_total"),
+        "delta": result.get("soft_scores", {}).get("delta"),
+        "hard_checks_passed": bool(result.get("hard_checks", {}).get("passed", False)),
+        "confidence_score": metrics.get("confidence_score"),
+        "source_strength_score": metrics.get("source_strength_score"),
+        "agreement_score": metrics.get("agreement_score"),
+        "confidence_label": metrics.get("confidence_label"),
+        "display_confidence_label": metrics.get("display_confidence_label"),
+        "confidence_gate": metrics.get("confidence_gate", {}).get("status"),
+        "freshness_capture_score": retrieval_quality.get("freshness_capture_score"),
+        "shadow_signal_discipline_score": retrieval_quality.get("shadow_signal_discipline_score"),
+        "source_promotion_discipline_score": retrieval_quality.get("source_promotion_discipline_score"),
+        "blocked_source_handling_score": retrieval_quality.get("blocked_source_handling_score"),
+        "blocked_source_count": observability.get("blocked_source_count"),
+        "missing_expected_source_families": observability.get("missing_expected_source_families", []),
+        "benchmark_checks_passed": alignment.get("checks_passed"),
+        "benchmark_checks_available": alignment.get("checks_available"),
+        "benchmark_fully_aligned": alignment.get("all_available_checks_passed"),
+    }
+
+
+def build_summary(input_dir: Path, output_dir: Path, evaluated_files: list[dict], failed_files: list[dict]) -> dict:
+    keep_count = sum(1 for item in evaluated_files if item["keep"])
+    rollback_count = len(evaluated_files) - keep_count
+    freshness_scores = [item["freshness_capture_score"] for item in evaluated_files if isinstance(item.get("freshness_capture_score"), (int, float))]
+    shadow_scores = [item["shadow_signal_discipline_score"] for item in evaluated_files if isinstance(item.get("shadow_signal_discipline_score"), (int, float))]
+    promotion_scores = [item["source_promotion_discipline_score"] for item in evaluated_files if isinstance(item.get("source_promotion_discipline_score"), (int, float))]
+    blocked_scores = [item["blocked_source_handling_score"] for item in evaluated_files if isinstance(item.get("blocked_source_handling_score"), (int, float))]
+    blocked_counts = [item["blocked_source_count"] for item in evaluated_files if isinstance(item.get("blocked_source_count"), (int, float))]
+    missing_family_runs = sum(1 for item in evaluated_files if item.get("missing_expected_source_families"))
+    missing_families = sorted(
+        {
+            family
+            for item in evaluated_files
+            for family in item.get("missing_expected_source_families", [])
+            if isinstance(family, str) and family.strip()
+        }
+    )
+    return {
+        "status": "OK" if not failed_files else "PARTIAL_ERROR",
         "input_dir": str(input_dir),
         "output_dir": str(output_dir),
-        "total_evaluated": len(results),
+        "total_found": len(evaluated_files) + len(failed_files),
+        "total_evaluated": len(evaluated_files),
+        "total_failed": len(failed_files),
         "keep_count": keep_count,
         "rollback_count": rollback_count,
-        "evaluated_files": results,
+        "retrieval_quality_summary": {
+            "avg_freshness_capture_score": round(sum(freshness_scores) / len(freshness_scores), 2) if freshness_scores else None,
+            "avg_shadow_signal_discipline_score": round(sum(shadow_scores) / len(shadow_scores), 2) if shadow_scores else None,
+            "avg_source_promotion_discipline_score": round(sum(promotion_scores) / len(promotion_scores), 2) if promotion_scores else None,
+            "avg_blocked_source_handling_score": round(sum(blocked_scores) / len(blocked_scores), 2) if blocked_scores else None,
+        },
+        "retrieval_gap_summary": {
+            "runs_with_blocked_sources": sum(1 for count in blocked_counts if count and count > 0),
+            "avg_blocked_source_count": round(sum(blocked_counts) / len(blocked_counts), 2) if blocked_counts else None,
+            "runs_with_missing_expected_source_families": missing_family_runs,
+            "missing_expected_source_families_seen": missing_families,
+        },
+        "evaluated_files": evaluated_files,
+        "failed_files": failed_files,
     }
 
 
@@ -102,8 +146,6 @@ def main() -> None:
     input_dir = Path(args.input_dir).resolve()
     output_dir = Path(args.output_dir).resolve()
 
-    has_rollback = False
-
     try:
         if not input_dir.exists():
             raise FileNotFoundError(f"Input directory not found: {input_dir}")
@@ -111,52 +153,25 @@ def main() -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
         run_record_files = iter_run_record_files(input_dir)
 
-        summary_entries: list[dict[str, Any]] = []
+        evaluated_files: list[dict] = []
+        failed_files: list[dict] = []
+
         for run_record_path in run_record_files:
             try:
-                result = evaluate_one(run_record_path)
+                evaluated_files.append(evaluate_one(run_record_path, output_dir))
             except Exception as exc:
-                result = {
-                    "status": "ERROR",
-                    "source_file": str(run_record_path),
-                    "message": str(exc),
-                }
+                failed_files.append({"input_file": str(run_record_path), "message": str(exc)})
 
-            out_path = output_path_for(output_dir, run_record_path.stem)
-            out_path.write_text(
-                json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
-
-            decision = result.get("decision", {})
-            keep = decision.get("keep", False) if isinstance(decision, dict) else False
-            if not keep:
-                has_rollback = True
-
-            summary_entries.append(
-                {
-                    "source_file": str(run_record_path),
-                    "output_file": str(out_path),
-                    "task_id": result.get("task_id", ""),
-                    "keep": keep,
-                    "reason": decision.get("reason", "") if isinstance(decision, dict) else "",
-                }
-            )
+        summary = build_summary(input_dir, output_dir, evaluated_files, failed_files)
+        summary_path = output_dir / args.summary_name
+        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
         if not args.quiet:
-            print(
-                json.dumps(
-                    build_summary(input_dir, output_dir, summary_entries),
-                    indent=2,
-                    ensure_ascii=False,
-                )
-            )
-
-        # Exit 0 = all keep, exit 2 = at least one rollback (matches evaluate_info_index convention)
-        sys.exit(2 if has_rollback else 0)
-
+            print(json.dumps(summary, indent=2))
+        sys.exit(0 if not failed_files else 1)
     except Exception as exc:
         error = {"status": "ERROR", "message": str(exc)}
-        print(json.dumps(error, indent=2, ensure_ascii=False), file=sys.stderr)
+        print(json.dumps(error, indent=2), file=sys.stderr)
         sys.exit(1)
 
 

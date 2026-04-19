@@ -39,14 +39,6 @@ def derive_publish_request(base_result: dict[str, Any], revised_result: dict[str
     draft_article = safe_dict(safe_list(safe_dict(base_package.get("draftbox_payload_template")).get("articles"))[:1][0] if safe_list(safe_dict(base_package.get("draftbox_payload_template")).get("articles")) else {})
     effective_request = safe_dict(safe_dict(base_package.get("style_profile_applied")).get("effective_request"))
     revised_request = safe_dict(revised_result.get("request"))
-    revised_article_package = safe_dict(revised_result.get("article_package"))
-    manual_override = bool(safe_dict(revised_result.get("revision_diff")).get("manual_override"))
-    article_package_manual_override = bool(
-        revised_article_package.get("manual_body_override") or revised_article_package.get("manual_article_override")
-    )
-    preserve_manual_revised_markdown = bool(
-        clean_text(revised_article_package.get("article_markdown")) or clean_text(revised_article_package.get("body_markdown"))
-    ) and (manual_override or article_package_manual_override)
     old_digest = clean_text(base_package.get("digest"))
     return {
         "account_name": clean_text(base_package.get("account_name")),
@@ -63,7 +55,6 @@ def derive_publish_request(base_result: dict[str, Any], revised_result: dict[str
         "draft_mode": clean_text(revised_request.get("draft_mode") or effective_request.get("draft_mode")),
         "image_strategy": clean_text(revised_request.get("image_strategy") or effective_request.get("image_strategy")),
         "language_mode": clean_text(revised_request.get("language_mode") or effective_request.get("language_mode")),
-        "preserve_manual_revised_markdown": preserve_manual_revised_markdown,
         "human_review_approved": False,
     }
 

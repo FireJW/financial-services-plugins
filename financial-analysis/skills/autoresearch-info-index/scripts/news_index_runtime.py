@@ -6,591 +6,996 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections import Counter, defaultdict
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
-from datetime import UTC, datetime
-from email.utils import parsedate_to_datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from html import unescape
 from pathlib import Path
 from typing import Any
 
 
-WINDOW_MINUTES = {
-    "10m": 10,
-    "1h": 60,
-    "6h": 360,
-    "24h": 1440,
+TIER_WEIGHTS = {0: 100, 1: 80, 2: 60, 3: 35}
+STALE_PENALTY = 25
+DEFAULT_WINDOWS = ["10m", "1h", "6h", "24h"]
+CRISIS_EXPECTED_SOURCE_FAMILIES = [
+    "government",
+    "wire",
+    "major_news",
+    "public_ais",
+    "public_ship_tracker",
+    "social",
+]
+ENERGY_WAR_EXPECTED_SOURCE_FAMILIES = [
+    "government",
+    "wire",
+    "major_news",
+    "specialist",
+    "public_ship_tracker",
+    "social",
+]
+ENERGY_WAR_DEFAULT_MARKET_RELEVANCE = [
+    "Brent and seaborne oil shock sensitivity",
+    "TTF and Asian LNG sensitivity relative to Henry Hub",
+    "Rates, inflation, and risk-asset headline sensitivity",
+]
+ENERGY_WAR_BENCHMARK_WATCHLIST = [
+    "Brent",
+    "WTI",
+    "TTF",
+    "JKM-style LNG",
+    "Henry Hub",
+    "tanker rates",
+    "prompt spreads",
+    "reserve releases",
+    "OPEC spare capacity",
+    "Qatar LNG flows",
+    "Hormuz flows",
+]
+ENERGY_WAR_NEXT_WATCH_ITEMS = [
+    "Check whether price action is led by Brent, not just WTI.",
+    "Check whether TTF and Asian LNG are reacting more than Henry Hub.",
+    "Separate physical disruption from pure risk premium using flow, freight, and insurance evidence.",
+    "Track reserve releases, rerouting, and spare-capacity language before calling the shock persistent.",
+]
+ENERGY_WAR_KEYWORDS = {
+    "hormuz",
+    "oil",
+    "crude",
+    "lng",
+    "gas",
+    "brent",
+    "wti",
+    "ttf",
+    "jkm",
+    "henry hub",
+    "qatar",
+    "tanker",
+    "shipping",
+    "energy war",
 }
 
-PROMOTABLE_TRACKER_TYPES = {"public_ship_tracker", "public_ais"}
-SUPPORT_STATES = {"support", "supported", "confirm", "confirmed", "true", "yes"}
-CONTRADICT_STATES = {"contradict", "contradicted", "deny", "denied", "false", "refute"}
-
-SOURCE_TIER_BY_TYPE = {
+TIER_BY_SOURCE_TYPE = {
     "official": 0,
-    "official_release": 0,
     "official_statement": 0,
+    "official_release": 0,
     "government": 0,
     "government_release": 0,
+    "government_ministry": 0,
+    "regulator": 0,
+    "regulator_filing": 0,
+    "company_filing": 0,
+    "exchange_filing": 0,
+    "company_statement": 0,
     "wire": 1,
     "major_news": 1,
-    "company_statement": 1,
-    "company_filing": 1,
-    "exchange_filing": 1,
-    "public_ship_tracker": 2,
-    "public_ais": 2,
+    "major_press": 1,
+    "major_media": 1,
+    "specialist": 2,
     "specialist_outlet": 2,
-    "research_note": 2,
     "analysis": 2,
-    "blog": 2,
+    "research_note": 2,
+    "public_ais": 2,
+    "public_ship_tracker": 2,
+    "ship_tracker": 2,
+    "ais": 2,
+    "blog": 3,
+    "community": 3,
+    "market_rumor": 3,
+    "rumor": 3,
     "social": 3,
 }
 
-BASE_CHANNEL_BY_TYPE = {
-    "official": "core",
-    "official_release": "core",
-    "official_statement": "core",
-    "government": "core",
-    "government_release": "core",
-    "wire": "core",
-    "major_news": "background",
-    "company_statement": "core",
-    "company_filing": "core",
-    "exchange_filing": "core",
-    "public_ship_tracker": "shadow",
-    "public_ais": "shadow",
-    "specialist_outlet": "shadow",
-    "research_note": "shadow",
-    "analysis": "shadow",
-    "blog": "shadow",
-    "social": "shadow",
-}
-
-SOURCE_RANK_BASE = {
-    "official": 120,
-    "official_release": 120,
-    "official_statement": 120,
-    "government": 120,
-    "government_release": 120,
-    "wire": 85,
-    "major_news": 85,
-    "company_statement": 90,
-    "company_filing": 90,
-    "exchange_filing": 90,
-    "public_ship_tracker": 80,
-    "public_ais": 80,
-    "specialist_outlet": 40,
-    "research_note": 45,
-    "analysis": 45,
-    "blog": 40,
-    "social": 55,
-}
-
-SOURCE_FAMILY_BY_TYPE = {
-    "official": "government",
-    "official_release": "government",
-    "official_statement": "government",
-    "government": "government",
-    "government_release": "government",
-    "wire": "wire",
-    "major_news": "major_news",
-    "specialist_outlet": "major_news",
-    "company_statement": "company",
-    "company_filing": "company",
-    "exchange_filing": "exchange",
-    "public_ship_tracker": "public_ship_tracker",
-    "public_ais": "public_ais",
-    "research_note": "analysis",
-    "analysis": "analysis",
-    "blog": "blog",
-    "social": "social",
-}
-
-RECENCY_BONUS_BY_BUCKET = {
-    "0-10m": 35,
-    "10-60m": 5,
-    "1-6h": 0,
-    "6-24h": -2,
-    ">24h": -5,
-}
+RECENCY_WINDOWS = [
+    ("10m", 10, 40),
+    ("1h", 60, 30),
+    ("6h", 360, 20),
+    ("24h", 1440, 10),
+]
 
 
-def clean_text(value: Any) -> str:
-    return " ".join(str(value or "").replace("\u200b", " ").split()).strip()
-
-
-def safe_dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def safe_list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
-
-
-def clean_string_list(value: Any) -> list[str]:
-    items: list[str] = []
-    for item in safe_list(value):
-        text = clean_text(item)
-        if text and text not in items:
-            items.append(text)
-    return items
-
-
-def load_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} must decode to a JSON object")
-    return payload
-
-
-def write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+@dataclass
+class ClaimEvidence:
+    supports: list[dict[str, Any]]
+    contradicts: list[dict[str, Any]]
 
 
 def now_utc() -> datetime:
     return datetime.now(UTC)
 
 
+def clamp(value: float, low: int = 0, high: int = 100) -> int:
+    return max(low, min(high, int(round(value))))
+
+
+def average(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    return sum(values) / len(values)
+
+
+def safe_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def safe_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def parse_datetime(value: Any, *, fallback: datetime | None = None) -> datetime | None:
     if isinstance(value, datetime):
-        parsed = value
-    elif isinstance(value, (int, float)):
+        return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
+    if not isinstance(value, str):
+        return fallback
+
+    text = value.strip()
+    if not text:
+        return fallback
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
         try:
-            parsed = datetime.fromtimestamp(float(value), tz=UTC)
-        except (OverflowError, OSError, ValueError):
-            return fallback
-    else:
-        text = clean_text(value)
-        if not text:
-            return fallback
-        if text.endswith("Z"):
-            text = text[:-1] + "+00:00"
-        try:
-            parsed = datetime.fromisoformat(text)
+            parsed = datetime.fromisoformat(f"{text}T00:00:00+00:00")
         except ValueError:
-            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
-                try:
-                    parsed = datetime.fromisoformat(text + "T00:00:00+00:00")
-                except ValueError:
-                    return fallback
-            else:
-                try:
-                    parsed = parsedate_to_datetime(text)
-                except (TypeError, ValueError, IndexError):
-                    return fallback
+            return fallback
+
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
 
 
 def isoformat_or_blank(value: datetime | None) -> str:
-    return value.astimezone(UTC).isoformat() if isinstance(value, datetime) else ""
+    return value.astimezone(UTC).isoformat() if value else ""
 
 
-def slugify(value: Any, fallback: str = "item") -> str:
-    text = clean_text(value).lower()
-    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
-    return text or fallback
+def normalize_source_type(value: Any) -> str:
+    text = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    return text or "unknown"
 
 
-def short_excerpt(value: Any, limit: int = 180) -> str:
-    text = clean_text(value)
-    if len(text) <= limit:
-        return text
-    clipped = text[: limit + 1]
-    if " " in clipped:
-        clipped = clipped.rsplit(" ", 1)[0]
-    clipped = clipped.rstrip(".,;:!?，。；：、")
-    return clipped + "..."
+def source_tier_for(source_type: str) -> int:
+    return TIER_BY_SOURCE_TYPE.get(
+        source_type,
+        2 if "ais" in source_type else 3 if "social" in source_type else 1 if "news" in source_type else 2,
+    )
 
 
-def safe_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+def source_family_for(source_type: str) -> str:
+    if source_type.startswith("government") or source_type.startswith("official"):
+        return "government"
+    if source_type.startswith("regulator") or source_type.endswith("filing"):
+        return "government"
+    if source_type in {"wire", "major_news", "major_press", "major_media"}:
+        return source_type if source_type != "major_press" and source_type != "major_media" else "major_news"
+    if source_type in {"public_ais", "ais"}:
+        return "public_ais"
+    if source_type in {"public_ship_tracker", "ship_tracker"}:
+        return "public_ship_tracker"
+    if source_type in {"social", "market_rumor", "rumor", "community"}:
+        return "social"
+    return source_type
 
 
-def source_type_tier(source_type: str) -> int:
-    return SOURCE_TIER_BY_TYPE.get(source_type, 3)
-
-
-def source_type_channel(source_type: str) -> str:
-    return BASE_CHANNEL_BY_TYPE.get(source_type, "shadow")
-
-
-def source_type_family(source_type: str) -> str:
-    return SOURCE_FAMILY_BY_TYPE.get(source_type, "other")
-
-
-def age_minutes(analysis_time: datetime, published_at: datetime | None, observed_at: datetime | None) -> float:
-    anchor = published_at or observed_at or analysis_time
-    return max(0.0, (analysis_time - anchor).total_seconds() / 60.0)
-
-
-def age_bucket(minutes: float) -> str:
-    if minutes <= 10:
+def recency_bucket(age_minutes: float) -> str:
+    if age_minutes <= 10:
         return "0-10m"
-    if minutes <= 60:
+    if age_minutes <= 60:
         return "10-60m"
-    if minutes <= 360:
+    if age_minutes <= 360:
         return "1-6h"
-    if minutes <= 1440:
+    if age_minutes <= 1440:
         return "6-24h"
     return ">24h"
 
 
-def format_age_label(minutes: float) -> str:
-    if minutes < 60:
-        return f"{int(round(minutes))}m"
-    if minutes < 1440:
-        hours = minutes / 60.0
-        return f"{hours:.1f}h" if hours < 10 else f"{int(round(hours))}h"
-    return f"{minutes / 1440.0:.1f}d"
+def recency_boost(age_minutes: float) -> int:
+    if age_minutes <= 10:
+        return 40
+    if age_minutes <= 60:
+        return 30
+    if age_minutes <= 360:
+        return 20
+    if age_minutes <= 1440:
+        return 10
+    return 0
 
 
-def source_rank_score(source_type: str, recency_bucket: str) -> int:
-    base = SOURCE_RANK_BASE.get(source_type, 45)
-    return base + RECENCY_BONUS_BY_BUCKET.get(recency_bucket, 0)
+def staleness_penalty(age_minutes: float) -> int:
+    return STALE_PENALTY if age_minutes > 1440 else 0
 
 
-def normalize_artifact_manifest(value: Any, *, default_role: str = "") -> list[dict[str, Any]]:
-    artifacts: list[dict[str, Any]] = []
+def slugify(text: str, fallback: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return cleaned or fallback
+
+
+def clean_string_list(value: Any) -> list[str]:
+    cleaned: list[str] = []
     for item in safe_list(value):
-        if not isinstance(item, dict):
-            continue
-        role = clean_text(item.get("role") or item.get("kind") or default_role)
-        path = clean_text(item.get("path") or item.get("local_artifact_path"))
-        source_url = clean_text(item.get("source_url") or item.get("url"))
-        media_type = clean_text(item.get("media_type"))
-        caption = clean_text(item.get("caption"))
-        normalized = {
-            "role": role,
-            "path": path,
-            "source_url": source_url,
-            "media_type": media_type,
-        }
-        if caption:
-            normalized["caption"] = caption
-        artifacts.append(normalized)
-    return artifacts
+        text = str(item).strip()
+        if text and text not in cleaned:
+            cleaned.append(text)
+    return cleaned
 
 
-def strip_html_tags(html: str) -> str:
-    return unescape(re.sub(r"<[^>]+>", " ", html))
+def normalize_preset(value: Any) -> str:
+    return str(value or "").strip().lower().replace("_", "-").replace(" ", "-")
 
 
-def extract_meta_content(html: str, *names: str) -> str:
-    for name in names:
-        pattern = re.compile(
-            rf"<meta[^>]+(?:property|name)\s*=\s*[\"']{re.escape(name)}[\"'][^>]+content\s*=\s*[\"']([^\"']+)[\"']",
-            re.IGNORECASE,
-        )
-        match = pattern.search(html)
-        if match:
-            return clean_text(unescape(match.group(1)))
+def infer_preset(payload: dict[str, Any]) -> str:
+    explicit = normalize_preset(payload.get("preset") or payload.get("news_preset") or payload.get("crisis_preset"))
+    if explicit:
+        return explicit
+    haystack_parts = [
+        str(payload.get("topic", "")).strip(),
+        str(payload.get("use_case", "")).strip(),
+        " ".join(clean_string_list(payload.get("questions"))),
+        " ".join(clean_string_list(payload.get("market_relevance"))),
+    ]
+    for claim in safe_list(payload.get("claims")):
+        if isinstance(claim, dict):
+            haystack_parts.append(str(claim.get("claim_text", "")).strip())
+    haystack = " ".join(part.lower() for part in haystack_parts if part)
+    if any(keyword in haystack for keyword in ENERGY_WAR_KEYWORDS):
+        return "energy-war"
     return ""
 
 
-def fetch_public_page_hints(url: str) -> dict[str, Any]:
-    request = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0 Safari/537.36"
-            )
-        },
-    )
-    with urllib.request.urlopen(request, timeout=8) as response:
-        try:
-            body = response.read(1_000_000)
-        except TypeError:
-            # Some test doubles only expose read() without a size parameter.
-            body = response.read()
-        html = body.decode("utf-8", errors="ignore")
-        final_url = clean_text(response.geturl() if hasattr(response, "geturl") else url) or url
+def merge_unique_strings(base: list[str], additions: list[str]) -> list[str]:
+    merged = list(base)
+    for item in additions:
+        text = str(item).strip()
+        if text and text not in merged:
+            merged.append(text)
+    return merged
 
-    title_match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
-    title = extract_meta_content(html, "og:title", "twitter:title") or clean_text(title_match.group(1) if title_match else "")
-    description = extract_meta_content(html, "og:description", "description", "twitter:description")
-    paragraph_match = re.search(r"<p[^>]*>(.*?)</p>", html, re.IGNORECASE | re.DOTALL)
-    body_text = clean_text(strip_html_tags(paragraph_match.group(1) if paragraph_match else html))
-    text_excerpt = short_excerpt(description or body_text or title, limit=240)
-    image_url = extract_meta_content(html, "og:image", "twitter:image")
-    image_alt = extract_meta_content(html, "og:image:alt", "twitter:image:alt")
-    artifact_manifest: list[dict[str, Any]] = []
-    if image_url:
+
+def clean_artifact_manifest(value: Any) -> list[dict[str, Any]]:
+    cleaned: list[dict[str, Any]] = []
+    for item in safe_list(value):
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path", "")).strip()
+        source_url = str(item.get("source_url", "")).strip()
+        role = str(item.get("role", "")).strip()
+        media_type = str(item.get("media_type", "")).strip()
+        if not any([path, source_url, role, media_type]):
+            continue
+        cleaned.append(
+            {
+                "role": role,
+                "path": path,
+                "source_url": source_url,
+                "media_type": media_type,
+                "summary": short_excerpt(item.get("summary") or item.get("caption") or item.get("title"), limit=180),
+            }
+        )
+    return cleaned
+
+
+def short_excerpt(text: Any, limit: int = 180) -> str:
+    cleaned = " ".join(str(text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 3].rstrip() + "..."
+
+
+def age_minutes_since(analysis_time: datetime, published_at: datetime | None, observed_at: datetime | None) -> float:
+    anchor = published_at or observed_at or analysis_time
+    return max(0.0, (analysis_time - anchor).total_seconds() / 60.0)
+
+
+def minutes_label(minutes: float) -> str:
+    if minutes < 60:
+        return f"{int(round(minutes))}m"
+    if minutes < 1440:
+        return f"{round(minutes / 60.0, 1):g}h"
+    return f"{round(minutes / 1440.0, 1):g}d"
+
+
+def normalize_claim_state(value: Any) -> str:
+    state = str(value or "").strip().lower()
+    aliases = {
+        "supporting": "support",
+        "supported": "support",
+        "confirm": "support",
+        "confirmed": "support",
+        "deny": "contradict",
+        "denied": "contradict",
+        "refute": "contradict",
+        "refuted": "contradict",
+        "uncertain": "unclear",
+    }
+    return aliases.get(state, state or "support")
+
+
+def fetch_public_excerpt(url: str) -> tuple[str, str]:
+    request = urllib.request.Request(url, headers={"User-Agent": "Codex-NewsIndex/1.0"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        raw = response.read(4096)
+    return short_excerpt(raw.decode("utf-8", errors="ignore"), limit=240), "public"
+
+
+def extract_meta_content(html: str, attribute: str, name: str) -> str:
+    patterns = [
+        rf"<meta[^>]+{attribute}=[\"']{re.escape(name)}[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>",
+        rf"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+{attribute}=[\"']{re.escape(name)}[\"'][^>]*>",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, html, flags=re.IGNORECASE)
+        if match:
+            return short_excerpt(unescape(match.group(1)), limit=500)
+    return ""
+
+
+def extract_html_title(html: str) -> str:
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
+    return short_excerpt(unescape(match.group(1)) if match else "", limit=200)
+
+
+def fetch_public_page_hints(url: str) -> dict[str, Any]:
+    request = urllib.request.Request(url, headers={"User-Agent": "Codex-NewsIndex/1.0"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        final_url = response.geturl()
+        raw = response.read(65536)
+
+    html = raw.decode("utf-8", errors="ignore")
+    visible_excerpt = short_excerpt(unescape(re.sub(r"<[^>]+>", " ", html)), limit=240)
+    title = (
+        extract_meta_content(html, "property", "og:title")
+        or extract_meta_content(html, "name", "twitter:title")
+        or extract_html_title(html)
+    )
+    image_alt = (
+        extract_meta_content(html, "property", "og:image:alt")
+        or extract_meta_content(html, "name", "twitter:image:alt")
+    )
+    image_url = (
+        extract_meta_content(html, "property", "og:image")
+        or extract_meta_content(html, "name", "twitter:image")
+    )
+    normalized_image_url = urllib.parse.urljoin(final_url, image_url) if image_url else ""
+    image_summary = short_excerpt(image_alt or title, limit=180)
+    artifact_manifest = []
+    if normalized_image_url:
         artifact_manifest.append(
             {
                 "role": "post_media",
                 "path": "",
-                "source_url": urllib.parse.urljoin(final_url, image_url),
+                "source_url": normalized_image_url,
                 "media_type": "image",
+                "summary": image_summary,
             }
         )
+
     return {
-        "final_url": final_url,
-        "title": title,
-        "text_excerpt": text_excerpt,
-        "post_summary": short_excerpt(description or title or body_text, limit=180),
-        "media_summary": clean_text(image_alt),
+        "text_excerpt": visible_excerpt,
+        "access_mode": "public",
+        "post_summary": short_excerpt(title, limit=180),
+        "media_summary": image_summary,
         "artifact_manifest": artifact_manifest,
     }
 
 
-def build_page_hints(candidate: dict[str, Any]) -> dict[str, Any]:
-    cached = safe_dict(candidate.get("public_page_hints") or candidate.get("page_hints"))
-    if cached:
-        return cached
-    url = clean_text(candidate.get("url"))
-    if clean_text(candidate.get("access_mode")) == "blocked" or not url.startswith(("http://", "https://")):
-        return {}
-    needs_hints = not safe_list(candidate.get("artifact_manifest")) or not clean_text(candidate.get("media_summary"))
-    if not needs_hints:
-        return {}
-    try:
-        return safe_dict(fetch_public_page_hints(url))
-    except (TimeoutError, ValueError, OSError, urllib.error.URLError):
-        return {}
+def access_rank(access_mode: str) -> int:
+    return {"public": 3, "browser_session": 2, "blocked": 1}.get(access_mode, 0)
 
 
-def normalize_claim_state(value: Any) -> str:
-    state = clean_text(value).lower()
-    if state in SUPPORT_STATES:
-        return "support"
-    if state in CONTRADICT_STATES:
-        return "contradict"
-    return state
-
-
-def build_claim_text_map(request: dict[str, Any]) -> dict[str, str]:
-    mapping: dict[str, str] = {}
-    for item in safe_list(request.get("claims")):
-        if not isinstance(item, dict):
+def claim_text_map_from_request(request: dict[str, Any]) -> dict[str, str]:
+    claim_map: dict[str, str] = {}
+    for claim in safe_list(request.get("claims")):
+        if not isinstance(claim, dict):
             continue
-        claim_id = clean_text(item.get("claim_id"))
-        claim_text = clean_text(item.get("claim_text"))
-        if claim_id and claim_text:
-            mapping[claim_id] = claim_text
-    return mapping
+        claim_id = str(claim.get("claim_id", "")).strip()
+        if claim_id:
+            claim_map[claim_id] = str(claim.get("claim_text", "")).strip()
+    return claim_map
 
 
-def normalize_observation(candidate: dict[str, Any], claim_text_map: dict[str, str], analysis_time: datetime) -> dict[str, Any]:
-    source_type = clean_text(candidate.get("source_type")).lower() or "analysis"
-    published_at = parse_datetime(candidate.get("published_at"), fallback=None)
-    observed_at = parse_datetime(candidate.get("observed_at"), fallback=published_at)
-    access_mode = clean_text(candidate.get("access_mode")) or "public"
-    candidate_channel = clean_text(candidate.get("channel")).lower()
-    if candidate_channel not in {"core", "shadow", "background"}:
-        candidate_channel = source_type_channel(source_type)
-    page_hints = build_page_hints(candidate)
+def upgrade_legacy_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    if "candidates" in payload or "source_candidates" in payload:
+        return payload
 
-    artifact_manifest = normalize_artifact_manifest(candidate.get("artifact_manifest")) or normalize_artifact_manifest(
-        page_hints.get("artifact_manifest")
+    source_pack = safe_dict(payload.get("source_pack"))
+    if not source_pack:
+        return payload
+
+    analysis_time = (
+        payload.get("analysis_time")
+        or source_pack.get("analysis_date")
+        or payload.get("analysis_date")
+        or ""
     )
-    root_post_screenshot_path = clean_text(candidate.get("root_post_screenshot_path"))
-    if not root_post_screenshot_path:
-        for item in artifact_manifest:
-            role = clean_text(item.get("role")).lower()
-            path = clean_text(item.get("path"))
-            if path and "screenshot" in role:
-                root_post_screenshot_path = path
-                break
+    claims = []
+    for index, claim in enumerate(safe_list(source_pack.get("key_claims")), start=1):
+        if not isinstance(claim, dict):
+            continue
+        claim_id = str(claim.get("claim_id") or f"claim-{index:02d}")
+        claims.append(
+            {
+                "claim_id": claim_id,
+                "claim_text": str(claim.get("claim") or claim.get("claim_text") or "").strip(),
+                "expected_status": str(claim.get("status", "")).strip(),
+            }
+        )
 
-    text_excerpt = clean_text(candidate.get("text_excerpt"))
-    if not text_excerpt and access_mode != "blocked":
-        text_excerpt = clean_text(page_hints.get("text_excerpt"))
-
-    claim_states = {
-        claim_id: normalize_claim_state(state)
-        for claim_id, state in safe_dict(candidate.get("claim_states")).items()
-        if clean_text(claim_id)
-    }
-    claim_ids = clean_string_list(candidate.get("claim_ids") or list(claim_states))
-    observation_age = age_minutes(analysis_time, published_at, observed_at)
-    observation_bucket = age_bucket(observation_age)
+    candidates = []
+    for index, source in enumerate(safe_list(source_pack.get("sources")), start=1):
+        if not isinstance(source, dict):
+            continue
+        candidates.append(
+            {
+                "source_id": str(source.get("source_id") or f"legacy-source-{index:02d}"),
+                "source_name": source.get("name", ""),
+                "source_type": source.get("type") or source.get("source_type") or "major_news",
+                "published_at": source.get("published_at") or analysis_time,
+                "observed_at": source.get("observed_at") or source.get("published_at") or analysis_time,
+                "url": source.get("url", ""),
+                "text_excerpt": source.get("support", ""),
+                "claim_ids": [claim["claim_id"] for claim in claims],
+                "channel": "shadow",
+                "access_mode": source.get("access_mode") or "public",
+            }
+        )
 
     return {
-        "source_id": clean_text(candidate.get("source_id")) or slugify(candidate.get("url"), "source"),
-        "source_name": clean_text(candidate.get("source_name")) or "Unknown Source",
+        "topic": payload.get("topic")
+        or source_pack.get("event_label")
+        or payload.get("title")
+        or payload.get("task_goal")
+        or "news-index-topic",
+        "analysis_time": analysis_time,
+        "questions": payload.get("questions") or [payload.get("claim_to_evaluate") or payload.get("task_goal") or ""],
+        "use_case": payload.get("use_case") or "legacy-run-record-upgrade",
+        "source_preferences": payload.get("source_preferences") or [],
+        "mode": payload.get("mode") or "generic",
+        "windows": payload.get("windows") or DEFAULT_WINDOWS,
+        "claims": claims,
+        "candidates": candidates,
+        "market_relevance": payload.get("market_relevance") or [],
+        "market_relevance_zh": payload.get("market_relevance_zh") or [],
+        "expected_source_families": payload.get("expected_source_families") or [],
+    }
+
+
+def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    payload = upgrade_legacy_payload(raw_payload)
+    analysis_time = parse_datetime(payload.get("analysis_time"), fallback=now_utc()) or now_utc()
+    preset = infer_preset(payload)
+    mode = "crisis" if preset == "energy-war" or str(payload.get("mode", "")).strip().lower() == "crisis" else "generic"
+    expected_source_families = clean_string_list(payload.get("expected_source_families"))
+    if mode == "crisis":
+        for family in CRISIS_EXPECTED_SOURCE_FAMILIES:
+            if family not in expected_source_families:
+                expected_source_families.append(family)
+    market_relevance = clean_string_list(payload.get("market_relevance"))
+    market_relevance_zh = clean_string_list(payload.get("market_relevance_zh"))
+    benchmark_watchlist = clean_string_list(payload.get("benchmark_watchlist"))
+    preset_watch_items = clean_string_list(payload.get("preset_watch_items"))
+    if preset == "energy-war":
+        expected_source_families = merge_unique_strings(expected_source_families, ENERGY_WAR_EXPECTED_SOURCE_FAMILIES)
+        if not market_relevance:
+            market_relevance = list(ENERGY_WAR_DEFAULT_MARKET_RELEVANCE)
+        if not benchmark_watchlist:
+            benchmark_watchlist = list(ENERGY_WAR_BENCHMARK_WATCHLIST)
+        if not preset_watch_items:
+            preset_watch_items = list(ENERGY_WAR_NEXT_WATCH_ITEMS)
+
+    return {
+        "topic": str(payload.get("topic", "")).strip() or "news-index-topic",
+        "analysis_time": analysis_time,
+        "questions": clean_string_list(payload.get("questions")),
+        "use_case": str(payload.get("use_case", "")).strip() or "news-index",
+        "source_preferences": clean_string_list(payload.get("source_preferences")),
+        "mode": mode,
+        "windows": clean_string_list(payload.get("windows")) or list(DEFAULT_WINDOWS),
+        "claims": [item for item in safe_list(payload.get("claims")) if isinstance(item, dict)],
+        "candidates": [
+            item
+            for item in safe_list(payload.get("candidates") or payload.get("source_candidates"))
+            if isinstance(item, dict)
+        ],
+        "market_relevance": market_relevance,
+        "market_relevance_zh": market_relevance_zh,
+        "expected_source_families": expected_source_families,
+        "crisis_defaults": safe_dict(payload.get("crisis_defaults")),
+        "preset": preset,
+        "benchmark_watchlist": benchmark_watchlist,
+        "preset_watch_items": preset_watch_items,
+        "max_parallel_candidates": max(
+            1,
+            int(payload.get("max_parallel_candidates", payload.get("parallel_candidates", 4)) or 1),
+        ),
+    }
+
+
+def normalize_candidate(
+    candidate: dict[str, Any],
+    analysis_time: datetime,
+    claim_texts: dict[str, str],
+    index: int,
+) -> dict[str, Any]:
+    source_name = str(candidate.get("source_name") or candidate.get("name") or f"source-{index:02d}").strip()
+    source_type = normalize_source_type(candidate.get("source_type") or candidate.get("type"))
+    source_id = str(candidate.get("source_id") or slugify(source_name, f"source-{index:02d}")).strip()
+    published_raw = candidate.get("published_at")
+    published_at = parse_datetime(published_raw, fallback=analysis_time if published_raw is None else None)
+    observed_at = parse_datetime(candidate.get("observed_at"), fallback=published_at or analysis_time)
+    access_mode = str(candidate.get("access_mode", "public")).strip() or "public"
+    text_excerpt = short_excerpt(
+        candidate.get("text_excerpt") or candidate.get("summary") or candidate.get("support") or ""
+    )
+    post_summary = str(candidate.get("post_summary", "")).strip()
+    media_summary = str(candidate.get("media_summary", "")).strip()
+    artifact_manifest = clean_artifact_manifest(candidate.get("artifact_manifest"))
+
+    if access_mode != "blocked" and not text_excerpt and str(candidate.get("url", "")).strip():
+        try:
+            text_excerpt, access_mode = fetch_public_excerpt(str(candidate.get("url")).strip())
+        except (TimeoutError, OSError, urllib.error.URLError):
+            access_mode = "blocked"
+
+    if access_mode != "blocked" and str(candidate.get("url", "")).strip() and not artifact_manifest:
+        try:
+            page_hints = fetch_public_page_hints(str(candidate.get("url")).strip())
+            if not text_excerpt:
+                text_excerpt = short_excerpt(page_hints.get("text_excerpt"))
+            if not post_summary:
+                post_summary = str(page_hints.get("post_summary", "")).strip()
+            if not media_summary:
+                media_summary = str(page_hints.get("media_summary", "")).strip()
+            artifact_manifest = clean_artifact_manifest(page_hints.get("artifact_manifest"))
+        except (TimeoutError, OSError, urllib.error.URLError, ValueError):
+            pass
+
+    claim_ids = clean_string_list(candidate.get("claim_ids"))
+    raw_states = safe_dict(candidate.get("claim_states") or candidate.get("stance_by_claim"))
+    claim_states = {
+        claim_id: normalize_claim_state(raw_states.get(claim_id) or candidate.get("claim_state") or "support")
+        for claim_id in claim_ids
+    }
+
+    age = age_minutes_since(analysis_time, published_at, observed_at)
+    source_tier = source_tier_for(source_type)
+    channel = str(candidate.get("channel", "")).strip().lower()
+    if channel not in {"core", "shadow", "background"}:
+        channel = "core" if source_tier <= 1 else "shadow"
+    if access_mode == "blocked":
+        channel = "background"
+    if age > 1440:
+        channel = "background"
+
+    return {
+        "source_id": source_id,
+        "source_name": source_name,
         "source_type": source_type,
-        "source_tier": source_type_tier(source_type),
-        "origin": clean_text(candidate.get("origin")),
-        "_base_channel": source_type_channel(source_type),
-        "channel": candidate_channel,
+        "source_tier": source_tier,
+        "origin": str(candidate.get("origin", "")).strip(),
+        "agent_reach_channel": str(candidate.get("agent_reach_channel", "")).strip(),
+        "channel": channel,
         "published_at": isoformat_or_blank(published_at),
         "observed_at": isoformat_or_blank(observed_at),
-        "url": clean_text(candidate.get("url")),
+        "url": str(candidate.get("url", "")).strip(),
         "claim_ids": claim_ids,
         "entity_ids": clean_string_list(candidate.get("entity_ids")),
         "vessel_ids": clean_string_list(candidate.get("vessel_ids")),
         "text_excerpt": text_excerpt,
-        "position_hint": safe_dict(candidate.get("position_hint")) or None,
-        "geo_hint": safe_dict(candidate.get("geo_hint")) or None,
+        "position_hint": deepcopy(candidate.get("position_hint")),
+        "geo_hint": deepcopy(candidate.get("geo_hint")),
         "access_mode": access_mode,
-        "rank_score": source_rank_score(source_type, observation_bucket),
-        "recency_bucket": observation_bucket,
-        "age_minutes": round(observation_age, 1),
-        "age_label": format_age_label(observation_age),
+        "rank_score": 0,
+        "recency_bucket": recency_bucket(age),
+        "age_minutes": round(age, 2),
+        "age_label": minutes_label(age),
         "claim_states": claim_states,
-        "claim_texts": {claim_id: clean_text(claim_text_map.get(claim_id)) for claim_id in claim_ids if claim_id in claim_text_map},
+        "claim_texts": {claim_id: claim_texts.get(claim_id, "") for claim_id in claim_ids},
+        "raw_metadata": deepcopy(candidate.get("raw_metadata")) if isinstance(candidate.get("raw_metadata"), dict) else {},
         "artifact_manifest": artifact_manifest,
-        "x_post_record": safe_dict(candidate.get("x_post_record")),
-        "post_text_raw": clean_text(candidate.get("post_text_raw")),
-        "post_text_source": clean_text(candidate.get("post_text_source")),
-        "post_text_confidence": float(candidate.get("post_text_confidence") or 0.0),
-        "root_post_screenshot_path": root_post_screenshot_path,
-        "thread_posts": safe_list(candidate.get("thread_posts")),
-        "media_items": safe_list(candidate.get("media_items")),
-        "raw_metadata": deepcopy(safe_dict(candidate.get("raw_metadata"))),
-        "agent_reach_channel": clean_text(candidate.get("agent_reach_channel")),
-        "post_summary": clean_text(candidate.get("post_summary") or page_hints.get("post_summary")),
-        "media_summary": clean_text(candidate.get("media_summary") or page_hints.get("media_summary")),
-        "combined_summary": clean_text(candidate.get("combined_summary")),
-        "discovery_reason": clean_text(candidate.get("discovery_reason")),
-        "crawl_notes": clean_string_list(candidate.get("crawl_notes")),
-        "public_page_hints": page_hints,
+        "x_post_record": deepcopy(candidate.get("x_post_record")) if isinstance(candidate.get("x_post_record"), dict) else {},
+        "post_text_raw": str(candidate.get("post_text_raw", "")).strip(),
+        "post_text_source": str(candidate.get("post_text_source", "")).strip(),
+        "post_text_confidence": candidate.get("post_text_confidence", 0.0),
+        "root_post_screenshot_path": str(candidate.get("root_post_screenshot_path", "")).strip(),
+        "thread_posts": deepcopy(candidate.get("thread_posts")) if isinstance(candidate.get("thread_posts"), list) else [],
+        "media_items": deepcopy(candidate.get("media_items")) if isinstance(candidate.get("media_items"), list) else [],
+        "post_summary": post_summary,
+        "media_summary": media_summary,
+        "combined_summary": str(candidate.get("combined_summary", "")).strip(),
+        "discovery_reason": str(candidate.get("discovery_reason", "")).strip(),
+        "crawl_notes": deepcopy(candidate.get("crawl_notes")) if isinstance(candidate.get("crawl_notes"), list) else [],
     }
 
 
-def promoted_tracker_source_ids(observations: list[dict[str, Any]]) -> set[str]:
-    support_by_claim: dict[str, list[dict[str, Any]]] = defaultdict(list)
+def error_observation(
+    candidate: dict[str, Any],
+    analysis_time: datetime,
+    claim_texts: dict[str, str],
+    index: int,
+    error: Exception,
+) -> dict[str, Any]:
+    try:
+        source_name = str(candidate.get("source_name") or candidate.get("name") or candidate.get("url") or "").strip()
+    except Exception:
+        source_name = ""
+    source_name = source_name or f"source-{index:02d}"
+    published_at = parse_datetime(candidate.get("published_at"), fallback=analysis_time) or analysis_time
+    observed_at = parse_datetime(candidate.get("observed_at"), fallback=published_at) or published_at
+    claim_ids = clean_string_list(candidate.get("claim_ids"))
+    raw_states = safe_dict(candidate.get("claim_states") or candidate.get("stance_by_claim"))
+    claim_states = {
+        claim_id: normalize_claim_state(raw_states.get(claim_id) or candidate.get("claim_state") or "unclear")
+        for claim_id in claim_ids
+    }
+    message = short_excerpt(f"Candidate normalization failed: {error}", limit=220)
+    age = age_minutes_since(analysis_time, published_at, observed_at)
+    return {
+        "source_id": str(candidate.get("source_id") or f"error-source-{index:02d}").strip() or f"error-source-{index:02d}",
+        "source_name": source_name,
+        "source_type": normalize_source_type(candidate.get("source_type") or candidate.get("type") or "social"),
+        "source_tier": 3,
+        "origin": str(candidate.get("origin", "")).strip(),
+        "agent_reach_channel": str(candidate.get("agent_reach_channel", "")).strip(),
+        "channel": "background",
+        "published_at": isoformat_or_blank(published_at),
+        "observed_at": isoformat_or_blank(observed_at),
+        "url": str(candidate.get("url", "")).strip(),
+        "claim_ids": claim_ids,
+        "entity_ids": clean_string_list(candidate.get("entity_ids")),
+        "vessel_ids": clean_string_list(candidate.get("vessel_ids")),
+        "text_excerpt": message,
+        "position_hint": deepcopy(candidate.get("position_hint")),
+        "geo_hint": deepcopy(candidate.get("geo_hint")),
+        "access_mode": "blocked",
+        "rank_score": 0,
+        "recency_bucket": recency_bucket(age),
+        "age_minutes": round(age, 2),
+        "age_label": minutes_label(age),
+        "claim_states": claim_states,
+        "claim_texts": {claim_id: claim_texts.get(claim_id, "") for claim_id in claim_ids},
+        "raw_metadata": deepcopy(candidate.get("raw_metadata")) if isinstance(candidate.get("raw_metadata"), dict) else {},
+        "artifact_manifest": clean_artifact_manifest(candidate.get("artifact_manifest")),
+        "x_post_record": {},
+        "post_text_raw": "",
+        "post_text_source": "unavailable",
+        "post_text_confidence": 0.0,
+        "root_post_screenshot_path": "",
+        "thread_posts": [],
+        "media_items": [],
+        "post_summary": "",
+        "media_summary": "",
+        "combined_summary": "",
+        "discovery_reason": "",
+        "crawl_notes": [{"kind": "normalization_error", "message": str(error)}],
+    }
+
+
+def dedupe_observations(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     for observation in observations:
+        key = (
+            observation.get("url", "") or observation.get("source_name", ""),
+            observation.get("published_at", ""),
+            "|".join(sorted(observation.get("claim_ids", []))),
+            observation.get("text_excerpt", ""),
+        )
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = observation
+            continue
+
+        existing["claim_ids"] = sorted(set(existing["claim_ids"]) | set(observation["claim_ids"]))
+        existing["entity_ids"] = sorted(set(existing["entity_ids"]) | set(observation["entity_ids"]))
+        existing["vessel_ids"] = sorted(set(existing["vessel_ids"]) | set(observation["vessel_ids"]))
+        existing["claim_states"].update(observation.get("claim_states", {}))
+        existing["claim_texts"].update(observation.get("claim_texts", {}))
+        if access_rank(observation.get("access_mode", "")) > access_rank(existing.get("access_mode", "")):
+            existing["access_mode"] = observation.get("access_mode", "")
+        if observation.get("origin") and not existing.get("origin"):
+            existing["origin"] = observation.get("origin", "")
+        if observation.get("agent_reach_channel") and not existing.get("agent_reach_channel"):
+            existing["agent_reach_channel"] = observation.get("agent_reach_channel", "")
+        if len(observation.get("text_excerpt", "")) > len(existing.get("text_excerpt", "")):
+            existing["text_excerpt"] = observation.get("text_excerpt", "")
+        if observation.get("raw_metadata") and not existing.get("raw_metadata"):
+            existing["raw_metadata"] = deepcopy(observation.get("raw_metadata", {}))
+        if len(observation.get("post_text_raw", "")) > len(existing.get("post_text_raw", "")):
+            existing["post_text_raw"] = observation.get("post_text_raw", "")
+            existing["post_text_source"] = observation.get("post_text_source", "")
+            existing["post_text_confidence"] = observation.get("post_text_confidence", 0.0)
+        if len(observation.get("post_summary", "")) > len(existing.get("post_summary", "")):
+            existing["post_summary"] = observation.get("post_summary", "")
+        if len(observation.get("media_summary", "")) > len(existing.get("media_summary", "")):
+            existing["media_summary"] = observation.get("media_summary", "")
+        if len(observation.get("combined_summary", "")) > len(existing.get("combined_summary", "")):
+            existing["combined_summary"] = observation.get("combined_summary", "")
+        if observation.get("root_post_screenshot_path") and not existing.get("root_post_screenshot_path"):
+            existing["root_post_screenshot_path"] = observation.get("root_post_screenshot_path", "")
+        if observation.get("thread_posts") and not existing.get("thread_posts"):
+            existing["thread_posts"] = deepcopy(observation.get("thread_posts", []))
+        if observation.get("media_items") and not existing.get("media_items"):
+            existing["media_items"] = deepcopy(observation.get("media_items", []))
+        if observation.get("x_post_record") and not existing.get("x_post_record"):
+            existing["x_post_record"] = deepcopy(observation.get("x_post_record", {}))
+        if observation.get("artifact_manifest"):
+            merged_artifacts = {
+                (item.get("role", ""), item.get("path", ""), item.get("source_url", "")): item
+                for item in existing.get("artifact_manifest", [])
+            }
+            for artifact in observation.get("artifact_manifest", []):
+                key = (artifact.get("role", ""), artifact.get("path", ""), artifact.get("source_url", ""))
+                merged_artifacts[key] = artifact
+            existing["artifact_manifest"] = list(merged_artifacts.values())
+        if observation.get("crawl_notes"):
+            existing["crawl_notes"] = clean_string_list(existing.get("crawl_notes", []) + observation.get("crawl_notes", []))
+    return list(merged.values())
+
+
+def build_claim_index(request: dict[str, Any], observations: list[dict[str, Any]]) -> dict[str, str]:
+    claim_map = claim_text_map_from_request(request)
+    for observation in observations:
+        for claim_id, claim_text in observation.get("claim_texts", {}).items():
+            if claim_id not in claim_map and claim_text:
+                claim_map[claim_id] = claim_text
+    return claim_map
+
+
+def build_claim_evidence(observations: list[dict[str, Any]]) -> dict[str, ClaimEvidence]:
+    claim_index: dict[str, ClaimEvidence] = {}
+    for observation in observations:
+        if observation.get("access_mode") == "blocked":
+            continue
         for claim_id in observation.get("claim_ids", []):
-            if observation.get("claim_states", {}).get(claim_id) == "support":
-                support_by_claim[claim_id].append(observation)
-
-    promoted: set[str] = set()
-    for support_sources in support_by_claim.values():
-        core_support = [item for item in support_sources if item.get("_base_channel") == "core"]
-        tracker_support = [
-            item
-            for item in support_sources
-            if item.get("source_type") in PROMOTABLE_TRACKER_TYPES and item.get("access_mode") != "blocked"
-        ]
-        if core_support and len({item["source_id"] for item in tracker_support}) >= 2:
-            promoted.update(item["source_id"] for item in tracker_support)
-    return promoted
-
-
-def apply_channel_promotions(observations: list[dict[str, Any]]) -> None:
-    promoted_sources = promoted_tracker_source_ids(observations)
-    for observation in observations:
-        if observation["source_id"] in promoted_sources and observation["source_type"] in PROMOTABLE_TRACKER_TYPES:
-            observation["channel"] = "core"
-
-
-def observation_sort_key(observation: dict[str, Any]) -> tuple[int, float, str]:
-    return (
-        int(observation.get("rank_score", 0)),
-        -float(observation.get("age_minutes", 0.0)),
-        clean_text(observation.get("source_name")).lower(),
-    )
-
-
-def build_claim_ledger(observations: list[dict[str, Any]], claim_text_map: dict[str, str]) -> list[dict[str, Any]]:
-    support_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    contradict_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
-
-    for observation in observations:
-        for claim_id in observation.get("claim_ids", []):
-            state = observation.get("claim_states", {}).get(claim_id)
-            if state == "support":
-                support_map[claim_id].append(observation)
-            elif state == "contradict":
-                contradict_map[claim_id].append(observation)
-
-    ledger: list[dict[str, Any]] = []
-    for claim_id, claim_text in claim_text_map.items():
-        supporting = support_map.get(claim_id, [])
-        contradicting = contradict_map.get(claim_id, [])
-        support_core = sum(1 for item in supporting if item.get("channel") == "core")
-        contradict_core = sum(1 for item in contradicting if item.get("channel") == "core")
-
-        if contradicting and not supporting:
-            status = "denied"
-        elif supporting and contradicting:
-            if contradict_core >= support_core and contradict_core > 0:
-                status = "denied"
-            elif support_core > contradict_core:
-                status = "confirmed"
-            elif len(contradicting) >= len(supporting):
-                status = "denied"
+            evidence = claim_index.setdefault(claim_id, ClaimEvidence(supports=[], contradicts=[]))
+            state = normalize_claim_state(observation.get("claim_states", {}).get(claim_id))
+            if state == "contradict":
+                evidence.contradicts.append(observation)
             else:
-                status = "unclear"
-        elif supporting:
-            status = "confirmed" if support_core > 0 else "unclear"
-        else:
-            status = "inferred"
+                evidence.supports.append(observation)
+    return claim_index
 
+
+def corroboration_boost_for(observation: dict[str, Any], evidence_index: dict[str, ClaimEvidence]) -> int:
+    corroborators: dict[str, dict[str, Any]] = {}
+    source_id = observation.get("source_id")
+    for claim_id in observation.get("claim_ids", []):
+        evidence = evidence_index.get(claim_id)
+        if not evidence:
+            continue
+        for other in evidence.supports:
+            if other.get("source_id") == source_id:
+                continue
+            corroborators[other.get("source_id", "")] = other
+    corroborators.pop("", None)
+    if not corroborators:
+        return 0
+    if len(corroborators) >= 2 and len({item.get("source_tier", 3) for item in corroborators.values()}) >= 2:
+        return 25
+    return 15
+
+
+def contradiction_penalty_for(observation: dict[str, Any], evidence_index: dict[str, ClaimEvidence]) -> int:
+    penalties: list[int] = []
+    source_tier = observation.get("source_tier", 3)
+    for claim_id in observation.get("claim_ids", []):
+        evidence = evidence_index.get(claim_id)
+        if not evidence:
+            continue
+        for other in evidence.contradicts:
+            other_age = float(other.get("age_minutes", 0.0))
+            other_tier = other.get("source_tier", 3)
+            if other_age > 1440:
+                penalties.append(10)
+            elif other_tier <= 1 and other_tier < source_tier:
+                penalties.append(35)
+            elif other_tier == source_tier:
+                penalties.append(20)
+            else:
+                penalties.append(15)
+    return max(penalties, default=0)
+
+
+def fallback_channel(observation: dict[str, Any]) -> str:
+    if observation.get("access_mode") == "blocked":
+        return "background"
+    if float(observation.get("age_minutes", 0.0)) > 1440:
+        return "background"
+    if observation.get("source_tier", 3) <= 1:
+        return "core"
+    return "shadow"
+
+
+def rerank_observations(
+    observations: list[dict[str, Any]],
+    evidence_index: dict[str, ClaimEvidence],
+) -> list[dict[str, Any]]:
+    ranked: list[dict[str, Any]] = []
+    for observation in observations:
+        age = float(observation.get("age_minutes", 0.0))
+        score = (
+            TIER_WEIGHTS.get(observation.get("source_tier", 3), 35)
+            + recency_boost(age)
+            + corroboration_boost_for(observation, evidence_index)
+            - contradiction_penalty_for(observation, evidence_index)
+            - staleness_penalty(age)
+        )
+        if observation.get("access_mode") == "blocked":
+            score -= 25
+        observation["rank_score"] = score
+        if not observation.get("channel"):
+            observation["channel"] = fallback_channel(observation)
+        ranked.append(observation)
+    ranked.sort(key=lambda item: (item.get("rank_score", 0), -float(item.get("age_minutes", 0.0))), reverse=True)
+    return ranked
+
+
+def promoted_to_core(supports: list[dict[str, Any]]) -> bool:
+    fresh_supports = [
+        item
+        for item in supports
+        if float(item.get("age_minutes", 0.0)) <= 1440 and item.get("access_mode") != "blocked"
+    ]
+    if not fresh_supports:
+        return False
+    direct_supports = [item for item in fresh_supports if item.get("origin") != "last30days"]
+    if not direct_supports:
+        return False
+    if any(item.get("source_tier", 3) <= 1 for item in direct_supports):
+        return True
+    tier_two_sources = {item.get("source_id") for item in fresh_supports if item.get("source_tier", 3) == 2}
+    return len(tier_two_sources) >= 2
+
+
+def claim_status_for(supports: list[dict[str, Any]], contradicts: list[dict[str, Any]]) -> tuple[str, str]:
+    strongest_support = min((item.get("source_tier", 3) for item in supports), default=None)
+    strongest_contradiction = min((item.get("source_tier", 3) for item in contradicts), default=None)
+    if strongest_contradiction is not None and strongest_support is None:
+        return "denied", "core"
+    if strongest_support is None and strongest_contradiction is None:
+        return "inferred", "background"
+    if strongest_support is not None and strongest_contradiction is not None:
+        if strongest_contradiction < strongest_support:
+            return "denied", "shadow"
+        return "unclear", "shadow"
+    promotion_state = (
+        "core"
+        if promoted_to_core(supports)
+        else "background"
+        if all(float(item.get("age_minutes", 0.0)) > 1440 for item in supports)
+        else "shadow"
+    )
+    return ("confirmed", "core") if promotion_state == "core" else ("unclear", promotion_state)
+
+
+def build_claim_ledger(request: dict[str, Any], observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    claim_map = build_claim_index(request, observations)
+    evidence_index = build_claim_evidence(observations)
+    ledger: list[dict[str, Any]] = []
+    for claim_id in sorted(set(claim_map) | set(evidence_index)):
+        evidence = evidence_index.get(claim_id, ClaimEvidence(supports=[], contradicts=[]))
+        status, promotion_state = claim_status_for(evidence.supports, evidence.contradicts)
         timestamps = [
-            parse_datetime(item.get("published_at"), fallback=None) or parse_datetime(item.get("observed_at"), fallback=None)
-            for item in supporting + contradicting
+            parse_datetime(item.get("published_at"))
+            for item in evidence.supports + evidence.contradicts
+            if item.get("published_at")
         ]
-        valid_timestamps = [item for item in timestamps if isinstance(item, datetime)]
+        last_updated = max(timestamps) if timestamps else request["analysis_time"]
         ledger.append(
             {
                 "claim_id": claim_id,
-                "claim_text": claim_text,
+                "claim_text": claim_map.get(claim_id, ""),
                 "status": status,
-                "supporting_sources": [item["source_id"] for item in supporting],
-                "contradicting_sources": [item["source_id"] for item in contradicting],
-                "last_updated_at": isoformat_or_blank(max(valid_timestamps)) if valid_timestamps else "",
-                "promotion_state": "core" if support_core > 0 else "shadow",
+                "supporting_sources": [item.get("source_id", "") for item in evidence.supports],
+                "contradicting_sources": [item.get("source_id", "") for item in evidence.contradicts],
+                "last_updated_at": isoformat_or_blank(last_updated),
+                "promotion_state": promotion_state,
             }
         )
-
-    ledger.sort(key=lambda item: item["claim_id"])
     return ledger
 
 
-def build_claim_sections(claim_ledger: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    confirmed = [item for item in claim_ledger if item.get("status") == "confirmed"]
-    not_confirmed = [item for item in claim_ledger if item.get("status") in {"denied", "unclear", "not_confirmed"}]
-    inference_only = [item for item in claim_ledger if item.get("status") == "inferred"]
-    return confirmed, not_confirmed, inference_only
+def promote_observation_channels(observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> None:
+    core_claims = {item["claim_id"] for item in claim_ledger if item.get("promotion_state") == "core"}
+    for observation in observations:
+        if observation.get("access_mode") == "blocked":
+            observation["channel"] = "background"
+        elif float(observation.get("age_minutes", 0.0)) > 1440:
+            observation["channel"] = "background"
+        elif observation.get("source_tier", 3) == 2 and core_claims.intersection(observation.get("claim_ids", [])):
+            observation["channel"] = "core"
+        elif observation.get("source_tier", 3) == 3:
+            observation["channel"] = "shadow"
 
 
-def build_freshness_panel(observations: list[dict[str, Any]], windows: list[str]) -> list[dict[str, Any]]:
-    panel: list[dict[str, Any]] = []
-    for window in windows:
-        threshold = WINDOW_MINUTES.get(window)
-        if threshold is None:
-            continue
-        bucket_items = [item for item in observations if float(item.get("age_minutes", threshold + 1)) <= threshold]
+def build_latest_signals(observations: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
+    return [
+        {
+            "source_name": item.get("source_name", ""),
+            "source_type": item.get("source_type", ""),
+            "source_tier": item.get("source_tier", 3),
+            "origin": item.get("origin", ""),
+            "channel": item.get("channel", ""),
+            "age": item.get("age_label", ""),
+            "recency_bucket": item.get("recency_bucket", ""),
+            "rank_score": item.get("rank_score", 0),
+            "access_mode": item.get("access_mode", ""),
+            "url": item.get("url", ""),
+            "text_excerpt": item.get("text_excerpt", ""),
+        }
+        for item in observations[:limit]
+    ]
+
+
+def build_freshness_panel(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    panel = []
+    for window_name, ceiling, _ in RECENCY_WINDOWS:
+        matches = [item for item in observations if float(item.get("age_minutes", 0.0)) <= ceiling]
         panel.append(
             {
-                "window": window,
-                "count": len(bucket_items),
-                "core_count": sum(1 for item in bucket_items if item.get("channel") == "core" and item.get("access_mode") != "blocked"),
-                "shadow_count": sum(1 for item in bucket_items if item.get("channel") == "shadow" and item.get("access_mode") != "blocked"),
-                "blocked_count": sum(1 for item in bucket_items if item.get("access_mode") == "blocked"),
+                "window": window_name,
+                "count": len(matches),
+                "core_count": sum(1 for item in matches if item.get("channel") == "core"),
+                "shadow_count": sum(1 for item in matches if item.get("channel") == "shadow"),
+                "blocked_count": sum(1 for item in matches if item.get("access_mode") == "blocked"),
             }
         )
     return panel
 
 
+def build_conflict_matrix(claim_ledger: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "claim_id": item.get("claim_id", ""),
+            "status": item.get("status", ""),
+            "support_count": len(item.get("supporting_sources", [])),
+            "contradiction_count": len(item.get("contradicting_sources", [])),
+            "promotion_state": item.get("promotion_state", ""),
+        }
+        for item in claim_ledger
+    ]
+
+
 def build_source_layer_summary(observations: list[dict[str, Any]]) -> dict[str, Any]:
-    by_channel = Counter(item.get("channel", "") for item in observations)
-    by_tier = Counter(str(item.get("source_tier", "")) for item in observations)
-    by_access_mode = Counter(item.get("access_mode", "") for item in observations)
     return {
-        "by_channel": dict(by_channel),
-        "by_tier": dict(by_tier),
-        "by_access_mode": dict(by_access_mode),
+        "by_channel": dict(Counter(item.get("channel", "unknown") for item in observations)),
+        "by_tier": dict(Counter(str(item.get("source_tier", 3)) for item in observations)),
+        "by_access_mode": dict(Counter(item.get("access_mode", "unknown") for item in observations)),
     }
 
 
 def build_source_artifacts(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     artifacts: list[dict[str, Any]] = []
     for observation in observations:
-        if not (
-            observation.get("artifact_manifest")
-            or observation.get("root_post_screenshot_path")
-            or observation.get("media_summary")
-            or observation.get("post_text_raw")
+        if not any(
+            [
+                observation.get("post_text_raw"),
+                observation.get("media_summary"),
+                observation.get("root_post_screenshot_path"),
+                observation.get("artifact_manifest"),
+            ]
         ):
             continue
         artifacts.append(
@@ -614,543 +1019,420 @@ def build_source_artifacts(observations: list[dict[str, Any]]) -> list[dict[str,
     return artifacts
 
 
-def build_negotiation_status_timeline(observations: list[dict[str, Any]], claim_text_map: dict[str, str]) -> list[dict[str, Any]]:
-    relevant_claim_ids = {
-        claim_id
-        for claim_id, claim_text in claim_text_map.items()
-        if any(token in claim_id for token in ("deal", "negotiation")) or any(token in claim_text.lower() for token in ("deal", "settlement", "ceasefire", "contact"))
-    }
-    rows: list[dict[str, Any]] = []
-    for observation in observations:
-        if not any(claim_id in relevant_claim_ids for claim_id in observation.get("claim_ids", [])):
-            continue
-        timestamp = clean_text(observation.get("published_at") or observation.get("observed_at"))
-        if not timestamp:
-            continue
-        rows.append(
-            {
-                "timestamp": timestamp,
-                "source_name": observation.get("source_name", ""),
-                "channel": observation.get("channel", ""),
-                "text_excerpt": observation.get("text_excerpt", ""),
-            }
+def build_confidence(claim_ledger: list[dict[str, Any]], observations: list[dict[str, Any]]) -> tuple[list[int], str]:
+    confirmed = sum(1 for item in claim_ledger if item.get("status") == "confirmed")
+    denied = sum(1 for item in claim_ledger if item.get("status") == "denied")
+    unclear = sum(1 for item in claim_ledger if item.get("status") == "unclear")
+    core_sources = [item for item in observations if item.get("channel") == "core" and item.get("access_mode") != "blocked"]
+    shadow_sources = [item for item in observations if item.get("channel") == "shadow"]
+    blocked_sources = [item for item in observations if item.get("access_mode") == "blocked"]
+    avg_core_rank = average([item.get("rank_score", 0) for item in core_sources])
+    center = clamp(35 + confirmed * 15 + min(len(core_sources), 4) * 7 + avg_core_rank / 8 - denied * 12 - unclear * 8 - len(blocked_sources) * 3)
+    width = clamp(10 + unclear * 4 + len(shadow_sources) * 2 + max(0, 2 - len(core_sources)) * 5, low=8, high=45)
+    return [clamp(center - width), clamp(center + width)], "usable" if core_sources else "shadow-heavy"
+
+
+def build_retrieval_quality(observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> dict[str, int]:
+    top_hits = observations[:5]
+    top_recent = sum(1 for item in top_hits if item.get("recency_bucket") in {"0-10m", "10-60m", "1-6h"})
+    improper_shadow_core = sum(1 for item in observations if item.get("channel") == "core" and item.get("source_tier", 3) == 3)
+    improper_promotion = sum(1 for item in claim_ledger if item.get("promotion_state") == "core" and not item.get("supporting_sources"))
+    blocked_sources = [item for item in observations if item.get("access_mode") == "blocked"]
+    blocked_background = sum(1 for item in blocked_sources if item.get("channel") == "background")
+    blocked_identified = sum(1 for item in blocked_sources if item.get("source_name") or item.get("url"))
+    blocked_overweighted = sum(1 for item in blocked_sources if item.get("channel") in {"core", "shadow"})
+    blocked_source_score = 100
+    if blocked_sources:
+        blocked_source_score = clamp(
+            40
+            + (blocked_background / len(blocked_sources)) * 40
+            + (blocked_identified / len(blocked_sources)) * 20
+            - blocked_overweighted * 20
         )
-    rows.sort(key=lambda item: item.get("timestamp", ""), reverse=True)
-    return rows[:5]
-
-
-def build_vessel_movement_table(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    table: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    for observation in observations:
-        position_hint = safe_dict(observation.get("position_hint"))
-        vessel_ids = clean_string_list(observation.get("vessel_ids"))
-        if not position_hint or not vessel_ids:
-            continue
-        key = ("|".join(vessel_ids), clean_text(position_hint.get("last_public_location")))
-        if key in seen:
-            continue
-        seen.add(key)
-        eta_low = safe_int(position_hint.get("eta_hours_low"))
-        eta_high = safe_int(position_hint.get("eta_hours_high"))
-        table.append(
-            {
-                "vessel_ids": vessel_ids,
-                "last_public_location": clean_text(position_hint.get("last_public_location")),
-                "timestamp": clean_text(observation.get("published_at") or observation.get("observed_at")),
-                "eta_range": f"{eta_low}-{eta_high}h" if eta_low and eta_high else "",
-                "source_name": observation.get("source_name", ""),
-            }
-        )
-    return table
-
-
-def build_conflict_matrix(claim_ledger: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        {
-            "claim_id": item.get("claim_id", ""),
-            "status": item.get("status", ""),
-            "support_count": len(item.get("supporting_sources", [])),
-            "contradiction_count": len(item.get("contradicting_sources", [])),
-            "promotion_state": item.get("promotion_state", ""),
-        }
-        for item in claim_ledger
-    ]
-
-
-def build_background_only(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    rows = []
-    for observation in observations:
-        if observation.get("channel") != "background":
-            continue
-        rows.append(
-            {
-                "source_name": observation.get("source_name", ""),
-                "age": observation.get("age_label", ""),
-                "text_excerpt": observation.get("text_excerpt", ""),
-            }
-        )
-    return rows
-
-
-def build_live_tape(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for observation in observations:
-        if observation.get("channel") != "shadow" or float(observation.get("age_minutes", 61.0)) > 60.0:
-            continue
-        rows.append(
-            {
-                "source_name": observation.get("source_name", ""),
-                "age": observation.get("age_label", ""),
-                "source_tier": observation.get("source_tier", 3),
-                "text_excerpt": observation.get("text_excerpt", ""),
-            }
-        )
-    return rows[:3]
-
-
-def build_missing_confirmations(claim_ledger: list[dict[str, Any]]) -> list[str]:
-    return [item.get("claim_text", "") for item in claim_ledger if item.get("status") != "confirmed" and item.get("claim_text")]
-
-
-def build_retrieval_quality(
-    observations: list[dict[str, Any]],
-    claim_ledger: list[dict[str, Any]],
-) -> dict[str, int]:
-    freshness_capture_score = 100 if any(float(item.get("age_minutes", 99.0)) <= 10.0 for item in observations) else 70
-    shadow_signal_discipline_score = 100
-    blocked_source_handling_score = 100
-    if any(item.get("access_mode") == "blocked" and item.get("channel") == "core" for item in observations):
-        blocked_source_handling_score = 75
-    if any(item.get("status") == "confirmed" and item.get("promotion_state") != "core" for item in claim_ledger):
-        shadow_signal_discipline_score = 70
     return {
-        "freshness_capture_score": freshness_capture_score,
-        "shadow_signal_discipline_score": shadow_signal_discipline_score,
-        "source_promotion_discipline_score": 100,
-        "blocked_source_handling_score": blocked_source_handling_score,
+        "freshness_capture_score": clamp(50 + top_recent * 10),
+        "shadow_signal_discipline_score": clamp(100 - improper_shadow_core * 35),
+        "source_promotion_discipline_score": clamp(100 - improper_promotion * 40),
+        "blocked_source_handling_score": blocked_source_score,
     }
 
 
-def build_expected_source_families(request: dict[str, Any], observations: list[dict[str, Any]]) -> list[str]:
-    families = clean_string_list(request.get("expected_source_families"))
-    if any(item.get("source_type") in PROMOTABLE_TRACKER_TYPES for item in observations) and "public_ais" not in families:
-        families.append("public_ais")
-    return families
+def build_crisis_sections(request: dict[str, Any], observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> dict[str, Any]:
+    if request.get("mode") != "crisis":
+        return {}
+
+    negotiation_items = []
+    for observation in observations:
+        text = (observation.get("text_excerpt", "") + " " + " ".join(observation.get("claim_texts", {}).values())).lower()
+        if any(keyword in text for keyword in ["talk", "negot", "ceasefire", "meeting", "mediat", "call"]):
+            negotiation_items.append(
+                {
+                    "timestamp": observation.get("published_at") or observation.get("observed_at"),
+                    "source_name": observation.get("source_name", ""),
+                    "channel": observation.get("channel", ""),
+                    "text_excerpt": observation.get("text_excerpt", ""),
+                }
+            )
+
+    vessel_rows = []
+    for observation in observations:
+        if not observation.get("vessel_ids") and not observation.get("position_hint"):
+            continue
+        hint = observation.get("position_hint")
+        hint_dict = hint if isinstance(hint, dict) else {"last_public_location": str(hint or "").strip()}
+        eta_low = hint_dict.get("eta_hours_low")
+        eta_high = hint_dict.get("eta_hours_high")
+        if isinstance(eta_low, (int, float)) and isinstance(eta_high, (int, float)):
+            eta_range = f"{round(float(eta_low), 1):g}-{round(float(eta_high), 1):g}h"
+        else:
+            eta_range = str(hint_dict.get("eta_range") or "unknown")
+        vessel_rows.append(
+            {
+                "vessel_ids": observation.get("vessel_ids", []),
+                "last_public_location": hint_dict.get("last_public_location") or hint_dict.get("location") or observation.get("geo_hint") or "unknown",
+                "timestamp": observation.get("published_at") or observation.get("observed_at"),
+                "eta_range": eta_range,
+                "source_name": observation.get("source_name", ""),
+            }
+        )
+
+    confirmed = sum(1 for item in claim_ledger if item.get("status") == "confirmed")
+    denied = sum(1 for item in claim_ledger if item.get("status") == "denied")
+    unclear = sum(1 for item in claim_ledger if item.get("status") == "unclear")
+    deescalation = clamp(50 + confirmed * 6 - denied * 5 - unclear * 3, low=10, high=80)
+    escalation = clamp(25 + denied * 8 + len(vessel_rows) * 4 - confirmed * 4, low=10, high=75)
+    standoff = clamp(100 - max(deescalation, escalation), low=15, high=70)
+    return {
+        "negotiation_status_timeline": sorted(negotiation_items, key=lambda item: item.get("timestamp", ""), reverse=True),
+        "vessel_movement_table": vessel_rows,
+        "escalation_scenarios": [
+            {
+                "scenario": "Managed de-escalation",
+                "probability_range": f"{max(5, deescalation - 10)}-{min(95, deescalation + 10)}%",
+                "trigger": "Fresh official or wire confirmation of continued talks or restraint steps",
+            },
+            {
+                "scenario": "Extended standoff",
+                "probability_range": f"{max(5, standoff - 10)}-{min(95, standoff + 10)}%",
+                "trigger": "Mixed negotiation signals with no decisive military or diplomatic break",
+            },
+            {
+                "scenario": "Renewed escalation",
+                "probability_range": f"{max(5, escalation - 10)}-{min(95, escalation + 10)}%",
+                "trigger": "Fresh denial plus force-positioning signals or a failed mediation channel",
+            },
+        ],
+    }
 
 
-def build_missed_expected_source_families(expected_families: list[str], observations: list[dict[str, Any]]) -> list[str]:
-    seen = {source_type_family(clean_text(item.get("source_type"))) for item in observations}
-    return [item for item in expected_families if item not in seen]
+def build_verdict_output(request: dict[str, Any], observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> dict[str, Any]:
+    interval, gate = build_confidence(claim_ledger, observations)
+    confirmed = [item for item in claim_ledger if item.get("status") == "confirmed"]
+    not_confirmed = [item for item in claim_ledger if item.get("status") in {"denied", "unclear"}]
+    inference_only = [item for item in claim_ledger if item.get("status") == "inferred"]
+    live_tape = [item for item in observations if item.get("channel") == "shadow" and float(item.get("age_minutes", 0.0)) <= 1440]
+    background = [item for item in observations if item.get("channel") == "background"]
+    if confirmed:
+        judgment = f"{len(confirmed)} core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel."
+    elif live_tape:
+        judgment = "The live tape is moving faster than the confirmed record; treat current headlines as directional, not settled."
+    else:
+        judgment = "Current evidence is thin or stale; there is no strong confirmed read yet."
 
-
-def build_retrieval_run_report(
-    request: dict[str, Any],
-    observations: list[dict[str, Any]],
-    claim_ledger: list[dict[str, Any]],
-) -> dict[str, Any]:
-    expected_families = build_expected_source_families(request, observations)
-    top_recent_hits = [
-        {
-            "source_name": item.get("source_name", ""),
-            "source_type": item.get("source_type", ""),
-            "source_tier": item.get("source_tier", 3),
-            "origin": item.get("origin", ""),
-            "channel": item.get("channel", ""),
-            "age": item.get("age_label", ""),
-            "recency_bucket": item.get("recency_bucket", ""),
-            "rank_score": item.get("rank_score", 0),
-            "access_mode": item.get("access_mode", ""),
-            "url": item.get("url", ""),
-            "text_excerpt": item.get("text_excerpt", ""),
-        }
-        for item in observations[:5]
+    next_watch_items = [
+        "Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.",
+        "Treat ship-tracking as last public indication, not live military truth.",
+        "Watch for blocked or missing source families before calling the picture complete.",
     ]
-    blocked_sources = [
+    next_watch_items = merge_unique_strings(next_watch_items, request.get("preset_watch_items", []))
+
+    verdict = {
+        "core_verdict": judgment,
+        "live_tape": [
+            {
+                "source_name": item.get("source_name", ""),
+                "age": item.get("age_label", ""),
+                "source_tier": item.get("source_tier", 3),
+                "text_excerpt": item.get("text_excerpt", ""),
+            }
+            for item in live_tape[:8]
+        ],
+        "confidence_interval": interval,
+        "confidence_gate": gate,
+        "latest_signals": build_latest_signals(observations),
+        "confirmed": confirmed,
+        "not_confirmed": not_confirmed,
+        "inference_only": inference_only,
+        "conflict_matrix": build_conflict_matrix(claim_ledger),
+        "missing_confirmations": [item.get("claim_text", "") for item in not_confirmed if item.get("claim_text")],
+        "market_relevance": request.get("market_relevance", []),
+        "next_watch_items": next_watch_items,
+        "freshness_panel": build_freshness_panel(observations),
+        "source_layer_summary": build_source_layer_summary(observations),
+        "source_artifacts": build_source_artifacts(observations),
+        "background_only": [
+            {
+                "source_name": item.get("source_name", ""),
+                "age": item.get("age_label", ""),
+                "text_excerpt": item.get("text_excerpt", ""),
+            }
+            for item in background[:5]
+        ],
+    }
+    if request.get("preset") == "energy-war":
+        verdict["energy_war_preset"] = {
+            "preset": "energy-war",
+            "benchmark_watchlist": request.get("benchmark_watchlist", []),
+            "focus_areas": [
+                "Physical flow disruption versus risk premium",
+                "Brent versus WTI leadership",
+                "Ex-US gas versus Henry Hub divergence",
+                "Reserve releases, rerouting, and spare-capacity buffers",
+            ],
+        }
+    verdict.update(build_crisis_sections(request, observations, claim_ledger))
+    return verdict
+
+
+def build_retrieval_run_report(request: dict[str, Any], observations: list[dict[str, Any]], claim_ledger: list[dict[str, Any]]) -> dict[str, Any]:
+    attempted = [
         {
             "source_id": item.get("source_id", ""),
             "source_name": item.get("source_name", ""),
             "source_type": item.get("source_type", ""),
             "origin": item.get("origin", ""),
-            "access_mode": "blocked",
+            "agent_reach_channel": item.get("agent_reach_channel", ""),
+            "access_mode": item.get("access_mode", ""),
         }
         for item in observations
-        if item.get("access_mode") == "blocked"
     ]
+    observed_families = {source_family_for(item.get("source_type", "")) for item in observations}
     report = {
         "fetch_order": [item.get("source_id", "") for item in observations],
-        "sources_attempted": [
-            {
-                "source_id": item.get("source_id", ""),
-                "source_name": item.get("source_name", ""),
-                "source_type": item.get("source_type", ""),
-                "origin": item.get("origin", ""),
-                "access_mode": item.get("access_mode", ""),
-            }
-            for item in observations
+        "sources_attempted": attempted,
+        "sources_blocked": [item for item in attempted if item.get("access_mode") == "blocked"],
+        "top_recent_hits": build_latest_signals(observations, limit=5),
+        "shadow_to_core_promotions": [item.get("claim_id", "") for item in claim_ledger if item.get("promotion_state") == "core"],
+        "missed_expected_source_families": [
+            item for item in request.get("expected_source_families", []) if source_family_for(item) not in observed_families
         ],
-        "sources_blocked": blocked_sources,
-        "top_recent_hits": top_recent_hits,
-        "shadow_to_core_promotions": [item.get("claim_id", "") for item in claim_ledger if item.get("status") == "confirmed"],
-        "missed_expected_source_families": build_missed_expected_source_families(expected_families, observations),
     }
-    if clean_text(request.get("preset")) == "energy-war":
-        report["benchmark_watchlist"] = clean_string_list(request.get("benchmark_watchlist"))
+    if request.get("preset") == "energy-war":
+        report["benchmark_watchlist"] = request.get("benchmark_watchlist", [])
     return report
 
 
-def build_core_verdict(confirmed: list[dict[str, Any]], missing_confirmations: list[str]) -> str:
-    if confirmed and missing_confirmations:
-        return f"{len(confirmed)} core claim(s) have fresh support; current read is evidence-backed but still watch the conflict panel."
-    if confirmed:
-        return f"{len(confirmed)} core claim(s) are now cleanly supported by the public record."
-    return "The live tape is active, but the confirmed public record is still too thin for a hard call."
-
-
-def build_confidence_interval(confirmed: list[dict[str, Any]], missing_confirmations: list[str], blocked_count: int) -> list[int]:
-    if confirmed and missing_confirmations:
-        return [32, 80]
-    if confirmed and not missing_confirmations:
-        return [55, 90]
-    if blocked_count:
-        return [20, 60]
-    return [25, 65]
-
-
-def build_next_watch_items(missing_expected_source_families: list[str]) -> list[str]:
-    items = [
-        "Look for a fresh Tier 0 or Tier 1 confirmation before upgrading any shadow-only claim.",
-        "Treat ship-tracking as last public indication, not live military truth.",
-    ]
-    if missing_expected_source_families:
-        items.append("Watch for blocked or missing source families before calling the picture complete.")
-    else:
-        items.append("Keep the live tape separate from the confirmed record as new updates arrive.")
-    return items
-
-
-def build_escalation_scenarios() -> list[dict[str, Any]]:
-    return [
-        {
-            "scenario": "Managed de-escalation",
-            "probability_range": "35-55%",
-            "trigger": "Fresh official or wire confirmation of continued talks or restraint steps",
-        },
-        {
-            "scenario": "Extended standoff",
-            "probability_range": "45-65%",
-            "trigger": "Mixed negotiation signals with no decisive military or diplomatic break",
-        },
-        {
-            "scenario": "Renewed escalation",
-            "probability_range": "23-43%",
-            "trigger": "Fresh denial plus force-positioning signals or a failed mediation channel",
-        },
-    ]
-
-
-def build_energy_war_preset(request: dict[str, Any]) -> dict[str, Any]:
-    watchlist = clean_string_list(request.get("benchmark_watchlist")) or ["Brent", "TTF Gas", "LNG", "VLCC", "Defense"]
-    request["benchmark_watchlist"] = watchlist
-    return {
-        "benchmark_watchlist": watchlist,
-        "operator_note": "Track energy, shipping, and defense transmission before widening the story.",
-    }
-
-
-def build_verdict_output(
-    request: dict[str, Any],
-    observations: list[dict[str, Any]],
-    claim_ledger: list[dict[str, Any]],
-    retrieval_run_report: dict[str, Any],
-) -> dict[str, Any]:
-    confirmed, not_confirmed, inference_only = build_claim_sections(claim_ledger)
-    missing_confirmations = build_missing_confirmations(claim_ledger)
-    verdict = {
-        "core_verdict": build_core_verdict(confirmed, missing_confirmations),
-        "live_tape": build_live_tape(observations),
-        "confidence_interval": build_confidence_interval(
-            confirmed,
-            missing_confirmations,
-            len(retrieval_run_report.get("sources_blocked", [])),
-        ),
-        "confidence_gate": "usable" if confirmed or observations else "thin",
-        "latest_signals": [
-            {
-                "source_name": item.get("source_name", ""),
-                "source_type": item.get("source_type", ""),
-                "source_tier": item.get("source_tier", 3),
-                "origin": item.get("origin", ""),
-                "channel": item.get("channel", ""),
-                "age": item.get("age_label", ""),
-                "recency_bucket": item.get("recency_bucket", ""),
-                "rank_score": item.get("rank_score", 0),
-                "access_mode": item.get("access_mode", ""),
-                "url": item.get("url", ""),
-                "text_excerpt": item.get("text_excerpt", ""),
-            }
-            for item in observations
-        ],
-        "confirmed": confirmed,
-        "not_confirmed": not_confirmed,
-        "inference_only": inference_only,
-        "conflict_matrix": build_conflict_matrix(claim_ledger),
-        "missing_confirmations": missing_confirmations,
-        "market_relevance": clean_string_list(request.get("market_relevance")),
-        "next_watch_items": build_next_watch_items(retrieval_run_report.get("missed_expected_source_families", [])),
-        "freshness_panel": build_freshness_panel(observations, clean_string_list(request.get("windows")) or list(WINDOW_MINUTES)),
-        "source_layer_summary": build_source_layer_summary(observations),
-        "source_artifacts": build_source_artifacts(observations),
-        "background_only": build_background_only(observations),
-        "negotiation_status_timeline": build_negotiation_status_timeline(observations, build_claim_text_map(request)),
-        "vessel_movement_table": build_vessel_movement_table(observations),
-        "escalation_scenarios": build_escalation_scenarios(),
-    }
-    if clean_text(request.get("preset")) == "energy-war":
-        verdict["energy_war_preset"] = build_energy_war_preset(request)
-    return verdict
-
-
-def render_claim_lines(items: list[dict[str, Any]], *, include_status: bool = False) -> list[str]:
-    if not items:
-        return ["- None"]
-    lines: list[str] = []
-    for item in items:
-        text = clean_text(item.get("claim_text"))
-        if not text:
-            continue
-        status = clean_text(item.get("status"))
-        if include_status and status:
-            lines.append(f"- {text} ({status})")
-        else:
-            lines.append(f"- {text}")
-    return lines or ["- None"]
-
-
 def build_markdown_report(result: dict[str, Any]) -> str:
-    request = safe_dict(result.get("request"))
-    verdict = safe_dict(result.get("verdict_output"))
-    topic = clean_text(request.get("topic")) or "news-index-topic"
-    analysis_time = clean_text(request.get("analysis_time"))
-    confidence = verdict.get("confidence_interval") or [0, 0]
-    report_lines = [
-        f"# News Index Report: {topic}",
+    request = result.get("request", {})
+    verdict = result.get("verdict_output", {})
+    interval = verdict.get("confidence_interval", [0, 0])
+    lines = [
+        f"# News Index Report: {request.get('topic', 'topic')}",
         "",
-        (
-            "One-line judgment "
-            f"({analysis_time}, confidence {confidence[0]}-{confidence[1]}, gate {clean_text(verdict.get('confidence_gate')) or 'unknown'}): "
-            f"{clean_text(verdict.get('core_verdict'))}"
-        ),
+        f"One-line judgment ({request.get('analysis_time', '')}, confidence {interval[0]}-{interval[1]}, gate {verdict.get('confidence_gate', 'unknown')}): {verdict.get('core_verdict', '')}",
         "",
         "## Confirmed",
-        *render_claim_lines(safe_list(verdict.get("confirmed"))),
-        "",
-        "## Not Confirmed",
-        *render_claim_lines(safe_list(verdict.get("not_confirmed")), include_status=True),
-        "",
-        "## Inference Only",
-        *render_claim_lines(safe_list(verdict.get("inference_only"))),
-        "",
-        "## Latest Signals First",
-        "",
-        "| Source | Tier | Channel | Age | Rank | Note |",
-        "|---|---:|---|---|---:|---|",
     ]
+    lines.extend([f"- {item.get('claim_text', '')}" for item in verdict.get("confirmed", [])] or ["- None"])
+    lines.extend(["", "## Not Confirmed"])
+    lines.extend([f"- {item.get('claim_text', '')} ({item.get('status', '')})" for item in verdict.get("not_confirmed", [])] or ["- None"])
+    lines.extend(["", "## Inference Only"])
+    lines.extend([f"- {item.get('claim_text', '')}" for item in verdict.get("inference_only", [])] or ["- None"])
 
-    for item in safe_list(verdict.get("latest_signals")):
-        report_lines.append(
-            f"| {clean_text(item.get('source_name'))} | {safe_int(item.get('source_tier'), 3)} | "
-            f"{clean_text(item.get('channel'))} | {clean_text(item.get('age'))} | "
-            f"{safe_int(item.get('rank_score'))} | {clean_text(item.get('text_excerpt'))} |"
+    lines.extend(["", "## Latest Signals First", "", "| Source | Tier | Channel | Age | Rank | Note |", "|---|---:|---|---|---:|---|"])
+    for item in verdict.get("latest_signals", []):
+        lines.append(
+            f"| {item.get('source_name', '')} | {item.get('source_tier', 3)} | {item.get('channel', '')} | "
+            f"{item.get('age', '')} | {item.get('rank_score', 0)} | {item.get('text_excerpt', '')} |"
         )
 
-    report_lines.extend(["", "## Conflict Matrix", "", "| Claim | Status | Supports | Contradictions | Promotion |", "|---|---|---:|---:|---|"])
-    for item in safe_list(verdict.get("conflict_matrix")):
-        report_lines.append(
-            f"| {clean_text(item.get('claim_id'))} | {clean_text(item.get('status'))} | "
-            f"{safe_int(item.get('support_count'))} | {safe_int(item.get('contradiction_count'))} | "
-            f"{clean_text(item.get('promotion_state'))} |"
+    lines.extend(["", "## Conflict Matrix", "", "| Claim | Status | Supports | Contradictions | Promotion |", "|---|---|---:|---:|---|"])
+    for item in verdict.get("conflict_matrix", []):
+        lines.append(
+            f"| {item.get('claim_id', '')} | {item.get('status', '')} | {item.get('support_count', 0)} | "
+            f"{item.get('contradiction_count', 0)} | {item.get('promotion_state', '')} |"
         )
 
-    report_lines.extend(["", "## Freshness Panel"])
-    for item in safe_list(verdict.get("freshness_panel")):
-        report_lines.append(
-            f"- {clean_text(item.get('window'))}: total {safe_int(item.get('count'))}, core {safe_int(item.get('core_count'))}, "
-            f"shadow {safe_int(item.get('shadow_count'))}, blocked {safe_int(item.get('blocked_count'))}"
+    lines.extend(["", "## Freshness Panel"])
+    for item in verdict.get("freshness_panel", []):
+        lines.append(
+            f"- {item.get('window', '')}: total {item.get('count', 0)}, core {item.get('core_count', 0)}, "
+            f"shadow {item.get('shadow_count', 0)}, blocked {item.get('blocked_count', 0)}"
         )
 
-    report_lines.extend(
-        [
-            "",
-            "## Source Layer Summary",
-            f"- By channel: {json.dumps(safe_dict(safe_dict(verdict.get('source_layer_summary')).get('by_channel')), ensure_ascii=False)}",
-            f"- By tier: {json.dumps(safe_dict(safe_dict(verdict.get('source_layer_summary')).get('by_tier')), ensure_ascii=False)}",
-            f"- By access mode: {json.dumps(safe_dict(safe_dict(verdict.get('source_layer_summary')).get('by_access_mode')), ensure_ascii=False)}",
-            "",
-            "## Source Artifacts",
-        ]
-    )
-    artifacts = safe_list(verdict.get("source_artifacts"))
-    if not artifacts:
-        report_lines.append("- None")
-    else:
-        for item in artifacts:
-            report_lines.append(
-                f"- {clean_text(item.get('source_name'))} | tier {safe_int(item.get('source_tier'), 3)} | "
-                f"{clean_text(item.get('channel'))} | {clean_text(item.get('access_mode'))}"
+    lines.extend(["", "## Source Layer Summary"])
+    summary = verdict.get("source_layer_summary", {})
+    lines.append(f"- By channel: {json.dumps(summary.get('by_channel', {}), ensure_ascii=False)}")
+    lines.append(f"- By tier: {json.dumps(summary.get('by_tier', {}), ensure_ascii=False)}")
+    lines.append(f"- By access mode: {json.dumps(summary.get('by_access_mode', {}), ensure_ascii=False)}")
+
+    if verdict.get("energy_war_preset"):
+        preset = verdict.get("energy_war_preset", {})
+        lines.extend(["", "## Energy-War Preset"])
+        lines.append(f"- Preset: {preset.get('preset', '')}")
+        lines.append(f"- Benchmark watchlist: {', '.join(preset.get('benchmark_watchlist', [])) or 'None'}")
+        lines.extend([f"- Focus: {item}" for item in preset.get("focus_areas", [])] or ["- None"])
+
+    source_artifacts = verdict.get("source_artifacts", [])
+    if source_artifacts:
+        lines.extend(["", "## Source Artifacts"])
+        for item in source_artifacts:
+            lines.append(
+                f"- {item.get('source_name', '')} | tier {item.get('source_tier', 3)} | {item.get('channel', '')} | {item.get('access_mode', '')}"
             )
-            report_lines.append(f"  URL: {clean_text(item.get('url'))}")
-            report_lines.append(f"  Main post text: {clean_text(item.get('post_text_raw')) or 'none'}")
-            report_lines.append(f"  Image summary: {clean_text(item.get('media_summary')) or 'none'}")
-            report_lines.append(f"  Screenshot: {clean_text(item.get('root_post_screenshot_path')) or 'none'}")
+            lines.append(f"  URL: {item.get('url', '') or 'none'}")
+            lines.append(f"  Main post text: {item.get('post_text_raw', '') or 'none'}")
+            lines.append(f"  Image summary: {item.get('media_summary', '') or 'none'}")
+            lines.append(f"  Screenshot: {item.get('root_post_screenshot_path', '') or 'none'}")
 
-    report_lines.extend(["", "## Live Tape"])
-    live_tape = safe_list(verdict.get("live_tape"))
-    if not live_tape:
-        report_lines.append("- None")
-    else:
-        for item in live_tape:
-            report_lines.append(
-                f"- [{clean_text(item.get('source_name'))}] tier {safe_int(item.get('source_tier'), 3)}, "
-                f"{clean_text(item.get('age'))}: {clean_text(item.get('text_excerpt'))}"
-            )
+    lines.extend(["", "## Live Tape"])
+    lines.extend([f"- [{item.get('source_name', '')}] tier {item.get('source_tier', 3)}, {item.get('age', '')}: {item.get('text_excerpt', '')}" for item in verdict.get("live_tape", [])] or ["- None"])
 
-    report_lines.extend(["", "## Negotiation Status Timeline"])
-    timeline = safe_list(verdict.get("negotiation_status_timeline"))
-    if not timeline:
-        report_lines.append("- None")
-    else:
-        for item in timeline:
-            report_lines.append(
-                f"- {clean_text(item.get('timestamp'))}: {clean_text(item.get('source_name'))} "
-                f"({clean_text(item.get('channel'))}) - {clean_text(item.get('text_excerpt'))}"
-            )
+    if request.get("mode") == "crisis":
+        lines.extend(["", "## Negotiation Status Timeline"])
+        lines.extend([f"- {item.get('timestamp', '')}: {item.get('source_name', '')} ({item.get('channel', '')}) - {item.get('text_excerpt', '')}" for item in verdict.get("negotiation_status_timeline", [])] or ["- None"])
+        lines.extend(["", "## Vessel Movement Table", "", "| Vessel | Last Public Indication | Timestamp | ETA Range | Source |", "|---|---|---|---|---|"])
+        vessel_rows = verdict.get("vessel_movement_table", [])
+        if vessel_rows:
+            for row in vessel_rows:
+                lines.append(
+                    f"| {', '.join(row.get('vessel_ids', [])) or 'unknown'} | {row.get('last_public_location', '')} | "
+                    f"{row.get('timestamp', '')} | {row.get('eta_range', '')} | {row.get('source_name', '')} |"
+                )
+        else:
+            lines.append("| None | None | None | None | None |")
+        lines.extend(["", "## Escalation Scenarios"])
+        for row in verdict.get("escalation_scenarios", []):
+            lines.append(f"- {row.get('scenario', '')}: {row.get('probability_range', '')}; trigger: {row.get('trigger', '')}")
 
-    report_lines.extend(["", "## Vessel Movement Table", "", "| Vessel | Last Public Indication | Timestamp | ETA Range | Source |", "|---|---|---|---|---|"])
-    vessel_rows = safe_list(verdict.get("vessel_movement_table"))
-    if not vessel_rows:
-        report_lines.append("| None | none | none | none | none |")
-    else:
-        for item in vessel_rows:
-            report_lines.append(
-                f"| {' / '.join(clean_string_list(item.get('vessel_ids')))} | {clean_text(item.get('last_public_location'))} | "
-                f"{clean_text(item.get('timestamp'))} | {clean_text(item.get('eta_range'))} | {clean_text(item.get('source_name'))} |"
-            )
-
-    report_lines.extend(["", "## Escalation Scenarios"])
-    for item in safe_list(verdict.get("escalation_scenarios")):
-        report_lines.append(
-            f"- {clean_text(item.get('scenario'))}: {clean_text(item.get('probability_range'))}; "
-            f"trigger: {clean_text(item.get('trigger'))}"
-        )
-
-    if clean_text(request.get("preset")) == "energy-war":
-        report_lines.extend(["", "## Energy-War Preset"])
-        report_lines.append(f"- Benchmark watchlist: {', '.join(clean_string_list(request.get('benchmark_watchlist')))}")
-        report_lines.append("- Keep crude, LNG, shipping, and defense transmission in the watchboard.")
-
-    report_lines.extend(["", "## What Would Change My View"])
-    for item in clean_string_list(verdict.get("next_watch_items")):
-        report_lines.append(f"- {item}")
-
-    return "\n".join(report_lines).rstrip() + "\n"
-
-
-def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
-    request = deepcopy(raw_payload)
-    analysis_time = parse_datetime(request.get("analysis_time"), fallback=now_utc()) or now_utc()
-    request["analysis_time"] = isoformat_or_blank(analysis_time)
-    request["questions"] = clean_string_list(request.get("questions"))
-    request["source_preferences"] = clean_string_list(request.get("source_preferences"))
-    request["windows"] = clean_string_list(request.get("windows")) or list(WINDOW_MINUTES)
-    request["market_relevance"] = clean_string_list(request.get("market_relevance"))
-    request["expected_source_families"] = clean_string_list(request.get("expected_source_families"))
-    request["claims"] = [safe_dict(item) for item in safe_list(request.get("claims")) if isinstance(item, dict)]
-    request["candidates"] = [safe_dict(item) for item in safe_list(request.get("candidates")) if isinstance(item, dict)]
-    request["mode"] = clean_text(request.get("mode")) or "generic"
-    if request["mode"] == "crisis":
-        request["crisis_defaults"] = safe_dict(request.get("crisis_defaults"))
-        request["max_parallel_candidates"] = safe_int(request.get("max_parallel_candidates"), 4)
-    if clean_text(request.get("preset")) == "energy-war":
-        build_energy_war_preset(request)
-    return request
+    lines.extend(["", "## What Would Change My View"])
+    lines.extend([f"- {item}" for item in verdict.get("next_watch_items", [])] or ["- None"])
+    return "\n".join(lines) + "\n"
 
 
 def run_news_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = normalize_request(raw_payload)
-    analysis_time = parse_datetime(request.get("analysis_time"), fallback=now_utc()) or now_utc()
-    claim_text_map = build_claim_text_map(request)
-    observations = [normalize_observation(candidate, claim_text_map, analysis_time) for candidate in safe_list(request.get("candidates"))]
-    apply_channel_promotions(observations)
-    observations.sort(key=observation_sort_key, reverse=True)
-    claim_ledger = build_claim_ledger(observations, claim_text_map)
-    retrieval_run_report = build_retrieval_run_report(request, observations, claim_ledger)
-    verdict_output = build_verdict_output(request, observations, claim_ledger, retrieval_run_report)
-    retrieval_quality = build_retrieval_quality(observations, claim_ledger)
-
+    claim_texts = claim_text_map_from_request(request)
+    candidates = list(enumerate(request.get("candidates", []), start=1))
+    parallel_workers = min(max(1, int(request.get("max_parallel_candidates", 1) or 1)), max(1, len(candidates)))
+    if parallel_workers > 1 and len(candidates) > 1:
+        observation_by_index: dict[int, dict[str, Any]] = {}
+        candidate_by_index = {index: candidate for index, candidate in candidates}
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            future_map = {
+                executor.submit(normalize_candidate, candidate, request["analysis_time"], claim_texts, index): index
+                for index, candidate in candidates
+            }
+            for future in as_completed(future_map):
+                index = future_map[future]
+                try:
+                    observation_by_index[index] = future.result()
+                except Exception as exc:
+                    observation_by_index[index] = error_observation(
+                        candidate_by_index[index], request["analysis_time"], claim_texts, index, exc
+                    )
+        observations = [observation_by_index[index] for index, _ in candidates if index in observation_by_index]
+    else:
+        observations = []
+        for index, candidate in candidates:
+            try:
+                observation = normalize_candidate(candidate, request["analysis_time"], claim_texts, index)
+            except Exception as exc:
+                observation = error_observation(candidate, request["analysis_time"], claim_texts, index, exc)
+            observations.append(observation)
+    observations = dedupe_observations(observations)
+    evidence_index = build_claim_evidence(observations)
+    observations = rerank_observations(observations, evidence_index)
+    claim_ledger = build_claim_ledger(request, observations)
+    promote_observation_channels(observations, claim_ledger)
     result = {
-        "status": "ok",
-        "request": request,
-        "retrieval_request": deepcopy(request),
+        "request": {**request, "analysis_time": isoformat_or_blank(request["analysis_time"])},
         "observations": observations,
-        "source_observations": observations,
         "claim_ledger": claim_ledger,
-        "verdict_output": verdict_output,
-        "retrieval_run_report": retrieval_run_report,
-        "retrieval_quality": retrieval_quality,
     }
+    result["verdict_output"] = build_verdict_output(request, observations, claim_ledger)
+    result["retrieval_run_report"] = build_retrieval_run_report(request, observations, claim_ledger)
+    result["retrieval_quality"] = build_retrieval_quality(observations, claim_ledger)
     result["report_markdown"] = build_markdown_report(result)
     return result
 
 
-def dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    deduped: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    for item in candidates:
-        source_id = clean_text(item.get("source_id"))
-        url = clean_text(item.get("url"))
-        key = (source_id, url)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(item)
-    return deduped
-
-
 def merge_refresh(existing_result: dict[str, Any], refresh_payload: dict[str, Any]) -> dict[str, Any]:
-    base_request = safe_dict(existing_result.get("request")) or safe_dict(existing_result.get("retrieval_request"))
-    merged_request = deepcopy(base_request)
-    merged_request["analysis_time"] = clean_text(refresh_payload.get("analysis_time")) or clean_text(base_request.get("analysis_time"))
-    merged_request["candidates"] = dedupe_candidates(
-        [safe_dict(item) for item in safe_list(base_request.get("candidates"))]
-        + [safe_dict(item) for item in safe_list(refresh_payload.get("candidates"))]
-    )
-    result = run_news_index(merged_request)
-    result["refresh_summary"] = {
-        "mode": "refresh",
-        "analysis_time": clean_text(merged_request.get("analysis_time")),
-        "added_source_ids": [
-            clean_text(item.get("source_id"))
-            for item in safe_list(refresh_payload.get("candidates"))
-            if isinstance(item, dict) and clean_text(item.get("source_id"))
-        ],
+    existing = deepcopy(existing_result)
+    base_request = normalize_request(existing.get("request", {}))
+    refresh_request = normalize_request(refresh_payload)
+    refresh_topic = str(refresh_payload.get("topic", "")).strip()
+    refresh_mode = str(refresh_payload.get("mode", "")).strip().lower()
+    fresh_cutoff = refresh_request["analysis_time"] - timedelta(hours=24)
+    carried_candidates = []
+    for observation in safe_list(existing.get("observations")):
+        published_at = parse_datetime(observation.get("published_at"), fallback=refresh_request["analysis_time"])
+        if published_at and published_at >= fresh_cutoff:
+            carried_candidates.append(
+            {
+                "source_id": observation.get("source_id", ""),
+                "source_name": observation.get("source_name", ""),
+                "source_type": observation.get("source_type", ""),
+                "origin": observation.get("origin", ""),
+                "agent_reach_channel": observation.get("agent_reach_channel", ""),
+                "published_at": observation.get("published_at", ""),
+                "observed_at": observation.get("observed_at", ""),
+                "url": observation.get("url", ""),
+                "claim_ids": observation.get("claim_ids", []),
+                "entity_ids": observation.get("entity_ids", []),
+                    "vessel_ids": observation.get("vessel_ids", []),
+                    "text_excerpt": observation.get("text_excerpt", ""),
+                "position_hint": observation.get("position_hint"),
+                "geo_hint": observation.get("geo_hint"),
+                "access_mode": observation.get("access_mode", "public"),
+                "claim_states": observation.get("claim_states", {}),
+                "raw_metadata": observation.get("raw_metadata", {}),
+                "artifact_manifest": observation.get("artifact_manifest", []),
+                "post_text_raw": observation.get("post_text_raw", ""),
+                "post_text_source": observation.get("post_text_source", ""),
+                "post_text_confidence": observation.get("post_text_confidence", 0.0),
+                "root_post_screenshot_path": observation.get("root_post_screenshot_path", ""),
+                "thread_posts": observation.get("thread_posts", []),
+                "media_items": observation.get("media_items", []),
+                "post_summary": observation.get("post_summary", ""),
+                "media_summary": observation.get("media_summary", ""),
+                "combined_summary": observation.get("combined_summary", ""),
+                "discovery_reason": observation.get("discovery_reason", ""),
+                "crawl_notes": observation.get("crawl_notes", []),
+            }
+        )
+
+    combined_request = {
+        **base_request,
+        "analysis_time": refresh_request["analysis_time"],
+        "topic": refresh_topic or base_request.get("topic"),
+        "questions": refresh_request.get("questions") or base_request.get("questions"),
+        "claims": refresh_request.get("claims") or base_request.get("claims"),
+        "market_relevance": refresh_request.get("market_relevance") or base_request.get("market_relevance"),
+        "market_relevance_zh": refresh_request.get("market_relevance_zh") or base_request.get("market_relevance_zh"),
+        "expected_source_families": refresh_request.get("expected_source_families") or base_request.get("expected_source_families"),
+        "mode": "crisis" if refresh_mode == "crisis" else base_request.get("mode"),
+        "preset": refresh_request.get("preset") or base_request.get("preset"),
+        "benchmark_watchlist": refresh_request.get("benchmark_watchlist") or base_request.get("benchmark_watchlist"),
+        "preset_watch_items": refresh_request.get("preset_watch_items") or base_request.get("preset_watch_items"),
+        "candidates": carried_candidates + refresh_request.get("candidates", []),
     }
-    return result
+
+    refreshed = run_news_index(combined_request)
+    previous_ids = {item.get("source_id", "") for item in safe_list(existing.get("observations")) if item.get("source_id")}
+    refreshed["refresh_summary"] = {
+        "new_source_ids": [item.get("source_id", "") for item in refreshed.get("observations", []) if item.get("source_id", "") not in previous_ids],
+        "previous_analysis_time": existing.get("request", {}).get("analysis_time", ""),
+        "refresh_analysis_time": refreshed.get("request", {}).get("analysis_time", ""),
+    }
+    return refreshed
 
 
-__all__ = [
-    "build_markdown_report",
-    "clean_string_list",
-    "fetch_public_page_hints",
-    "isoformat_or_blank",
-    "load_json",
-    "merge_refresh",
-    "now_utc",
-    "parse_datetime",
-    "run_news_index",
-    "safe_dict",
-    "safe_list",
-    "short_excerpt",
-    "slugify",
-    "write_json",
-]
+def load_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+

@@ -38,6 +38,32 @@ plugin-name/
 2. Test commands with `/plugin:command-name` syntax
 3. Skills are invoked automatically when their trigger conditions match
 
+## Dual-Track Task Classification
+
+Every task must be classified before execution.
+
+Use `Simple` only when all of the following are true:
+
+- fewer than 3 files change
+- the work stays in one repo
+- no live data, API, login state, or browser session is needed
+- no workflow asset is added or changed
+- one local check or one quick manual inspection is enough
+- the goal and output shape are already clear
+
+Use `Complex` when any of those conditions fail.
+
+If uncertain, classify as `Complex`.
+
+If a simple task grows beyond those bounds, stop and escalate:
+
+1. record why it escalated
+2. build a context pack
+3. check `routing-index.md`
+4. load related docs and KB assets
+5. restate verification before continuing
+
+
 ## Capability-First Routing
 
 Before using generic browsing, web search, or ad hoc scraping, always route

@@ -47,6 +47,18 @@ MEMORY.md
 .claude/worktrees/
 .gstack/
 
+# Recovery artifacts (keep in old repo only)
+.repo-safety-location.txt
+RESTORE_NOTES_*.md
+recovered-artifacts/
+
+# Superpowers / agent config (session-local)
+.superpowers/
+.agents/
+.claude-plugin/
+.context/
+.githooks/
+
 # Local runtime artifacts
 runtime-state/
 .tmp/

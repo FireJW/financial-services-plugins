@@ -761,30 +761,6 @@ class NewsIndexTests(unittest.TestCase):
         self.assertIn('site:x.com/LinQingV/status "601600.SS"', queries)
         self.assertTrue(any('"Morgan Stanley China/HK Focus List" "601600.SS"' in query for query in queries))
 
-    def test_x_index_parse_request_can_seed_from_last30days_result(self) -> None:
-        request = parse_request(
-            {
-                "analysis_time": "2026-04-02T12:00:00+00:00",
-                "last30days_result": {
-                    "results": [
-                        {
-                            "platform": "x",
-                            "url": "https://x.com/LinQingV/status/123",
-                            "summary": "Morgan Stanley focus list screenshot notes Aluminum Corp. of China Ltd. 601600.SS.",
-                            "post_text_raw": "Morgan Stanley focus list screenshot notes Aluminum Corp. of China Ltd. 601600.SS.",
-                            "author_handle": "LinQingV",
-                        }
-                    ]
-                },
-            }
-        )
-        self.assertEqual(request["manual_urls"], ["https://x.com/LinQingV/status/123"])
-        self.assertEqual(request["account_allowlist"], ["LinQingV"])
-        self.assertTrue(any("Morgan Stanley" in item for item in request["phrase_clues"]))
-        self.assertIn("601600.SS", request["entity_clues"])
-        self.assertEqual(len(request["seed_posts"]), 1)
-        self.assertEqual(request["seed_posts"][0]["post_url"], "https://x.com/LinQingV/status/123")
-
     @patch("x_index_runtime.discover_search_candidates", return_value=[])
     @patch("x_index_runtime.fetch_page", side_effect=AssertionError("cached reuse should not refetch"))
     def test_x_index_reuses_recent_cached_result_without_refetch(

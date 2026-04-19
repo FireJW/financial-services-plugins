@@ -233,45 +233,6 @@ class WechatDraftPushTests(unittest.TestCase):
         self.assertEqual(result["uploaded_cover"]["media_id"], "cover-999")
         self.assertIn(b"dedicated-cover.png", seen["cover_body"])
 
-    def test_push_publish_package_converts_unsupported_image_before_upload(self) -> None:
-        weird_asset = self.temp_dir / "hero.img"
-        weird_asset.write_bytes(b"RIFF\x0c\x00\x00\x00WEBPVP8Lfake")
-        converted = self.temp_dir / "hero.png"
-        converted.write_bytes(b"\x89PNG\r\n\x1a\nfakepng")
-        package = self.build_publish_package()
-        package["image_assets"][0]["local_path"] = str(weird_asset)
-        package["cover_plan"]["selected_cover_local_path"] = str(weird_asset)
-        seen = {"inline_body": b"", "cover_body": b""}
-
-        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
-            if "cgi-bin/token" in url:
-                return json.dumps({"access_token": "token-convert", "expires_in": 7200}).encode("utf-8")
-            if "media/uploadimg" in url:
-                seen["inline_body"] = data or b""
-                return json.dumps({"url": "https://mmbiz.qpic.cn/inline/converted.png"}).encode("utf-8")
-            if "material/add_material" in url:
-                seen["cover_body"] = data or b""
-                return json.dumps({"media_id": "cover-converted", "url": "https://mmbiz.qpic.cn/cover-converted.png"}).encode("utf-8")
-            if "draft/add" in url:
-                return json.dumps({"media_id": "draft-converted"}).encode("utf-8")
-            raise AssertionError(f"Unexpected URL: {url}")
-
-        with patch("wechat_draftbox_runtime.convert_image_to_png_for_wechat", return_value=str(converted)):
-            result = push_publish_package_to_wechat(
-                {
-                    "publish_package": package,
-                    "wechat_app_id": "wx-test",
-                    "wechat_app_secret": "secret-test",
-                    "allow_insecure_inline_credentials": True,
-                    "human_review_approved": True,
-                },
-                request_fn=fake_request,
-            )
-
-        self.assertEqual(result["status"], "ok")
-        self.assertIn(b'filename="hero.png"', seen["inline_body"])
-        self.assertIn(b'filename="hero.png"', seen["cover_body"])
-
     def test_push_publish_package_blocks_inline_credentials_by_default(self) -> None:
         with patch.dict(
             os.environ,

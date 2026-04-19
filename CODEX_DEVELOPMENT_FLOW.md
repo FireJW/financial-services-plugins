@@ -18,16 +18,31 @@ Instead, we keep the reusable parts here in lightweight form.
 
 1. Orient
    Read `AGENTS.md`, `CLAUDE.md`, `.context/prefs/*`, and the nearest project docs.
-2. Route
-   Use native commands, skills, and scripts before inventing a new path.
-3. Plan
+2. Classify
+   Decide `Simple` vs `Complex` using the hard rules in the dual-track runtime docs.
+3. Route
+   Check `routing-index.md`, then use native commands, skills, and scripts before inventing a new path.
+4. Plan
    For larger tasks, capture a plan in `.claude/plan/` or at least log decisions in `.context/current/branches/...`.
-4. Execute
-   Work in small verified steps. Parallelize independent analysis when it helps.
-5. Review
-   Use `.context/prefs/review-checklist.md`.
-6. Handoff
+5. Execute
+   Keep simple work light. For complex work, build a context pack and execute in checkpoints.
+6. Review
+   Use `.context/prefs/review-checklist.md` and verify according to task complexity.
+7. Deliver
+   Finish with the delivery contract.
+8. Handoff
    Update prompts, handoff docs, and exact commands when future sessions depend on them.
+
+## Complex-Task Discovery Order
+
+For `Complex` tasks, discover context in this order:
+
+1. `routing-index.md`
+2. matching `command` or `skill`
+3. related docs in `financial-services-docs/docs/runtime/codex-dual-track/`
+4. related recurring notes in `obsidian-kb-v2`
+5. only then start fresh execution
+
 
 ## Local Obsidian KB Capture Contract
 

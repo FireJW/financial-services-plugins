@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import base64
 import json
 import os
 import re
@@ -210,475 +209,6 @@ DEBATE_KEYWORDS = {
     "禁令",
 }
 SEO_STOPWORDS = {"今天", "最新", "刚刚", "回应", "热搜", "视频", "全文", "图"}
-ALLOWED_LOCALITY_KEYWORDS = {
-    "上海",
-    "浙江",
-    "杭州",
-    "宁波",
-    "温州",
-    "嘉兴",
-    "湖州",
-    "绍兴",
-    "金华",
-    "义乌",
-    "台州",
-    "丽水",
-    "衢州",
-    "舟山",
-}
-BLOCKED_LOCALITY_KEYWORDS = {
-    "北京",
-    "天津",
-    "重庆",
-    "河北",
-    "山西",
-    "内蒙古",
-    "辽宁",
-    "吉林",
-    "黑龙江",
-    "江苏",
-    "安徽",
-    "福建",
-    "江西",
-    "山东",
-    "河南",
-    "湖北",
-    "湖南",
-    "广东",
-    "广西",
-    "海南",
-    "四川",
-    "贵州",
-    "云南",
-    "西藏",
-    "陕西",
-    "甘肃",
-    "青海",
-    "宁夏",
-    "新疆",
-    "香港",
-    "澳门",
-    "深圳",
-    "广州",
-    "中山",
-    "东莞",
-    "苏州",
-    "南京",
-    "无锡",
-    "成都",
-    "武汉",
-    "长沙",
-    "西安",
-    "郑州",
-    "青岛",
-    "厦门",
-    "阜沙",
-}
-LOCAL_ADMIN_KEYWORDS = {"镇", "区", "县", "乡", "村", "街道", "开发区", "新区"}
-OBITUARY_KEYWORDS = {
-    "逝世",
-    "去世",
-    "病逝",
-    "辞世",
-    "离世",
-    "dead",
-    "death",
-    "dies",
-    "found dead",
-    "murder-suicide",
-    "obituary",
-}
-RUMOR_KEYWORDS = {"传闻", "爆料", "据传", "网传", "疑似", "或本周上线", "或将", "rumor"}
-VERIFICATION_KEYWORDS = {"实名", "认证", "验证", "封号", "证件", "手持证件", "自拍"}
-CROSS_PLATFORM_STORY_KEYWORDS = {
-    "claude",
-    "anthropic",
-    "opus",
-    "openai",
-    "chatgpt",
-    "gpt",
-    "gemini",
-    "实名",
-    "认证",
-    "验证",
-    "封号",
-    "证件",
-    "账号",
-    "模型",
-    "上线",
-    "发布",
-    "传闻",
-}
-CROSS_PLATFORM_ENTITY_TOKENS = {
-    # AI companies
-    "claude",
-    "anthropic",
-    "openai",
-    "chatgpt",
-    "gpt",
-    "gemini",
-    "腾讯",
-    "混元",
-    "阿里",
-    "通义",
-    "字节",
-    "豆包",
-    "英伟达",
-    "nvidia",
-    # Semiconductors / chips
-    "semiconductor",
-    "asml",
-    "tsmc",
-    "amd",
-    "intel",
-    "qualcomm",
-    "hbm",
-    "gpu",
-    "chip",
-    # Major tickers / companies
-    "netflix",
-    "nflx",
-    "tesla",
-    "tsla",
-    "nio",
-    "amazon",
-    "amzn",
-    "apple",
-    "aapl",
-    "microsoft",
-    "msft",
-    "google",
-    "meta",
-    # Industry / macro
-    "oil",
-    "crude",
-    "opec",
-    "earnings",
-    "robotaxi",
-    "ev",
-}
-CROSS_PLATFORM_TOKEN_STOPWORDS = {"突发", "本周", "直接", "必须", "否则", "开始", "消息", "引入", "正式"}
-INTERNATIONAL_PRIMARY_SOURCES = ["agent-reach:reddit", "agent-reach:x"]
-INTERNATIONAL_FALLBACK_SOURCES = ["google-news-world", "36kr"]
-GENERIC_FEATURE_KEYWORDS = {"我们和", "聊了聊", "有人转型", "有人想逃", "牛马", "人物故事", "采访"}
-DIPLOMATIC_PROTOCOL_KEYWORDS = {"会见", "四访", "关系重要性", "桥梁", "共同会见", "指出", "致力搭建"}
-OFFICIAL_COMMENTARY_KEYWORDS = {"自信", "胸怀", "担当", "评论员", "述评", "观察", "阐释", "彰显", "元首外交"}
-EXPLICIT_OFFTOPIC_PREFIXES = {"somewhat off-topic", "off-topic:"}
-GENERIC_PLATFORM_POLITICAL_NAMES = {"trump", "vance", "biden", "mayor", "governor", "pope"}
-GENERIC_PLATFORM_POLITICAL_PHRASES = {
-    "proudest achievements",
-    "calls end of",
-    "says end of",
-    "administration",
-}
-GENERIC_PLATFORM_POLITICAL_KEEP_KEYWORDS = {
-    "oil",
-    "hormuz",
-    "jet fuel",
-    "tariff",
-    "tariffs",
-    "sanction",
-    "sanctions",
-    "supply chain",
-    "market",
-    "markets",
-    "chip",
-    "chips",
-    "semiconductor",
-    "semiconductors",
-    "ai",
-    "robotaxi",
-    "defence",
-    "defense",
-    "procurement",
-    "ukraine support loan",
-}
-REDDIT_META_THREAD_KEYWORDS = {
-    "daily general discussion",
-    "discussion and advice thread",
-    "questions and discussions thread",
-    "rate my portfolio",
-    "megathread",
-    "who's hiring",
-    "self-promotion thread",
-    "self promotion thread",
-    "please do not submit",
-    "questions and discussions thread",
-    "quarterly thread",
-    "monthly",
-    "reminder:",
-    "letters & reports",
-    "letters and reports",
-    "investor letters",
-    "quarterly reports",
-}
-REDDIT_RESEARCH_SIGNAL_KEYWORDS = {
-    "openai",
-    "anthropic",
-    "claude",
-    "gemini",
-    "nvidia",
-    "amd",
-    "tsmc",
-    "tesla",
-    "robotaxi",
-    "earnings",
-    "revenue",
-    "guidance",
-    "market share",
-    "catalyst",
-    "semiconductor",
-    "chip",
-    "chips",
-    "hbm",
-    "oil",
-    "hormuz",
-    "jet fuel",
-    "ukraine",
-    "defense",
-    "defence",
-}
-REDDIT_LOW_SPECIFICITY_GENERIC_TOKENS = {
-    "macro",
-    "market",
-    "markets",
-    "outlook",
-    "tariff",
-    "tariffs",
-    "economy",
-    "economic",
-    "global",
-    "debating",
-    "investors",
-    "retail",
-    "today",
-    "week",
-    "stocks",
-}
-REDDIT_LOW_SPECIFICITY_PHRASES = {
-    "markets are debating",
-    "investors are debating",
-    "macro outlook",
-    "market outlook",
-    "tariffs and macro",
-    "global outlook",
-}
-SELF_PROMOTIONAL_PLATFORM_KEYWORDS = {
-    "i built",
-    "i made",
-    "free & gives",
-    "gives your agents",
-    "my startup",
-    "my tool",
-    "launching today",
-}
-EXHIBITION_PROMO_KEYWORDS = {
-    "广交会",
-    "消博会",
-    "卖货",
-    "亮相",
-    "展位",
-    "上新",
-    "首秀",
-    "参展",
-}
-
-
-X_GENERIC_CIVIC_KEYWORDS = {
-    "mayor",
-    "governor",
-    "pope",
-    "cameroon",
-    "pied",
-    "terre",
-    "second homes",
-    "luxury second homes",
-    "visits",
-    "leaders' call",
-    "migrant children",
-    "shelter contract",
-    "catholic shelter",
-    "administration cancels",
-    "senate rejects",
-    "push to block",
-    "arms to israel",
-    "jesus embrace",
-    "pope criticism",
-    "armed citizens",
-    "stop more shooters",
-    "draws backlash",
-}
-X_CORE_TOPIC_KEYWORDS = {
-    "agent",
-    "chip",
-    "chips",
-    "semiconductor",
-    "gpu",
-    "robotaxi",
-    "tesla",
-    "nvidia",
-    "openai",
-    "claude",
-    "anthropic",
-    "apple",
-    "google",
-    "amazon",
-    "microsoft",
-    "oil",
-    "gas",
-    "fuel",
-    "jet fuel",
-    "energy",
-    "hormuz",
-    "shipping",
-    "port",
-    "ports",
-    "blockade",
-    "shortage",
-    "iea",
-    "supplier",
-    "supply",
-    "manufacturing",
-    "tariff",
-    "trade",
-    "export",
-    "sanction",
-    "robot",
-    "battery",
-    "ev",
-}
-X_GENERIC_COMMENTARY_TITLE_PREFIXES = {
-    "okay,",
-    "something just shifted in how i think about",
-}
-X_GENERIC_COMMENTARY_PHRASES = {
-    "how i think about",
-    "what excites me most",
-    "worth sitting with",
-    "i will tell you honestly",
-    "stops me in my tracks",
-    "different category of tool",
-    "not ai that answers",
-    "ai that acts",
-    "human attention",
-    "for every team",
-}
-X_COMMENTARY_KEEP_KEYWORDS = {
-    "earnings",
-    "revenue",
-    "guidance",
-    "market share",
-    "supplier",
-    "supply chain",
-    "chip",
-    "chips",
-    "semiconductor",
-    "gpu",
-    "robotaxi",
-    "autonomous",
-    "autonomy",
-    "oil",
-    "fuel",
-    "jet fuel",
-    "hormuz",
-    "shipping",
-    "port",
-    "ports",
-    "blockade",
-    "shortage",
-    "tariff",
-    "sanction",
-    "capex",
-    "fab",
-    "foundry",
-    "memory",
-    "hbm",
-    "valuation",
-    "stock",
-    "stocks",
-    "funding",
-    "financing",
-    "round",
-    "merger",
-    "acquisition",
-    "ryzen",
-}
-X_MANIFESTO_PHRASES = {
-    "the bottom line",
-    "for years, tesla has dominated headlines",
-    "not a single-company story",
-    "growing army of robotaxi challengers",
-}
-GENERIC_BROAD_MARKET_QUESTION_PREFIXES = {
-    "why is the market",
-    "why are markets",
-    "why are stocks",
-}
-AI_MEME_ENTERTAINMENT_PHRASES = {
-    "squid game",
-    "battle royale",
-    "who would win",
-    "ai hunger games",
-    "ai gladiator",
-    "prompt battle",
-    "ai rap battle",
-    "ai roast",
-    "ai meme",
-    "pure entertainment",
-}
-AI_MEME_ENTERTAINMENT_KEEP_KEYWORDS = {
-    "earnings",
-    "revenue",
-    "guidance",
-    "supply chain",
-    "supply crunch",
-    "capex",
-    "fab",
-    "foundry",
-    "hbm",
-    "valuation",
-    "market share",
-    "semiconductor",
-    "chip",
-    "gpu",
-    "h200",
-    "h100",
-    "b200",
-    "hyperscaler",
-}
-ENTERPRISE_AI_SYNTHESIS_PHRASES = {
-    "enterprise ai flywheel",
-    "flywheel is spinning",
-    "flywheel effect",
-    "winners keep winning",
-    "the new paradigm",
-    "ai adoption is accelerating",
-    "doubled down on openai",
-    "enterprise ai adoption",
-}
-ENTERPRISE_AI_SYNTHESIS_KEEP_KEYWORDS = {
-    "earnings",
-    "revenue",
-    "guidance",
-    "beat",
-    "missed",
-    "eps",
-    "capex",
-    "supply chain",
-    "supply crunch",
-    "fab",
-    "foundry",
-    "hbm",
-    "semiconductor",
-    "chip",
-    "gpu",
-    "h200",
-    "h100",
-    "b200",
-    "hyperscaler",
-    "valuation",
-    "market share",
-}
 
 
 def clean_text(value: Any) -> str:
@@ -727,435 +257,6 @@ def candidate_match_text(candidate: dict[str, Any]) -> str:
     ).lower()
 
 
-def contains_any_keyword(text: str, keywords: set[str]) -> bool:
-    return any(keyword.lower() in text for keyword in keywords)
-
-
-def contains_any_keyword_boundary(text: str, keywords: set[str]) -> bool:
-    for keyword in keywords:
-        lowered = keyword.lower()
-        if re.search(r"[a-z]", lowered):
-            pattern = rf"(?<![a-z0-9]){re.escape(lowered)}(?![a-z0-9])"
-            if re.search(pattern, text):
-                return True
-            continue
-        if lowered in text:
-            return True
-    return False
-
-
-def is_allowed_locality_candidate(candidate: dict[str, Any]) -> bool:
-    return contains_any_keyword(candidate_match_text(candidate), {item.lower() for item in ALLOWED_LOCALITY_KEYWORDS})
-
-
-def is_locality_candidate(candidate: dict[str, Any]) -> bool:
-    text = candidate_match_text(candidate)
-    if contains_any_keyword(text, {item.lower() for item in ALLOWED_LOCALITY_KEYWORDS}):
-        return False
-    if contains_any_keyword(text, {item.lower() for item in BLOCKED_LOCALITY_KEYWORDS}):
-        return True
-    title = clean_text(candidate.get("title"))
-    summary = clean_text(candidate.get("summary"))
-    if any(marker in title for marker in LOCAL_ADMIN_KEYWORDS):
-        return True
-    if any(marker in summary for marker in LOCAL_ADMIN_KEYWORDS) and any(
-        keyword.lower() in text for keyword in {item.lower() for item in BLOCKED_LOCALITY_KEYWORDS}
-    ):
-        return True
-    return False
-
-
-def is_weak_obituary_candidate(candidate: dict[str, Any]) -> bool:
-    text = candidate_match_text(candidate)
-    if not contains_any_keyword(text, {item.lower() for item in OBITUARY_KEYWORDS}):
-        return False
-    if int(candidate.get("source_count", 0) or 0) >= 2:
-        return False
-    return len(keyword_hits(text)) < 3
-
-
-def is_rumor_like_candidate(candidate: dict[str, Any]) -> bool:
-    title = clean_text(candidate.get("title"))
-    text = candidate_match_text(candidate)
-    return "?" in title or "？" in title or contains_any_keyword(text, {item.lower() for item in RUMOR_KEYWORDS})
-
-
-def is_verification_like_candidate(candidate: dict[str, Any]) -> bool:
-    return contains_any_keyword(candidate_match_text(candidate), {item.lower() for item in VERIFICATION_KEYWORDS})
-
-
-def is_generic_feature_interview_candidate(candidate: dict[str, Any]) -> bool:
-    text = candidate_match_text(candidate)
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    return contains_any_keyword(text, {item.lower() for item in GENERIC_FEATURE_KEYWORDS})
-
-
-def is_diplomatic_protocol_candidate(candidate: dict[str, Any]) -> bool:
-    text = candidate_match_text(candidate)
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    return contains_any_keyword(text, {item.lower() for item in DIPLOMATIC_PROTOCOL_KEYWORDS})
-
-
-def is_official_commentary_candidate(candidate: dict[str, Any]) -> bool:
-    text = candidate_match_text(candidate)
-    title = clean_text(candidate.get("title"))
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    if re.match(r"^从.+看", title):
-        return True
-    return contains_any_keyword(text, {item.lower() for item in OFFICIAL_COMMENTARY_KEYWORDS})
-
-
-def is_explicitly_offtopic_platform_candidate(candidate: dict[str, Any]) -> bool:
-    if primary_platform_signal_count(candidate) == 0:
-        return False
-    title = clean_text(candidate.get("title")).lower()
-    return any(title.startswith(prefix) for prefix in EXPLICIT_OFFTOPIC_PREFIXES)
-
-
-def is_generic_platform_political_statement_candidate(candidate: dict[str, Any]) -> bool:
-    if primary_platform_signal_count(candidate) == 0:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    title = clean_text(candidate.get("title")).lower()
-    if not contains_any_keyword_boundary(title, GENERIC_PLATFORM_POLITICAL_NAMES):
-        return False
-    if contains_any_keyword_boundary(title, GENERIC_PLATFORM_POLITICAL_KEEP_KEYWORDS):
-        return False
-    return contains_any_keyword_boundary(title, GENERIC_PLATFORM_POLITICAL_PHRASES)
-
-
-def is_reddit_meta_discussion_candidate(candidate: dict[str, Any]) -> bool:
-    title = clean_text(candidate.get("title")).lower()
-    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
-    if not source_items:
-        return False
-    if not all(is_primary_platform_source_item(item) and clean_text(item.get("source_name")).lower().startswith("reddit ") for item in source_items):
-        return False
-    if contains_any_keyword(title, REDDIT_META_THREAD_KEYWORDS):
-        return True
-    if "live thread" in title or " ama " in f" {title} ":
-        return True
-    return bool(re.match(r"^\[week\s+\d+", title))
-
-
-def is_generic_reddit_research_chatter_candidate(candidate: dict[str, Any]) -> bool:
-    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
-    if not source_items:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    if not all(is_primary_platform_source_item(item) and clean_text(item.get("source_name")).lower().startswith("reddit ") for item in source_items):
-        return False
-    title = clean_text(candidate.get("title")).lower()
-    if "[r]" not in title and "[d]" not in title:
-        return False
-    return not contains_any_keyword(title, REDDIT_RESEARCH_SIGNAL_KEYWORDS)
-
-
-def candidate_source_item_tags(candidate: dict[str, Any]) -> set[str]:
-    tags: set[str] = set()
-    for item in safe_list(candidate.get("source_items")):
-        if not isinstance(item, dict):
-            continue
-        for tag in clean_string_list(item.get("tags")):
-            if tag:
-                tags.add(tag)
-    return tags
-
-
-def candidate_reddit_subreddit_kinds(candidate: dict[str, Any]) -> set[str]:
-    kinds = {
-        normalize_reddit_subreddit_kind(kind)
-        for kind in clean_string_list(candidate.get("reddit_subreddit_kinds"))
-        if normalize_reddit_subreddit_kind(kind)
-    }
-    if kinds:
-        return kinds
-    for tag in candidate_source_item_tags(candidate):
-        if tag.startswith("subreddit_kind:"):
-            normalized = normalize_reddit_subreddit_kind(tag.split(":", 1)[1])
-            if normalized:
-                kinds.add(normalized)
-    return kinds
-
-
-def candidate_reddit_outbound_domains(candidate: dict[str, Any]) -> set[str]:
-    domains = {clean_text(domain).lower() for domain in clean_string_list(candidate.get("reddit_outbound_domains")) if clean_text(domain)}
-    if domains:
-        return domains
-    for tag in candidate_source_item_tags(candidate):
-        if tag.startswith("outbound_domain:"):
-            domain = clean_text(tag.split(":", 1)[1]).lower()
-            if domain:
-                domains.add(domain)
-    return domains
-
-
-def is_low_specificity_reddit_platform_candidate(candidate: dict[str, Any]) -> bool:
-    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
-    if not source_items:
-        return False
-    if not all(is_primary_platform_source_item(item) and clean_text(item.get("source_name")).lower().startswith("reddit ") for item in source_items):
-        return False
-    if primary_platform_signal_count(candidate) > 1 or int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    subreddit_kinds = candidate_reddit_subreddit_kinds(candidate)
-    if not subreddit_kinds or not subreddit_kinds.issubset({"broad_market", "event_watch"}):
-        return False
-    if candidate_reddit_outbound_domains(candidate):
-        return False
-    text = clean_text(candidate.get("title")).lower()
-    if contains_any_keyword(text, REDDIT_LOW_SPECIFICITY_PHRASES):
-        return True
-    tokens = reddit_cluster_tokens(
-        {
-            "title": candidate.get("title", ""),
-            "summary": candidate.get("summary", ""),
-        }
-    )
-    if cross_platform_entity_tokens(tokens):
-        return False
-    specific_tokens = tokens - REDDIT_CLUSTER_GENERIC_QUERY_TOKENS - REDDIT_LOW_SPECIFICITY_GENERIC_TOKENS
-    return len(specific_tokens) <= 1
-
-
-def is_self_promotional_platform_candidate(candidate: dict[str, Any]) -> bool:
-    if primary_platform_signal_count(candidate) == 0:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    return contains_any_keyword(candidate_match_text(candidate), SELF_PROMOTIONAL_PLATFORM_KEYWORDS)
-
-
-def is_exhibition_promo_candidate(candidate: dict[str, Any]) -> bool:
-    if primary_platform_signal_count(candidate) > 0:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    return contains_any_keyword(candidate_match_text(candidate), EXHIBITION_PROMO_KEYWORDS)
-
-
-def is_x_platform_source_item(item: dict[str, Any]) -> bool:
-    source_name = clean_text(item.get("source_name")).lower()
-    tags = clean_string_list(item.get("tags"))
-    return source_name in {"agent-reach:x", "x"} or source_name.startswith("x @") or "provider:agent-reach:x" in tags
-
-
-def is_generic_x_news_candidate(candidate: dict[str, Any]) -> bool:
-    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
-    if not source_items:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-
-    if not all(is_x_platform_source_item(item) for item in source_items):
-        return False
-    text = clean_text(candidate.get("title")).lower()
-    if not contains_any_keyword_boundary(text, X_GENERIC_CIVIC_KEYWORDS):
-        return False
-    if contains_any_keyword_boundary(text, X_CORE_TOPIC_KEYWORDS):
-        return False
-    return True
-
-
-def is_generic_x_commentary_candidate(candidate: dict[str, Any]) -> bool:
-    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
-    if not source_items:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    if not all(is_x_platform_source_item(item) for item in source_items):
-        return False
-    title = clean_text(candidate.get("title")).lower()
-    text = candidate_match_text(candidate)
-    if not (
-        any(title.startswith(prefix) for prefix in X_GENERIC_COMMENTARY_TITLE_PREFIXES)
-        or contains_any_keyword(text, X_GENERIC_COMMENTARY_PHRASES)
-    ):
-        return False
-    if contains_any_keyword(text, X_COMMENTARY_KEEP_KEYWORDS):
-        return False
-    return True
-
-
-def is_generic_x_manifesto_candidate(candidate: dict[str, Any]) -> bool:
-    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
-    if not source_items:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    if not all(is_x_platform_source_item(item) for item in source_items):
-        return False
-    title = clean_text(candidate.get("title"))
-    lowered_title = title.lower()
-    text = candidate_match_text(candidate)
-    lowered_text = text.lower()
-    if len(lowered_text) < 260:
-        return False
-    if "#" not in title and "$" not in title and len(title) < 100:
-        return False
-    if lowered_text.count(" wins") < 2 and not contains_any_keyword(lowered_text, X_MANIFESTO_PHRASES):
-        return False
-    return True
-
-
-def is_generic_broad_market_question_candidate(candidate: dict[str, Any]) -> bool:
-    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
-    if not source_items:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    if not all(is_primary_platform_source_item(item) and clean_text(item.get("source_name")).lower().startswith("reddit ") for item in source_items):
-        return False
-    subreddit_kinds = candidate_reddit_subreddit_kinds(candidate)
-    if not subreddit_kinds or not subreddit_kinds.issubset({"broad_market"}):
-        return False
-    title = clean_text(candidate.get("title")).lower()
-    if "?" not in title:
-        return False
-    return any(title.startswith(prefix) for prefix in GENERIC_BROAD_MARKET_QUESTION_PREFIXES)
-
-
-def is_ai_meme_entertainment_candidate(candidate: dict[str, Any]) -> bool:
-    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
-    if not source_items:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    text = candidate_match_text(candidate)
-    if not contains_any_keyword(text, AI_MEME_ENTERTAINMENT_PHRASES):
-        return False
-    if contains_any_keyword(text, AI_MEME_ENTERTAINMENT_KEEP_KEYWORDS):
-        return False
-    return True
-
-
-def is_enterprise_ai_synthesis_candidate(candidate: dict[str, Any]) -> bool:
-    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
-    if not source_items:
-        return False
-    if int(candidate.get("source_count", 0) or 0) > 1:
-        return False
-    text = candidate_match_text(candidate)
-    if not contains_any_keyword(text, ENTERPRISE_AI_SYNTHESIS_PHRASES):
-        return False
-    if contains_any_keyword(text, ENTERPRISE_AI_SYNTHESIS_KEEP_KEYWORDS):
-        return False
-    return True
-
-
-def is_primary_platform_source_item(item: dict[str, Any]) -> bool:
-    source_name = clean_text(item.get("source_name")).lower()
-    if source_name.startswith("reddit ") or source_name.startswith("x @") or source_name == "x":
-        return True
-    tags = clean_string_list(item.get("tags"))
-    return any(tag in {"provider:agent-reach:reddit", "provider:agent-reach:x"} for tag in tags)
-
-
-def primary_platform_signal_count(candidate: dict[str, Any]) -> int:
-    return sum(1 for item in safe_list(candidate.get("source_items")) if isinstance(item, dict) and is_primary_platform_source_item(item))
-
-
-def source_mix_summary(candidate: dict[str, Any]) -> str:
-    reddit_count = 0
-    x_count = 0
-    fallback_count = 0
-    for item in safe_list(candidate.get("source_items")):
-        if not isinstance(item, dict):
-            continue
-        if is_primary_platform_source_item(item):
-            source_name = clean_text(item.get("source_name")).lower()
-            tags = clean_string_list(item.get("tags"))
-            if source_name.startswith("reddit ") or "provider:agent-reach:reddit" in tags:
-                reddit_count += 1
-            elif source_name.startswith("x @") or source_name == "x" or "provider:agent-reach:x" in tags:
-                x_count += 1
-        else:
-            fallback_count += 1
-    parts: list[str] = []
-    if reddit_count:
-        parts.append(f"Reddit {reddit_count}")
-    if x_count:
-        parts.append(f"X {x_count}")
-    if fallback_count:
-        parts.append(f"Fallback {fallback_count}")
-    return " + ".join(parts) if parts else "Fallback 0"
-
-
-def story_family_label(candidate: dict[str, Any]) -> str:
-    text = candidate_match_text(candidate)
-    if "claude" in text or "anthropic" in text:
-        if is_rumor_like_candidate(candidate) or is_verification_like_candidate(candidate):
-            return "Claude / Anthropic release-rumor cycle"
-        return "Claude / Anthropic platform change"
-    if "ai" in text and "芯片" in text:
-        return "国产 AI 芯片竞争"
-    return clean_text(candidate.get("title"))
-
-
-def recommended_story_angle(candidate: dict[str, Any]) -> str:
-    text = candidate_match_text(candidate)
-    if "claude" in text or "anthropic" in text:
-        return "为什么模型发布时间和账号限制传闻总会反复出现，普通读者该怎么辨真假"
-    if "ai" in text and "芯片" in text:
-        return "国产 AI 芯片到底到了哪一步，真正值得看的竞争格局和替代空间是什么"
-    return "这件事为什么值得现在关注，以及它会改变哪些判断"
-
-
-def why_now_summary(candidate: dict[str, Any]) -> str:
-    primary_count = primary_platform_signal_count(candidate)
-    if primary_count and (is_rumor_like_candidate(candidate) or is_verification_like_candidate(candidate)):
-        return "平台讨论在升温，而且真假混杂，适合做一次辨真假梳理。"
-    if primary_count:
-        return "Reddit/X 上已经形成真实讨论，这不只是单条新闻标题。"
-    return "这条题目仍有一定延展空间，但更多依赖新闻兜底补充。"
-
-
-def selection_reason_summary(candidate: dict[str, Any]) -> str:
-    primary_count = primary_platform_signal_count(candidate)
-    if primary_count:
-        return f"主因是平台侧已有 {primary_count} 条有效讨论信号，而且具备可写角度。"
-    return "目前主要靠兜底新闻源支撑，适合作为备选而非首选。"
-
-
-def risk_flags_for_candidate(candidate: dict[str, Any]) -> list[str]:
-    flags: list[str] = []
-    if int(candidate.get("source_count", 0) or 0) <= 1:
-        flags.append("single_source")
-    if is_rumor_like_candidate(candidate):
-        flags.append("rumor_heavy")
-    if primary_platform_signal_count(candidate) == 0:
-        flags.append("fallback_only")
-    if int(candidate.get("source_count", 0) or 0) <= 1 and primary_platform_signal_count(candidate) == 0:
-        flags.append("weak_confirmation")
-    return flags
-
-
-def enforce_international_primary_source_floor(
-    kept_topics: list[dict[str, Any]],
-    filtered_out_topics: list[dict[str, Any]],
-    top_n: int,
-) -> list[dict[str, Any]]:
-    required_platform_topics = min(4, max(0, top_n))
-    platform_topics = [topic for topic in kept_topics if primary_platform_signal_count(topic) > 0]
-    fallback_topics = [topic for topic in kept_topics if primary_platform_signal_count(topic) == 0]
-    if len(platform_topics) < required_platform_topics:
-        for topic in fallback_topics:
-            filtered_out_topics.append(
-                {
-                    "title": clean_text(topic.get("title")),
-                    "filter_reason": "deprioritized fallback-only topic because top slots require platform-backed topics",
-                    "total_score": safe_dict(topic.get("score_breakdown")).get("total_score", 0),
-                }
-            )
-        return platform_topics[:top_n]
-    return (platform_topics + fallback_topics)[:top_n]
-
-
 def keyword_hit_count(text: str, keywords: list[str]) -> int:
     return sum(1 for keyword in keywords if keyword.lower() in text)
 
@@ -1179,281 +280,6 @@ def fetch_text(url: str, *, timeout_seconds: int = 10) -> str:
     )
     with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
         return response.read().decode("utf-8", errors="replace")
-
-
-def is_google_news_rss_wrapper_url(url: Any) -> bool:
-    parsed = urllib.parse.urlparse(clean_text(url))
-    host = parsed.netloc.lower()
-    path = parsed.path.lower()
-    return host == "news.google.com" and path.startswith(("/rss/articles/", "/articles/"))
-
-
-def extract_google_news_wrapper_token(url: Any) -> str:
-    parsed = urllib.parse.urlparse(clean_text(url))
-    return clean_text(parsed.path.rsplit("/", 1)[-1])
-
-
-def decode_google_news_wrapper_token(token: str) -> str:
-    if not token:
-        return ""
-    try:
-        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
-    except (ValueError, base64.binascii.Error):
-        return ""
-    field_marker = raw.find(b"\x22")
-    if field_marker >= 0 and field_marker + 1 < len(raw):
-        length = raw[field_marker + 1]
-        payload_start = field_marker + 2
-        payload_end = payload_start + length
-        if payload_end <= len(raw):
-            return clean_text(raw[payload_start:payload_end].decode("utf-8", errors="replace"))
-    decoded_text = clean_text(raw.decode("utf-8", errors="replace"))
-    match = re.search(r"https?://[^\s\x00-\x1f\"'<>]+", decoded_text)
-    return clean_text(match.group(0)) if match else decoded_text
-
-
-def extract_google_news_decode_params(html_text: str) -> tuple[str, str]:
-    timestamp_match = re.search(r'data-n-a-ts=["\']([^"\']+)["\']', html_text)
-    signature_match = re.search(r'data-n-a-sg=["\']([^"\']+)["\']', html_text)
-    return (
-        clean_text(timestamp_match.group(1)) if timestamp_match else "",
-        clean_text(signature_match.group(1)) if signature_match else "",
-    )
-
-
-def extract_google_news_batch_execute_url(response_text: str) -> str:
-    for chunk in response_text.split("\n\n"):
-        chunk = chunk.strip()
-        if not chunk.startswith("["):
-            continue
-        try:
-            payload = json.loads(chunk)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(payload, list):
-            continue
-        for entry in payload:
-            if not isinstance(entry, list) or len(entry) < 3 or not isinstance(entry[2], str):
-                continue
-            try:
-                inner = json.loads(entry[2])
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(inner, list) or len(inner) < 2 or inner[0] != "garturlres":
-                continue
-            candidate = clean_text(inner[1])
-            if candidate.startswith(("http://", "https://")) and not is_google_news_rss_wrapper_url(candidate):
-                return candidate
-    return ""
-
-
-def resolve_google_news_opaque_wrapper_via_simple_batch_execute(token: str, *, timeout_seconds: int = 8) -> str:
-    if not token:
-        return ""
-    payload = (
-        '[[["Fbv4je","[\\"garturlreq\\",[[\\"en-US\\",\\"US\\",[\\"FINANCE_TOP_INDICES\\",\\"WEB_TEST_1_0_0\\"],'
-        'null,null,1,1,\\"US:en\\",null,1,null,null,null,null,null,0,1],'
-        '\\"en-US\\",\\"US\\",1,[1,1,1],1,1,null,0,0,null,0],\\"'
-        + token
-        + '\\"]",null,"generic"]]]'
-    )
-    request = urllib.request.Request(
-        "https://news.google.com/_/DotsSplashUi/data/batchexecute?rpcids=Fbv4je",
-        data=f"f.req={urllib.parse.quote(payload, safe='')}".encode("utf-8"),
-        headers={
-            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-            "Referer": "https://news.google.com/",
-            "Referrer": "https://news.google.com/",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            return extract_google_news_batch_execute_url(response.read().decode("utf-8", errors="replace"))
-    except (TimeoutError, ValueError, OSError, urllib.error.URLError):
-        return ""
-
-
-def extract_google_news_wrapper_page_hints(wrapper_url: str, html_text: str) -> dict[str, Any]:
-    canonical_url = ""
-    redirect_match = re.search(
-        r"https://uberproxy-pen-redirect\.corp\.google\.com/uberproxy/pen\?url=([^\"'&<>\s]+)",
-        html_text,
-        re.IGNORECASE,
-    )
-    if redirect_match:
-        canonical_url = clean_text(urllib.parse.unquote(unescape(redirect_match.group(1))))
-
-    def extract_meta_content(*names: str) -> str:
-        for name in names:
-            pattern = re.compile(
-                rf"<meta[^>]+(?:property|name)\s*=\s*[\"']{re.escape(name)}[\"'][^>]+content\s*=\s*[\"']([^\"']+)[\"']",
-                re.IGNORECASE,
-            )
-            match = pattern.search(html_text)
-            if match:
-                return clean_text(unescape(match.group(1)))
-        return ""
-
-    image_url = extract_meta_content("og:image", "twitter:image")
-    image_alt = extract_meta_content("og:image:alt", "twitter:image:alt")
-    artifact_manifest: list[dict[str, Any]] = []
-    if image_url:
-        artifact_manifest.append(
-            {
-                "role": "post_media",
-                "path": "",
-                "source_url": image_url,
-                "media_type": "image",
-            }
-        )
-    return {
-        "final_url": canonical_url or clean_text(wrapper_url),
-        "title": "",
-        "text_excerpt": "",
-        "post_summary": "",
-        "media_summary": image_alt,
-        "artifact_manifest": artifact_manifest,
-    }
-
-
-def fetch_google_news_wrapper_page_hints(url: str, *, timeout_seconds: int = 8) -> dict[str, Any]:
-    wrapper_url = clean_text(url)
-    if not is_google_news_rss_wrapper_url(wrapper_url):
-        return {}
-    request = urllib.request.Request(
-        wrapper_url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            try:
-                body = response.read(1_000_000)
-            except TypeError:
-                body = response.read()
-            html_text = body.decode("utf-8", errors="replace")
-    except (TimeoutError, ValueError, OSError, urllib.error.URLError):
-        return {}
-    return extract_google_news_wrapper_page_hints(wrapper_url, html_text)
-
-
-def resolve_google_news_opaque_wrapper_url(token: str, *, wrapper_url: str = "", timeout_seconds: int = 8) -> str:
-    if not token:
-        return ""
-    simple_resolved = resolve_google_news_opaque_wrapper_via_simple_batch_execute(token, timeout_seconds=timeout_seconds)
-    if simple_resolved:
-        return simple_resolved
-    article_url = f"https://news.google.com/articles/{token}"
-
-    def fetch_wrapper_html(url: str) -> str:
-        request = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            },
-        )
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            try:
-                body = response.read(1_000_000)
-            except TypeError:
-                body = response.read()
-            return body.decode("utf-8", errors="replace")
-
-    try:
-        html_text = fetch_wrapper_html(article_url)
-    except (TimeoutError, ValueError, OSError, urllib.error.URLError):
-        html_text = ""
-    timestamp, signature = extract_google_news_decode_params(html_text)
-    decode_page_url = article_url
-    if (not timestamp or not signature) and clean_text(wrapper_url):
-        try:
-            html_text = fetch_wrapper_html(clean_text(wrapper_url))
-        except (TimeoutError, ValueError, OSError, urllib.error.URLError):
-            html_text = ""
-        timestamp, signature = extract_google_news_decode_params(html_text)
-        decode_page_url = clean_text(wrapper_url) or article_url
-    if not timestamp or not signature:
-        return ""
-    payload = json.dumps(
-        [
-            [
-                [
-                    "Fbv4je",
-                    (
-                        "[\"garturlreq\",[[\"X\",\"X\",[\"X\",\"X\"],null,null,1,1,\"US:en\",null,1,null,null,null,null,null,0,1],"
-                        "\"X\",\"X\",1,[1,1,1],1,1,null,0,0,null,0],"
-                        f"\"{token}\",{timestamp},\"{signature}\"]"
-                    ),
-                ]
-            ]
-        ],
-        separators=(",", ":"),
-    )
-    request = urllib.request.Request(
-        "https://news.google.com/_/DotsSplashUi/data/batchexecute",
-        data=f"f.req={urllib.parse.quote(payload, safe='')}".encode("utf-8"),
-        headers={
-            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-            "Referer": decode_page_url,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            return extract_google_news_batch_execute_url(response.read().decode("utf-8", errors="replace"))
-    except (TimeoutError, ValueError, OSError, urllib.error.URLError):
-        return ""
-
-
-def resolve_google_news_rss_target_url(url: str, *, timeout_seconds: int = 8) -> str:
-    wrapper_url = clean_text(url)
-    if not is_google_news_rss_wrapper_url(wrapper_url):
-        return wrapper_url
-
-    parsed = urllib.parse.urlparse(wrapper_url)
-    query_params = urllib.parse.parse_qs(parsed.query)
-    for key in ("url", "article", "u"):
-        candidate = clean_text(query_params.get(key, [""])[0])
-        if candidate.startswith(("http://", "https://")) and not is_google_news_rss_wrapper_url(candidate):
-            return candidate
-
-    token = extract_google_news_wrapper_token(wrapper_url)
-    decoded_token = decode_google_news_wrapper_token(token)
-    if decoded_token.startswith(("http://", "https://")) and not is_google_news_rss_wrapper_url(decoded_token):
-        return decoded_token
-
-    # Newer RSS wrappers store an opaque token that needs a signed Google decode round-trip.
-    if decoded_token.startswith("AU_yq"):
-        resolved = resolve_google_news_opaque_wrapper_url(token, wrapper_url=wrapper_url, timeout_seconds=timeout_seconds)
-        if resolved:
-            return resolved
-
-    request = urllib.request.Request(
-        wrapper_url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            html_text = response.read().decode("utf-8", errors="replace")
-            final_url = clean_text(response.geturl() if hasattr(response, "geturl") else "")
-    except (TimeoutError, ValueError, OSError, urllib.error.URLError):
-        return wrapper_url
-    if final_url.startswith(("http://", "https://")) and not is_google_news_rss_wrapper_url(final_url):
-        return final_url
-    wrapper_hints = extract_google_news_wrapper_page_hints(wrapper_url, html_text)
-    hinted_url = clean_text(wrapper_hints.get("final_url"))
-    if hinted_url.startswith(("http://", "https://")) and not is_google_news_rss_wrapper_url(hinted_url):
-        return hinted_url
-    return wrapper_url
 
 
 def parse_pub_date(value: Any, analysis_time: datetime) -> str:
@@ -1704,9 +530,6 @@ def normalize_discovered_item(item: dict[str, Any], analysis_time: datetime, ind
     if isinstance(score_float, (int, float)):
         normalized["score_float"] = max(0.0, min(1.0, float(score_float)))
     for key in (
-        "publisher_domain_hint",
-        "post_summary",
-        "media_summary",
         "subreddit",
         "reddit_listing",
         "reddit_listing_window",
@@ -1723,9 +546,6 @@ def normalize_discovered_item(item: dict[str, Any], analysis_time: datetime, ind
     top_comment_authors = clean_string_list(item.get("top_comment_authors"))
     if top_comment_authors:
         normalized["top_comment_authors"] = top_comment_authors
-    artifact_manifest = safe_list(item.get("artifact_manifest"))
-    if artifact_manifest:
-        normalized["artifact_manifest"] = artifact_manifest
     comment_near_duplicate_examples = clean_string_list(item.get("comment_near_duplicate_examples"))
     if comment_near_duplicate_examples:
         normalized["comment_near_duplicate_examples"] = comment_near_duplicate_examples
@@ -1822,31 +642,6 @@ def tokenize_title(title: str) -> list[str]:
         if normalized and normalized not in tokens and normalized not in SEO_STOPWORDS:
             tokens.append(normalized)
     return tokens
-
-
-def cross_platform_story_tokens(item: dict[str, Any]) -> set[str]:
-    combined = " ".join(
-        [
-            clean_text(item.get("title")),
-            clean_text(item.get("summary")),
-            clean_text(item.get("text")),
-            clean_text(item.get("source_name")),
-        ]
-    )
-    lowered = combined.lower()
-    tokens: set[str] = set()
-    for token in tokenize_title(combined):
-        normalized = token.lower()
-        if normalized and normalized not in {value.lower() for value in CROSS_PLATFORM_TOKEN_STOPWORDS}:
-            tokens.add(normalized)
-    for keyword in CROSS_PLATFORM_STORY_KEYWORDS:
-        if keyword.lower() in lowered:
-            tokens.add(keyword.lower())
-    return tokens
-
-
-def cross_platform_entity_tokens(tokens: set[str]) -> set[str]:
-    return {token for token in tokens if token in {value.lower() for value in CROSS_PLATFORM_ENTITY_TOKENS}}
 
 
 def is_reddit_discovered_item(item: dict[str, Any]) -> bool:
@@ -2145,13 +940,10 @@ def reddit_cluster_has_strong_query_match(tokens: set[str], query_tokens: set[st
 
 
 def new_item_cluster(title_key: str, item: dict[str, Any]) -> dict[str, Any]:
-    story_tokens = cross_platform_story_tokens(item)
     return {
         "title_keys": {title_key} if title_key else set(),
         "reddit_outbound_urls": {reddit_cluster_outbound_url(item)} if reddit_cluster_outbound_url(item) else set(),
         "reddit_tokens": reddit_cluster_tokens(item) if is_reddit_discovered_item(item) else set(),
-        "story_tokens": story_tokens,
-        "entity_tokens": cross_platform_entity_tokens(story_tokens),
         "items": [item],
     }
 
@@ -2164,9 +956,6 @@ def merge_item_into_cluster(cluster: dict[str, Any], title_key: str, item: dict[
         cluster["reddit_outbound_urls"].add(outbound_url)
     if is_reddit_discovered_item(item):
         cluster["reddit_tokens"].update(reddit_cluster_tokens(item))
-    story_tokens = cross_platform_story_tokens(item)
-    cluster["story_tokens"].update(story_tokens)
-    cluster["entity_tokens"].update(cross_platform_entity_tokens(story_tokens))
     cluster["items"].append(item)
 
 
@@ -2180,30 +969,16 @@ def cluster_discovered_items(raw_items: list[dict[str, Any]], query: Any = "") -
         item_outbound_url = reddit_cluster_outbound_url(item) if item_is_reddit else ""
         item_tokens = reddit_cluster_tokens(item) if item_is_reddit else set()
         item_entity_groups = reddit_cluster_token_entity_groups(item_tokens, query_entity_groups) if item_is_reddit else set()
-        item_story_tokens = cross_platform_story_tokens(item)
-        item_entity_tok = cross_platform_entity_tokens(item_story_tokens)
 
         matching_indexes: list[int] = []
         for index, cluster in enumerate(clusters):
             if title_key and title_key in cluster["title_keys"]:
                 matching_indexes.append(index)
                 continue
-            # Entity-based match — for cross-platform pairs and non-Reddit-to-non-Reddit pairs.
-            # Skipped when both item and cluster are Reddit-only (use Reddit-specific path instead).
-            cluster_all_reddit = bool(cluster.get("reddit_tokens")) and all(is_reddit_discovered_item(ci) for ci in cluster["items"])
-            skip_entity_match = item_is_reddit and cluster_all_reddit
-            if not skip_entity_match:
-                shared_entities = item_entity_tok & cluster.get("entity_tokens", set())
-                shared_story = item_story_tokens & cluster.get("story_tokens", set())
-                if shared_entities and len(shared_story) >= 2:
-                    matching_indexes.append(index)
-                    continue
             if not item_is_reddit:
                 continue
             if item_outbound_url and item_outbound_url in cluster["reddit_outbound_urls"]:
                 matching_indexes.append(index)
-                continue
-            if not query_tokens:
                 continue
             shared_tokens = reddit_cluster_shared_tokens(item_tokens, cluster["reddit_tokens"])
             cluster_entity_groups = reddit_cluster_token_entity_groups(cluster["reddit_tokens"], query_entity_groups)
@@ -2237,8 +1012,6 @@ def cluster_discovered_items(raw_items: list[dict[str, Any]], query: Any = "") -
             primary_cluster["title_keys"].update(secondary_cluster["title_keys"])
             primary_cluster["reddit_outbound_urls"].update(secondary_cluster["reddit_outbound_urls"])
             primary_cluster["reddit_tokens"].update(secondary_cluster["reddit_tokens"])
-            primary_cluster["story_tokens"].update(secondary_cluster.get("story_tokens", set()))
-            primary_cluster["entity_tokens"].update(secondary_cluster.get("entity_tokens", set()))
             primary_cluster["items"].extend(secondary_cluster["items"])
 
     return [cluster["items"] for cluster in clusters]
@@ -2334,33 +1107,13 @@ def parse_rss_items(xml_text: str, source_name: str, source_type: str, limit: in
         link = clean_text(item.findtext("link"))
         if not title or not link:
             continue
-        effective_source_name = source_name
-        clean_title = title
-        if source_name in {"google-news-search", "google-news-world"} and " - " in title:
-            possible_title, possible_source = [clean_text(part) for part in title.rsplit(" - ", 1)]
-            if possible_title and possible_source and len(possible_source) <= 40:
-                clean_title = possible_title
-                effective_source_name = possible_source
-        summary_text = strip_tags(item.findtext("description") or clean_title)
-        if source_name in {"google-news-search", "google-news-world"}:
-            if summary_text == title:
-                summary_text = clean_title
-            elif effective_source_name and summary_text.endswith(effective_source_name):
-                summary_text = clean_text(re.sub(rf"[\s\-|_:：]+{re.escape(effective_source_name)}$", "", summary_text))
-        publisher_domain_hint = effective_source_name if source_name in {"google-news-search", "google-news-world"} else ""
-        resolved_link = resolve_google_news_rss_target_url(link) if is_google_news_rss_wrapper_url(link) else link
-        wrapper_hints = fetch_google_news_wrapper_page_hints(link) if source_name in {"google-news-search", "google-news-world"} else {}
         discovered.append(
             normalize_discovered_item(
                 {
-                    "title": clean_title,
-                    "summary": summary_text,
-                    "url": resolved_link or link,
-                    "source_name": effective_source_name,
-                    "publisher_domain_hint": publisher_domain_hint,
-                    "post_summary": clean_text(wrapper_hints.get("post_summary")),
-                    "media_summary": clean_text(wrapper_hints.get("media_summary")),
-                    "artifact_manifest": safe_list(wrapper_hints.get("artifact_manifest")),
+                    "title": title,
+                    "summary": strip_tags(item.findtext("description") or title),
+                    "url": link,
+                    "source_name": source_name,
                     "source_type": source_type,
                     "published_at": item.findtext("pubDate") or analysis_time.isoformat(),
                 },
@@ -2389,27 +1142,10 @@ def clamp_score_float(value: Any, default: float = 0.5) -> float:
     return default
 
 
-def clean_x_title(value: Any) -> str:
-    text = clean_text(value)
-    if not text:
-        return ""
-    text = re.sub(r"^(?:@\w+\s+)+", "", text)
-    text = re.sub(r"https?://\S+", "", text).strip()
-    text = clean_text(text)
-    if not text:
-        return ""
-    sentence_parts = re.split(r"(?<=[.!?！？])\s+|\n+", text)
-    for part in sentence_parts:
-        candidate = clean_text(part).rstrip(".!?！？")
-        if candidate:
-            return candidate[:120]
-    return text[:120]
-
-
 def normalize_agent_reach_items(source_name: str, request: dict[str, Any]) -> list[dict[str, Any]]:
     family = source_name.split(":", 1)[1]
     query = clean_text(request.get("query") or request.get("topic"))
-    if not query and family not in {"reddit", "x"}:
+    if not query:
         raise ValueError(f"{source_name} requires query or topic")
     fetch_result = fetch_agent_reach_channels(
         {
@@ -2433,15 +1169,6 @@ def normalize_agent_reach_items(source_name: str, request: dict[str, Any]) -> li
     items = [item for item in safe_list(channel_result.get("items")) if isinstance(item, dict)]
     normalized: list[dict[str, Any]] = []
     for index, item in enumerate(items[: request["limit"]], start=1):
-        if family == "x" and clean_text(item.get("inReplyToStatusId") or item.get("in_reply_to_status_id")):
-            continue
-        author = safe_dict(item.get("author"))
-        x_author_handle = clean_text(
-            item.get("author_handle")
-            or item.get("handle")
-            or item.get("username")
-            or author.get("username")
-        ).lstrip("@")
         title = clean_text(
             item.get("title")
             or item.get("name")
@@ -2470,15 +1197,8 @@ def normalize_agent_reach_items(source_name: str, request: dict[str, Any]) -> li
                 post_id = clean_text(item.get("id") or item.get("post_id"))
                 if subreddit and post_id:
                     url = f"https://www.reddit.com/{subreddit}/comments/{post_id}/"
-        if family == "x":
-            post_id = clean_text(item.get("id") or item.get("tweet_id") or item.get("status_id"))
-            if not url and post_id:
-                if x_author_handle:
-                    url = f"https://x.com/{x_author_handle}/status/{post_id}"
-                else:
-                    url = f"https://x.com/i/web/status/{post_id}"
-            if title:
-                title = clean_x_title(title)
+        if family == "x" and title:
+            title = title[:120]
         if family == "github" and title and clean_text(item.get("description")):
             title = f"{title} - {clean_text(item.get('description'))}"[:160]
         if not title or not url:
@@ -2530,8 +1250,6 @@ def normalize_agent_reach_items(source_name: str, request: dict[str, Any]) -> li
             outbound_domain = domain_from_url(outbound_url)
             if outbound_domain:
                 tags.append(f"outbound_domain:{outbound_domain}")
-        elif family == "x":
-            normalized_source_name = f"X @{x_author_handle}" if x_author_handle else "X"
         elif family == "semantic":
             score_float = clamp_score_float(item.get("similarity_score"), default=0.5)
             heat_score = int(round(score_float * 100))
@@ -2543,7 +1261,7 @@ def normalize_agent_reach_items(source_name: str, request: dict[str, Any]) -> li
                     "url": url,
                     "source_name": normalized_source_name,
                     "source_type": source_type,
-                    "published_at": item.get("published_at") or item.get("updatedAt") or item.get("createdAt") or item.get("created_at") or item.get("created_utc") or item.get("pubDate") or request["analysis_time"].isoformat(),
+                    "published_at": item.get("published_at") or item.get("updatedAt") or item.get("created_at") or item.get("created_utc") or item.get("pubDate") or request["analysis_time"].isoformat(),
                     "heat_score": heat_score,
                     "tags": tags + [f"provider:{source_name}"],
                     "provider": source_name,
@@ -2620,13 +1338,7 @@ def normalize_agent_reach_sources(raw_payload: dict[str, Any]) -> list[str]:
 
 def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     analysis_time = parse_datetime(raw_payload.get("analysis_time"), fallback=now_utc()) or now_utc()
-    discovery_profile = clean_text(raw_payload.get("discovery_profile")).lower() or "default"
-    explicit_sources = clean_string_list(raw_payload.get("sources"))
-    sources = explicit_sources or (
-        list(INTERNATIONAL_PRIMARY_SOURCES + INTERNATIONAL_FALLBACK_SOURCES)
-        if discovery_profile == "international_first"
-        else list(DEFAULT_DISCOVERY_SOURCES)
-    )
+    sources = clean_string_list(raw_payload.get("sources")) or list(DEFAULT_DISCOVERY_SOURCES)
     agent_reach_sources = normalize_agent_reach_sources(raw_payload)
     manual_topic_candidates = [
         item for item in safe_list(raw_payload.get("manual_topic_candidates") or raw_payload.get("topics")) if isinstance(item, dict)
@@ -2639,7 +1351,6 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
             sources.append(source)
     return {
         "analysis_time": analysis_time,
-        "discovery_profile": discovery_profile,
         "sources": sources,
         "limit": max(1, int(raw_payload.get("limit", 10) or 10)),
         "top_n": max(1, int(raw_payload.get("top_n", 5) or 5)),
@@ -2702,37 +1413,22 @@ def relevance_score(candidate: dict[str, Any], audience_keywords: list[str], pre
     finance_hits = len(keyword_hits(combined))
     audience_hits = keyword_hit_count(combined, audience_keywords)
     preference_hits = keyword_hit_count(combined, preferred_topic_keywords)
-    source_bonus = (
-        8
-        if int(candidate.get("source_count", 0) or 0) > 1
-        and any(name in {"36kr", "google-news-world", "google-news-search"} for name in candidate.get("source_names", []))
-        else 0
-    )
+    source_bonus = 15 if any(name in {"36kr", "google-news-world", "google-news-search"} for name in candidate.get("source_names", [])) else 0
     preference_bonus = min(24, preference_hits * 12)
-    disambiguation_bonus = 10 if is_rumor_like_candidate(candidate) and contains_any_keyword(combined, {"claude", "anthropic", "openai"}) else 0
-    return clamp(20 + finance_hits * 15 + audience_hits * 18 + source_bonus + preference_bonus + disambiguation_bonus)
+    return clamp(20 + finance_hits * 15 + audience_hits * 18 + source_bonus + preference_bonus)
 
 
 def timeliness_score(candidate: dict[str, Any], analysis_time: datetime) -> int:
     newest_age = age_minutes(analysis_time, candidate.get("latest_published_at", ""))
     if newest_age <= 15:
-        score = 100
-    elif newest_age <= 60:
-        score = 90
-    elif newest_age <= 360:
-        score = 75
-    elif newest_age <= 1440:
-        score = 60
-    else:
-        score = 35
-    source_count = int(candidate.get("source_count", 0) or 0)
-    if source_count <= 1:
-        score -= 8
-    if is_rumor_like_candidate(candidate):
-        score -= 18 if source_count <= 1 else 10
-    elif is_verification_like_candidate(candidate) and source_count <= 1:
-        score -= 10
-    return clamp(score)
+        return 100
+    if newest_age <= 60:
+        return 90
+    if newest_age <= 360:
+        return 75
+    if newest_age <= 1440:
+        return 60
+    return 35
 
 
 def depth_score(candidate: dict[str, Any]) -> int:
@@ -2807,7 +1503,7 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         source_name = clean_text(item.get("source_name"))
         if source_name and source_name not in source_names:
             source_names.append(source_name)
-        domain = clean_text(item.get("publisher_domain_hint")) or domain_from_url(item.get("url", ""))
+        domain = domain_from_url(item.get("url", ""))
         if domain and domain not in domains:
             domains.append(domain)
         for tag in clean_string_list(item.get("tags")):
@@ -2947,14 +1643,6 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         + depth * weights["depth"]
         + seo * weights["seo"]
     )
-    if request.get("discovery_profile") == "international_first":
-        primary_count = primary_platform_signal_count(candidate)
-        if primary_count:
-            total = clamp(total + min(18, primary_count * 7))
-        else:
-            total = clamp(total - 8)
-            if int(candidate.get("source_count", 0) or 0) <= 1:
-                total = clamp(total - 10)
     preferred_matches = matching_keywords(candidate_match_text(candidate), preferred_topic_keywords)
     reasons = [
         f"新鲜度 {timeliness}",
@@ -3010,12 +1698,6 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         "preferred_keyword_hits": preferred_matches,
         "excluded_keyword_hits": [],
     }
-    candidate["story_family"] = story_family_label(candidate)
-    candidate["recommended_angle"] = recommended_story_angle(candidate)
-    candidate["why_now"] = why_now_summary(candidate)
-    candidate["selection_reason"] = selection_reason_summary(candidate)
-    candidate["risk_flags"] = risk_flags_for_candidate(candidate)
-    candidate["source_mix"] = source_mix_summary(candidate)
     return candidate
 
 
@@ -3060,43 +1742,6 @@ def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> 
     topic_control_match = safe_dict(candidate.get("topic_control_match"))
     topic_control_match["excluded_keyword_hits"] = excluded_matches
     candidate["topic_control_match"] = topic_control_match
-    if is_locality_candidate(candidate) and not is_allowed_locality_candidate(candidate):
-        return False, "filtered local topic outside shanghai/zhejiang"
-    if is_weak_obituary_candidate(candidate):
-        return False, "filtered weak obituary topic"
-    if request.get("discovery_profile") == "international_first":
-        if is_explicitly_offtopic_platform_candidate(candidate):
-            return False, "filtered explicitly off-topic platform post"
-        if is_generic_platform_political_statement_candidate(candidate):
-            return False, "filtered generic platform political statement"
-        if is_reddit_meta_discussion_candidate(candidate):
-            return False, "filtered reddit meta discussion thread"
-        if is_generic_reddit_research_chatter_candidate(candidate):
-            return False, "filtered generic reddit research chatter"
-        if is_low_specificity_reddit_platform_candidate(candidate):
-            return False, "filtered low-specificity reddit platform chatter"
-        if is_self_promotional_platform_candidate(candidate):
-            return False, "filtered self-promotional platform post"
-        if is_exhibition_promo_candidate(candidate):
-            return False, "filtered exhibition promo topic"
-        if is_generic_x_news_candidate(candidate):
-            return False, "filtered generic x civic/social news"
-        if is_generic_x_commentary_candidate(candidate):
-            return False, "filtered generic x commentary thread"
-        if is_generic_x_manifesto_candidate(candidate):
-            return False, "filtered generic x manifesto thread"
-        if is_generic_broad_market_question_candidate(candidate):
-            return False, "filtered generic broad-market question thread"
-        if is_ai_meme_entertainment_candidate(candidate):
-            return False, "filtered ai meme/entertainment thread"
-        if is_enterprise_ai_synthesis_candidate(candidate):
-            return False, "filtered enterprise-ai synthesis thread"
-        if is_generic_feature_interview_candidate(candidate):
-            return False, "filtered generic feature/interview topic"
-        if is_diplomatic_protocol_candidate(candidate):
-            return False, "filtered diplomatic protocol topic"
-        if is_official_commentary_candidate(candidate):
-            return False, "filtered official commentary topic"
     if excluded_matches:
         return False, f"excluded keywords: {', '.join(excluded_matches)}"
     if int(candidate.get("source_count", 0) or 0) < request["min_source_count"]:
@@ -3222,8 +1867,6 @@ def run_hot_topic_discovery(raw_payload: dict[str, Any]) -> dict[str, Any]:
                 "total_score": safe_dict(topic.get("score_breakdown")).get("total_score", 0),
             }
         )
-    if request.get("discovery_profile") == "international_first":
-        kept_topics = enforce_international_primary_source_floor(kept_topics, filtered_out_topics, request["top_n"])
     operator_review_queue = []
     for topic in kept_topics:
         operator_priority = safe_dict(topic.get("operator_review_priority"))
