@@ -159,6 +159,30 @@ Comment metadata to preserve when present:
   operators want pre-ranked manual-review work instead of reconstructing
   severity from raw caution fields
 
+### Native X / Twitter Route
+
+Repository-wide default policy:
+
+- `x-index` is the native X / Twitter indexing route
+- on Windows, prefer `browser_session.strategy=remote_debugging` when a signed
+  browser session is available
+- reuse recent relevant `x-index` results before recollecting the same evidence
+- public-page scraping is fallback, not default
+- `agent-reach` does not replace the native X route
+- higher-level workflows must clearly distinguish:
+  - live native X results
+  - reused `x-index` results
+  - static/manual X-shaped social inputs
+
+Guardrails:
+
+- do not describe static/manual social inputs as if they were native live X
+  evidence
+- do not make public X scraping the implied first step when the native session
+  path is available
+- when a higher-level workflow uses curated handles, URLs, or summaries instead
+  of a live `x-index` run, disclose that source mode explicitly
+
 Downstream publication flow as of 2026-04-04:
 
 - `article_brief_runtime.py` surfaces the Reddit gate into `source_summary`
