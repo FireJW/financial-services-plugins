@@ -720,6 +720,37 @@ def build_bars_fetch_failed_candidate(candidate: dict[str, Any], error: Exceptio
     }
 
 
+def last_bar_date_from_rows(rows: list[dict[str, Any]]) -> str:
+    for row in reversed(rows or []):
+        if not isinstance(row, dict):
+            continue
+        for key in ("date", "trade_date"):
+            value = clean_text(row.get(key))
+            if value:
+                return value[:10]
+    return ""
+
+
+def classify_eastmoney_cache_freshness(
+    rows: list[dict[str, Any]] | None,
+    target_trade_date: str,
+) -> dict[str, str]:
+    normalized_target = clean_text(target_trade_date)[:10]
+    last_bar_date = last_bar_date_from_rows(rows or [])
+    if not normalized_target or not last_bar_date:
+        return {"mode": "missing_cache", "last_bar_date": last_bar_date}
+    if last_bar_date == normalized_target:
+        return {"mode": "fresh_cache", "last_bar_date": last_bar_date}
+    target_dt = parse_date(normalized_target)
+    last_dt = parse_date(last_bar_date)
+    if not target_dt or not last_dt:
+        return {"mode": "missing_cache", "last_bar_date": last_bar_date}
+    gap_days = (target_dt - last_dt).days
+    if gap_days == 1:
+        return {"mode": "stale_one_day", "last_bar_date": last_bar_date}
+    return {"mode": "stale_too_old", "last_bar_date": last_bar_date}
+
+
 def enrich_degraded_live_result(result: dict[str, Any], failure_candidates: list[dict[str, Any]]) -> dict[str, Any]:
     if not failure_candidates:
         return result
@@ -3234,6 +3265,8 @@ for _extra in (
     "write_json",
     "wrap_bars_fetcher_with_benchmark_fallback",
     "build_bars_fetch_failed_candidate",
+    "last_bar_date_from_rows",
+    "classify_eastmoney_cache_freshness",
     "enrich_degraded_live_result",
     "enrich_live_result_reporting",
     "build_diagnostic_scorecard_entry",

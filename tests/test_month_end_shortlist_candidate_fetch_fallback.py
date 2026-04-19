@@ -75,6 +75,33 @@ class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
         self.assertIn("bars_fetch_failed", result["hard_filter_failures"])
         self.assertIn("Eastmoney request failed", result["bars_fetch_error"])
 
+    def test_classify_eastmoney_cache_freshness_marks_same_day_as_fresh(self) -> None:
+        rows = [
+            {"date": "2026-04-17"},
+            {"date": "2026-04-18"},
+        ]
+        outcome = module_under_test.classify_eastmoney_cache_freshness(rows, "2026-04-18")
+        self.assertEqual(outcome["mode"], "fresh_cache")
+        self.assertEqual(outcome["last_bar_date"], "2026-04-18")
+
+    def test_classify_eastmoney_cache_freshness_marks_one_day_gap_as_stale_rescue(self) -> None:
+        rows = [
+            {"date": "2026-04-16"},
+            {"date": "2026-04-17"},
+        ]
+        outcome = module_under_test.classify_eastmoney_cache_freshness(rows, "2026-04-18")
+        self.assertEqual(outcome["mode"], "stale_one_day")
+        self.assertEqual(outcome["last_bar_date"], "2026-04-17")
+
+    def test_classify_eastmoney_cache_freshness_marks_older_gap_as_stale_blocked(self) -> None:
+        rows = [
+            {"date": "2026-04-15"},
+            {"date": "2026-04-16"},
+        ]
+        outcome = module_under_test.classify_eastmoney_cache_freshness(rows, "2026-04-18")
+        self.assertEqual(outcome["mode"], "stale_too_old")
+        self.assertEqual(outcome["last_bar_date"], "2026-04-16")
+
 
 if __name__ == "__main__":
     unittest.main()
