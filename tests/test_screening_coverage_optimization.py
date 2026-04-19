@@ -457,6 +457,53 @@ class TestTrackLevelCoverageIntegration(unittest.TestCase):
 
         self.assertNotIn("601975.SS", [row["ticker"] for row in enriched["tier_output"]["T1"]])
 
+    def test_enrich_track_result_rescues_one_day_stale_cache_into_low_confidence_t3(self):
+        result = {
+            "filter_summary": {
+                "kept_count": 0,
+                "keep_threshold": 58.0,
+                "profile": "month_end_event_support_transition",
+            },
+            "request": {"analysis_time": "2026-04-19T12:00:00+08:00"},
+            "dropped": [],
+            "report_markdown": "# Test\n",
+        }
+        assessed = [
+            {
+                "ticker": "601975.SS",
+                "name": "招商南油",
+                "adjusted_total_score": 0.0,
+                "keep": False,
+                "hard_filter_failures": ["bars_fetch_failed"],
+                "bars_fetch_error": "bars_fetch_failed for `601975.SS`: Eastmoney request failed",
+                "structured_catalyst_snapshot": {
+                    "structured_company_events": [{"date": "2026-04-21", "event_type": "油运景气跟踪"}]
+                },
+                "tier_tags": [],
+                "scores": {"adjusted_total_score": 0.0},
+                "score_components": {"structured_catalyst_score": 0.0},
+            }
+        ]
+        cached_rows = [
+            {"date": "2026-04-17", "close": 5.5, "pct_chg": 0.8, "boll": 5.3, "close_50_sma": 5.1, "rsi": 56.0, "volume_ratio": 1.2},
+            {"date": "2026-04-18", "close": 5.8, "pct_chg": 1.2, "boll": 5.5, "close_50_sma": 5.3, "rsi": 58.0, "volume_ratio": 1.4},
+        ]
+
+        with patch.object(runtime, "eastmoney_cached_bars_for_candidate", return_value=cached_rows), patch.object(
+            runtime, "local_market_snapshot_for_candidate", return_value=None
+        ):
+            enriched = runtime.enrich_track_result(
+                result,
+                [],
+                assessed_candidates=assessed,
+                track_name="main_board",
+                track_config=runtime.TRACK_CONFIGS["main_board"],
+            )
+
+        rescued = next(row for row in enriched["tier_output"]["T3"] if row["ticker"] == "601975.SS")
+        self.assertIn("low_confidence_fallback", rescued["tier_tags"])
+        self.assertIn("fallback_cache_only", rescued["tier_tags"])
+
 
 # ---------------------------------------------------------------------------
 # Class 7: TestGeopoliticsRankingBias

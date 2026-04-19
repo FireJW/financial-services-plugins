@@ -1304,6 +1304,41 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("数据路径降级：local market snapshot only", flow)
         self.assertIn("保留原因：structured_catalyst", flow)
 
+    def test_decision_flow_lightly_marks_fresh_cache_source(self) -> None:
+        card = module_under_test.build_decision_flow_card(
+            {
+                "ticker": "601975.SS",
+                "name": "招商南油",
+                "action": "继续观察",
+                "score": 60.0,
+                "keep_threshold_gap": -10.0,
+                "tier_tags": [],
+                "bars_source": "eastmoney_cache",
+            },
+            keep_threshold=70.0,
+            event_card=None,
+            chain_entry=None,
+        )
+        self.assertIn("数据来源：Eastmoney cache", card["operation_reminder"])
+
+    def test_decision_flow_marks_stale_cache_rescue_as_low_confidence_fallback(self) -> None:
+        card = module_under_test.build_decision_flow_card(
+            {
+                "ticker": "601975.SS",
+                "name": "招商南油",
+                "action": "继续观察",
+                "score": 60.0,
+                "keep_threshold_gap": -10.0,
+                "tier_tags": ["low_confidence_fallback", "fallback_cache_only"],
+                "fallback_support_reason": "structured_catalyst",
+            },
+            keep_threshold=70.0,
+            event_card=None,
+            chain_entry=None,
+        )
+        self.assertEqual(card["action_label"], "继续观察（low-confidence fallback）")
+        self.assertIn("数据路径降级：Eastmoney cache only", card["operation_reminder"])
+
 
 if __name__ == "__main__":
     unittest.main()

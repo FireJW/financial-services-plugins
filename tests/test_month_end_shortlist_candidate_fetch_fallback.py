@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT_DIR = (
@@ -111,6 +112,41 @@ class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
         self.assertEqual(recovered["mode"], "fresh_cache")
         self.assertEqual(recovered["bars_source"], "eastmoney_cache")
         self.assertEqual(recovered["rows"][-1]["date"], "2026-04-18")
+
+    def test_wrap_assess_candidate_recovers_from_same_day_eastmoney_cache(self) -> None:
+        rows = [
+            {"date": "2026-04-17", "close": 5.5},
+            {"date": "2026-04-18", "close": 5.8},
+        ]
+
+        def base_assess(candidate, request, benchmark_rows, *, bars_fetcher, html_fetcher):
+            fetched_rows = bars_fetcher(candidate["ticker"], "2026-04-01", "2026-04-18")
+            return {
+                "ticker": candidate["ticker"],
+                "name": candidate["name"],
+                "keep": True,
+                "hard_filter_failures": [],
+                "scores": {"adjusted_total_score": 75.0},
+                "score_components": {"adjusted_total_score": 75.0},
+                "bars_row_count": len(fetched_rows),
+            }
+
+        wrapped = module_under_test.wrap_assess_candidate_with_bars_failure_fallback(base_assess)
+
+        with patch.object(module_under_test, "eastmoney_cached_bars_for_candidate", return_value=rows):
+            result = wrapped(
+                {"ticker": "601975.SS", "name": "招商南油"},
+                {"analysis_time": "2026-04-18T15:00:00+08:00"},
+                [],
+                bars_fetcher=lambda *args, **kwargs: (_ for _ in ()).throw(
+                    RuntimeError("bars_fetch_failed for `601975.SS`: Eastmoney request failed")
+                ),
+                html_fetcher=lambda *args, **kwargs: "",
+            )
+
+        self.assertTrue(result["keep"])
+        self.assertEqual(result["bars_source"], "eastmoney_cache")
+        self.assertEqual(result["bars_row_count"], 2)
 
 
 if __name__ == "__main__":

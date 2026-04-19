@@ -803,6 +803,47 @@ def build_bars_cache_rescue_candidate(
     return rescued
 
 
+def eastmoney_cached_bars_for_candidate(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+) -> list[dict[str, Any]]:
+    from tradingagents_eastmoney_market import (
+        EASTMONEY_DEFAULT_UT,
+        cache_path,
+        eastmoney_secid,
+        format_date_yyyymmdd,
+        parse_daily_items,
+    )
+
+    normalized_ticker = clean_text(ticker)
+    normalized_start = clean_text(start_date)[:10]
+    normalized_end = clean_text(end_date)[:10]
+    if not normalized_ticker or not normalized_start or not normalized_end:
+        return []
+    query = {
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+        "klt": "101",
+        "fqt": "0",
+        "lmt": "10000",
+        "ut": EASTMONEY_DEFAULT_UT,
+        "secid": eastmoney_secid(normalized_ticker),
+        "beg": format_date_yyyymmdd(normalized_start),
+        "end": format_date_yyyymmdd(normalized_end),
+    }
+    cache_name = f"kline-{json.dumps(query, ensure_ascii=True, sort_keys=True)}.json"
+    path = cache_path(cache_name)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    rows = parse_daily_items(payload)
+    return rows if isinstance(rows, list) else []
+
+
 def enrich_degraded_live_result(result: dict[str, Any], failure_candidates: list[dict[str, Any]]) -> dict[str, Any]:
     if not failure_candidates:
         return result
@@ -1719,6 +1760,8 @@ def build_decision_factor_entry(candidate: dict[str, Any], action: str) -> dict[
         "tier_tags": deepcopy(candidate.get("tier_tags", [])),
         "fallback_support_reason": clean_text(candidate.get("fallback_support_reason")),
         "fallback_snapshot_only": bool(candidate.get("fallback_snapshot_only")),
+        "fallback_cache_only": bool(candidate.get("fallback_cache_only")),
+        "bars_source": clean_text(candidate.get("bars_source")),
     }
 
 
@@ -1774,6 +1817,10 @@ def build_decision_factors_from_result(enriched: dict[str, Any]) -> dict[str, li
                 base["fallback_support_reason"] = clean_text(row.get("fallback_support_reason"))
             if row.get("fallback_snapshot_only"):
                 base["fallback_snapshot_only"] = True
+            if row.get("fallback_cache_only"):
+                base["fallback_cache_only"] = True
+            if clean_text(row.get("bars_source")):
+                base["bars_source"] = clean_text(row.get("bars_source"))
             base["midday_status"] = "near_miss"
             near_miss_source.append(base)
             seen_near_miss.add(ticker)
@@ -1887,6 +1934,7 @@ def build_decision_flow_card(
 ) -> dict[str, Any]:
     card = deepcopy(factor)
     tier_tags = set(card.get("tier_tags", [])) if isinstance(card.get("tier_tags"), list) else set()
+    bars_source = clean_text(card.get("bars_source"))
     event_context = event_card if isinstance(event_card, dict) else {}
     chain_context = chain_entry if isinstance(chain_entry, dict) else {}
     action = clean_text(card.get("action"))
@@ -1927,10 +1975,15 @@ def build_decision_flow_card(
         clean_text(event_context.get("trading_profile_usage")) or clean_text(card.get("trade_layer_summary")) or "先等更多确认。",
     ]
     if is_fallback:
-        operation_parts.append("数据路径降级：local market snapshot only")
+        if "fallback_cache_only" in tier_tags or card.get("fallback_cache_only"):
+            operation_parts.append("数据路径降级：Eastmoney cache only")
+        else:
+            operation_parts.append("数据路径降级：local market snapshot only")
         fallback_reason = clean_text(card.get("fallback_support_reason"))
         if fallback_reason:
             operation_parts.append(f"保留原因：{fallback_reason}")
+    elif bars_source == "eastmoney_cache":
+        operation_parts.append("数据来源：Eastmoney cache")
     geopolitics_constraint = build_geopolitics_execution_constraint(action, geopolitics_overlay)
     if geopolitics_constraint:
         operation_parts.append(geopolitics_constraint)
@@ -2412,8 +2465,17 @@ def enrich_live_result_reporting(
             failures = set(item.get("hard_filter_failures", []))
             if "bars_fetch_failed" not in failures:
                 continue
-            snapshot = local_market_snapshot_for_candidate(clean_text(item.get("ticker")), analysis_date)
-            rescued = build_bars_fallback_rescue_candidate(item, snapshot)
+            target_dt = parse_date(analysis_date[:10]) if clean_text(analysis_date) else None
+            start_date = (target_dt - timedelta(days=420)).isoformat() if target_dt else ""
+            cached_rows = eastmoney_cached_bars_for_candidate(
+                clean_text(item.get("ticker")),
+                start_date,
+                clean_text(analysis_date)[:10],
+            )
+            rescued = build_bars_cache_rescue_candidate(item, cached_rows, clean_text(analysis_date)[:10])
+            if not rescued:
+                snapshot = local_market_snapshot_for_candidate(clean_text(item.get("ticker")), analysis_date)
+                rescued = build_bars_fallback_rescue_candidate(item, snapshot)
             if not rescued:
                 continue
             ticker = clean_text(rescued.get("ticker"))
@@ -2506,6 +2568,8 @@ def enrich_live_result_reporting(
                     "tier_tags": c.get("tier_tags", []),
                     "fallback_support_reason": clean_text(c.get("fallback_support_reason")),
                     "fallback_snapshot_only": bool(c.get("fallback_snapshot_only")),
+                    "fallback_cache_only": bool(c.get("fallback_cache_only")),
+                    "bars_source": clean_text(c.get("bars_source")),
                 }
                 for c in candidates
             ]
@@ -2768,8 +2832,17 @@ def enrich_track_result(
             failures = set(item.get("hard_filter_failures", []))
             if "bars_fetch_failed" not in failures:
                 continue
-            snapshot = local_market_snapshot_for_candidate(clean_text(item.get("ticker")), analysis_date)
-            rescued = build_bars_fallback_rescue_candidate(item, snapshot)
+            target_dt = parse_date(analysis_date[:10]) if clean_text(analysis_date) else None
+            start_date = (target_dt - timedelta(days=420)).isoformat() if target_dt else ""
+            cached_rows = eastmoney_cached_bars_for_candidate(
+                clean_text(item.get("ticker")),
+                start_date,
+                clean_text(analysis_date)[:10],
+            )
+            rescued = build_bars_cache_rescue_candidate(item, cached_rows, clean_text(analysis_date)[:10])
+            if not rescued:
+                snapshot = local_market_snapshot_for_candidate(clean_text(item.get("ticker")), analysis_date)
+                rescued = build_bars_fallback_rescue_candidate(item, snapshot)
             if not rescued:
                 continue
             ticker = clean_text(rescued.get("ticker"))
@@ -2849,6 +2922,8 @@ def enrich_track_result(
                     "track_name": track_name,
                     "fallback_support_reason": clean_text(c.get("fallback_support_reason")),
                     "fallback_snapshot_only": bool(c.get("fallback_snapshot_only")),
+                    "fallback_cache_only": bool(c.get("fallback_cache_only")),
+                    "bars_source": clean_text(c.get("bars_source")),
                 }
                 for c in candidates
             ]
@@ -3178,6 +3253,36 @@ def wrap_assess_candidate_with_bars_failure_fallback(
             return assessed
         except Exception as exc:
             if "bars_fetch_failed" in str(exc):
+                target_date = clean_text(request.get("analysis_time") or request.get("target_date"))[:10]
+                target_dt = parse_date(target_date)
+                if target_dt:
+                    start_date = (target_dt - timedelta(days=420)).isoformat()
+                    cached_rows = eastmoney_cached_bars_for_candidate(
+                        clean_text(candidate.get("ticker")),
+                        start_date,
+                        target_date,
+                    )
+                    recovery = choose_eastmoney_cache_recovery_mode(cached_rows, target_date)
+                    if recovery.get("mode") == "fresh_cache":
+                        def cached_bars_fetcher(ticker: str, inner_start: str, inner_end: str):
+                            if clean_text(ticker) == clean_text(candidate.get("ticker")):
+                                return list(recovery.get("rows") or [])
+                            return bars_fetcher(ticker, inner_start, inner_end)
+
+                        try:
+                            assessed = base_assess_candidate(
+                                candidate,
+                                request,
+                                benchmark_rows,
+                                bars_fetcher=cached_bars_fetcher,
+                                html_fetcher=html_fetcher,
+                            )
+                            assessed["bars_source"] = "eastmoney_cache"
+                            if assessed_log is not None:
+                                assessed_log.append(deepcopy(assessed))
+                            return assessed
+                        except Exception:
+                            pass
                 failed = build_bars_fetch_failed_candidate(candidate, exc)
                 if failure_log is not None:
                     failure_log.append(deepcopy(failed))
@@ -3321,6 +3426,7 @@ for _extra in (
     "classify_eastmoney_cache_freshness",
     "choose_eastmoney_cache_recovery_mode",
     "build_bars_cache_rescue_candidate",
+    "eastmoney_cached_bars_for_candidate",
     "enrich_degraded_live_result",
     "enrich_live_result_reporting",
     "build_diagnostic_scorecard_entry",
