@@ -5,6 +5,7 @@ import shutil
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -85,6 +86,23 @@ class ToutiaoArticleDraftboxTests(unittest.TestCase):
         self.assertEqual(seen["manifest"]["title"], "美国中期选举风险开始传到市场")
         self.assertIn("核心矛盾", seen["manifest"]["content_markdown"])
         self.assertEqual(seen["manifest"]["cover_plan"]["selected_cover_asset_id"], "IMG-01")
+
+    def test_toutiao_article_adapter_uses_default_browser_session_runner(self) -> None:
+        with patch(
+            "toutiao_article_draftbox_runtime.run_toutiao_article_browser_session",
+            return_value={"status": "ok", "article_url": "https://mp.toutiao.com/profile_v4/graphic/publish?draft_id=123"},
+        ) as runner_mock:
+            result = push_publish_package_to_toutiao(
+                {
+                    "publish_package": self.sample_publish_package(),
+                    "browser_session": {"strategy": "remote_debugging", "cdp_endpoint": "http://127.0.0.1:9222"},
+                    "human_review_approved": True,
+                }
+            )
+
+        runner_mock.assert_called_once()
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["push_backend"], "browser_session")
 
 
 if __name__ == "__main__":

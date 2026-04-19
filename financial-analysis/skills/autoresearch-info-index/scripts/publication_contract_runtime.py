@@ -48,10 +48,14 @@ def load_publication_contract(payload: Any) -> dict[str, Any]:
 def validate_publication_contract(payload: Any) -> dict[str, Any]:
     contract = load_publication_contract(payload)
     missing_fields = [field for field in REQUIRED_PUBLICATION_FIELDS if field not in contract]
+    contract_version = clean_text(contract.get("contract_version"))
+    version_ok = contract_version == SHARED_PUBLICATION_CONTRACT_VERSION
     return {
-        "status": "ok" if not missing_fields else "error",
+        "status": "ok" if not missing_fields and version_ok else "error",
         "missing_fields": missing_fields,
-        "contract_version": clean_text(contract.get("contract_version")),
+        "contract_version": contract_version,
+        "expected_contract_version": SHARED_PUBLICATION_CONTRACT_VERSION,
+        "actual_contract_version": contract_version,
     }
 
 

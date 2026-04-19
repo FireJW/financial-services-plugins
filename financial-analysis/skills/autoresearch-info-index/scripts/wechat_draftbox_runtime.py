@@ -281,16 +281,33 @@ def build_review_gate(request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_article_payload_from_contract(publish_package: dict[str, Any]) -> dict[str, Any]:
+    template = safe_dict((safe_list(safe_dict(publish_package.get("draftbox_payload_template")).get("articles")) or [{}])[0])
+    digest = clean_text(template.get("digest"))
+    if not digest:
+        digest = clean_text(publish_package.get("digest"))
+    if not digest:
+        digest = clean_text(publish_package.get("content_markdown")).replace("#", "").replace(">", "")[:120]
+    return {
+        "title": clean_text(template.get("title")) or clean_text(publish_package.get("title")),
+        "author": clean_text(template.get("author")) or clean_text(publish_package.get("author")),
+        "digest": digest,
+        "content": clean_text(template.get("content")) or clean_text(publish_package.get("content_html")),
+        "content_source_url": clean_text(template.get("content_source_url")),
+        "thumb_media_id": clean_text(template.get("thumb_media_id")) or "{{WECHAT_THUMB_MEDIA_ID}}",
+        "need_open_comment": int(template.get("need_open_comment", 0) or 0),
+        "only_fans_can_comment": int(template.get("only_fans_can_comment", 0) or 0),
+        "show_cover_pic": int(template.get("show_cover_pic", 1) or 1),
+    }
+
+
 def build_browser_manifest(publish_package: dict[str, Any], request: dict[str, Any], workdir: Path) -> tuple[Path, dict[str, Any]]:
     browser_dir = workdir / ".tmp" / "wechat-browser-session-push"
     browser_dir.mkdir(parents=True, exist_ok=True)
     cover_path = clean_text(request.get("cover_image_path")) or clean_text(safe_dict(publish_package.get("cover_plan")).get("selected_cover_local_path"))
     if not cover_path:
         cover_path = clean_text((safe_list(publish_package.get("image_assets")) or [{}])[0].get("local_path"))
-    manifest = {
-        "article": safe_dict(safe_dict(publish_package.get("draftbox_payload_template")).get("articles")) if False else {},
-    }
-    article = safe_dict((safe_list(safe_dict(publish_package.get("draftbox_payload_template")).get("articles")) or [{}])[0])
+    article = build_article_payload_from_contract(publish_package)
     manifest = {
         "article": {
             "title": clean_text(article.get("title")),
@@ -372,7 +389,7 @@ def push_publish_package_to_wechat(
 
     push_backend = clean_text(request.get("push_backend")) or "api"
     timeout_seconds = int(request.get("timeout_seconds", 30) or 30)
-    article_payload = deepcopy(safe_dict((safe_list(safe_dict(publish_package.get("draftbox_payload_template")).get("articles")) or [{}])[0]))
+    article_payload = deepcopy(build_article_payload_from_contract(publish_package))
     image_assets = [safe_dict(item) for item in safe_list(publish_package.get("image_assets")) if isinstance(item, dict)]
 
     def run_browser_session() -> dict[str, Any]:

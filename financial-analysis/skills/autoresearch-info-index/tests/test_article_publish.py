@@ -2033,6 +2033,39 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("publish_package", result)
 
+    def test_article_publish_channel_push_does_not_duplicate_legacy_wechat_push(self) -> None:
+        fake_wechat_push_result = {
+            "status": "ok",
+            "push_backend": "api",
+            "review_gate": {"status": "approved"},
+            "workflow_publication_gate": {"publication_readiness": "ready", "manual_review": {}},
+            "draft_result": {"media_id": "draft-123"},
+            "push_readiness": {"status": "ready_for_api_push"},
+        }
+
+        with patch("article_publish_runtime.push_publish_package_to_wechat", return_value=fake_wechat_push_result) as push_mock:
+            result = run_article_publish(
+                {
+                    "analysis_time": "2026-03-29T10:30:00+00:00",
+                    "manual_topic_candidates": self.manual_topic_candidates(),
+                    "audience_keywords": ["AI", "business", "investing", "industry"],
+                    "output_dir": str(self.temp_dir / "publish-channel-wechat-no-dup"),
+                    "publish_channel": "wechat",
+                    "push_to_channel": True,
+                    "push_to_wechat": True,
+                    "human_review_approved": True,
+                    "human_review_approved_by": "Editor",
+                    "wechat_app_id": "wx-test",
+                    "wechat_app_secret": "secret-test",
+                    "allow_insecure_inline_credentials": True,
+                    "cover_image_path": str(self.temp_dir / "cover-channel-wechat.png"),
+                }
+            )
+
+        push_mock.assert_called_once()
+        self.assertEqual(result["channel_push_stage"]["status"], "ok")
+        self.assertEqual(result["push_stage"]["status"], "not_requested")
+
     def test_article_publish_surfaces_workflow_publication_gate_on_result_and_acceptance(self) -> None:
         workflow_result = self.build_publish_workflow_result(
             selected_images=[],

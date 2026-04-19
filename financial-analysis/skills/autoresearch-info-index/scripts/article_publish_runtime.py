@@ -1524,7 +1524,8 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
     status = "ok"
-    if request["push_to_wechat"]:
+    legacy_push_to_wechat = request["push_to_wechat"] and not request["push_to_channel"]
+    if legacy_push_to_wechat:
         if not review_gate["approved"]:
             status = "blocked_review_gate"
             push_stage["status"] = "blocked_review_gate"
@@ -1585,7 +1586,8 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "result_path": str(request["output_dir"] / f"{request['publish_channel']}-shared-push-result.json"),
     }
 
-    if request["push_to_toutiao"]:
+    legacy_push_to_toutiao = request["push_to_toutiao"] and not request["push_to_channel"]
+    if legacy_push_to_toutiao:
         toutiao_fast_card_package = build_toutiao_fast_card_package(
             workflow_result, selected_topic, request,
         )

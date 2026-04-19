@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,28 @@ def build_toutiao_article_browser_manifest(publish_package: dict[str, Any], work
     return result_path, {"manifest_path": manifest_path, "result_path": result_path, "manifest": manifest}
 
 
+def run_toutiao_article_browser_session(manifest_path: Path, session_context: dict[str, Any], timeout_seconds: int) -> dict[str, Any]:
+    script_path = Path(__file__).resolve().with_name("toutiao_article_browser_session_push.js")
+    command = [
+        "node",
+        str(script_path),
+        "--manifest",
+        str(manifest_path),
+        "--endpoint",
+        clean_text(session_context.get("cdp_endpoint")) or "http://127.0.0.1:9222",
+        "--wait-ms",
+        str(int(session_context.get("wait_ms", timeout_seconds * 1000) or timeout_seconds * 1000)),
+    ]
+    completed = subprocess.run(command, capture_output=True, text=True, check=False, timeout=max(timeout_seconds, 30))
+    raw_output = clean_text(completed.stdout) or clean_text(completed.stderr)
+    if completed.returncode != 0:
+        raise ValueError(raw_output or "Toutiao browser-session push failed")
+    try:
+        return json.loads(completed.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError(raw_output or f"Invalid Toutiao browser-session response: {exc}") from exc
+
+
 def push_publish_package_to_toutiao(
     raw_request: dict[str, Any],
     *,
@@ -96,7 +119,7 @@ def push_publish_package_to_toutiao(
     if push_backend in {"browser_session", "auto"}:
         session_context = prepare_toutiao_browser_session_context(request)
         result_path, browser_meta = build_toutiao_article_browser_manifest(publish_package, Path.cwd())
-        runner = browser_runner or (lambda manifest_path, session_context, timeout_seconds: {"status": "ok", "article_url": ""})
+        runner = browser_runner or run_toutiao_article_browser_session
         runner_result = runner(browser_meta["manifest_path"], session_context, timeout_seconds)
         result_path.write_text(json.dumps(runner_result, indent=2, ensure_ascii=False), encoding="utf-8")
         return {
@@ -119,4 +142,4 @@ def push_publish_package_to_toutiao(
     }
 
 
-__all__ = ["push_publish_package_to_toutiao", "prepare_toutiao_browser_session_context"]
+__all__ = ["push_publish_package_to_toutiao", "prepare_toutiao_browser_session_context", "run_toutiao_article_browser_session"]

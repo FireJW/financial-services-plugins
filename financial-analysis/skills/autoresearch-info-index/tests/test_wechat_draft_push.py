@@ -98,6 +98,39 @@ class WechatDraftPushTests(unittest.TestCase):
                 }
             )
 
+    def test_push_publish_package_can_build_wechat_payload_without_draftbox_template(self) -> None:
+        package = self.build_publish_package()
+        package.pop("draftbox_payload_template")
+        seen = {"draft_payload": None}
+
+        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
+            if "cgi-bin/token" in url:
+                return json.dumps({"access_token": "token-123", "expires_in": 7200}).encode("utf-8")
+            if "media/uploadimg" in url:
+                return json.dumps({"url": "https://mmbiz.qpic.cn/inline/1.png"}).encode("utf-8")
+            if "material/add_material" in url:
+                return json.dumps({"media_id": "cover-123", "url": "https://mmbiz.qpic.cn/cover.png"}).encode("utf-8")
+            if "draft/add" in url:
+                seen["draft_payload"] = json.loads((data or b"{}").decode("utf-8"))
+                return json.dumps({"media_id": "draft-456"}).encode("utf-8")
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        result = push_publish_package_to_wechat(
+            {
+                "publish_package": package,
+                "wechat_app_id": "wx-test",
+                "wechat_app_secret": "secret-test",
+                "allow_insecure_inline_credentials": True,
+                "human_review_approved": True,
+            },
+            request_fn=fake_request,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(seen["draft_payload"]["articles"][0]["title"], "Agent hiring reset")
+        self.assertEqual(seen["draft_payload"]["articles"][0]["author"], "Codex")
+        self.assertIn("Agent hiring reset", seen["draft_payload"]["articles"][0]["content"])
+
     def manual_topic_candidates(self) -> list[dict]:
         return [
             {
