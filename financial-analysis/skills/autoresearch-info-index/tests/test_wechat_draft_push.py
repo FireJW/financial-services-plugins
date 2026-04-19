@@ -34,10 +34,20 @@ class WechatDraftPushTests(unittest.TestCase):
         preview_src = self.image_path.resolve().as_uri()
         html = f'<article><h1>Agent hiring reset</h1><img src="{preview_src}" alt="hero" /></article>'
         return {
-            "contract_version": "wechat-draft-package/v1",
+            "contract_version": "publish-package/v1",
             "title": "Agent hiring reset",
+            "subtitle": "A short subtitle",
+            "lede": "This is the opening paragraph.",
+            "sections": [{"heading": "What changed", "paragraph": "The market is repricing the story."}],
+            "draft_thesis": "The rebound is real enough to matter.",
             "author": "Codex",
+            "content_markdown": "# Agent hiring reset\n\nThe market is repricing the story.",
             "content_html": html,
+            "selected_images": [],
+            "platform_hints": {"preferred_image_slots": ["after_lede"], "section_emphasis": ["What changed"], "heading_density": "normal"},
+            "style_profile_applied": {},
+            "operator_notes": [],
+            "citations": [],
             "image_assets": [
                 {
                     "asset_id": "hero-01",
@@ -72,6 +82,54 @@ class WechatDraftPushTests(unittest.TestCase):
                 ]
             },
         }
+
+    def test_push_publish_package_validates_shared_publication_contract(self) -> None:
+        broken_package = self.build_publish_package()
+        broken_package.pop("title")
+
+        with self.assertRaises(ValueError):
+            push_publish_package_to_wechat(
+                {
+                    "publish_package": broken_package,
+                    "wechat_app_id": "wx-test",
+                    "wechat_app_secret": "secret-test",
+                    "allow_insecure_inline_credentials": True,
+                    "human_review_approved": True,
+                }
+            )
+
+    def test_push_publish_package_can_build_wechat_payload_without_draftbox_template(self) -> None:
+        package = self.build_publish_package()
+        package.pop("draftbox_payload_template")
+        seen = {"draft_payload": None}
+
+        def fake_request(method: str, url: str, data: bytes | None, headers: dict[str, str], timeout_seconds: int) -> bytes:
+            if "cgi-bin/token" in url:
+                return json.dumps({"access_token": "token-123", "expires_in": 7200}).encode("utf-8")
+            if "media/uploadimg" in url:
+                return json.dumps({"url": "https://mmbiz.qpic.cn/inline/1.png"}).encode("utf-8")
+            if "material/add_material" in url:
+                return json.dumps({"media_id": "cover-123", "url": "https://mmbiz.qpic.cn/cover.png"}).encode("utf-8")
+            if "draft/add" in url:
+                seen["draft_payload"] = json.loads((data or b"{}").decode("utf-8"))
+                return json.dumps({"media_id": "draft-456"}).encode("utf-8")
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        result = push_publish_package_to_wechat(
+            {
+                "publish_package": package,
+                "wechat_app_id": "wx-test",
+                "wechat_app_secret": "secret-test",
+                "allow_insecure_inline_credentials": True,
+                "human_review_approved": True,
+            },
+            request_fn=fake_request,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(seen["draft_payload"]["articles"][0]["title"], "Agent hiring reset")
+        self.assertEqual(seen["draft_payload"]["articles"][0]["author"], "Codex")
+        self.assertIn("Agent hiring reset", seen["draft_payload"]["articles"][0]["content"])
 
     def manual_topic_candidates(self) -> list[dict]:
         return [
@@ -579,6 +637,47 @@ class WechatDraftPushTests(unittest.TestCase):
         self.assertEqual(result["push_stage"]["error_message"], "push failed")
         self.assertTrue(Path(result["publish_package_path"]).exists())
         self.assertTrue(Path(result["wechat_html_path"]).exists())
+
+    def test_article_publish_builds_toutiao_fast_card_when_requested(self) -> None:
+        fake_wechat_push_result = {
+            "status": "ok",
+            "review_gate": {"status": "approved"},
+            "workflow_publication_gate": {"publication_readiness": "ready", "manual_review": {}},
+            "draft_result": {"media_id": "draft-123"},
+            "uploaded_cover": {"media_id": "cover-123"},
+            "uploaded_inline_images": [],
+        }
+        fake_toutiao_push_result = {
+            "status": "ok",
+            "push_backend": "browser_session",
+            "review_gate": {"status": "approved"},
+            "browser_session": {"manifest_path": "", "result_path": ""},
+            "article_url": "",
+        }
+        with patch("article_publish_runtime.push_publish_package_to_wechat", return_value=fake_wechat_push_result):
+            with patch("article_publish_runtime.push_fast_card_to_toutiao", return_value=fake_toutiao_push_result):
+                result = run_article_publish(
+                    {
+                        "analysis_time": "2026-04-18T10:00:00+00:00",
+                        "manual_topic_candidates": self.manual_topic_candidates(),
+                        "audience_keywords": ["AI", "business"],
+                        "output_dir": str(self.temp_dir / "publish-toutiao"),
+                        "push_to_wechat": True,
+                        "push_to_toutiao": True,
+                        "human_review_approved": True,
+                        "human_review_approved_by": "Editor",
+                        "wechat_app_id": "wx-test",
+                        "wechat_app_secret": "secret-test",
+                        "allow_insecure_inline_credentials": True,
+                        "cover_image_path": str(self.image_path),
+                    }
+                )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["toutiao_stage"]["status"], "ok")
+        self.assertTrue(result["toutiao_stage"]["attempted"])
+        self.assertIsNotNone(result["toutiao_fast_card_package"])
+        self.assertEqual(result["toutiao_fast_card_package"]["contract_version"], "toutiao-fast-card-package/v1")
+        self.assertIn("## Toutiao Fast Card Push", result["report_markdown"])
 
 
 if __name__ == "__main__":

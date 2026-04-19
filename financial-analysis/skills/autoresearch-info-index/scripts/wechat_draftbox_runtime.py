@@ -17,6 +17,7 @@ from typing import Any, Callable
 
 from article_workflow_runtime import load_json
 from news_index_runtime import safe_dict, safe_list
+from publication_contract_runtime import load_publication_contract, validate_publication_contract
 from workflow_publication_gate_runtime import build_workflow_publication_gate
 
 
@@ -640,6 +641,44 @@ def build_articles_payload(template: dict[str, Any], content_html: str, thumb_me
     return {"articles": articles}
 
 
+def build_article_payload_from_contract(publish_package: dict[str, Any]) -> dict[str, Any]:
+    template_article = safe_dict((safe_list(safe_dict(publish_package.get("draftbox_payload_template")).get("articles")) or [{}])[0])
+    digest = clean_text(template_article.get("digest"))
+    if not digest:
+        digest = clean_text(publish_package.get("digest"))
+    if not digest:
+        digest = clean_text(publish_package.get("content_markdown")).replace("#", "").replace(">", "")[:120]
+    return {
+        "title": clean_text(template_article.get("title")) or clean_text(publish_package.get("title")),
+        "author": clean_text(template_article.get("author")) or clean_text(publish_package.get("author")),
+        "digest": digest,
+        "content": clean_text(template_article.get("content")) or clean_text(publish_package.get("content_html")),
+        "content_source_url": clean_text(template_article.get("content_source_url")),
+        "thumb_media_id": clean_text(template_article.get("thumb_media_id")) or "{{WECHAT_THUMB_MEDIA_ID}}",
+        "need_open_comment": int(template_article.get("need_open_comment", 0) or 0),
+        "only_fans_can_comment": int(template_article.get("only_fans_can_comment", 0) or 0),
+        "show_cover_pic": int(template_article.get("show_cover_pic", 1) or 1),
+    }
+
+
+def build_articles_payload_with_fallback(
+    publish_package: dict[str, Any],
+    template: dict[str, Any],
+    content_html: str,
+    thumb_media_id: str,
+    author: str,
+    show_cover_pic: int,
+) -> dict[str, Any]:
+    if safe_list(template.get("articles")):
+        return build_articles_payload(template, content_html, thumb_media_id, author, show_cover_pic)
+    fallback = build_article_payload_from_contract(publish_package)
+    fallback["content"] = content_html
+    fallback["thumb_media_id"] = thumb_media_id
+    fallback["author"] = clean_text(fallback.get("author")) or author
+    fallback["show_cover_pic"] = int(fallback.get("show_cover_pic", show_cover_pic) or show_cover_pic)
+    return {"articles": [fallback]}
+
+
 def create_draft(access_token: str, articles_payload: dict[str, Any], timeout_seconds: int, request_fn: RequestFn) -> dict[str, Any]:
     url = f"https://api.weixin.qq.com/cgi-bin/draft/add?access_token={urllib.parse.quote(access_token)}"
     body = json.dumps(articles_payload, ensure_ascii=False).encode("utf-8")
@@ -654,12 +693,12 @@ def create_draft(access_token: str, articles_payload: dict[str, Any], timeout_se
 
 
 def resolve_publish_package(payload: dict[str, Any]) -> dict[str, Any]:
-    publish_package = safe_dict(payload.get("publish_package"))
-    publish_package_path = clean_text(payload.get("publish_package_path"))
-    if not publish_package and publish_package_path:
-        publish_package = safe_dict(load_json(Path(publish_package_path).resolve()))
+    publish_package = load_publication_contract(payload)
     if not publish_package:
         raise ValueError("wechat draft push requires publish_package or publish_package_path")
+    validation = validate_publication_contract(publish_package)
+    if validation["status"] != "ok":
+        raise ValueError(f"Invalid publish_package: missing {validation['missing_fields']}")
     return publish_package
 
 
@@ -752,7 +791,8 @@ def push_publish_package_to_wechat_api(
     )
     cover_upload = upload_cover_material(access_token, cover_bytes, cover_filename, timeout_seconds, request_fn)
 
-    articles_payload = build_articles_payload(
+    articles_payload = build_articles_payload_with_fallback(
+        publish_package,
         safe_dict(publish_package.get("draftbox_payload_template")),
         resolved_content_html,
         cover_upload["media_id"],
@@ -876,7 +916,8 @@ def push_publish_package_via_browser_session(
     cover_file_path = output_dir / sanitize_filename(cover_filename, "cover-image")
     cover_file_path.write_bytes(cover_bytes)
 
-    articles_payload = build_articles_payload(
+    articles_payload = build_articles_payload_with_fallback(
+        publish_package,
         safe_dict(publish_package.get("draftbox_payload_template")),
         browser_content_html,
         clean_text(raw_payload.get("browser_thumb_media_id")) or "{{BROWSER_SESSION_THUMB_MEDIA_ID}}",

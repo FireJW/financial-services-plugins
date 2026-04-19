@@ -246,6 +246,91 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertIn("## 接下来盯什么", package["content_markdown"])
         self.assertIn("第一，", package["content_markdown"])
 
+    def test_build_publish_package_emits_shared_contract_fields(self) -> None:
+        package = build_publish_package(
+            self.build_publish_workflow_result(selected_images=[], draft_image_candidates=[]),
+            {"title": "AI agent hiring rebound becomes a business story", "keywords": ["AI", "hiring"]},
+            self.build_publish_request(),
+        )
+
+        self.assertEqual(package["contract_version"], "publish-package/v1")
+        self.assertIn("content_markdown", package)
+        self.assertIn("content_html", package)
+        self.assertIn("platform_hints", package)
+        self.assertIn("operator_notes", package)
+        self.assertIn("sections", package)
+        self.assertIn("cover_plan", package)
+        self.assertIn("lede", package)
+        self.assertIn("selected_images", package)
+        self.assertIn("draft_thesis", package)
+        self.assertIn("citations", package)
+        self.assertIsInstance(package["platform_hints"], dict)
+        self.assertIsInstance(package["operator_notes"], list)
+
+    def test_article_publish_routes_shared_package_to_requested_channel(self) -> None:
+        fake_toutiao_push_result = {
+            "status": "ok",
+            "push_backend": "browser_session",
+            "review_gate": {"status": "approved"},
+            "browser_session": {"manifest_path": "", "result_path": ""},
+            "article_url": "",
+            "title": "AI agent hiring rebound becomes a business story",
+        }
+
+        with patch("article_publish_runtime.push_publish_package_to_toutiao", return_value=fake_toutiao_push_result) as push_mock:
+            result = run_article_publish(
+                {
+                    "analysis_time": "2026-03-29T10:30:00+00:00",
+                    "manual_topic_candidates": self.manual_topic_candidates(),
+                    "audience_keywords": ["AI", "business", "investing", "industry"],
+                    "output_dir": str(self.temp_dir / "publish-channel-toutiao"),
+                    "publish_channel": "toutiao",
+                    "push_to_channel": True,
+                    "human_review_approved": True,
+                    "human_review_approved_by": "Editor",
+                    "cover_image_path": str(self.temp_dir / "cover-channel.png"),
+                }
+            )
+
+        push_mock.assert_called_once()
+        self.assertEqual(result["channel_push_stage"]["channel"], "toutiao")
+        self.assertEqual(result["channel_push_stage"]["status"], "ok")
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("publish_package", result)
+
+    def test_article_publish_channel_push_does_not_duplicate_legacy_wechat_push(self) -> None:
+        fake_wechat_push_result = {
+            "status": "ok",
+            "push_backend": "api",
+            "review_gate": {"status": "approved"},
+            "workflow_publication_gate": {"publication_readiness": "ready", "manual_review": {}},
+            "draft_result": {"media_id": "draft-123"},
+            "push_readiness": {"status": "ready_for_api_push"},
+        }
+
+        with patch("article_publish_runtime.push_publish_package_to_wechat", return_value=fake_wechat_push_result) as push_mock:
+            result = run_article_publish(
+                {
+                    "analysis_time": "2026-03-29T10:30:00+00:00",
+                    "manual_topic_candidates": self.manual_topic_candidates(),
+                    "audience_keywords": ["AI", "business", "investing", "industry"],
+                    "output_dir": str(self.temp_dir / "publish-channel-wechat-no-dup"),
+                    "publish_channel": "wechat",
+                    "push_to_channel": True,
+                    "push_to_wechat": True,
+                    "human_review_approved": True,
+                    "human_review_approved_by": "Editor",
+                    "wechat_app_id": "wx-test",
+                    "wechat_app_secret": "secret-test",
+                    "allow_insecure_inline_credentials": True,
+                    "cover_image_path": str(self.temp_dir / "cover-channel-wechat.png"),
+                }
+            )
+
+        push_mock.assert_called_once()
+        self.assertEqual(result["channel_push_stage"]["status"], "ok")
+        self.assertEqual(result["push_stage"]["status"], "not_requested")
+
     def test_article_publish_surfaces_workflow_publication_gate_on_result_and_acceptance(self) -> None:
         workflow_result = self.build_publish_workflow_result(
             selected_images=[],

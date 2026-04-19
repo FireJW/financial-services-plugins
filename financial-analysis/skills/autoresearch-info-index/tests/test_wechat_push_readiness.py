@@ -33,8 +33,18 @@ class WechatPushReadinessTests(unittest.TestCase):
         preview_src = Path(asset_local_path).resolve().as_uri() if asset_local_path and Path(asset_local_path).exists() else asset_source_url
         html = "<article><h1>Agent hiring reset</h1><p>Preview body</p></article>"
         return {
-            "contract_version": "wechat-draft-package/v1",
+            "contract_version": "publish-package/v1",
             "title": "Agent hiring reset",
+            "subtitle": "A short subtitle",
+            "lede": "This is the opening paragraph.",
+            "sections": [{"heading": "What changed", "paragraph": "The market is repricing the story."}],
+            "content_markdown": "# Agent hiring reset\n\nThe market is repricing the story.",
+            "selected_images": [],
+            "platform_hints": {"preferred_image_slots": [], "section_emphasis": ["What changed"], "heading_density": "normal"},
+            "style_profile_applied": {},
+            "operator_notes": [],
+            "draft_thesis": "The rebound is real enough to matter.",
+            "citations": [],
             "author": "Codex",
             "digest": "A short digest",
             "content_html": html,

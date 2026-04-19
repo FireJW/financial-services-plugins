@@ -73,6 +73,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--need-open-comment", action="store_true", help="Enable comments on the pushed draft")
     parser.add_argument("--only-fans-can-comment", action="store_true", help="Restrict comments to followers")
     parser.add_argument("--push-to-wechat", action="store_true", help="Upload images and create a real WeChat draft if credentials are available")
+    parser.add_argument("--push-to-channel", action="store_true", help="Push the shared publish_package to the adapter selected by --publish-channel")
+    parser.add_argument("--publish-channel", choices=["wechat", "toutiao"], help="Choose which platform adapter should consume the shared publish_package")
     parser.add_argument("--human-review-approved", action="store_true", help="Mark the article as human-reviewed so a real WeChat push is allowed")
     parser.add_argument("--human-review-approved-by", help="Optional reviewer name recorded for the push gate")
     parser.add_argument("--human-review-note", help="Optional review note recorded for the push gate")
@@ -160,6 +162,10 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["only_fans_can_comment"] = True
     if args.push_to_wechat:
         payload["push_to_wechat"] = True
+    if args.push_to_channel:
+        payload["push_to_channel"] = True
+    if args.publish_channel:
+        payload["publish_channel"] = args.publish_channel
     if args.human_review_approved:
         payload["human_review_approved"] = True
     if args.human_review_approved_by:
