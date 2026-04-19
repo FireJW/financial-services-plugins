@@ -751,6 +751,27 @@ def classify_eastmoney_cache_freshness(
     return {"mode": "stale_too_old", "last_bar_date": last_bar_date}
 
 
+def choose_eastmoney_cache_recovery_mode(
+    rows: list[dict[str, Any]] | None,
+    target_trade_date: str,
+) -> dict[str, Any]:
+    freshness = classify_eastmoney_cache_freshness(rows or [], target_trade_date)
+    mode = freshness["mode"]
+    if mode == "fresh_cache":
+        return {
+            "mode": "fresh_cache",
+            "bars_source": "eastmoney_cache",
+            "rows": list(rows or []),
+            "last_bar_date": freshness.get("last_bar_date", ""),
+        }
+    return {
+        "mode": mode,
+        "bars_source": "",
+        "rows": [],
+        "last_bar_date": freshness.get("last_bar_date", ""),
+    }
+
+
 def enrich_degraded_live_result(result: dict[str, Any], failure_candidates: list[dict[str, Any]]) -> dict[str, Any]:
     if not failure_candidates:
         return result
@@ -3267,6 +3288,7 @@ for _extra in (
     "build_bars_fetch_failed_candidate",
     "last_bar_date_from_rows",
     "classify_eastmoney_cache_freshness",
+    "choose_eastmoney_cache_recovery_mode",
     "enrich_degraded_live_result",
     "enrich_live_result_reporting",
     "build_diagnostic_scorecard_entry",

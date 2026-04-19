@@ -102,6 +102,16 @@ class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
         self.assertEqual(outcome["mode"], "stale_too_old")
         self.assertEqual(outcome["last_bar_date"], "2026-04-16")
 
+    def test_cached_bars_covering_target_date_are_accepted_as_normal_recovery(self) -> None:
+        rows = [
+            {"date": "2026-04-17", "close": 5.5},
+            {"date": "2026-04-18", "close": 5.8},
+        ]
+        recovered = module_under_test.choose_eastmoney_cache_recovery_mode(rows, "2026-04-18")
+        self.assertEqual(recovered["mode"], "fresh_cache")
+        self.assertEqual(recovered["bars_source"], "eastmoney_cache")
+        self.assertEqual(recovered["rows"][-1]["date"], "2026-04-18")
+
 
 if __name__ == "__main__":
     unittest.main()
