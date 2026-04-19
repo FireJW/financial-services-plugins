@@ -42,6 +42,17 @@ Default output:
 
 Guardrails:
 
+- `x-index` is the repository-native X / Twitter route
 - prefer `remote_debugging` on Windows when a signed browser session is available
-- do not start with public X page scraping when the native workflow can reuse a signed session
-- reuse recent successful `x-index` results when they are still relevant instead of collecting the same evidence again
+- reuse recent successful `x-index` results when they are still relevant before
+  recollecting the same evidence
+- do not start with public X page scraping when the native workflow can reuse a
+  signed session
+- when a downstream workflow only consumes curated handles, URLs, or summaries,
+  do not describe that as a live native X run
+
+Priority order:
+
+1. live native `x-index`
+2. reused relevant `x-index` results
+3. public fallback only after native signed-session paths are unavailable
