@@ -13,7 +13,8 @@ function escapeHtml(text) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function renderToutiaoSectionHeading(rawText, level = 2) {
@@ -29,38 +30,83 @@ function renderToutiaoSectionHeading(rawText, level = 2) {
   ].join("");
 }
 
-function buildToutiaoBodyHtml(markdown) {
-  const lines = String(markdown ?? "").replace(/\r\n/g, "\n").split("\n");
-  const blocks = [];
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) {
-      blocks.push(`<p style="margin:18px 0;"></p>`);
-      continue;
-    }
-    const h2 = line.match(/^##\s+(.+)$/);
-    if (h2) {
-      blocks.push(renderToutiaoSectionHeading(h2[1], 2));
-      continue;
-    }
-    const h3 = line.match(/^###\s+(.+)$/);
-    if (h3) {
-      blocks.push(renderToutiaoSectionHeading(h3[1], 3));
-      continue;
-    }
-    blocks.push(`<p style="margin:0 0 22px;line-height:1.9;font-size:18px;color:#1f2329;">${escapeHtml(line)}</p>`);
+function renderInlineImageBlock(image) {
+  const src = cleanText(image?.src);
+  if (!src) return "";
+  const caption = cleanText(image?.caption);
+  return [
+    `<figure data-role="toutiao-inline-image" style="margin:28px 0 24px;">`,
+    `<img src="${escapeHtml(src)}" alt="${escapeHtml(caption || "article image")}" style="display:block;max-width:100%;width:100%;border-radius:6px;" />`,
+    caption
+      ? `<figcaption style="margin-top:10px;font-size:14px;line-height:1.6;color:#6b7280;text-align:center;">${escapeHtml(caption)}</figcaption>`
+      : "",
+    `</figure>`,
+  ].join("");
+}
+
+function normalizeMarkdown(markdown) {
+  const text = String(markdown ?? "").replace(/\r\n/g, "\n").trim();
+  if (!text) return "";
+  const blocks = text.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  if (blocks.length && /^#\s+/.test(blocks[0])) {
+    blocks.shift();
   }
-  return blocks.join("\n");
+  return blocks.join("\n\n");
+}
+
+function buildToutiaoBodyHtml(markdown, inlineImages = []) {
+  const normalized = normalizeMarkdown(markdown);
+  const blocks = normalized.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  const afterLedeImages = inlineImages.filter((item) => cleanText(item?.placement) === "after_lede");
+  const otherImages = inlineImages.filter((item) => cleanText(item?.placement) !== "after_lede");
+  const html = [];
+  let insertedAfterLede = false;
+
+  for (const block of blocks) {
+    if (block === "---") continue;
+    const h2 = block.match(/^##\s+(.+)$/);
+    if (h2) {
+      html.push(renderToutiaoSectionHeading(h2[1], 2));
+      continue;
+    }
+    const h3 = block.match(/^###\s+(.+)$/);
+    if (h3) {
+      html.push(renderToutiaoSectionHeading(h3[1], 3));
+      continue;
+    }
+    const paragraph = escapeHtml(block).replace(/\n/g, "<br>");
+    html.push(`<p style="margin:0 0 22px;line-height:1.9;font-size:18px;color:#1f2329;">${paragraph}</p>`);
+    if (!insertedAfterLede && afterLedeImages.length) {
+      html.push(...afterLedeImages.map(renderInlineImageBlock).filter(Boolean));
+      insertedAfterLede = true;
+    }
+  }
+
+  if (!insertedAfterLede && afterLedeImages.length) {
+    html.push(...afterLedeImages.map(renderInlineImageBlock).filter(Boolean));
+  }
+  if (otherImages.length) {
+    html.push(...otherImages.map(renderInlineImageBlock).filter(Boolean));
+  }
+
+  return html.join("\n");
 }
 
 function parseArgs(argv) {
-  const args = { manifest: "", output: "", endpoint: "http://127.0.0.1:9222", waitMs: 10000 };
+  const args = {
+    manifest: "",
+    output: "",
+    endpoint: "http://127.0.0.1:9222",
+    waitMs: 10000,
+    prepareOnly: false,
+  };
   for (let index = 2; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--manifest") args.manifest = argv[index + 1] || "";
-    if (token === "--output") args.output = argv[index + 1] || "";
-    if (token === "--endpoint") args.endpoint = argv[index + 1] || args.endpoint;
-    if (token === "--wait-ms") args.waitMs = Number.parseInt(argv[index + 1] || "", 10) || args.waitMs;
+    else if (token === "--output") args.output = argv[index + 1] || "";
+    else if (token === "--endpoint") args.endpoint = argv[index + 1] || args.endpoint;
+    else if (token === "--wait-ms") args.waitMs = Number.parseInt(argv[index + 1] || "", 10) || args.waitMs;
+    else if (token === "--prepare-only") args.prepareOnly = true;
   }
   if (!args.manifest) {
     throw new Error("Missing required --manifest argument.");
@@ -69,130 +115,295 @@ function parseArgs(argv) {
   return args;
 }
 
-function main() {
+function parseJsonValue(value) {
+  try {
+    return JSON.parse(value || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeOutput(outputPath, payload) {
+  fs.writeFileSync(outputPath, JSON.stringify(payload, null, 2), "utf8");
+  process.stdout.write(JSON.stringify(payload));
+}
+
+async function fetchJson(url, opts = {}) {
+  const response = await fetch(url, opts);
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+  return response.json();
+}
+
+async function fetchText(url, opts = {}) {
+  const response = await fetch(url, opts);
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+  return response.text();
+}
+
+function joinUrl(base, suffix) {
+  return `${String(base || "").replace(/\/+$/, "")}${suffix}`;
+}
+
+async function openTarget(endpoint) {
+  const url = joinUrl(endpoint, `/json/new?${encodeURIComponent("about:blank")}`);
+  try {
+    return await fetchJson(url, { method: "PUT" });
+  } catch {
+    return fetchJson(url);
+  }
+}
+
+async function closeTarget(endpoint, id) {
+  if (!id) return;
+  const url = joinUrl(endpoint, `/json/close/${id}`);
+  try {
+    await fetchText(url, { method: "PUT" });
+  } catch {
+    try {
+      await fetchText(url);
+    } catch {}
+  }
+}
+
+async function connect(endpoint) {
+  const target = await openTarget(endpoint);
+  const ws = new WebSocketImpl(target.webSocketDebuggerUrl);
+  let nextId = 0;
+  const pending = new Map();
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const id = ++nextId;
+    pending.set(id, { resolve, reject });
+    ws.send(JSON.stringify({ id, method, params }));
+  });
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data.toString());
+    if (msg.id && pending.has(msg.id)) {
+      const entry = pending.get(msg.id);
+      pending.delete(msg.id);
+      if (msg.error) entry.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
+      else entry.resolve(msg.result || {});
+    }
+  };
+  await new Promise((resolve, reject) => {
+    ws.onopen = resolve;
+    ws.onerror = reject;
+  });
+  return {
+    target,
+    send,
+    close() {
+      try {
+        ws.close();
+      } catch {}
+    },
+  };
+}
+
+async function uploadCover(session, coverImagePath) {
+  if (!coverImagePath) return { attempted: false, uploaded: false, matchedSelector: "" };
+  const triggerResult = await session.send("Runtime.evaluate", {
+    expression: `JSON.stringify((() => {
+      const add = document.querySelector('.article-cover-add');
+      if (add) { add.click(); return { ok: true, mode: 'add' }; }
+      const replace = document.querySelector('.article-cover-img-replace');
+      if (replace) { replace.click(); return { ok: true, mode: 'replace' }; }
+      const edit = document.querySelector('.article-cover-img-modify');
+      if (edit) { edit.click(); return { ok: true, mode: 'edit' }; }
+      return { ok: false, mode: '' };
+    })())`,
+    returnByValue: true,
+  });
+  const trigger = parseJsonValue(triggerResult?.result?.value);
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  const documentRoot = await session.send("DOM.getDocument", { depth: -1, pierce: true });
+  const selectors = [
+    ".btn-upload-handle input[type='file']",
+    ".upload-handler input[type='file']",
+    "input[type='file'][accept*='image']",
+    "input[type='file']",
+  ];
+  let nodeId = 0;
+  let matchedSelector = "";
+  for (const selector of selectors) {
+    const found = await session.send("DOM.querySelector", { nodeId: documentRoot.root.nodeId, selector });
+    if (found?.nodeId) {
+      nodeId = found.nodeId;
+      matchedSelector = selector;
+      break;
+    }
+  }
+  if (!nodeId) {
+    return { attempted: true, uploaded: false, matchedSelector: "", trigger };
+  }
+
+  await session.send("DOM.setFileInputFiles", {
+    nodeId,
+    files: [path.resolve(coverImagePath)],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+
+  const uploadedCheck = await session.send("Runtime.evaluate", {
+    expression: `JSON.stringify((() => {
+      const previewImg = document.querySelector('.article-cover-images img, .article-cover img, .upload-image-wrapper img');
+      return {
+        hasPreviewImage: !!previewImg,
+        previewSrc: previewImg ? (previewImg.getAttribute('src') || '') : '',
+      };
+    })())`,
+    returnByValue: true,
+  });
+  const uploaded = parseJsonValue(uploadedCheck?.result?.value);
+  return {
+    attempted: true,
+    uploaded: Boolean(uploaded.hasPreviewImage),
+    matchedSelector,
+    trigger,
+    previewSrc: cleanText(uploaded.previewSrc),
+  };
+}
+
+async function main() {
   const args = parseArgs(process.argv);
   const manifest = JSON.parse(fs.readFileSync(args.manifest, "utf8"));
   if (!WebSocketImpl) {
     throw new Error("Requires Node.js with global WebSocket.");
   }
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const joinUrl = (base, suffix) => `${String(base || "").replace(/\/+$/, "")}${suffix}`;
-  const fetchJson = async (url, opts = {}) => {
-    const response = await fetch(url, opts);
-    if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
-    return response.json();
-  };
-  const fetchText = async (url, opts = {}) => {
-    const response = await fetch(url, opts);
-    if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
-    return response.text();
-  };
-  const openTarget = async (endpoint) => {
-    const url = joinUrl(endpoint, `/json/new?${encodeURIComponent("about:blank")}`);
-    try {
-      return await fetchJson(url, { method: "PUT" });
-    } catch {
-      return fetchJson(url);
-    }
-  };
-  const closeTarget = async (endpoint, id) => {
-    if (!id) return;
-    const url = joinUrl(endpoint, `/json/close/${id}`);
-    try {
-      await fetchText(url, { method: "PUT" });
-    } catch {
-      try { await fetchText(url); } catch {}
-    }
-  };
-  const parseJsonValue = (value) => {
-    try { return JSON.parse(value || "{}"); } catch { return {}; }
+  const prepared = {
+    status: "prepared",
+    title: cleanText(manifest.title),
+    subtitle: cleanText(manifest.subtitle),
+    body_html: buildToutiaoBodyHtml(manifest.body_markdown || manifest.content_markdown, Array.isArray(manifest.inline_images) ? manifest.inline_images : []),
+    cover_image_path: cleanText(manifest.cover_image_path),
+    save_mode: cleanText(manifest.save_mode) || "draft",
+    inline_images: Array.isArray(manifest.inline_images) ? manifest.inline_images : [],
   };
 
-  (async () => {
-    const publishUrl = "https://mp.toutiao.com/profile_v4/graphic/publish";
-    const target = await openTarget(args.endpoint);
-    const ws = new WebSocketImpl(target.webSocketDebuggerUrl);
-    let nextId = 0;
-    const pending = new Map();
-    const send = (method, params = {}) => new Promise((resolve, reject) => {
-      const id = ++nextId;
-      pending.set(id, { resolve, reject });
-      ws.send(JSON.stringify({ id, method, params }));
+  if (args.prepareOnly) {
+    writeOutput(args.output, prepared);
+    return;
+  }
+
+  const publishUrl = "https://mp.toutiao.com/profile_v4/graphic/publish";
+  const session = await connect(args.endpoint);
+  try {
+    await session.send("Page.enable");
+    await session.send("Runtime.enable");
+    await session.send("DOM.enable");
+    await session.send("Page.navigate", { url: publishUrl });
+    await new Promise((resolve) => setTimeout(resolve, Math.max(3000, args.waitMs)));
+
+    const stateCheck = await session.send("Runtime.evaluate", {
+      expression: `JSON.stringify({ title: document.title, text: (document.body?.innerText || '').substring(0, 300) })`,
+      returnByValue: true,
     });
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data.toString());
-      if (msg.id && pending.has(msg.id)) {
-        const ctx = pending.get(msg.id);
-        pending.delete(msg.id);
-        if (msg.error) ctx.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
-        else ctx.resolve(msg.result || {});
-      }
-    };
-
-    try {
-      await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
-      await send("Page.enable");
-      await send("Runtime.enable");
-      await send("Page.navigate", { url: publishUrl });
-      await sleep(Math.max(3000, args.waitMs));
-
-      const titleResult = await send("Runtime.evaluate", {
-        expression: `JSON.stringify((() => {
-          const titleInput = document.querySelector('textarea[placeholder*="标题"]')
-            || document.querySelector('input[placeholder*="标题"]')
-            || document.querySelector('.article-title textarea')
-            || document.querySelector('.article-title input')
-            || document.querySelector('[class*="title"] textarea')
-            || document.querySelector('[class*="title"] input');
-          if (!titleInput) return { ok: false, message: 'Title input not found' };
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
-            || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if (nativeInputValueSetter) nativeInputValueSetter.call(titleInput, ${JSON.stringify(cleanText(manifest.title))});
-          else titleInput.value = ${JSON.stringify(cleanText(manifest.title))};
-          titleInput.dispatchEvent(new Event('input', { bubbles: true }));
-          titleInput.dispatchEvent(new Event('change', { bubbles: true }));
-          return { ok: true, value: titleInput.value };
-        })())`,
-        returnByValue: true,
-      });
-      const bodyHtml = buildToutiaoBodyHtml(manifest.content_markdown);
-      const bodyResult = await send("Runtime.evaluate", {
-        expression: `JSON.stringify((() => {
-          const editor = document.querySelector('.ProseMirror[contenteditable="true"]')
-            || document.querySelector('[contenteditable="true"][class*="editor"]')
-            || document.querySelector('[contenteditable="true"]');
-          if (!editor) return { ok: false, message: 'Body editor not found' };
-          editor.focus();
-          editor.innerHTML = ${JSON.stringify(bodyHtml)};
-          editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
-          editor.dispatchEvent(new Event('change', { bubbles: true }));
-          return { ok: (editor.innerText || '').length > 20, charCount: (editor.innerText || '').length };
-        })())`,
-        returnByValue: true,
-      });
-
-      await sleep(Math.max(3000, args.waitMs));
-      const payload = {
-        status: "ok",
-        title_result: parseJsonValue(titleResult?.result?.value),
-        body_result: parseJsonValue(bodyResult?.result?.value),
-        article_url: publishUrl,
-      };
-      fs.writeFileSync(args.output, JSON.stringify(payload, null, 2), "utf8");
-      process.stdout.write(JSON.stringify(payload));
-    } finally {
-      try { ws.close(); } catch {}
-      await closeTarget(args.endpoint, target.id);
+    const state = parseJsonValue(stateCheck?.result?.value);
+    if (/登录|扫码|scan|login/i.test(`${state.title} ${state.text}`)) {
+      throw new Error("Toutiao backend not logged in. Use a signed-in browser profile.");
     }
-  })().catch((error) => {
-    const payload = { status: "error", message: String(error?.stack || error?.message || error).replace(/\s+/g, " ").trim() };
-    fs.writeFileSync(args.output, JSON.stringify(payload, null, 2), "utf8");
-    process.stdout.write(JSON.stringify(payload));
-    process.exit(1);
-  });
+
+    const titleResult = await session.send("Runtime.evaluate", {
+      expression: `JSON.stringify((() => {
+        const titleInput = document.querySelector('textarea[placeholder*="标题"]')
+          || document.querySelector('input[placeholder*="标题"]')
+          || document.querySelector('.article-title textarea')
+          || document.querySelector('.article-title input')
+          || document.querySelector('[class*="title"] textarea')
+          || document.querySelector('[class*="title"] input');
+        if (!titleInput) return { ok: false, message: 'Title input not found' };
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+          || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+        if (setter) setter.call(titleInput, ${JSON.stringify(prepared.title)});
+        else titleInput.value = ${JSON.stringify(prepared.title)};
+        titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+        titleInput.dispatchEvent(new Event('change', { bubbles: true }));
+        return { ok: true, value: titleInput.value };
+      })())`,
+      returnByValue: true,
+    });
+
+    const bodyResult = await session.send("Runtime.evaluate", {
+      expression: `JSON.stringify((() => {
+        const editor = document.querySelector('.ProseMirror[contenteditable="true"]')
+          || document.querySelector('[contenteditable="true"][class*="editor"]')
+          || document.querySelector('[contenteditable="true"]');
+        if (!editor) return { ok: false, message: 'Body editor not found' };
+        editor.focus();
+        editor.innerHTML = ${JSON.stringify(prepared.body_html)};
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
+        editor.dispatchEvent(new Event('change', { bubbles: true }));
+        const charCount = (editor.innerText || '').length;
+        return { ok: charCount > 20, charCount };
+      })())`,
+      returnByValue: true,
+    });
+
+    const coverResult = await uploadCover(session, prepared.cover_image_path);
+    const buttonTexts = prepared.save_mode === "publish" ? ["预览并发布", "发布", "发表"] : ["存草稿", "保存草稿"];
+    const clickResult = await session.send("Runtime.evaluate", {
+      expression: `JSON.stringify((() => {
+        const targets = ${JSON.stringify(buttonTexts)};
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+        let best = null;
+        for (const el of buttons) {
+          const text = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+          if (!text) continue;
+          for (const target of targets) {
+            if (text.includes(target)) {
+              const rect = el.getBoundingClientRect();
+              if (rect.width < 8 || rect.height < 8) continue;
+              const score = text === target ? 20 : 8;
+              if (!best || score > best.score) best = { el, score, text };
+            }
+          }
+        }
+        if (!best) return { ok: false, matchedText: '' };
+        best.el.click();
+        return { ok: true, matchedText: best.text };
+      })())`,
+      returnByValue: true,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, Math.max(4000, args.waitMs)));
+
+    const finalCheck = await session.send("Runtime.evaluate", {
+      expression: `JSON.stringify({ href: location.href, title: document.title, text: (document.body?.innerText || '').substring(0, 500) })`,
+      returnByValue: true,
+    });
+    const finalState = parseJsonValue(finalCheck?.result?.value);
+    const titleRes = parseJsonValue(titleResult?.result?.value);
+    const bodyRes = parseJsonValue(bodyResult?.result?.value);
+    const clickRes = parseJsonValue(clickResult?.result?.value);
+    const successIndicators = ["发布成功", "已发布", "草稿保存成功", "已保存", "保存成功"];
+    const finalText = `${finalState.title || ""} ${finalState.text || ""}`;
+    const looksSuccessful = clickRes.ok && (
+      successIndicators.some((item) => finalText.includes(item)) ||
+      finalState.href !== publishUrl
+    );
+
+    const payload = {
+      status: looksSuccessful ? "ok" : clickRes.ok ? "uncertain" : "error",
+      save_mode: prepared.save_mode,
+      title_result: titleRes,
+      body_result: bodyRes,
+      cover_result: coverResult,
+      click_result: clickRes,
+      final_state: { href: cleanText(finalState.href), title: cleanText(finalState.title) },
+      article_url: cleanText(finalState.href) !== publishUrl ? cleanText(finalState.href) : "",
+    };
+    writeOutput(args.output, payload);
+  } finally {
+    session.close();
+    await closeTarget(args.endpoint, session.target.id);
+  }
 }
 
-if (require.main === module) {
-  main();
-}
+main().catch((error) => {
+  const payload = {
+    status: "error",
+    message: String(error?.stack || error?.message || error).replace(/\s+/g, " ").trim(),
+  };
+  writeOutput(process.argv.includes("--output") ? parseArgs(process.argv).output : path.join(process.cwd(), "result.json"), payload);
+  process.exit(1);
+});

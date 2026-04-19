@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,36 @@ def safe_dict(value: Any) -> dict[str, Any]:
 
 def safe_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def strip_leading_h1(markdown: str, title: str) -> str:
+    text = str(markdown or "").replace("\r\n", "\n")
+    lines = text.split("\n")
+    if not lines:
+        return text
+    first = clean_text(lines[0])
+    if first.startswith("# "):
+        heading = clean_text(first[2:])
+        if not title or heading == clean_text(title):
+            lines = lines[1:]
+            while lines and not clean_text(lines[0]):
+                lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
+def image_src_for_toutiao(item: dict[str, Any]) -> str:
+    source_url = clean_text(item.get("source_url"))
+    if source_url.startswith(("http://", "https://", "data:")):
+        return source_url
+    local_path = clean_text(item.get("path") or item.get("local_path"))
+    if not local_path:
+        return ""
+    path_obj = Path(local_path).expanduser()
+    if not path_obj.exists():
+        return ""
+    mime_type = mimetypes.guess_type(path_obj.name)[0] or "image/png"
+    data = base64.b64encode(path_obj.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{data}"
 
 
 def build_review_gate(request: dict[str, Any]) -> dict[str, Any]:
@@ -52,17 +84,42 @@ def prepare_toutiao_browser_session_context(request: dict[str, Any]) -> dict[str
     return {"requested": False, "strategy": strategy, "required": False, "active": False, "status": "disabled", "notes": []}
 
 
-def build_toutiao_article_browser_manifest(publish_package: dict[str, Any], workdir: Path) -> tuple[Path, dict[str, Any]]:
+def build_toutiao_article_browser_manifest(
+    publish_package: dict[str, Any],
+    request: dict[str, Any],
+    workdir: Path,
+) -> tuple[Path, dict[str, Any]]:
     browser_dir = workdir / ".tmp" / "toutiao-article-browser-session-push"
     browser_dir.mkdir(parents=True, exist_ok=True)
+    title = clean_text(publish_package.get("title"))
+    body_markdown = strip_leading_h1(str(publish_package.get("content_markdown") or ""), title)
+    selected_images = [safe_dict(item) for item in safe_list(publish_package.get("selected_images")) if isinstance(item, dict)]
+    inline_images = []
+    for item in selected_images:
+        inline_src = image_src_for_toutiao(item)
+        if not inline_src:
+            continue
+        inline_images.append(
+            {
+                "asset_id": clean_text(item.get("asset_id") or item.get("image_id")),
+                "placement": clean_text(item.get("placement")) or "after_lede",
+                "caption": clean_text(item.get("caption")),
+                "src": inline_src,
+            }
+        )
+    cover_plan = safe_dict(publish_package.get("cover_plan"))
+    cover_image_path = clean_text(cover_plan.get("selected_cover_local_path"))
     manifest = {
-        "title": clean_text(publish_package.get("title")),
+        "title": title,
         "subtitle": clean_text(publish_package.get("subtitle")),
-        "content_markdown": clean_text(publish_package.get("content_markdown")),
-        "selected_images": [safe_dict(item) for item in safe_list(publish_package.get("selected_images")) if isinstance(item, dict)],
-        "cover_plan": safe_dict(publish_package.get("cover_plan")),
+        "body_markdown": body_markdown,
+        "selected_images": selected_images,
+        "inline_images": inline_images,
+        "cover_plan": cover_plan,
+        "cover_image_path": cover_image_path,
         "platform_hints": safe_dict(publish_package.get("platform_hints")),
         "operator_notes": [clean_text(item) for item in safe_list(publish_package.get("operator_notes")) if clean_text(item)],
+        "save_mode": clean_text(request.get("save_mode")) or "draft",
     }
     manifest_path = browser_dir / "manifest.json"
     result_path = browser_dir / "result.json"
@@ -118,7 +175,7 @@ def push_publish_package_to_toutiao(
 
     if push_backend in {"browser_session", "auto"}:
         session_context = prepare_toutiao_browser_session_context(request)
-        result_path, browser_meta = build_toutiao_article_browser_manifest(publish_package, Path.cwd())
+        result_path, browser_meta = build_toutiao_article_browser_manifest(publish_package, request, Path.cwd())
         runner = browser_runner or run_toutiao_article_browser_session
         runner_result = runner(browser_meta["manifest_path"], session_context, timeout_seconds)
         result_path.write_text(json.dumps(runner_result, indent=2, ensure_ascii=False), encoding="utf-8")

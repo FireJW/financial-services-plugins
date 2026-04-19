@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import shutil
 import sys
 import unittest
@@ -12,7 +13,10 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from toutiao_article_draftbox_runtime import push_publish_package_to_toutiao
+from toutiao_article_draftbox_runtime import (
+    build_toutiao_article_browser_manifest,
+    push_publish_package_to_toutiao,
+)
 
 
 class ToutiaoArticleDraftboxTests(unittest.TestCase):
@@ -84,7 +88,7 @@ class ToutiaoArticleDraftboxTests(unittest.TestCase):
         self.assertEqual(result["push_backend"], "browser_session")
         self.assertEqual(result["status"], "ok")
         self.assertEqual(seen["manifest"]["title"], "美国中期选举风险开始传到市场")
-        self.assertIn("核心矛盾", seen["manifest"]["content_markdown"])
+        self.assertIn("核心矛盾", seen["manifest"]["body_markdown"])
         self.assertEqual(seen["manifest"]["cover_plan"]["selected_cover_asset_id"], "IMG-01")
 
     def test_toutiao_article_adapter_uses_default_browser_session_runner(self) -> None:
@@ -103,6 +107,57 @@ class ToutiaoArticleDraftboxTests(unittest.TestCase):
         runner_mock.assert_called_once()
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["push_backend"], "browser_session")
+
+    def test_build_toutiao_browser_manifest_strips_h1_and_keeps_cover_and_inline_images(self) -> None:
+        result_path, browser_meta = build_toutiao_article_browser_manifest(
+            self.sample_publish_package(),
+            {"save_mode": "draft"},
+            self.temp_dir,
+        )
+
+        manifest = json.loads(Path(browser_meta["manifest_path"]).read_text(encoding="utf-8"))
+        self.assertTrue(str(result_path).endswith("result.json"))
+        self.assertEqual(manifest["cover_image_path"], str(self.image_path))
+        self.assertEqual(manifest["save_mode"], "draft")
+        self.assertFalse(manifest["body_markdown"].startswith("# "))
+        self.assertIn("核心矛盾", manifest["body_markdown"])
+        self.assertEqual(len(manifest["inline_images"]), 1)
+        self.assertEqual(manifest["inline_images"][0]["src"], "https://example.com/hero.png")
+
+    def test_prepare_only_browser_script_renders_inline_image_and_heading_html(self) -> None:
+        _, browser_meta = build_toutiao_article_browser_manifest(
+            self.sample_publish_package(),
+            {"save_mode": "draft"},
+            self.temp_dir,
+        )
+        output_path = self.temp_dir / "prepared-result.json"
+        script_path = SCRIPT_DIR / "toutiao_article_browser_session_push.js"
+
+        completed = subprocess.run(
+            [
+                "node",
+                str(script_path),
+                "--manifest",
+                str(browser_meta["manifest_path"]),
+                "--output",
+                str(output_path),
+                "--prepare-only",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=30,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+        prepared = json.loads(output_path.read_text(encoding="utf-8"))
+        self.assertEqual(prepared["status"], "prepared")
+        self.assertEqual(prepared["save_mode"], "draft")
+        self.assertIn("data-role=\"toutiao-heading\"", prepared["body_html"])
+        self.assertIn("<img", prepared["body_html"])
+        self.assertNotIn("# 美国中期选举风险开始传到市场", prepared["body_html"])
 
 
 if __name__ == "__main__":
