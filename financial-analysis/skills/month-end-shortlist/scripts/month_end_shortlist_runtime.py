@@ -26,6 +26,10 @@ from earnings_momentum_discovery import (
     compute_rumor_confidence_range,
     normalize_event_candidate,
 )
+from weekend_market_candidate_runtime import (
+    build_weekend_market_candidate,
+    normalize_weekend_market_candidate_input,
+)
 
 
 PYC_PATH = (
@@ -603,6 +607,13 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
         normalized["macro_geopolitics_candidate_input"] = geopolitics_candidate_input
     else:
         normalized.pop("macro_geopolitics_candidate_input", None)
+    weekend_market_candidate_input = normalize_weekend_market_candidate_input(
+        raw_payload.get("weekend_market_candidate_input")
+    )
+    if weekend_market_candidate_input:
+        normalized["weekend_market_candidate_input"] = weekend_market_candidate_input
+    else:
+        normalized.pop("weekend_market_candidate_input", None)
     batch_path = clean_text(normalized.get("x_style_batch_result_path"))
     if batch_path:
         path = Path(batch_path).expanduser().resolve()
@@ -2541,6 +2552,16 @@ def enrich_live_result_reporting(
 ) -> dict[str, Any]:
     enriched = enrich_degraded_live_result(result, failure_candidates)
     request_obj = enriched.get("request") if isinstance(enriched.get("request"), dict) else {}
+    weekend_market_candidate_input = (
+        request_obj.get("weekend_market_candidate_input")
+        if isinstance(request_obj.get("weekend_market_candidate_input"), dict)
+        else None
+    )
+    weekend_market_candidate, direction_reference_map = build_weekend_market_candidate(
+        weekend_market_candidate_input
+    )
+    enriched["weekend_market_candidate"] = weekend_market_candidate
+    enriched["direction_reference_map"] = direction_reference_map
     geopolitics_candidate_input = (
         request_obj.get("macro_geopolitics_candidate_input")
         if isinstance(request_obj.get("macro_geopolitics_candidate_input"), dict)
@@ -3172,6 +3193,16 @@ def merge_track_results(
     merged["track_results"] = track_results
     merged["request"] = base_request or {}
     request_obj = merged["request"] if isinstance(merged.get("request"), dict) else {}
+    weekend_market_candidate_input = (
+        request_obj.get("weekend_market_candidate_input")
+        if isinstance(request_obj.get("weekend_market_candidate_input"), dict)
+        else None
+    )
+    weekend_market_candidate, direction_reference_map = build_weekend_market_candidate(
+        weekend_market_candidate_input
+    )
+    merged["weekend_market_candidate"] = weekend_market_candidate
+    merged["direction_reference_map"] = direction_reference_map
     geopolitics_candidate_input = (
         request_obj.get("macro_geopolitics_candidate_input")
         if isinstance(request_obj.get("macro_geopolitics_candidate_input"), dict)
