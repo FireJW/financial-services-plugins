@@ -846,6 +846,31 @@ class TestBarsFallbackRescue(unittest.TestCase):
         rescued = runtime.build_bars_fallback_rescue_candidate(candidate, snapshot)
         self.assertIsNone(rescued)
 
+    def test_one_day_stale_cache_with_support_can_rescue_into_low_confidence_t3(self):
+        candidate = self._make_failed_candidate(
+            structured_catalyst_snapshot={
+                "structured_company_events": [{"date": "2026-04-21", "event_type": "油运景气跟踪"}]
+            }
+        )
+        rows = [
+            {"date": "2026-04-17", "close": 5.5, "pct_chg": 0.8, "boll": 5.3, "close_50_sma": 5.1, "rsi": 56.0, "volume_ratio": 1.2},
+            {"date": "2026-04-18", "close": 5.8, "pct_chg": 1.2, "boll": 5.5, "close_50_sma": 5.3, "rsi": 58.0, "volume_ratio": 1.4},
+        ]
+        recovered = runtime.build_bars_cache_rescue_candidate(candidate, rows, "2026-04-19")
+        self.assertIsNotNone(recovered)
+        self.assertIn("low_confidence_fallback", recovered["tier_tags"])
+        self.assertIn("fallback_cache_only", recovered["tier_tags"])
+        self.assertEqual(recovered["fallback_support_reason"], "structured_catalyst")
+
+    def test_too_old_cache_does_not_rescue_candidate(self):
+        candidate = self._make_failed_candidate(discovery_bucket="watch")
+        rows = [
+            {"date": "2026-04-15", "close": 5.2, "pct_chg": 0.4, "boll": 5.1, "close_50_sma": 5.0, "rsi": 52.0, "volume_ratio": 1.1},
+            {"date": "2026-04-16", "close": 5.1, "pct_chg": -0.8, "boll": 5.2, "close_50_sma": 5.0, "rsi": 49.0, "volume_ratio": 0.9},
+        ]
+        recovered = runtime.build_bars_cache_rescue_candidate(candidate, rows, "2026-04-19")
+        self.assertIsNone(recovered)
+
 
 if __name__ == "__main__":
     unittest.main()

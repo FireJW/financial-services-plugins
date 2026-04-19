@@ -772,6 +772,37 @@ def choose_eastmoney_cache_recovery_mode(
     }
 
 
+def build_bars_cache_rescue_candidate(
+    candidate: dict[str, Any],
+    cached_rows: list[dict[str, Any]] | None,
+    target_trade_date: str,
+) -> dict[str, Any] | None:
+    cache_mode = classify_eastmoney_cache_freshness(cached_rows or [], target_trade_date)
+    if cache_mode.get("mode") != "stale_one_day":
+        return None
+    snapshot_rows = list(cached_rows or [])
+    if not snapshot_rows:
+        return None
+    latest = snapshot_rows[-1]
+    snapshot = {
+        "close": latest.get("close"),
+        "pct_chg": latest.get("pct_chg"),
+        "sma20": latest.get("boll"),
+        "sma50": latest.get("close_50_sma"),
+        "rsi14": latest.get("rsi"),
+        "volume_ratio": latest.get("volume_ratio"),
+    }
+    rescued = build_bars_fallback_rescue_candidate(candidate, snapshot)
+    if not rescued:
+        return None
+    rescued["bars_source"] = "eastmoney_cache"
+    rescued["fallback_cache_only"] = True
+    rescued["tier_tags"] = unique_strings(
+        list(rescued.get("tier_tags", [])) + ["fallback_cache_only"]
+    )
+    return rescued
+
+
 def enrich_degraded_live_result(result: dict[str, Any], failure_candidates: list[dict[str, Any]]) -> dict[str, Any]:
     if not failure_candidates:
         return result
@@ -3289,6 +3320,7 @@ for _extra in (
     "last_bar_date_from_rows",
     "classify_eastmoney_cache_freshness",
     "choose_eastmoney_cache_recovery_mode",
+    "build_bars_cache_rescue_candidate",
     "enrich_degraded_live_result",
     "enrich_live_result_reporting",
     "build_diagnostic_scorecard_entry",
