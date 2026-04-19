@@ -16,6 +16,59 @@ def _clean_list(values: Any) -> list[str]:
     return [item for item in (_clean_text(value) for value in values) if item]
 
 
+def _logic_level(value: int, *, high_at: int, medium_at: int = 1) -> str:
+    if value >= high_at:
+        return "high"
+    if value >= medium_at:
+        return "medium"
+    return "low"
+
+
+def _select_key_sources(candidate_input: dict[str, Any], top_topic: str) -> list[dict[str, str]]:
+    key_sources: list[dict[str, str]] = []
+
+    for row in candidate_input.get("x_seed_inputs", []):
+        if top_topic not in row.get("tags", []):
+            continue
+        key_sources.append(
+            {
+                "source_name": _clean_text(row.get("display_name")) or _clean_text(row.get("handle")),
+                "source_kind": "x_seed",
+                "url": _clean_text(row.get("url")),
+                "summary": f"Preferred seed concentrated on {top_topic}.",
+            }
+        )
+        break
+
+    for row in candidate_input.get("x_expansion_inputs", []):
+        if top_topic not in row.get("theme_overlap", []):
+            continue
+        key_sources.append(
+            {
+                "source_name": _clean_text(row.get("handle")),
+                "source_kind": "x_expansion",
+                "url": _clean_text(row.get("url")),
+                "summary": _clean_text(row.get("why_included")) or f"Expansion layer confirmed {top_topic}.",
+            }
+        )
+        break
+
+    for row in candidate_input.get("reddit_inputs", []):
+        if top_topic not in row.get("theme_tags", []):
+            continue
+        key_sources.append(
+            {
+                "source_name": _clean_text(row.get("subreddit")),
+                "source_kind": "reddit_confirmation",
+                "url": _clean_text(row.get("thread_url")),
+                "summary": _clean_text(row.get("thread_summary")) or f"Reddit discussion confirmed {top_topic}.",
+            }
+        )
+        break
+
+    return key_sources[:3]
+
+
 def normalize_weekend_market_candidate_input(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -128,18 +181,36 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
         )
 
     top_topic, top_score = topic_counter.most_common(1)[0]
+    seed_count = sum(1 for row in candidate_input.get("x_seed_inputs", []) if top_topic in row.get("tags", []))
+    expansion_count = sum(1 for row in candidate_input.get("x_expansion_inputs", []) if top_topic in row.get("theme_overlap", []))
+    reddit_count = sum(1 for row in candidate_input.get("reddit_inputs", []) if top_topic in row.get("theme_tags", []))
     deduped_names = list(dict.fromkeys(name for name in reference_candidates.get(top_topic, []) if name))
     leaders = deduped_names[:2]
     high_beta_names = deduped_names[2:4]
+    ranking_logic = {
+        "seed_alignment": _logic_level(seed_count, high_at=2),
+        "expansion_confirmation": _logic_level(expansion_count, high_at=1),
+        "reddit_confirmation": _logic_level(reddit_count, high_at=1),
+        "noise_or_disagreement": "low",
+    }
+    ranking_reason = (
+        f"Preferred X seeds and confirmation layers aligned most clearly on {top_topic}, "
+        "so it ranks first for Monday watch."
+    )
+    key_sources = _select_key_sources(candidate_input, top_topic)
 
     candidate = {
         "candidate_topics": [
             {
                 "topic_name": top_topic,
                 "topic_label": top_topic,
+                "priority_rank": 1,
                 "signal_strength": "high" if top_score >= 6 else "medium",
                 "why_it_matters": "Preferred X seeds converged on the same weekend topic and expansion inputs reinforced it.",
                 "monday_watch": f"Watch whether {top_topic} continues to lead on Monday open.",
+                "ranking_logic": ranking_logic,
+                "ranking_reason": ranking_reason,
+                "key_sources": key_sources,
             }
         ],
         "beneficiary_chains": [top_topic],
