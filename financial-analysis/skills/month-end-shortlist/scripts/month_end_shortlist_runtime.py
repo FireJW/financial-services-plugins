@@ -906,12 +906,60 @@ def attach_cache_baseline_metadata(
     filter_summary["cache_baseline_only"] = bool(metadata["cache_baseline_only"])
     filter_summary["live_supplement_status"] = metadata["live_supplement_status"]
     enriched["filter_summary"] = filter_summary
+    enriched["report_markdown"] = prepend_report_metadata_lines(
+        enriched.get("report_markdown") or "",
+        build_cache_baseline_report_lines(enriched),
+    )
     return enriched
+
+
+def build_cache_baseline_report_lines(result: dict[str, Any]) -> list[str]:
+    summary = dict(result.get("filter_summary") or {})
+    baseline_trade_date = clean_text(summary.get("cache_baseline_trade_date"))
+    if not baseline_trade_date:
+        return []
+
+    lines = [f"- 数据基线：最近交易日盘后缓存（{baseline_trade_date}）"]
+    status = clean_text(summary.get("live_supplement_status"))
+    if status == "unavailable":
+        lines.append("- 实时补充：不可用，沿用缓存基线")
+    elif status == "updated":
+        lines.append("- 实时补充：已更新部分数据")
+    return lines
+
+
+def prepend_report_metadata_lines(report_markdown: str, metadata_lines: list[str]) -> str:
+    body = str(report_markdown or "").rstrip()
+    if not metadata_lines:
+        return body + ("\n" if body else "")
+    if not body:
+        return "\n".join(metadata_lines).strip() + "\n"
+
+    lines = body.splitlines()
+    if metadata_lines[0] in lines:
+        return body + "\n"
+
+    insert_at = 1 if lines and lines[0].startswith("# ") else 0
+    merged_lines = lines[:insert_at]
+    if insert_at:
+        merged_lines.append("")
+    merged_lines.extend(metadata_lines)
+    if lines[insert_at:]:
+        merged_lines.append("")
+        merged_lines.extend(lines[insert_at:])
+    return "\n".join(merged_lines).strip() + "\n"
 
 
 def enrich_degraded_live_result(result: dict[str, Any], failure_candidates: list[dict[str, Any]]) -> dict[str, Any]:
     if not failure_candidates:
-        return result
+        enriched = deepcopy(result)
+        metadata_lines = build_cache_baseline_report_lines(enriched)
+        if metadata_lines:
+            enriched["report_markdown"] = prepend_report_metadata_lines(
+                enriched.get("report_markdown") or "",
+                metadata_lines,
+            )
+        return enriched
 
     enriched = deepcopy(result)
     filter_summary = dict(enriched.get("filter_summary") or {})
@@ -947,7 +995,10 @@ def enrich_degraded_live_result(result: dict[str, Any], failure_candidates: list
         name = clean_text(item.get("name")) or ticker
         reason = clean_text(item.get("bars_fetch_error")) or "bars_fetch_failed"
         lines.append(f"- `{ticker}` {name}: `{reason}`")
-    enriched["report_markdown"] = "\n".join(lines).strip() + "\n"
+    enriched["report_markdown"] = prepend_report_metadata_lines(
+        "\n".join(lines).strip(),
+        build_cache_baseline_report_lines(enriched),
+    )
     return enriched
 
 
@@ -2049,6 +2100,10 @@ def build_decision_flow_card(
             operation_parts.append(f"保留原因：{fallback_reason}")
     elif bars_source == "eastmoney_cache":
         operation_parts.append("数据来源：Eastmoney cache")
+    if card.get("cache_baseline_only"):
+        operation_parts.append("数据状态：仍沿用缓存基线")
+    elif clean_text(card.get("live_supplement_status")) == "updated":
+        operation_parts.append("数据状态：已补实时更新")
     geopolitics_constraint = build_geopolitics_execution_constraint(action, geopolitics_overlay)
     if geopolitics_constraint:
         operation_parts.append(geopolitics_constraint)
@@ -2095,6 +2150,12 @@ def build_decision_flow(enriched: dict[str, Any]) -> list[dict[str, Any]]:
     filter_summary = enriched.get("filter_summary")
     if isinstance(filter_summary, dict) and filter_summary.get("keep_threshold") not in (None, ""):
         keep_threshold = float(filter_summary.get("keep_threshold"))
+    cache_baseline_only = bool(filter_summary.get("cache_baseline_only")) if isinstance(filter_summary, dict) else False
+    live_supplement_status = (
+        clean_text(filter_summary.get("live_supplement_status"))
+        if isinstance(filter_summary, dict)
+        else ""
+    )
 
     event_card_map = {
         clean_text(item.get("ticker")): item
@@ -2124,6 +2185,9 @@ def build_decision_flow(enriched: dict[str, Any]) -> list[dict[str, Any]]:
             reverse=(key == "near_miss"),
         )
         for item in sorted_rows:
+            item = dict(item)
+            item["cache_baseline_only"] = cache_baseline_only
+            item["live_supplement_status"] = live_supplement_status
             event_card = event_card_map.get(clean_text(item.get("ticker")))
             chain_entry = None
             if isinstance(event_card, dict):
@@ -3475,6 +3539,8 @@ def run_month_end_shortlist(
             base_request=prepared_payload,
         )
         merged = attach_cache_baseline_metadata(merged, all_assessed)
+        if isinstance(merged.get("decision_factors"), dict) and any(merged.get("decision_factors", {}).values()):
+            merged["decision_flow"] = build_decision_flow(merged)
         return merged
     finally:
         _compiled.assess_candidate = original_assess_candidate

@@ -276,6 +276,23 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("## Blocked Candidates", enriched["report_markdown"])
         self.assertIn("601600.SS", enriched["report_markdown"])
 
+    def test_report_includes_global_cache_baseline_metadata(self) -> None:
+        result = {
+            "filter_summary": {
+                "cache_baseline_trade_date": "2026-04-18",
+                "cache_baseline_only": True,
+                "live_supplement_status": "unavailable",
+            },
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-20\n",
+            "top_picks": [],
+            "dropped": [],
+        }
+
+        enriched = module_under_test.enrich_degraded_live_result(result, [])
+
+        self.assertIn("数据基线：最近交易日盘后缓存（2026-04-18）", enriched["report_markdown"])
+        self.assertIn("实时补充：不可用，沿用缓存基线", enriched["report_markdown"])
+
     def test_enrich_degraded_live_result_is_noop_without_failures(self) -> None:
         result = {
             "filter_summary": {"kept_count": 1},
@@ -374,6 +391,27 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("## Event Cards", report)
         self.assertLess(report.index("## 直接可执行"), report.index("## 决策流"))
         self.assertLess(report.index("## 决策流"), report.index("## Event Cards"))
+
+    def test_decision_flow_card_marks_cache_baseline_only_state(self) -> None:
+        card = {
+            "ticker": "002384.SZ",
+            "name": "东山精密",
+            "action": "继续观察",
+            "fallback_cache_only": False,
+            "bars_source": "eastmoney_cache",
+            "cache_baseline_only": True,
+            "trading_profile_bucket": "补涨候选",
+        }
+
+        reminder = module_under_test.build_decision_flow_card(
+            card,
+            keep_threshold=70.0,
+            event_card=None,
+            chain_entry=None,
+            geopolitics_overlay=None,
+        )["operation_reminder"]
+
+        self.assertIn("数据状态：仍沿用缓存基线", reminder)
 
     def test_enrich_live_result_reporting_renders_response_state_for_discovery_candidates(self) -> None:
         result = {
