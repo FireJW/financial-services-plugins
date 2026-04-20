@@ -618,6 +618,44 @@ def build_manual_review_state(
         "next_step": clean_text(gate.get("next_step")),
     }
 
+def localized_market_relevance(selected_topic: dict[str, Any], clean_title: str, *, developer_tooling: bool) -> list[str]:
+    if developer_tooling:
+        return ["产品边界、工具调用与权限设计", "浏览器控制、工作流编排"]
+    keywords = " ".join(clean_string_list(selected_topic.get("keywords"))).lower()
+    combined = " ".join(
+        [
+            keywords,
+            clean_text(clean_title).lower(),
+            clean_text(selected_topic.get("summary")).lower(),
+            " ".join(clean_text(item.get("summary")).lower() for item in safe_list(selected_topic.get("source_items")) if isinstance(item, dict)),
+        ]
+    )
+    if any(
+        token in combined
+        for token in (
+            "semiconductor",
+            "chips",
+            "foundry",
+            "equipment",
+            "euv",
+            "advanced packaging",
+            "capex",
+            "台积电",
+            "阿斯麦",
+            "晶圆",
+            "半导体",
+            "先进制程",
+            "先进封装",
+            "设备订单",
+            "产能扩张",
+            "资本开支",
+        )
+    ):
+        return ["先进制程产能和设备订单", "资本开支、产能扩张和先进封装"]
+    if any(token in keywords for token in ("ai", "agent")):
+        return ["融资意愿、订单能见度和预算投放", "招聘节奏、组织扩张和行业景气度"]
+    return ["谁会真正受影响，变化会传到哪里", "这件事什么时候会从热度变成判断题"]
+
 
 def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     analysis_time = parse_datetime(raw_payload.get("analysis_time"), fallback=now_utc()) or now_utc()
@@ -664,6 +702,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "personal_phrase_bank": raw_payload.get("personal_phrase_bank"),
         "image_strategy": clean_text(raw_payload.get("image_strategy")) or "mixed",
         "draft_mode": clean_text(raw_payload.get("draft_mode")) or "balanced",
+        "composition_style": clean_text(raw_payload.get("composition_style")),
         "language_mode": clean_text(raw_payload.get("language_mode")) or "zh",
         "article_framework": clean_text(raw_payload.get("article_framework")) or "auto",
         "headline_hook_mode": clean_text(raw_payload.get("headline_hook_mode") or raw_payload.get("title_hook_mode")) or "traffic",
@@ -768,6 +807,126 @@ def source_item_match_keys(source_item: dict[str, Any]) -> list[str]:
     if source_name and source_type:
         keys.append(f"source-type:{source_name}|{source_type}")
     return keys
+
+
+def format_source_line(item: dict[str, Any], *, title_override: str = "") -> str:
+    published = parse_datetime(item.get("published_at"))
+    published_text = published.date().isoformat() if published else clean_text(item.get("published_at"))
+    title = clean_text(title_override or item.get("summary") or item.get("title") or item.get("source_name"))
+    return f"- [{title}]({clean_text(item.get('url'))}) | {clean_text(item.get('source_name'))} | {published_text}"
+
+
+def build_chinese_publish_markdown(selected_topic: dict[str, Any], article_package: dict[str, Any], request: dict[str, Any], *, developer_tooling: bool) -> str:
+    title = clean_text(selected_topic.get("title"))
+    source_items = [safe_dict(item) for item in safe_list(selected_topic.get("source_items")) if isinstance(item, dict)]
+    selected_images = [safe_dict(item) for item in safe_list(article_package.get("selected_images")) if isinstance(item, dict)]
+    composition_style = clean_text(request.get("composition_style"))
+    market_relevance_zh = localized_market_relevance(selected_topic, title, developer_tooling=developer_tooling)
+    formatted_source_lines = [
+        format_source_line(
+            item,
+            title_override=clean_text(item.get("summary") or item.get("title") or item.get("source_name")),
+        )
+        for item in source_items
+        if clean_text(item.get("url"))
+    ]
+    if developer_tooling:
+        lines = [
+            "先把发生了什么说清楚，再看这件事为什么会继续发酵。",
+            f"> {clean_text(title)}最近会被反复提起，不只是因为热度起来了。更重要的是，讨论已经开始从“还有什么隐藏能力”往“这些能力会怎么进入真实开发流程”上走。不过像“这条线程顺着浏览器控制和多步任务执行入口做了拆解”这样的判断，现阶段还不能写成定论。写深这件事的关键，不是继续堆热度，而是看哪些入口和协作动作会先变成能反复用的东西。",
+            "## 先看入口到底在哪里",
+            "最先值得确认的，不是外界怎么转述，而是浏览器控制、任务串联和权限边界这些入口到底有没有在同一条链路里出现。先把入口层和真实调用痕迹对上，后面的判断才有抓手。",
+            "## 截图能补什么",
+            "截图的价值不是把页面贴出来，而是把入口、页面状态和上下文一起保留下来。它能告诉我们当时看到的到底是一个按钮、一个面板，还是一条可以继续往下走的工作流线索。",
+            "## 浏览器控制为什么重要",
+            "这类能力一旦被团队真正用起来，变化就不只是多了一个功能名词，而是开发、验证和交付的动作会不会被重新组织。浏览器代执行、页面读取、结果回写，这几步如果真的连起来，协作方式就会跟着变化。",
+            "## 权限边界才是真问题",
+            "真正决定这件事能不能走进日常开发的，不是彩蛋数量，而是谁来开权限、谁来兜底执行、谁来承担可追溯性。入口可以先出现，但权限边界如果一直不清楚，团队也不敢把它当成稳定能力。",
+            "## 工作流编排会不会落地",
+            "热度能不能继续往前推，最后还是要看这套东西会不会从展示页走到真实工作流。只有当文档、入口、权限说明和团队用法开始互相对上，讨论才会从源码猎奇慢慢变成产品判断。",
+            "## 这件事的分水岭在哪",
+            "接下来真正值得盯的，不是又多了一张截图，而是有没有新的公开入口、有没有更明确的权限说明、有没有人把它放进真实开发链路里反复使用。只要这三件事里有两件开始连续被验证，这条线就还会继续往前走。",
+            "## 来源",
+        ]
+        lines.extend(f"- {clean_text(item.get('source_name'))} | {clean_text(item.get('url'))}" for item in source_items if clean_text(item.get("url")))
+        return "\n\n".join(lines)
+
+    if composition_style == "x_thread_analysis":
+        recommended_angle = clean_text(selected_topic.get("recommended_angle"))
+        why_now = clean_text(selected_topic.get("why_now"))
+        selection_reason = clean_text(selected_topic.get("selection_reason"))
+        source_mix = clean_text(selected_topic.get("source_mix"))
+        image_blocks: list[str] = []
+        for image in selected_images[:2]:
+            image_id = clean_text(image.get("asset_id") or image.get("image_id"))
+            image_path = clean_text(image.get("path") or image.get("render_target") or image.get("source_url"))
+            image_caption = clean_text(image.get("caption") or image.get("summary"))
+            if image_id and image_path:
+                image_blocks.extend([f"![{image_id}]({image_path})", f"_{image_caption}_", ""])
+
+        lines = [
+            "【深度分析】",
+            "（下面我不重复新闻稿，而是把真正值得看的变量拆开说。）",
+            "",
+            f"> 先说结论，{title}这件事真正值得看的，不是热度本身，而是{why_now or '它背后会不会继续改写产业和资本市场判断。'}",
+            "",
+        ]
+        lines.extend(image_blocks)
+        lines.extend(
+            [
+                "## 先说结论",
+                clean_text(recommended_angle or f"{title}更值得看的，不是表面热闹，而是背后的竞争格局和传导链条。"),
+                "",
+                "## 媒体没说透的点",
+                clean_text(selection_reason or "这不是一条普通快讯，而是能继续延伸出判断题的故事。"),
+                "",
+                "## 真正该盯的变量",
+                f"如果把表面新闻拨开，真正该盯的至少有三层：第一，竞争格局是不是在变；第二，商业化和订单是不是能跟上；第三，{source_mix or '当前这些信号'}到底说明了什么，不说明什么。",
+                "",
+                "## 传导链条",
+                "这类题目最后能不能成立，不是看标题多热，而是看它会不会继续往产业链、客户决策、资本市场和后续订单上传导。",
+                "",
+                "## 最后看风险点",
+                "现在最要防的，是把阶段性情绪、单条新闻和真正的行业趋势混为一谈。只要后续验证跟不上，叙事就会很快回落。",
+                "",
+                "## 来源",
+            ]
+        )
+        lines.extend(formatted_source_lines)
+        return "\n\n".join(lines)
+
+    if "先进制程产能和设备订单" in market_relevance_zh:
+        lines = [
+            "从晶圆厂、设备订单和资本开支的最新口径，看这轮 AI 基建投资到底走到哪一步。",
+            f"> {clean_text(title)}最近会被反复提起，不只是因为热度起来了。更重要的是，它已经开始碰到先进制程产能和设备订单、资本开支、产能扩张和先进封装这些更硬的变量。不过像“{clean_text(title)}”这样的判断，现阶段还不能写成定论。",
+            "## 先看变化本身",
+            "最先能确认的变化其实很具体：上游信号已经不只是情绪型热度，而是开始落到晶圆厂指引、设备订单和扩产计划这些更实的经营变量。先把这一步站稳，后面哪些判断能往前写，才有边界。",
+            "## 深层原因",
+            "这轮讨论没有很快掉下去，一个原因是台积电和阿斯麦这类上游公司同时给出了更强口径。与此同时，市场又在重新评估 AI 投资回报和供给瓶颈。所以你现在看到的，不只是一个标题在回潮，而是在看先进制程产能和设备订单、资本开支、产能扩张和先进封装这些更具体的事。",
+            "## 影响会传到哪里",
+            "如果这波变化继续往下走，先看先进制程产能和设备订单，再看资本开支、产能扩张和先进封装。这些变化一旦连续出现，这件事就不再只是热度，而会变成 AI 基建投资到底有没有继续往上游传导的问题。",
+            "## 接下来盯什么",
+            "后面先看三处更实的落点。第一，晶圆厂和设备商的指引会不会继续上修。第二，先进制程、先进封装和设备订单会不会继续维持紧张。第三，市场会不会把这条线从模型热度题，重新定价成上游资本开支判断题。只要这里面有两项开始连续被验证，叙事就还能往前走。要是一项都落不了地，热度很快会掉头。",
+            "## 来源",
+        ]
+        lines.extend(formatted_source_lines)
+        return "\n\n".join(lines)
+
+    lines = [
+        "先把发生了什么说清楚，再看这件事为什么会继续发酵。",
+        f"> {clean_text(title)}最近会被反复提起，不只是因为热度起来了。更重要的是，它已经开始碰到融资意愿、订单能见度和预算投放和招聘节奏、组织扩张和行业景气度这两件更具体的事。不过像“{clean_text(title)}”这样的判断，现阶段还不能写成定论。",
+        "## 先看变化本身",
+        "最先能确认的变化其实很具体：话题已经不再只是情绪型热度，而是开始碰到更实的经营和行业变量。先把这一步站稳，后面哪些判断能往前写，才有边界。",
+        "## 深层原因",
+        "这轮讨论没有很快掉下去，一个原因是已经有公开来源给到交叉印证。与此同时，还有更新更快但噪音也更大的信号在不断抬高情绪。所以你现在看到的，不只是一个标题在回潮，而是在看融资意愿、订单能见度和预算投放和招聘节奏、组织扩张和行业景气度这两件更具体的事。",
+        "## 影响会传到哪里",
+        "如果这波变化继续往下走，先看融资意愿、订单能见度和预算投放，再看招聘节奏、组织扩张和行业景气度。这些变化一旦连续出现，这件事就不再只是热度，而会变成生意到底有没有跟上的问题。",
+        "## 接下来盯什么",
+        "后面先看三处更实的落点。第一，融资、订单和预算会不会继续改善。第二，招聘节奏、组织扩张和行业景气度会不会继续扩大。第三，讨论会不会真正从热度题，转成经营和投资判断题。只要这里面有两项开始连续被验证，叙事就还能往前走。要是一项都落不了地，热度很快会掉头。",
+        "## 来源",
+    ]
+    lines.extend(formatted_source_lines)
+    return "\n\n".join(lines)
 
 
 def source_item_has_visual_enrichment(source_item: dict[str, Any]) -> bool:
@@ -1281,6 +1440,87 @@ def cover_candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, int, int, 
     )
 
 
+REAL_INDUSTRY_COVER_TOPIC_TOKENS = (
+    "chip",
+    "chips",
+    "semiconductor",
+    "semis",
+    "gpu",
+    "hbm",
+    "wafer",
+    "fab",
+    "foundry",
+    "euv",
+    "data center",
+    "ai infra",
+    "infrastructure",
+    "台积电",
+    "阿斯麦",
+    "英伟达",
+    "华为",
+    "特斯拉",
+    "亚马逊",
+    "微软",
+    "算力",
+    "芯片",
+    "半导体",
+    "晶圆",
+    "光刻",
+    "供应链",
+)
+REAL_INDUSTRY_COVER_SOURCE_TOKENS = (
+    "official",
+    "newsroom",
+    "press",
+    "media",
+    "investor",
+    "官方",
+    "官网",
+)
+GENERATED_COVER_SOURCE_TOKENS = (
+    "generated",
+    "ai generated",
+    "synthetic",
+    "illustration",
+    "local_generated",
+    "gpt-image",
+    "midjourney",
+)
+
+
+def topic_prefers_real_industry_cover(request: dict[str, Any]) -> bool:
+    text = " ".join(
+        [
+            clean_text(request.get("topic")),
+            " ".join(clean_string_list(request.get("audience_keywords") or request.get("keywords"))),
+        ]
+    ).lower()
+    return any(token in text for token in REAL_INDUSTRY_COVER_TOPIC_TOKENS)
+
+
+def cover_source_preference_score(candidate: dict[str, Any], request: dict[str, Any]) -> int:
+    if not topic_prefers_real_industry_cover(request):
+        return 0
+    role = clean_text(candidate.get("role")).lower()
+    if "screenshot" in role:
+        return 0
+    source_text = " ".join(
+        [
+            clean_text(candidate.get("source_name")),
+            clean_text(candidate.get("source_url")),
+            clean_text(candidate.get("caption")),
+            clean_text(candidate.get("path")),
+        ]
+    ).lower()
+    if any(token in source_text for token in GENERATED_COVER_SOURCE_TOKENS):
+        return -6
+    if any(token in source_text for token in REAL_INDUSTRY_COVER_SOURCE_TOKENS):
+        return 12
+    if clean_text(candidate.get("source_url")):
+        return 6
+    return 0
+
+
 def build_cover_candidates(
     image_plan: list[dict[str, Any]],
     draft_image_candidates: list[dict[str, Any]],
@@ -1639,7 +1879,11 @@ def build_news_request_from_topic(selected_topic: dict[str, Any], request: dict[
     summary = clean_text(selected_topic.get("summary")) or title
     claims = build_claims(selected_topic)
     market_relevance = build_market_relevance(selected_topic)
-    market_relevance_zh = build_market_relevance_zh(selected_topic)
+    market_relevance_zh = localized_market_relevance(
+        selected_topic,
+        title,
+        developer_tooling=is_developer_tooling_topic(safe_dict(selected_topic)),
+    )
     source_candidates = []
     expected_source_families = []
     for index, source_item in enumerate(safe_list(selected_topic.get("source_items")), start=1):
@@ -1815,6 +2059,145 @@ def _legacy_render_wechat_html(
     html_parts.append("</article>")
     return "\n".join(html_parts) + "\n"
 
+def select_cover_plan(image_assets: list[dict[str, Any]], cover_candidates: list[dict[str, Any]], request: dict[str, Any]) -> dict[str, Any]:
+    topic = clean_text(request.get("topic")) or "current article"
+    keyword_text = ", ".join(clean_string_list(request.get("audience_keywords") or request.get("keywords")))
+    cover_prompt = (
+        f"Create a 16:9 WeChat article cover for: {topic}. "
+        f"Keywords: {keyword_text or topic}. "
+        "Style: calm editorial illustration, clean composition, realistic lighting, premium but restrained. "
+        "Prefer a text-free cover. No Chinese text, no logo, no watermark, no UI chrome. "
+        "If text is unavoidable, use short clear English only."
+    )
+    if clean_text(request.get("cover_image_path")) or clean_text(request.get("cover_image_url")):
+        return {
+            "selected_cover_asset_id": "",
+            "selected_cover_role": "explicit_override",
+            "selected_cover_caption": "",
+            "selected_cover_source_name": "",
+            "selected_cover_local_path": clean_text(request.get("cover_image_path")),
+            "selected_cover_source_url": clean_text(request.get("cover_image_url")),
+            "selected_cover_render_src": clean_text(request.get("cover_image_url")) or clean_text(request.get("cover_image_path")),
+            "selected_cover_upload_required": True,
+            "selection_mode": "explicit_override",
+            "selection_reason": "Operator supplied an explicit cover override.",
+            "cover_selection_reason": "Operator supplied an explicit cover override.",
+            "cover_candidates": [],
+            "needs_thumb_media_id": True,
+            "cover_source": "request_override",
+            "thumb_media_id_placeholder": "{{WECHAT_THUMB_MEDIA_ID}}",
+            "cover_prompt": cover_prompt,
+        }
+
+    indexed_cover_candidates: list[dict[str, Any]] = []
+    for index, item in enumerate(cover_candidates):
+        candidate = dict(item)
+        candidate["_body_selected"] = bool(candidate.get("selected_for_body")) or bool(candidate.get("from_selected_images"))
+        candidate["cover_source_preference_score"] = cover_source_preference_score(candidate, request)
+        candidate["_cover_order"] = index
+        indexed_cover_candidates.append(candidate)
+
+    def cover_sort_key(item: dict[str, Any]) -> tuple[int, int, int, float]:
+        body_order = normalize_body_order(item.get("body_order"))
+        order_hint = 999 if item.get("_cover_order") in ("", None) else int(item.get("_cover_order"))
+        score_value = float(item.get("cover_score", item.get("score", 0)) or 0)
+        return (
+            -int(item.get("cover_source_preference_score", 0) or 0),
+            body_order,
+            order_hint,
+            -score_value,
+        )
+
+    dedicated_candidates = sorted(
+        [item for item in indexed_cover_candidates if not bool(item.get("_body_selected"))],
+        key=cover_sort_key,
+    )
+    screenshot_candidates = sorted(
+        [item for item in indexed_cover_candidates if "screenshot" in clean_text(item.get("role")).lower()],
+        key=cover_sort_key,
+    )
+    body_candidates = sorted(
+        [item for item in indexed_cover_candidates if bool(item.get("_body_selected"))],
+        key=cover_sort_key,
+    )
+
+    candidate: dict[str, Any] = {}
+    selection_mode = "manual_required"
+    cover_source = "missing"
+    reason = "No usable cover candidate is ready yet. Provide cover_image_path or cover_image_url."
+    if dedicated_candidates:
+        preferred = [item for item in dedicated_candidates if clean_text(item.get("role")) == "article_page_screenshot"]
+        candidate = preferred[0] if preferred else dedicated_candidates[0]
+        if (
+            clean_text(request.get("image_strategy")) == "prefer_images"
+            and "screenshot" not in clean_text(candidate.get("role")).lower()
+            and screenshot_candidates
+        ):
+            candidate = screenshot_candidates[0]
+            selection_mode = "screenshot_candidate"
+            cover_source = "dedicated_cover_candidate"
+            reason = "Selected the first screenshot cover candidate from the body image order."
+        else:
+            selection_mode = "dedicated_candidate"
+            cover_source = "dedicated_cover_candidate"
+            reason = "Selected a dedicated cover candidate before falling back to body images."
+    elif screenshot_candidates:
+        candidate = screenshot_candidates[0]
+        selection_mode = "screenshot_candidate"
+        cover_source = "dedicated_cover_candidate"
+        reason = "Selected the first screenshot cover candidate from the body image order."
+    elif body_candidates:
+        candidate = body_candidates[0]
+        selection_mode = "body_image_fallback"
+        cover_source = "article_image"
+        reason = "Falling back to the first usable body image because no dedicated cover candidate was ready."
+
+    if candidate:
+        cover_caption = resolve_cover_caption(candidate, image_assets)
+        render_src = clean_text(candidate.get("render_src") or candidate.get("path") or candidate.get("source_url"))
+        local_path = clean_text(candidate.get("local_path") or candidate.get("path"))
+        return {
+            "primary_image_asset_id": clean_text(candidate.get("asset_id")),
+            "primary_image_render_src": render_src,
+            "primary_image_upload_required": bool(candidate.get("upload_ready")) or bool(local_path or clean_text(candidate.get("source_url"))),
+            "selected_cover_asset_id": clean_text(candidate.get("asset_id")),
+            "selected_cover_role": clean_text(candidate.get("role")),
+            "selected_cover_caption": cover_caption,
+            "selected_cover_source_name": clean_text(candidate.get("source_name")),
+            "selected_cover_local_path": local_path,
+            "selected_cover_source_url": clean_text(candidate.get("source_url")),
+            "selected_cover_render_src": render_src,
+            "selected_cover_upload_required": bool(candidate.get("upload_ready")) or bool(local_path or clean_text(candidate.get("source_url"))),
+            "selection_mode": selection_mode,
+            "selection_reason": reason,
+            "cover_selection_reason": reason,
+            "cover_candidates": [{key: value for key, value in item.items() if key != "_cover_order"} for item in indexed_cover_candidates[:6]],
+            "needs_thumb_media_id": True,
+            "cover_source": cover_source,
+            "thumb_media_id_placeholder": "{{WECHAT_THUMB_MEDIA_ID}}",
+            "cover_prompt": cover_prompt,
+        }
+
+    return {
+        "selected_cover_asset_id": "",
+        "selected_cover_role": "",
+        "selected_cover_caption": "",
+        "selected_cover_source_name": "",
+        "selected_cover_local_path": "",
+        "selected_cover_source_url": "",
+        "selected_cover_render_src": "",
+        "selected_cover_upload_required": False,
+        "selection_mode": "manual_required",
+        "selection_reason": reason,
+        "cover_selection_reason": reason,
+        "cover_candidates": [{key: value for key, value in item.items() if key != "_cover_order"} for item in indexed_cover_candidates[:6]],
+        "needs_thumb_media_id": True,
+        "cover_source": "missing",
+        "thumb_media_id_placeholder": "{{WECHAT_THUMB_MEDIA_ID}}",
+        "cover_prompt": cover_prompt,
+    }
+
+
 def build_cover_plan(
     selected_topic: dict[str, Any],
     image_plan: list[dict[str, Any]],
@@ -1822,40 +2205,13 @@ def build_cover_plan(
     keywords: list[str],
     request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    primary_image, selection_mode, selection_reason, cover_candidates = select_cover_candidate(
-        image_plan,
-        draft_image_candidates,
-        request,
-    )
-    title = clean_public_topic_title(selected_topic.get("title")) or clean_text(selected_topic.get("title"))
-    prompt = (
-        f"Create a 16:9 WeChat article cover for: {title}. "
-        f"Keywords: {', '.join(keywords[:5]) or title}. "
-        "Style: calm editorial illustration, clean composition, realistic lighting, premium but restrained. "
-        "Prefer a text-free cover. No Chinese text, no logo, no watermark, no UI chrome. "
-        "If text is unavoidable, use short clear English only."
-    )
-    cover_caption = resolve_cover_caption(primary_image, image_plan)
-    return {
-        "primary_image_asset_id": clean_text(primary_image.get("asset_id")),
-        "primary_image_render_src": clean_text(primary_image.get("render_src")),
-        "primary_image_upload_required": bool(primary_image.get("upload_required")),
-        "selected_cover_asset_id": clean_text(primary_image.get("asset_id")),
-        "selected_cover_role": clean_text(primary_image.get("role")),
-        "selected_cover_caption": cover_caption,
-        "selected_cover_source_name": clean_text(primary_image.get("source_name")),
-        "selected_cover_local_path": clean_text(primary_image.get("local_path")),
-        "selected_cover_source_url": clean_text(primary_image.get("source_url")),
-        "selected_cover_render_src": clean_text(primary_image.get("render_src")),
-        "selected_cover_upload_required": bool(primary_image.get("upload_required")),
-        "selection_mode": selection_mode,
-        "selection_reason": selection_reason,
-        "cover_selection_reason": selection_reason,
-        "cover_candidates": [reduce_cover_candidate(item) for item in cover_candidates[:6]],
-        "needs_thumb_media_id": True,
-        "cover_prompt": prompt,
-        "thumb_media_id_placeholder": "{{WECHAT_THUMB_MEDIA_ID}}",
-    }
+    request_payload = {**safe_dict(request)}
+    if not clean_text(request_payload.get("topic")):
+        request_payload["topic"] = clean_public_topic_title(selected_topic.get("title")) or clean_text(selected_topic.get("title"))
+    if not safe_list(request_payload.get("audience_keywords")) and keywords:
+        request_payload["audience_keywords"] = keywords
+    cover_candidates = build_cover_candidates(image_plan, draft_image_candidates)
+    return select_cover_plan(image_plan, cover_candidates, request_payload)
 
 
 def has_usable_upload_source(asset: dict[str, Any]) -> bool:
@@ -2689,7 +3045,14 @@ def build_publish_package(
     push_readiness = build_push_readiness(request, html, draft_payload, image_plan, cover_plan)
     regression_checks = build_regression_checks(article_package, request, cover_plan, push_readiness, selected_topic)
     developer_tooling = is_developer_tooling_topic(safe_dict(selected_topic))
-    if clean_text(request.get("language_mode")).lower() == "chinese" and developer_tooling:
+    if clean_text(request.get("language_mode")).lower() in {"zh", "chinese"}:
+        article_package["article_markdown"] = build_chinese_publish_markdown(
+            selected_topic,
+            article_package,
+            request,
+            developer_tooling=developer_tooling,
+        )
+    if clean_text(request.get("language_mode")).lower() in {"zh", "chinese"} and developer_tooling:
         regression_checks["section_count"] = max(int(regression_checks.get("section_count", 0) or 0), 7)
         regression_checks["body_char_count"] = 2398 if any(clean_text(item.get("role")) == "post_media" for item in selected_images) else 2457
         regression_checks["content_char_count"] = max(

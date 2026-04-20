@@ -7,8 +7,12 @@ Phase 2 (future): API-first with browser fallback, same as WeChat.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def clean_text(value: Any) -> str:
@@ -58,7 +62,7 @@ def build_toutiao_browser_manifest(fast_card_package: dict[str, Any], workdir: P
     browser_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
         "title": clean_text(fast_card_package.get("title")),
-        "plain_text": clean_text(fast_card_package.get("plain_text")),
+        "plain_text": str(fast_card_package.get("plain_text") or "").strip(),
         "segments": safe_list(fast_card_package.get("segments")),
         "keywords": safe_list(fast_card_package.get("keywords")),
     }
@@ -66,6 +70,45 @@ def build_toutiao_browser_manifest(fast_card_package: dict[str, Any], workdir: P
     result_path = browser_dir / "result.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     return result_path, {"manifest_path": manifest_path, "result_path": result_path, "manifest": manifest}
+
+
+def make_subprocess_browser_runner(*, draft_only: bool = False):
+    """Return a browser_runner that calls toutiao_browser_session_push.js."""
+
+    def _runner(manifest_path, session_context, timeout_seconds):
+        script = SCRIPT_DIR / "toutiao_browser_session_push.js"
+        cmd = [
+            "node",
+            str(script),
+            "--manifest",
+            str(manifest_path),
+            "--endpoint",
+            clean_text(session_context.get("cdp_endpoint")) or "http://127.0.0.1:9222",
+            "--wait-ms",
+            str(int(session_context.get("wait_ms", 8000) or 8000)),
+        ]
+        if draft_only:
+            cmd.append("--draft-only")
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=max(30, timeout_seconds + 15),
+                encoding="utf-8",
+            )
+            if proc.returncode != 0 and not proc.stdout.strip():
+                return {
+                    "status": "error",
+                    "message": clean_text(proc.stderr) or f"Node process exited with code {proc.returncode}",
+                }
+            return json.loads(proc.stdout)
+        except subprocess.TimeoutExpired:
+            return {"status": "error", "message": "Browser push timed out."}
+        except (json.JSONDecodeError, OSError) as exc:
+            return {"status": "error", "message": clean_text(exc)}
+
+    return _runner
 
 
 def push_fast_card_to_toutiao(
@@ -96,7 +139,10 @@ def push_fast_card_to_toutiao(
     if push_backend in ("browser_session", "auto"):
         session_context = prepare_toutiao_browser_session_context(request)
         result_path, browser_meta = build_toutiao_browser_manifest(fast_card_package, Path.cwd())
-        runner = browser_runner or (lambda manifest_path, session_context, timeout_seconds: {"status": "ok", "article_url": ""})
+        if browser_runner is None and session_context.get("requested"):
+            runner = make_subprocess_browser_runner()
+        else:
+            runner = browser_runner or (lambda manifest_path, session_context, timeout_seconds: {"status": "ok", "article_url": ""})
         runner_result = runner(browser_meta["manifest_path"], session_context, timeout_seconds)
         result_path.write_text(json.dumps(runner_result, indent=2, ensure_ascii=False), encoding="utf-8")
         return {
@@ -119,4 +165,4 @@ def push_fast_card_to_toutiao(
     }
 
 
-__all__ = ["push_fast_card_to_toutiao"]
+__all__ = ["push_fast_card_to_toutiao", "make_subprocess_browser_runner"]
