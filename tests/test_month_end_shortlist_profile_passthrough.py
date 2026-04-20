@@ -252,6 +252,40 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
         row = next(item for item in merged["priority_watchlist"] if item["ticker"] == "002980.SZ")
         self.assertTrue(row.get("market_strength_supplement"))
 
+    def test_merge_track_results_attaches_setup_launch_candidates(self) -> None:
+        merged = module_under_test.merge_track_results(
+            track_results={
+                "main_board": {
+                    "filter_summary": {"track_name": "main_board"},
+                    "top_picks": [],
+                    "dropped": [],
+                    "diagnostic_scorecard": [],
+                    "near_miss_candidates": [],
+                    "midday_action_summary": [],
+                    "tier_output": {"T1": [], "T2": [], "T3": [], "T4": []},
+                    "report_markdown": "",
+                }
+            },
+            track_configs={"main_board": {"label": "main_board"}},
+            setup_launch_candidates=[
+                {
+                    "ticker": "603698.SS",
+                    "name": "航天工程",
+                    "theme_guess": ["commercial_space"],
+                    "setup_reasons": ["structure_repair_visible"],
+                    "structure_repair": "high",
+                    "volume_return": "medium",
+                    "rs_improvement": "medium",
+                    "distance_from_bottom_state": "off_bottom_not_extended",
+                    "source": "setup_launch_scan",
+                }
+            ],
+            base_request={},
+        )
+
+        self.assertIn("setup_launch_candidates", merged)
+        self.assertEqual(merged["setup_launch_candidates"][0]["ticker"], "603698.SS")
+
     def test_normalize_request_preserves_cleaned_geopolitics_overlay(self) -> None:
         normalized = module_under_test.normalize_request(
             {
@@ -397,6 +431,74 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
         self.assertIn("603268.SS", [row["ticker"] for row in result.get("priority_watchlist", [])])
         generated = captured["market_strength_candidates"]
         self.assertTrue(any(row["ticker"] == "603268.SS" for row in generated))
+
+    def test_run_month_end_shortlist_auto_generates_setup_launch_candidates_from_universe(self) -> None:
+        universe_rows = [
+            {
+                "ticker": "603698.SS",
+                "name": "航天工程",
+                "sector": "商业航天",
+                "price": 12.0,
+                "high": 12.3,
+                "low": 11.4,
+                "pre_close": 11.55,
+                "day_pct": 3.9,
+                "day_turnover_cny": 320000000.0,
+                "turnover_rate_pct": 2.8,
+                "pct_from_60d": 18.0,
+                "pct_from_ytd": 9.5,
+                "price_snapshot": {"close": 12.0, "ma20": 11.3, "ma50": 10.9, "rs90": 82.0},
+                "theme_guess": ["commercial_space"],
+            }
+        ]
+        captured: dict[str, object] = {}
+
+        def fake_compiled_run(payload: dict, **_: object) -> dict:
+            return {
+                "status": "ok",
+                "request": payload,
+                "filter_summary": {},
+                "dropped": [],
+                "top_picks": [],
+                "report_markdown": "# Month-End Shortlist Report: 2026-04-21\n",
+            }
+
+        def fake_merge_track_results(track_results, track_configs, **kwargs):
+            captured["setup_launch_candidates"] = kwargs.get("setup_launch_candidates")
+            return {
+                "top_picks": [],
+                "dropped": [],
+                "filter_summary": {},
+                "priority_watchlist": [],
+                "setup_launch_candidates": kwargs.get("setup_launch_candidates", []),
+                "report_markdown": "# Month-End Shortlist Report: 2026-04-21\n",
+            }
+
+        with (
+            patch.object(module_under_test, "prepare_request_with_candidate_snapshots", side_effect=lambda payload, **__: payload),
+            patch.object(module_under_test._compiled, "run_month_end_shortlist", side_effect=fake_compiled_run),
+            patch.object(module_under_test, "merge_track_results", side_effect=fake_merge_track_results),
+        ):
+            result = module_under_test.run_month_end_shortlist(
+                {
+                    "template_name": "month_end_shortlist",
+                    "target_date": "2026-04-21",
+                    "weekend_market_candidate_input": {
+                        "x_seed_inputs": [
+                            {
+                                "handle": "seed_one",
+                                "tags": ["commercial_space"],
+                                "candidate_names": ["航天工程"],
+                            }
+                        ]
+                    },
+                },
+                universe_fetcher=lambda _: universe_rows,
+            )
+
+        self.assertIn("setup_launch_candidates", result)
+        generated = captured["setup_launch_candidates"]
+        self.assertTrue(any(row["ticker"] == "603698.SS" for row in generated))
 
     def test_run_month_end_shortlist_prefers_dedicated_market_strength_universe_fetcher(self) -> None:
         captured: dict[str, object] = {}

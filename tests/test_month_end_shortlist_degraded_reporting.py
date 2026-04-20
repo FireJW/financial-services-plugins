@@ -1485,6 +1485,40 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("市场强势补充", merged["report_markdown"])
         self.assertIn("002980.SZ", merged["report_markdown"])
 
+    def test_enrich_live_result_reporting_renders_setup_launch_section(self) -> None:
+        enriched = module_under_test.enrich_live_result_reporting(
+            {
+                "status": "ok",
+                "request": {
+                    "setup_launch_candidates": [
+                        {
+                            "ticker": "603698.SS",
+                            "name": "航天工程",
+                            "theme_guess": ["commercial_space"],
+                            "setup_reasons": ["structure_repair_visible", "volume_return_visible"],
+                            "structure_repair": "high",
+                            "volume_return": "medium",
+                            "rs_improvement": "medium",
+                            "distance_from_bottom_state": "off_bottom_not_extended",
+                            "source": "setup_launch_scan",
+                        }
+                    ]
+                },
+                "filter_summary": {},
+                "top_picks": [],
+                "dropped": [],
+                "report_markdown": "# Month-End Shortlist Report: 2026-04-21\n",
+            },
+            failure_candidates=[],
+            assessed_candidates=[],
+        )
+
+        self.assertIn("setup_launch_candidates", enriched)
+        self.assertEqual(enriched["setup_launch_candidates"][0]["ticker"], "603698.SS")
+        self.assertIn("筑底启动补充", enriched["report_markdown"])
+        self.assertIn("603698.SS", enriched["report_markdown"])
+        self.assertIn("setup_launch_scan", enriched["report_markdown"])
+
     def test_chain_map_does_not_produce_expectation_gap_without_evidence(self) -> None:
         """B5: chain map should not assign names to 预期差最大 without evidence."""
         entries = module_under_test.build_chain_map_entries(
