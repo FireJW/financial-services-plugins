@@ -196,6 +196,43 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
             "Direction reference only. Not a formal execution layer.",
         )
 
+    def test_merge_track_results_attaches_market_strength_supplement_rows(self) -> None:
+        merged = module_under_test.merge_track_results(
+            track_results={
+                "main_board": {
+                    "filter_summary": {"track_name": "main_board"},
+                    "top_picks": [],
+                    "dropped": [],
+                    "diagnostic_scorecard": [],
+                    "near_miss_candidates": [],
+                    "midday_action_summary": [],
+                    "tier_output": {"T1": [], "T2": [], "T3": [], "T4": []},
+                    "report_markdown": "",
+                }
+            },
+            track_configs={"main_board": {"label": "主板"}},
+            base_request={
+                "market_strength_candidates": [
+                    {
+                        "ticker": "002980.SZ",
+                        "name": "华盛昌",
+                        "strength_reason": "near_limit_close",
+                        "close_strength": "high",
+                        "volume_signal": "expanding",
+                        "board_context": "high_conviction_momentum",
+                        "theme_guess": ["short_term_momentum"],
+                        "source": "market_strength_scan",
+                    }
+                ]
+            },
+        )
+
+        self.assertIn("priority_watchlist", merged)
+        tickers = [row["ticker"] for row in merged["priority_watchlist"]]
+        self.assertIn("002980.SZ", tickers)
+        row = next(item for item in merged["priority_watchlist"] if item["ticker"] == "002980.SZ")
+        self.assertTrue(row.get("market_strength_supplement"))
+
     def test_normalize_request_preserves_cleaned_geopolitics_overlay(self) -> None:
         normalized = module_under_test.normalize_request(
             {

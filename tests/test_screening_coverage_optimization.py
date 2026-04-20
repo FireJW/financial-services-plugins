@@ -71,6 +71,26 @@ class TestFourTierClassification(unittest.TestCase):
         self.assertEqual(len(tiers["T4"]), 1)
         self.assertEqual(tiers["T4"][0]["ticker"], "D")
 
+    def test_market_strength_supplement_never_promotes_into_t2_or_t1(self):
+        disc = {
+            "qualified": [
+                self._make_candidate(
+                    "MS1",
+                    discovery_bucket="qualified",
+                    priority_score=95,
+                    primary_event_type="market_strength_scan",
+                    market_strength_supplement=True,
+                )
+            ],
+            "watch": [],
+            "track": [],
+        }
+        tiers = runtime.assign_tiers([], [], disc, [], 60.0)
+        self.assertEqual(tiers["T1"], [])
+        self.assertEqual(tiers["T2"], [])
+        self.assertEqual([row["ticker"] for row in tiers["T3"]], ["MS1"])
+        self.assertIn("market_strength_supplement", tiers["T3"][0]["tier_tags"])
+
 
 # ---------------------------------------------------------------------------
 # Class 2: TestNearMissPromotion
