@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
+import random
 import re
 from typing import Any
 from urllib import error as urllib_error
@@ -140,6 +141,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "style_memory": safe_dict(payload.get("style_memory")),
         "image_strategy": clean_text(payload.get("image_strategy")),
         "draft_mode": clean_text(payload.get("draft_mode") or payload.get("composition_mode")),
+        "composition_profile": clean_text(payload.get("composition_profile")),
         "language_mode": clean_text(payload.get("language_mode") or payload.get("output_language")),
         "article_framework": clean_text(payload.get("article_framework")),
         "headline_hook_mode": clean_text(payload.get("headline_hook_mode") or payload.get("title_hook_mode")),
@@ -170,6 +172,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request["personal_phrase_bank"] = normalize_phrase_bank(request.get("personal_phrase_bank"))
     request["image_strategy"] = clean_text(request.get("image_strategy") or "mixed")
     request["draft_mode"] = sanitize_draft_mode(request.get("draft_mode"))
+    request["composition_profile"] = clean_text(request.get("composition_profile"))
     request["language_mode"] = sanitize_language_mode(request.get("language_mode"))
     request["article_framework"] = sanitize_article_framework(request.get("article_framework"))
     request["headline_hook_mode"] = normalize_headline_hook_mode(request.get("headline_hook_mode"))
@@ -710,18 +713,22 @@ def normalize_phrase_bank(value: Any) -> list[str]:
 
 DEFAULT_VOICE_PREFIXES = {
     "chinese": {
-        "lede": "先说结论",
-        "facts": "先把关键点摆出来",
-        "spread": "麻烦在于",
-        "impact": "更关键的是",
-        "watch": "最后盯三件事",
+        "lede": ["先说结论", "直接说重点", "一句话概括", "开门见山"],
+        "facts": ["先把关键点摆出来", "数据先摆着", "已经能确认的是", "先看硬的"],
+        "spread": ["麻烦在于", "但问题是", "这里有个坑", "不过别高兴太早"],
+        "impact": ["更关键的是", "往深了看", "真正值得注意的", "换个角度看"],
+        "watch": ["最后盯三件事", "接下来看什么", "后面的关键节点", "下一步的变量"],
+        "transition": ["说白了", "换句话说", "再直白一点", "翻译一下"],
+        "aside": ["这里插一句", "顺便提一嘴", "有个细节容易被忽略", "多说一句"],
     },
     "english": {
-        "lede": "Put simply",
-        "facts": "Start with the core point",
-        "spread": "The problem is",
-        "impact": "More importantly",
-        "watch": "Three things matter next",
+        "lede": ["Put simply", "Here's the short version", "Bottom line", "Cut to it"],
+        "facts": ["Start with the core point", "The hard data first", "What we know for sure", "Start with what's confirmed"],
+        "spread": ["The problem is", "But here's the catch", "The wrinkle", "Where it gets tricky"],
+        "impact": ["More importantly", "Zoom out a bit", "The bigger picture", "What really matters"],
+        "watch": ["Three things matter next", "What to watch for", "The next dominoes", "Keep an eye on"],
+        "transition": ["In other words", "To put it bluntly", "Translation", "Plainly"],
+        "aside": ["Side note", "Worth mentioning", "One detail people miss", "Quick aside"],
     },
 }
 
@@ -741,16 +748,27 @@ def short_voice_phrases(request: dict[str, Any]) -> list[str]:
     return phrases
 
 
+def _pick_random_prefix(prefixes: list[str]) -> str:
+    """Pick a random prefix from a list of variants."""
+    if not prefixes:
+        return ""
+    return prefixes[hash(str(id(prefixes)) + str(random.random())) % len(prefixes)]
+
+
 def pick_voice_prefix(request: dict[str, Any], slot: str) -> str:
     ratio = int(request.get("human_signal_ratio", 35) or 35)
-    if ratio < 55:
+    if ratio < 30:
         return ""
     mode = voice_mode_for_request(request)
     personal_phrases = short_voice_phrases(request)
-    slot_order = {"lede": 0, "facts": 1, "spread": 2, "impact": 3, "watch": 4}
+    slot_order = {"lede": 0, "facts": 1, "spread": 2, "impact": 3, "watch": 4, "transition": 5, "aside": 6}
     if personal_phrases:
-        return personal_phrases[min(slot_order.get(slot, 0), len(personal_phrases) - 1)]
-    return DEFAULT_VOICE_PREFIXES[mode].get(slot, "")
+        idx = slot_order.get(slot, 0) % len(personal_phrases)
+        return personal_phrases[idx]
+    slot_variants = DEFAULT_VOICE_PREFIXES.get(mode, {}).get(slot, [])
+    if isinstance(slot_variants, list):
+        return _pick_random_prefix(slot_variants)
+    return slot_variants or ""
 
 
 def prepend_voice_prefix(prefix: str, text: str, *, mode: str) -> str:
@@ -2285,6 +2303,15 @@ def signal_sentence_zh(signals: list[dict[str, Any]]) -> str:
     return "最新一轮公开信号主要集中在：" + "；".join(parts) + "。"
 
 
+def _is_primarily_english(text: str) -> bool:
+    """Return True if >60% of non-space chars are ASCII letters."""
+    if not text:
+        return False
+    ascii_count = sum(1 for ch in text if ch.isascii() and ch.isalpha())
+    total = sum(1 for ch in text if not ch.isspace())
+    return total > 0 and ascii_count / total > 0.6
+
+
 def preferred_brief_item_text(
     item: dict[str, Any],
     *,
@@ -2293,7 +2320,15 @@ def preferred_brief_item_text(
     zh_field: str = "claim_text_zh",
 ) -> str:
     if mode == "chinese":
-        return strip_terminal_punctuation(item.get(zh_field) or item.get(field, ""))
+        zh_text = strip_terminal_punctuation(item.get(zh_field, ""))
+        en_text = strip_terminal_punctuation(item.get(field, ""))
+        # If zh_text is just the English fallback, skip it in Chinese mode
+        if zh_text and not _is_primarily_english(zh_text):
+            return zh_text
+        if en_text and not _is_primarily_english(en_text):
+            return en_text
+        # Both are English — return empty so the caller uses a generic phrase
+        return ""
     return strip_terminal_punctuation(item.get(field) or item.get(zh_field, ""))
 
 
@@ -2663,6 +2698,173 @@ def _legacy_v3_build_sections_from_brief(
         )
     return sections
 
+def build_cn_macro_scene_lead(request: dict[str, Any], source_summary: dict[str, Any]) -> str:
+    topic = clean_text(source_summary.get("topic")) or clean_text(request.get("topic"))
+    scene_prefix = "一场华尔街内部闭门讨论已经把风险提前摆上了桌面。"
+    if not any(token in topic for token in ("华尔街", "内部", "闭门")):
+        scene_prefix = "距离下一轮关键投票窗口已经不远，但判断现场已经先一步收紧。"
+    return (
+        f"{scene_prefix}真正先紧张起来的往往不是选民，"
+        f"而是已经开始重新定价风险的人。围绕{topic}，现在更值得看的不是口号，而是判断现场本身。"
+    )
+
+
+def build_cn_macro_opening_section_paragraph(request: dict[str, Any], source_summary: dict[str, Any], analysis_brief: dict[str, Any]) -> str:
+    del request, source_summary
+    contradiction = clean_string_list(analysis_brief.get("market_or_reader_relevance_zh"))[:1]
+    line = contradiction[0] if contradiction else "那条最关键的结构性风险"
+    return (
+        f"放到判断桌面上先被摆出来的，往往不是口号本身，而是{line}会不会比市场原来想得更早兑现。"
+        f"现在更值得先接受的一件事是：风险已经不只是停留在判断桌面上，而是开始沿着这条线往更具体的层面兑现。"
+        "真正要盯的，不是情绪本身，而是哪一段传导会先落地。"
+    )
+
+
+def build_cn_macro_scene_setting_subtitle() -> str:
+    return "从华尔街已经开始重新定价的那条风险线，看这轮美国中期选举压力会怎样传到政策和市场。"
+
+
+def extract_cn_macro_case_names(analysis_brief: dict[str, Any], source_summary: dict[str, Any]) -> list[str]:
+    raw_lines = [
+        *clean_string_list(analysis_brief.get("open_questions_zh")),
+        *clean_string_list(analysis_brief.get("market_or_reader_relevance_zh")),
+        clean_text(source_summary.get("topic")),
+        clean_text(source_summary.get("core_verdict")),
+    ]
+    names: list[str] = []
+    for line in raw_lines:
+        cleaned = clean_text(line)
+        if not cleaned:
+            continue
+        parts = re.split(r"[、,，和/]", cleaned)
+        for part in parts:
+            candidate = clean_text(part)
+            candidate = re.sub(r"(谁会先动.*|会不会.*|是否.*|继续.*|确认.*|拖延.*|收窄.*|重定价.*)$", "", candidate)
+            candidate = candidate.strip("：:？?。！!；; ")
+            if len(candidate) < 2:
+                continue
+            if candidate not in names:
+                names.append(candidate)
+    return names[:3]
+
+
+def build_cn_macro_concrete_case_paragraph(analysis_brief: dict[str, Any], source_summary: dict[str, Any]) -> str:
+    case_names = extract_cn_macro_case_names(analysis_brief, source_summary)
+    if len(case_names) >= 3:
+        return "\n\n".join(
+            [
+                f"先看{case_names[0]}。它最容易最早暴露主线风险是不是已经开始兑现。如果这里先松，市场会更快接受压力已经从口号层走到现实层。",
+                f"再看{case_names[1]}。它更像制度和候选人路径会不会把局部压力放大的测试点。如果这里先卡住，后面的制度摩擦就更容易被定价成持续风险。",
+                f"最后看{case_names[2]}。它最接近经济体感会不会真正传到更广范围定价的检验。如果这里先传导，风险就不再只是州级问题，而会变成更广的市场判断。",
+            ]
+        )
+    if len(case_names) == 2:
+        return "\n\n".join(
+            [
+                f"先看{case_names[0]}。它更像最早的风险前哨。",
+                f"再看{case_names[1]}。它更像压力会不会继续扩散的确认点。谁先松动，谁就最早改变市场对主线的理解。",
+            ]
+        )
+    if len(case_names) == 1:
+        return (
+            f"先看{case_names[0]}。这个样本如果先变，后面的风险定价会很快跟上。"
+            "它不是全部答案，但往往会是市场最先抓住的拐点信号。"
+        )
+    return "接下来要看的不是抽象总量，而是2到3个最能体现风险转向的样本：关键州、关键机构、关键人，谁先松动，谁就最早改变市场对主线的理解。"
+
+
+def build_cn_macro_institutional_bottleneck_paragraph(analysis_brief: dict[str, Any]) -> str:
+    open_questions = clean_string_list(analysis_brief.get("open_questions_zh"))
+    bottleneck = next(
+        (
+            item
+            for item in open_questions
+            if any(token in item for token in ("美联储", "确认", "任命", "国会", "参议院", "众议院", "Powell", "Walsh"))
+        ),
+        "",
+    )
+    if bottleneck:
+        normalized = clean_text(bottleneck).rstrip("。？！!? ")
+        normalized = re.sub(r"会不会", "", normalized)
+        normalized = re.sub(r"是否", "", normalized)
+        normalized = re.sub(r"\s+", "", normalized)
+        return f"再往上一层看，需要确认的已经不是情绪本身，而是{normalized}会不会变成真正的制度卡点。制度层一旦卡住，风险就会从选情本身外溢到政策和市场。"
+    return "再往上一层看，需要确认的不是情绪本身，而是制度和政策层面的卡点：国会、任命、确认程序、政策时钟，这些都会决定风险是被吸收，还是继续外溢。"
+
+
+def build_cn_macro_market_readthroughs_paragraph(analysis_brief: dict[str, Any], source_summary: dict[str, Any]) -> str:
+    del analysis_brief, source_summary
+    return "\n\n".join(
+        [
+            "第一，先看国会或关键州选情变化会不会压到政策推进上。一旦席位边际变化先被市场确认，政策时钟就会比 headline 更早反映到价格里。",
+            "第二，看能源、利率和制度不确定性会不会继续抬高波动率。对利率敏感资产和依赖政策确定性的板块，这往往比单条民调更快传到定价端。",
+            "第三，看市场会不会把这条线从政治 headline，重新定价成资产价格问题。如果风险开始跨过政策与人事层，长端利率、高波动资产和防御性配置的反应都会先变得更直接。",
+        ]
+    )
+
+
+def build_cn_macro_pain_chain_paragraph(analysis_brief: dict[str, Any]) -> str:
+    del analysis_brief
+    return (
+        "真正会推动政治环境变化的，往往不是口号，而是体感。油价如果先抬，最先被改写的不是 headline，而是通勤和取暖成本。"
+        "\n\n"
+        "这一步一旦持续，家庭会先缩掉非必要支出，小城镇商家的订单和现金流再跟着变紧。"
+        "\n\n"
+        "等到这种压力从家庭账本传到本地经济，选民的政治耐心通常会比民调 headline 更早松动。"
+    )
+
+
+def build_cn_macro_core_contradiction_section(
+    request: dict[str, Any],
+    source_summary: dict[str, Any],
+    analysis_brief: dict[str, Any],
+) -> dict[str, str]:
+    del request, source_summary
+    contradiction = clean_string_list(analysis_brief.get("market_or_reader_relevance_zh"))[:1]
+    line = contradiction[0] if contradiction else "表面政治叙事和真实制度约束正在彼此错位。"
+    return {
+        "heading": "核心矛盾",
+        "paragraph": f"这篇文章真正要解释的，不是单一 headline，而是一个更硬的冲突：{line}。后面所有判断，都围绕这条线展开。",
+    }
+
+
+def build_cn_macro_political_longform_sections(
+    request: dict[str, Any],
+    source_summary: dict[str, Any],
+    analysis_brief: dict[str, Any],
+) -> list[dict[str, str]]:
+    return [
+        {
+            "heading": "开头引入",
+            "paragraph": build_cn_macro_opening_section_paragraph(request, source_summary, analysis_brief),
+        },
+        build_cn_macro_core_contradiction_section(request, source_summary, analysis_brief),
+        {
+            "heading": "关键样本",
+            "paragraph": build_cn_macro_concrete_case_paragraph(analysis_brief, source_summary),
+        },
+        {
+            "heading": "体感变量与传导链",
+            "paragraph": build_cn_macro_pain_chain_paragraph(analysis_brief),
+        },
+        {
+            "heading": "制度与政策层变量",
+            "paragraph": build_cn_macro_institutional_bottleneck_paragraph(analysis_brief),
+        },
+        {
+            "heading": "市场含义",
+            "paragraph": build_cn_macro_market_readthroughs_paragraph(analysis_brief, source_summary),
+        },
+        {
+            "heading": "更远期展望",
+            "paragraph": "如果前面的结构成立，后面被提前带出来的就不只是当前一轮选情，而是更长周期里的候选人布局、政策连续性和市场对未来两到三年的重新定价。",
+        },
+        {
+            "heading": "结尾",
+            "paragraph": build_cn_macro_watchpoint_ending(request, analysis_brief, source_summary),
+        },
+    ]
+
 
 def build_sections(
     request: dict[str, Any],
@@ -2678,6 +2880,15 @@ def build_sections(
         citations,
         images,
     )
+    if is_cn_macro_political_longform_profile(request):
+        topic_lines = [
+            clean_text(request.get("topic")),
+            clean_text(source_summary.get("topic")),
+            clean_text(source_summary.get("core_verdict")),
+            *clean_string_list(safe_dict(effective_brief).get("market_or_reader_relevance_zh")),
+        ]
+        if looks_like_macro_political_market_longform_context(topic_lines):
+            return build_cn_macro_political_longform_sections(request, source_summary, effective_brief)
     return build_sections_from_brief(request, source_summary, citations, images, effective_brief)
 
 
@@ -2864,6 +3075,125 @@ def append_source_limit_note(article_markdown: str, source_summary: dict[str, An
     return article_markdown.rstrip() + f"\n\n{marker}" + note
 
 
+CHINESE_TERM_LOCALIZATION_MAP = (
+    ("TSMC", "台积电（TSMC）"),
+    ("ASML", "阿斯麦（ASML）"),
+    ("order intake", "新增订单（order intake）"),
+    ("export controls", "出口管制（export controls）"),
+    ("Reuters", "路透社 Reuters"),
+)
+
+
+def localize_chinese_terms(text: str) -> str:
+    localized = str(text or "")
+    for raw_term, localized_term in CHINESE_TERM_LOCALIZATION_MAP:
+        if localized_term in localized:
+            continue
+        localized = re.sub(
+            rf"(?<![A-Za-z]){re.escape(raw_term)}(?![A-Za-z])",
+            localized_term,
+            localized,
+            count=1,
+        )
+    return localized
+
+
+def merge_chinese_concession_turn(paragraphs: list[str]) -> list[str]:
+    merged: list[str] = []
+    index = 0
+    while index < len(paragraphs):
+        current = clean_text(paragraphs[index])
+        next_text = clean_text(paragraphs[index + 1]) if index + 1 < len(paragraphs) else ""
+        if (
+            current
+            and len(current) <= 24
+            and current.endswith(("。", "！", "？"))
+            and any(next_text.startswith(prefix) for prefix in ("但", "不过", "问题在于", "真正值得看的是"))
+        ):
+            merged.append(f"{current}{next_text}")
+            index += 2
+            continue
+        if current:
+            merged.append(current)
+        index += 1
+    return merged
+
+
+def article_prefers_watchpoint_ending(
+    request: dict[str, Any],
+    analysis_brief: dict[str, Any],
+    source_summary: dict[str, Any],
+) -> bool:
+    text = " ".join(
+        [
+            clean_text(request.get("topic")),
+            clean_text(source_summary.get("topic")),
+            " ".join(clean_string_list(request.get("audience_keywords"))),
+            " ".join(clean_string_list(analysis_brief.get("market_or_reader_relevance_zh"))),
+        ]
+    ).lower()
+    return any(token in text for token in ("ai", "semiconductor", "chips", "台积电", "阿斯麦", "capex", "供应链"))
+
+
+def build_watchpoint_ending(
+    request: dict[str, Any],
+    analysis_brief: dict[str, Any],
+    source_summary: dict[str, Any],
+) -> str:
+    del request, source_summary
+    watchpoints = clean_string_list(analysis_brief.get("open_questions_zh"))[:3]
+    lead = "更值得盯的，是接下来几个验证节点："
+    if not watchpoints:
+        return lead
+    labels = ("一", "二", "三")
+    numbered = [f"第{labels[idx - 1] if idx - 1 < len(labels) else idx}，{item.rstrip('。')}" for idx, item in enumerate(watchpoints, start=1)]
+    return lead + "".join(numbered)
+
+
+def build_cn_macro_watchpoint_ending(
+    request: dict[str, Any],
+    analysis_brief: dict[str, Any],
+    source_summary: dict[str, Any],
+) -> str:
+    return build_watchpoint_ending(request, analysis_brief, source_summary)
+
+
+def replace_chinese_repeated_conclusion_ending(
+    markdown_text: str,
+    request: dict[str, Any],
+    analysis_brief: dict[str, Any],
+    source_summary: dict[str, Any],
+) -> str:
+    if not article_prefers_watchpoint_ending(request, analysis_brief, source_summary):
+        return markdown_text
+    if "## 结尾" not in markdown_text:
+        return markdown_text
+    head, _separator, _tail = markdown_text.partition("## 结尾")
+    ending = "## 结尾\n\n" + build_watchpoint_ending(request, analysis_brief, source_summary).strip() + "\n"
+    return head.rstrip() + "\n\n" + ending
+
+
+def polish_chinese_article_markdown(
+    markdown_text: str,
+    request: dict[str, Any],
+    analysis_brief: dict[str, Any],
+    source_summary: dict[str, Any],
+) -> str:
+    if clean_text(request.get("language_mode")) != "chinese":
+        return markdown_text
+    blocks = str(markdown_text or "").split("\n\n")
+    localized_blocks = [localize_chinese_terms(block) for block in blocks]
+    merged_blocks = merge_chinese_concession_turn(localized_blocks)
+    polished = "\n\n".join(block for block in merged_blocks if clean_text(block)).strip() + "\n"
+    polished = replace_chinese_repeated_conclusion_ending(
+        polished,
+        request,
+        analysis_brief,
+        source_summary,
+    )
+    return polished
+
+
 def body_refresh_signature(images: list[dict[str, Any]], draft_mode: str) -> list[tuple[str, str, str, str]]:
     signature: list[tuple[str, str, str, str]] = []
     include_status = draft_mode == "image_only"
@@ -2978,6 +3308,13 @@ def refresh_article_package(
             safe_dict(render_context.get("source_summary")),
             clean_text(request_context.get("language_mode")),
         )
+        if clean_text(request_context.get("language_mode")) == "chinese":
+            article_package["article_markdown"] = polish_chinese_article_markdown(
+                article_package["article_markdown"],
+                request_context,
+                safe_dict(render_context.get("analysis_brief")),
+                safe_dict(render_context.get("source_summary")),
+            )
     request_context = safe_dict(render_context.get("request"))
     source_summary = safe_dict(render_context.get("source_summary"))
     article_package["article_framework"] = resolve_article_framework(request_context, source_summary)
@@ -3344,6 +3681,7 @@ def assemble_article_package(
     title = finalize_article_title(build_title(request, evidence_digest, selected_images), request, effective_analysis_brief, source_summary)
     subtitle = build_subtitle(request, source_summary, selected_images)
     sections = build_sections(request, source_summary, evidence_digest, citations, selected_images, effective_analysis_brief)
+    sections = humanize_sections(sections, request)
     if clean_text(request.get("language_mode")) == "chinese":
         polished_sections: list[dict[str, Any]] = []
         for section in sections:
@@ -3385,6 +3723,13 @@ def assemble_article_package(
         request.get("must_avoid", []),
     )
     article_markdown = append_source_limit_note(article_markdown, source_summary, clean_text(request.get("language_mode")))
+    if clean_text(request.get("language_mode")) == "chinese":
+        article_markdown = polish_chinese_article_markdown(
+            article_markdown,
+            request,
+            effective_analysis_brief,
+            source_summary,
+        )
     if clean_text(request.get("language_mode")) == "chinese":
         draft_thesis = clean_text(effective_analysis_brief.get("recommended_thesis_zh")) or clean_text(
             effective_analysis_brief.get("recommended_thesis")
@@ -4104,6 +4449,51 @@ FEATURE_ROUNDUP_HEADLINE_TOKENS = (
     "source code",
 )
 
+HEADLINE_FRAME_ACTOR_TOKENS = (
+    "英伟达",
+    "华为",
+    "台积电",
+    "阿斯麦",
+    "特斯拉",
+    "腾讯",
+    "字节",
+    "OpenAI",
+    "Anthropic",
+    "Tesla",
+    "NVIDIA",
+    "TSMC",
+    "ASML",
+)
+HEADLINE_FRAME_NEGATIVE_TOKENS = (
+    "逝世",
+    "去世",
+    "讣闻",
+    "专访",
+    "人物回顾",
+    "地方",
+    "阜沙镇",
+    "广交会",
+    "论坛",
+    "峰会",
+    "会展",
+)
+HEADLINE_FRAME_JUDGMENT_TOKENS = (
+    "护城河",
+    "时间差",
+    "拖慢",
+    "拖住",
+    "追上",
+    "改写",
+    "估值",
+    "市场",
+    "中国",
+    "供应链",
+    "capex",
+    "guidance",
+    "moat",
+    "time gap",
+)
+
 
 def headline_topic_prefers_plain_title(request: dict[str, Any], source_summary: dict[str, Any]) -> bool:
     text_parts = [
@@ -4116,6 +4506,62 @@ def headline_topic_prefers_plain_title(request: dict[str, Any], source_summary: 
     if not lowered:
         return False
     return any(token in lowered for token in FEATURE_ROUNDUP_HEADLINE_TOKENS)
+
+
+def headline_frame_text(request: dict[str, Any], source_summary: dict[str, Any], analysis_brief: dict[str, Any]) -> str:
+    parts = [
+        public_topic_text(request),
+        clean_text(source_summary.get("topic")),
+        clean_text(source_summary.get("core_verdict")),
+        *clean_string_list(analysis_brief.get("market_or_reader_relevance_zh")),
+        *clean_string_list(analysis_brief.get("market_or_reader_relevance")),
+        *clean_string_list(analysis_brief.get("open_questions_zh")),
+        *clean_string_list(analysis_brief.get("open_questions")),
+    ]
+    return " ".join(part for part in parts if clean_text(part))
+
+
+def headline_frame_primary_actor(text: str) -> str:
+    lowered = text.lower()
+    for token in HEADLINE_FRAME_ACTOR_TOKENS:
+        if token.lower() in lowered:
+            return token
+    return ""
+
+
+def headline_frame_eligible(request: dict[str, Any], source_summary: dict[str, Any], analysis_brief: dict[str, Any]) -> bool:
+    if clean_text(request.get("language_mode")) != "chinese":
+        return False
+    combined = headline_frame_text(request, source_summary, analysis_brief)
+    lowered = combined.lower()
+    if headline_topic_prefers_plain_title(request, source_summary) and not any(
+        token.lower() in lowered for token in HEADLINE_FRAME_JUDGMENT_TOKENS
+    ):
+        return False
+    if not combined or not headline_frame_primary_actor(combined):
+        return False
+    if any(token.lower() in lowered for token in HEADLINE_FRAME_NEGATIVE_TOKENS):
+        return False
+    return any(token.lower() in lowered for token in HEADLINE_FRAME_JUDGMENT_TOKENS)
+
+
+def headline_frame_candidates(request: dict[str, Any], source_summary: dict[str, Any], analysis_brief: dict[str, Any]) -> list[str]:
+    if not headline_frame_eligible(request, source_summary, analysis_brief):
+        return []
+    combined = headline_frame_text(request, source_summary, analysis_brief)
+    lowered = combined.lower()
+    actor = headline_frame_primary_actor(combined)
+    candidates: list[str] = []
+    if any(token in lowered for token in ("护城河", "moat", "时间差", "time gap", "拖慢", "拖住")):
+        candidates.append(compact_chinese_title(f"{actor}真正的护城河，是很多人忽略的时间差", limit=30))
+    if any(token in lowered for token in ("中国", "市场", "估值", "改写", "追上", "guidance", "capex")):
+        candidates.append(compact_chinese_title(f"{actor}最怕的不是对手追上，而是时间差被改写", limit=30))
+    unique_candidates: list[str] = []
+    for item in candidates:
+        cleaned = compact_chinese_title(item, limit=30)
+        if cleaned and cleaned not in unique_candidates:
+            unique_candidates.append(cleaned)
+    return unique_candidates
 
 
 def headline_hook_prefixes(request: dict[str, Any], *, mode: str) -> list[str]:
@@ -4527,8 +4973,18 @@ def finalize_article_title(
     public_topic = public_topic_text(request, clean_text(source_summary.get("topic")) or "")
     if has_cjk(public_topic):
         base_title = compact_chinese_title(public_topic, limit=30) or title
-        return apply_headline_hook(base_title, request, source_summary)
-    derived = derive_chinese_title(request, analysis_brief, source_summary)
+    else:
+        derived = derive_chinese_title(request, analysis_brief, source_summary)
+        base_title = derived or title
+    if headline_frame_eligible(request, source_summary, analysis_brief):
+        for candidate in headline_frame_candidates(request, source_summary, analysis_brief):
+            if not candidate or title_has_hanging_tail(candidate):
+                continue
+            if len(candidate) < max(10, int(len(base_title or title) * 0.72)):
+                continue
+            base_title = candidate
+            break
+    derived = base_title
     return apply_headline_hook(derived or title, request, source_summary)
 
 
@@ -4704,6 +5160,182 @@ def polish_chinese_wechat_paragraph(
     updated = re.sub(r"\n{3,}", "\n\n", updated)
     return updated.strip()
 
+
+# ---------------------------------------------------------------------------
+# Humanization layer: sentence-level variation + paragraph rhythm
+# ---------------------------------------------------------------------------
+
+_ZH_TRANSITION_PHRASES = [
+    "说白了", "换句话说", "再直白一点", "翻译一下就是",
+    "换个角度看", "反过来想", "但话说回来", "不过转念一想",
+]
+
+_ZH_ASIDE_PHRASES = [
+    "这里插一句", "顺便提一嘴", "有个细节容易被忽略",
+    "多说一句", "补充一个背景", "这里有个前提",
+]
+
+_ZH_HEDGES = [
+    "大概率", "差不多", "粗略估计", "目前来看",
+    "按现有信息", "如果没看错的话",
+]
+
+_ZH_RHETORICAL_STARTERS = [
+    "但真的是这样吗？", "问题是，这站得住吗？",
+    "那为什么还有人不买账？", "可是反过来想呢？",
+]
+
+_ZH_CONNECTORS_MERGE = ["而且", "同时", "另外", "加上"]
+_ZH_CAUSAL_PAIRS = [
+    ("之所以", "是因为"),
+    ("因为", "所以"),
+    ("正因为", "才会"),
+]
+
+
+def vary_sentence_patterns(sentences: list[str], *, mode: str = "chinese", ratio: int = 50) -> list[str]:
+    """Apply sentence-level variation to reduce AI-pattern detectability.
+
+    - Merge adjacent short sentences occasionally
+    - Inject hedges and rhetorical questions
+    - Prevent consecutive sentences from starting with the same word
+    - Occasionally flip causal order
+    """
+    if mode != "chinese" or not sentences or ratio < 30:
+        return sentences
+
+    result: list[str] = []
+    rng = random.Random(hash(tuple(sentences)) & 0xFFFFFFFF)
+
+    i = 0
+    while i < len(sentences):
+        s = sentences[i].strip()
+        if not s:
+            i += 1
+            continue
+
+        # Merge short adjacent sentences (both < 30 chars) ~30% of the time
+        # Skip numbered list items
+        _num_prefixes = ("第一", "第二", "第三", "第四", "第五", "1.", "2.", "3.", "4.", "5.")
+        _is_num_item = any(s.startswith(p) for p in _num_prefixes)
+        _next_is_num = (i + 1 < len(sentences) and any(sentences[i + 1].strip().startswith(p) for p in _num_prefixes))
+        if (
+            i + 1 < len(sentences)
+            and len(s) < 30
+            and len(sentences[i + 1].strip()) < 30
+            and rng.random() < 0.3
+            and not _is_num_item
+            and not _next_is_num
+        ):
+            connector = rng.choice(_ZH_CONNECTORS_MERGE)
+            merged = s.rstrip("。，；") + "，" + connector + sentences[i + 1].strip().lstrip("，")
+            result.append(merged)
+            i += 2
+            continue
+
+        # Inject a hedge before a confident-sounding sentence ~15% of the time
+        if ratio >= 60 and rng.random() < 0.15 and not any(s.startswith(h) for h in _ZH_HEDGES):
+            if any(kw in s for kw in ("已经", "确认", "明确", "肯定", "一定")):
+                hedge = rng.choice(_ZH_HEDGES)
+                s = f"{hedge}，{s.lstrip('，')}"
+
+        # Flip causal order ~10% of the time
+        if ratio >= 50 and rng.random() < 0.1:
+            for a, b in _ZH_CAUSAL_PAIRS:
+                if a in s and b in s:
+                    # Simple swap: "之所以X是因为Y" → "因为Y，所以X"
+                    parts = s.split(b, 1)
+                    if len(parts) == 2:
+                        before = parts[0].replace(a, "").strip().rstrip("，")
+                        after = parts[1].strip().rstrip("。")
+                        s = f"因为{after}，{before}"
+                    break
+
+        # Prevent consecutive same-start (skip numbered list items)
+        _is_numbered = any(s.startswith(p) for p in ("第一", "第二", "第三", "第四", "第五", "1.", "2.", "3.", "4.", "5."))
+        if result and len(result[-1]) > 0 and len(s) > 0 and result[-1][0] == s[0] and not _is_numbered:
+            transition = rng.choice(_ZH_TRANSITION_PHRASES)
+            s = f"{transition}，{s}"
+
+        result.append(s)
+        i += 1
+
+    # Insert 1-2 rhetorical questions if ratio is high enough
+    # Avoid inserting into numbered list sequences
+    if ratio >= 65 and len(result) >= 4:
+        _numbered_prefixes = ("第一", "第二", "第三", "第四", "第五", "1.", "2.", "3.", "4.", "5.")
+        _safe_positions = [
+            j for j in range(1, len(result) - 1)
+            if not any(result[j].startswith(p) for p in _numbered_prefixes)
+            and not any(result[j - 1].startswith(p) for p in _numbered_prefixes)
+        ]
+        if _safe_positions:
+            insert_pos = rng.choice(_safe_positions)
+            result.insert(insert_pos, rng.choice(_ZH_RHETORICAL_STARTERS))
+
+    return result
+
+
+def humanize_paragraph(text: str, *, mode: str = "chinese", ratio: int = 50) -> str:
+    """Post-process a paragraph to add human-like imperfections and rhythm variation.
+
+    Applied after section construction but before final markdown assembly.
+    """
+    if mode != "chinese" or not text or ratio < 30:
+        return text
+
+    rng = random.Random(hash(text) & 0xFFFFFFFF)
+
+    # Split into sentences
+    parts = re.split(r"(?<=[。！？])", text)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if not parts:
+        return text
+
+    # Occasionally insert a transition phrase between paragraphs
+    if len(parts) >= 3 and rng.random() < 0.25:
+        pos = rng.randint(1, len(parts) - 1)
+        transition = rng.choice(_ZH_TRANSITION_PHRASES)
+        parts[pos] = f"{transition}，{parts[pos].lstrip('，')}"
+
+    # Occasionally insert an aside
+    if len(parts) >= 4 and ratio >= 60 and rng.random() < 0.2:
+        pos = rng.randint(2, len(parts) - 1)
+        aside = rng.choice(_ZH_ASIDE_PHRASES)
+        parts.insert(pos, f"{aside}——")
+
+    return "".join(parts)
+
+
+def humanize_sections(sections: list[dict[str, Any]], request: dict[str, Any]) -> list[dict[str, Any]]:
+    """Apply humanization to all sections in a list."""
+    ratio = int(request.get("human_signal_ratio", 35) or 35)
+    mode = voice_mode_for_request(request)
+    if ratio < 30:
+        return sections
+    result = []
+    macro_structured_headings = {
+        "开头引入",
+        "核心矛盾",
+        "关键样本",
+        "体感变量与传导链",
+        "制度与政策层变量",
+        "市场含义",
+        "更远期展望",
+        "结尾",
+    }
+    skip_macro_structured = is_cn_macro_political_longform_profile(request)
+    for section in sections:
+        s = dict(section)
+        paragraph = s.get("paragraph", "")
+        heading = clean_text(s.get("heading"))
+        if paragraph and not (skip_macro_structured and heading in macro_structured_headings):
+            s["paragraph"] = humanize_paragraph(paragraph, mode=mode, ratio=ratio)
+        result.append(s)
+    return result
+
+
 # Canonical lede/section builders. Earlier generations above are retained as legacy variants.
 def build_public_lede(
     request: dict[str, Any],
@@ -4723,6 +5355,31 @@ def build_public_lede(
     voice_prefix = pick_voice_prefix(request, "lede")
     longform_mode = requested_target_length_chars(request) >= 1800
 
+    if is_cn_macro_political_longform_profile(request):
+        topic_lines = [
+            clean_text(request.get("topic")),
+            clean_text(source_summary.get("topic")),
+            clean_text(source_summary.get("core_verdict")),
+            *clean_string_list(analysis_brief.get("market_or_reader_relevance_zh")),
+        ]
+        if looks_like_macro_political_market_longform_context(topic_lines):
+            scene_prefix = "一场华尔街内部闭门讨论已经把风险提前摆上了桌面。"
+            if not any(token in topic for token in ("华尔街", "内部", "闭门")):
+                scene_prefix = "距离下一轮关键投票窗口已经不远，但判断现场已经先一步收紧。"
+            zh = (
+                f"{scene_prefix}真正先紧张起来的往往不是选民，而是已经开始重新定价风险的人。"
+                f"围绕{topic}，现在更值得看的不是口号，而是选民结构、经济体感和制度风险会不会一起把压力传到政策和市场。"
+            )
+            en = (
+                f"The next political window is still ahead, but the people moving first are already repricing risk. "
+                f"For {topic}, the real question is whether voter structure, lived economics, and institutional risk start feeding directly into policy and markets."
+            )
+            return bilingual_text(
+                zh,
+                en,
+                language_mode,
+            )
+
     if language_mode == "chinese":
         primary_fact, debate_fact, implication_fact = split_fact_roles(fact_texts)
         concrete_focus = normalized_chinese_focus_items(market_relevance, concrete_only=True)
@@ -4740,11 +5397,11 @@ def build_public_lede(
             if debate_fact:
                 sentences.append(f"但眼下还不能把结论写死，{debate_fact}")
             if not debate_fact and boundary_claims:
-                sentences.append(f"但像“{boundary_claims[0]}”这样的判断，现阶段还不能直接写成结论。")
+                sentences.append(f"但像\u201c{boundary_claims[0]}\u201d这样的判断，现阶段还不能直接写成结论。")
             if longform_mode:
-                if concrete_focus:
+                if concrete_focus and len(concrete_focus) >= 2:
                     sentences.append(
-                        f"现在更该分清的，不是立场，而是{chinese_focus_cluster(concrete_focus[:2], fallback='后续传导变量', flavor='boundary_question')}。"
+                        f"现在更该分清的，不是站队，而是{chinese_focus_cluster(concrete_focus[1:3], fallback='后续传导变量', flavor='boundary_question')}。"
                     )
                 else:
                     sentences.append("写深这类题材的关键，是先把已经落地的变化、仍待验证的判断和后续传导变量分开。")
@@ -4772,11 +5429,14 @@ def build_public_lede(
             else:
                 sentences.append(f"更重要的是，它已经开始碰到{chinese_focus_cluster(concrete_focus[:3])}")
             if boundary_claims:
-                sentences.append(f"不过像“{boundary_claims[0]}”这样的判断，现阶段还不能写成定论")
+                sentences.append(f"不过像\u201c{boundary_claims[0]}\u201d这样的判断，现阶段还不能写成定论")
             if longform_mode:
-                sentences.append(
-                    f"写深这件事的关键，不是继续堆热度，而是看{chinese_focus_cluster(concrete_focus[:3], flavor='hard_signal')}。"
-                )
+                if len(concrete_focus) >= 2:
+                    sentences.append(
+                        f"写深这件事的关键，不是继续堆热度，而是看{chinese_focus_cluster(concrete_focus[1:3], flavor='hard_signal')}。"
+                    )
+                else:
+                    sentences.append("写深这件事的关键，不是继续堆热度，而是看后面的传导链会不会继续被验证。")
             sentences = apply_slot_memory(
                 sentences,
                 request,
@@ -4881,6 +5541,12 @@ def build_sections_from_brief(
         all_focus_items = normalized_chinese_focus_items(market_relevance_raw)
         concrete_focus = normalized_chinese_focus_items(market_relevance_raw, concrete_only=True)
         focus_for_progression = concrete_focus[:3] or all_focus_items[:3]
+        # --- distribute focus items across sections to avoid repeating the same phrase ---
+        _all_focus = concrete_focus or all_focus_items
+        _focus_fact = _all_focus[:2] if len(_all_focus) >= 2 else _all_focus[:1]
+        _focus_spread = _all_focus[1:3] if len(_all_focus) >= 3 else _all_focus[:2]
+        _focus_impact = _all_focus[2:4] if len(_all_focus) >= 4 else (_all_focus[1:3] if len(_all_focus) >= 3 else _all_focus[:2])
+        _focus_watch = _all_focus[:3]  # watch section lists all items by design
         developer_watch_mode = looks_like_developer_tooling_focus(all_focus_items) or looks_like_developer_tooling_focus(watch_items)
         has_screenshot_visual = any(is_screenshot_role(item.get("role")) for item in images)
         has_non_screenshot_visual = any(
@@ -4910,8 +5576,26 @@ def build_sections_from_brief(
         dense_longform_mode = target_length_chars >= 2400
         extended_longform_mode = target_length_chars >= 2800
 
+        # --- consume story_angles from brief ---
+        _story_angles_zh = safe_list(analysis_brief.get("story_angles_zh"))
+        _story_angles_en = safe_list(analysis_brief.get("story_angles"))
+        _selected_angle_zh = clean_text(request.get("angle_zh"))
+        _selected_angle_en = clean_text(request.get("angle"))
+        _angle_risk_zh = ""
+        if _selected_angle_zh:
+            for _sa in _story_angles_zh:
+                if clean_text(_sa.get("angle")) == _selected_angle_zh:
+                    _angle_risk_zh = clean_text(_sa.get("risk", ""))
+                    break
+        elif _story_angles_zh:
+            _selected_angle_zh = clean_text(_story_angles_zh[0].get("angle", ""))
+            _angle_risk_zh = clean_text(_story_angles_zh[0].get("risk", ""))
+
         fact_sentences: list[str] = []
-        if primary_fact:
+        if _selected_angle_zh and primary_fact:
+            # angle-driven opener: weave the angle framing around the primary fact
+            fact_sentences.append(_selected_angle_zh)
+        elif primary_fact:
             fact_sentences.append(f"最先能确认的变化其实很具体：{primary_fact}")
         elif meta_fact_texts:
             fact_sentences.append(f"{topic}现在已经不只是标题层面的热闹")
@@ -4929,21 +5613,21 @@ def build_sections_from_brief(
         elif concrete_focus:
             if primary_fact or meta_fact_texts:
                 if looks_like_developer_tooling_focus(concrete_focus):
-                    fact_sentences.append(f"往下拆的时候，更该看的其实是{chinese_focus_cluster(concrete_focus[:3], flavor='workflow_shift')}")
+                    fact_sentences.append(f"往下拆的时候，更该看的其实是{chinese_focus_cluster(_focus_fact, flavor='workflow_shift')}")
                 else:
-                    fact_sentences.append(f"往下拆的时候，更该看的其实是{chinese_focus_cluster(concrete_focus[:3])}")
+                    fact_sentences.append(f"往下拆的时候，更该看的其实是{chinese_focus_cluster(_focus_fact)}")
             else:
                 if looks_like_developer_tooling_focus(concrete_focus):
-                    fact_sentences.append(f"眼下更该盯的，是{chinese_focus_cluster(concrete_focus[:3], flavor='decision_fork')}")
+                    fact_sentences.append(f"眼下更该盯的，是{chinese_focus_cluster(_focus_fact, flavor='decision_fork')}")
                 else:
-                    fact_sentences.append(f"眼下更该盯的，是{chinese_focus_cluster(concrete_focus[:3])}这几条传导线")
+                    fact_sentences.append(f"眼下更该盯的，是{chinese_focus_cluster(_focus_fact)}这几条传导线")
         if longform_mode:
             fact_sentences.append("这一步最重要的，不是把所有判断一次写满，而是先把已经落地的变化和还在路上的推演拆开。")
         if extended_longform_mode:
             if looks_like_developer_tooling_focus(concrete_focus or all_focus_items):
                 fact_sentences.append("比起继续数彩蛋，更关键的是这些入口到底有没有对应到真实调用链、权限门槛和协同路径。")
             elif concrete_focus:
-                fact_sentences.append(f"真正拉开差距的，不是再堆一个更大的判断，而是看{chinese_focus_cluster(concrete_focus[:2], fallback='前面那两条更具体的变化')}有没有继续被验证。")
+                fact_sentences.append(f"真正拉开差距的，不是再堆一个更大的判断，而是看{chinese_focus_cluster(_focus_fact[:1], fallback='前面那条更具体的变化')}有没有继续被验证。")
         if extended_longform_mode and looks_like_developer_tooling_focus(concrete_focus or all_focus_items):
             fact_sentences.append("再往下一层看，真正关键的不是源码里有没有更多名字，而是这些名字有没有开始对应到公开入口、权限说明和可复现的调用链。")
         fact_sentences = apply_slot_memory(
@@ -4953,6 +5637,7 @@ def build_sections_from_brief(
             mode="chinese",
             context_lines=[primary_fact, debate_fact, implication_fact, *not_proven_texts, *market_relevance_raw, *open_questions],
         )
+        fact_sentences = vary_sentence_patterns(fact_sentences, mode="chinese")
         fact_zh = join_chinese_sentences(fact_sentences)
         fact_en = (
             "Start with the points that can already stand on the record: "
@@ -4970,7 +5655,7 @@ def build_sections_from_brief(
         if shadow_source_count > 0:
             spread_sentences.append(f"与此同时，还有{shadow_source_count}路更新更快但噪音也更大的信号在不断抬高情绪")
         spread_sentences.append(
-            f"所以你现在看到的，不只是一个标题在回潮，而是在看{chinese_focus_cluster(focus_for_progression[:2], fallback='更具体的变化', flavor='story_test')}"
+            f"所以你现在看到的，不只是一个标题在回潮，而是在看{chinese_focus_cluster(_focus_spread, fallback='更具体的变化', flavor='story_test')}"
         )
         if longform_mode:
             spread_sentences.append("说白了，这里不是情绪在原地打转，而是不同来源都在抢着证明哪条传导链会先被坐实。")
@@ -4983,6 +5668,8 @@ def build_sections_from_brief(
                 spread_sentences.append(f"也就是说，真正往前推它的，不是更响的口号，而是{trend_texts[0]}这条线开始被更多人反复验证。")
         if extended_longform_mode and looks_like_developer_tooling_focus(all_focus_items):
             spread_sentences.append("也正因为如此，这轮讨论才没有停在“又挖到几个彩蛋”，而是在逼近一个更实际的问题：团队会不会把这些能力真的用起来。")
+        if _angle_risk_zh:
+            spread_sentences.append(f"不过这里有个容易踩的坑——{_angle_risk_zh}")
         spread_sentences = apply_slot_memory(
             spread_sentences,
             request,
@@ -4990,6 +5677,7 @@ def build_sections_from_brief(
             mode="chinese",
             context_lines=[*trend_texts, *fact_texts, *market_relevance_raw],
         )
+        spread_sentences = vary_sentence_patterns(spread_sentences, mode="chinese")
         spread_zh = join_chinese_sentences(spread_sentences)
         spread_en = (
             "The discussion keeps moving not because the headline sounds louder, but because "
@@ -4999,26 +5687,31 @@ def build_sections_from_brief(
 
         impact_sentences: list[str] = []
         if focus_for_progression:
-            impact_sentences.append(f"如果这波变化继续往下走，{chinese_progression_phrase(focus_for_progression)}")
-            impact_sentences.append(chinese_focus_outcome_sentence(focus_for_progression))
+            impact_sentences.append(f"如果这波变化继续往下走，{chinese_progression_phrase(_focus_impact or focus_for_progression)}")
+            impact_sentences.append(chinese_focus_outcome_sentence(_focus_impact or focus_for_progression))
         else:
             impact_sentences.append("真正值得盯的，不是表面热度，而是它会不会开始改变真实决策")
         if implication_fact and not sentence_is_redundant(implication_fact, fact_sentences):
             impact_sentences.append(implication_fact)
         if longform_mode and focus_for_progression:
-            impact_sentences.append(
-                f"先看{chinese_focus_cluster(focus_for_progression[:2], fallback='这条传导链', flavor='hard_signal')}，再谈更大的结论才更稳。"
-            )
+            if len(_focus_impact) >= 2:
+                impact_sentences.append(
+                    f"先看{chinese_focus_cluster(_focus_impact[1:2], fallback='后续传导变量', flavor='hard_signal')}，再谈更大的结论才更稳。"
+                )
+            else:
+                impact_sentences.append("先把这条传导链看清楚，再谈更大的结论才更稳。")
         if dense_longform_mode:
             if looks_like_developer_tooling_focus(focus_for_progression):
                 impact_sentences.append("对开发者真正有影响的，不是多一个隐藏入口，而是浏览器代执行、权限回收和多步协作会不会慢慢变成日常动作。")
             else:
-                impact_sentences.append(f"真正会改变判断的，不是口号本身，而是{chinese_focus_cluster(focus_for_progression[:2], fallback='这条传导链')}会不会开始持续改写后面的动作。")
+                impact_sentences.append("真正会改变判断的，不是口号本身，而是这些传导链会不会开始持续改写后面的动作。")
         if extended_longform_mode and focus_for_progression:
             if looks_like_developer_tooling_focus(focus_for_progression):
                 impact_sentences.append("一旦文档、权限说明和可调用迹象开始连成线，团队对它的预期也会从“能不能做”转到“什么时候会被常态化用起来”。")
+            elif len(_focus_impact) >= 2:
+                impact_sentences.append(f"再往下一层看，真正决定叙事能不能站稳的，是{chinese_focus_cluster(_focus_impact[1:2], fallback='后续传导变量')}会不会连续出现在后续动作里。")
             else:
-                impact_sentences.append(f"再往下一层看，真正决定叙事能不能站稳的，是{chinese_focus_cluster(focus_for_progression[:2], fallback='这条传导链')}会不会连续出现在后续动作里。")
+                impact_sentences.append("再往下一层看，真正决定叙事能不能站稳的，是后续传导变量会不会连续出现在后续动作里。")
         if extended_longform_mode and looks_like_developer_tooling_focus(focus_for_progression):
             impact_sentences.append("一旦团队真开始照着这套东西往下用，讨论的重心也会跟着变，从功能猎奇转到谁来开权限、谁来兜底执行、谁来审计整条调用链。")
         impact_sentences = apply_slot_memory(
@@ -5028,6 +5721,7 @@ def build_sections_from_brief(
             mode="chinese",
             context_lines=[*market_relevance_raw, *trend_texts, implication_fact, *watch_list],
         )
+        impact_sentences = vary_sentence_patterns(impact_sentences, mode="chinese")
         impact_zh = join_chinese_sentences(impact_sentences)
         impact_en = (
             "The thing worth tracking is not the headline heat itself, but who it reaches and which decisions it changes next. The clearest read-through now is "
@@ -5065,6 +5759,7 @@ def build_sections_from_brief(
             mode="chinese",
             context_lines=[*watch_list, *not_proven_texts, *open_questions],
         )
+        watch_sentences = vary_sentence_patterns(watch_sentences, mode="chinese")
         watch_zh = join_chinese_sentences(watch_sentences)
         watch_en = (
             "The next useful checkpoints are "
@@ -5122,7 +5817,7 @@ def build_sections_from_brief(
         judgment_sentences: list[str] = []
         if focus_for_progression:
             judgment_sentences.append(
-                f"把这件事再往前推一步，分水岭其实不在口号，而在于{chinese_focus_cluster(focus_for_progression[:3], fallback='后续传导变量', flavor='decision_fork')}。"
+                f"把这件事再往前推一步，分水岭其实不在口号，而在于{chinese_focus_cluster(_focus_watch, fallback='后续传导变量', flavor='decision_fork')}。"
             )
         if watch_list:
             if looks_like_developer_tooling_focus(focus_for_progression or all_focus_items):
@@ -5493,6 +6188,46 @@ def looks_like_macro_conflict_focus(items: list[str]) -> bool:
     return any(token in joined for token in MACRO_CONFLICT_TOPIC_TOKENS)
 
 
+def is_cn_macro_political_longform_profile(request: dict[str, Any]) -> bool:
+    return (
+        clean_text(request.get("language_mode")) == "chinese"
+        and clean_text(request.get("composition_profile")) == "cn_macro_political_longform"
+    )
+
+
+def looks_like_macro_political_market_longform_context(items: list[str]) -> bool:
+    joined = " ".join(clean_text(item).lower() for item in items if clean_text(item))
+    if not joined:
+        return False
+    return any(
+        token in joined
+        for token in (
+            "election",
+            "senate",
+            "house",
+            "president",
+            "poll",
+            "federal reserve",
+            "powell",
+            "middle east",
+            "oil",
+            "congress",
+            "midterm",
+            "选举",
+            "参议院",
+            "众议院",
+            "总统",
+            "支持率",
+            "美联储",
+            "鲍威尔",
+            "国会",
+            "中期选举",
+            "油价",
+            "波动率",
+        )
+    )
+
+
 def looks_like_business_operating_focus(items: list[str]) -> bool:
     joined = " ".join(clean_text(item).lower() for item in items if clean_text(item))
     if not joined:
@@ -5502,9 +6237,41 @@ def looks_like_business_operating_focus(items: list[str]) -> bool:
     return any(token in joined for token in BUSINESS_OPERATING_TOPIC_TOKENS)
 
 
+def looks_like_semiconductor_capex_focus(items: list[str]) -> bool:
+    joined = " ".join(clean_text(item).lower() for item in items if clean_text(item))
+    if not joined:
+        return False
+    return any(
+        token in joined
+        for token in (
+            "semiconductor",
+            "foundry",
+            "equipment",
+            "euv",
+            "advanced packaging",
+            "capex",
+            "tsmc",
+            "asml",
+            "台积电",
+            "阿斯麦",
+            "晶圆",
+            "半导体",
+            "先进制程",
+            "先进封装",
+            "设备订单",
+            "产能扩张",
+            "资本开支",
+        )
+    )
+
+
 def topic_prefers_business_shorthand(request: dict[str, Any], context_lines: list[str] | None = None) -> bool:
     topic_lines = _topic_context_lines(request, context_lines)
-    if looks_like_developer_tooling_focus(topic_lines) or looks_like_macro_conflict_focus(topic_lines):
+    if (
+        looks_like_developer_tooling_focus(topic_lines)
+        or looks_like_macro_conflict_focus(topic_lines)
+        or looks_like_semiconductor_capex_focus(topic_lines)
+    ):
         return False
     return looks_like_business_operating_focus(topic_lines)
 
@@ -5515,6 +6282,22 @@ def build_subtitle(request: dict[str, Any], summary: dict[str, Any], selected_im
     subtitle_hint_zh = clean_text(request.get("subtitle_hint_zh"))
     if subtitle_hint or subtitle_hint_zh:
         return bilingual_text(subtitle_hint_zh, subtitle_hint, language_mode)
+    if is_cn_macro_political_longform_profile(request):
+        topic_lines = _topic_context_lines(
+            request,
+            [
+                clean_text(summary.get("topic")),
+                clean_text(summary.get("core_verdict")),
+                *clean_string_list(summary.get("market_relevance_zh")),
+                *clean_string_list(summary.get("market_relevance")),
+            ],
+        )
+        if looks_like_macro_political_market_longform_context(topic_lines):
+            return bilingual_text(
+                build_cn_macro_scene_setting_subtitle(),
+                "Start from the risk line Wall Street is already repricing, then trace how this pressure could move into policy and markets.",
+                language_mode,
+            )
     custom_subtitles = style_memory_slot_lines(request, "subtitle")
     if custom_subtitles:
         candidate = custom_subtitles[0]
@@ -5531,6 +6314,21 @@ def build_subtitle(request: dict[str, Any], summary: dict[str, Any], selected_im
             language_mode,
         )
     framework = resolve_article_framework(request, summary)
+    topic_lines = _topic_context_lines(
+        request,
+        [
+            clean_text(summary.get("topic")),
+            clean_text(summary.get("core_verdict")),
+            *clean_string_list(summary.get("market_relevance_zh")),
+            *clean_string_list(summary.get("market_relevance")),
+        ],
+    )
+    if looks_like_semiconductor_capex_focus(topic_lines):
+        return bilingual_text(
+            "从晶圆厂、设备订单和资本开支的最新口径，看这轮 AI 基建投资到底走到哪一步。",
+            "Read the latest foundry, equipment, and capex signals before deciding whether AI infrastructure spending has really peaked.",
+            language_mode,
+        )
     if framework == "tutorial":
         return bilingual_text(
             "把问题拆开讲清楚，比堆观点更重要。",

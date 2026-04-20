@@ -26,6 +26,7 @@ from article_revise_flow_runtime import build_article_revision
 from news_index_runtime import isoformat_or_blank, parse_datetime, run_news_index, slugify
 from runtime_paths import runtime_subdir
 from workflow_publication_gate_runtime import build_workflow_publication_gate
+from last30days_bridge_runtime import run_last30days_bridge
 from workflow_source_runtime import (
     augment_news_payload_with_workflow_sources,
     build_agent_reach_augmentation_lines,
@@ -40,6 +41,46 @@ from workflow_source_runtime import (
     write_source_stage_outputs,
 )
 from x_index_runtime import run_x_index
+
+import random
+
+
+def restructure_angle(
+    request: dict[str, Any],
+    brief_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Pick a non-default story angle from the brief and inject it into the request.
+
+    This ensures the draft uses a different cut-in point from the source articles,
+    making the final article structurally independent.
+    """
+    analysis_brief = safe_dict(brief_result.get("analysis_brief"))
+    angles_en = safe_list(analysis_brief.get("story_angles"))
+    angles_zh = safe_list(analysis_brief.get("story_angles_zh"))
+
+    # Already has an explicit angle from the user — don't override
+    if clean_text(request.get("angle")) or clean_text(request.get("angle_zh")):
+        return request
+
+    # Need at least 2 angles to pick a non-default one
+    if len(angles_en) >= 2:
+        # Sort by risk length (shorter risk = safer angle), skip the first (default)
+        candidates = angles_en[1:]
+        candidates.sort(key=lambda a: len(clean_text(a.get("risk", ""))))
+        chosen = candidates[0]
+        request["angle"] = clean_text(chosen.get("angle", ""))
+    elif angles_en:
+        request["angle"] = clean_text(angles_en[0].get("angle", ""))
+
+    if len(angles_zh) >= 2:
+        candidates_zh = angles_zh[1:]
+        candidates_zh.sort(key=lambda a: len(clean_text(a.get("risk", ""))))
+        chosen_zh = candidates_zh[0]
+        request["angle_zh"] = clean_text(chosen_zh.get("angle", ""))
+    elif angles_zh:
+        request["angle_zh"] = clean_text(angles_zh[0].get("angle", ""))
+
+    return request
 
 
 def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
@@ -123,6 +164,8 @@ def prepare_source_payload(request: dict[str, Any]) -> tuple[dict[str, Any], str
     opencli_stage: dict[str, Any] = {}
     if payload_kind == "x_request":
         return run_x_index(request["payload"]), "x_index", agent_reach_stage, opencli_stage
+    if payload_kind == "last30days_request":
+        return run_last30days_bridge(request["payload"]), "last30days_bridge", agent_reach_stage, opencli_stage
     if payload_kind == "news_request":
         merged_payload, agent_reach_stage, opencli_stage = augment_news_payload_with_workflow_sources(
             request,
@@ -808,6 +851,10 @@ def run_article_workflow(raw_payload: dict[str, Any]) -> dict[str, Any]:
     brief_report_path = request["output_dir"] / "analysis-brief-report.md"
     write_json(brief_result_path, brief_result)
     brief_report_path.write_text(brief_result.get("report_markdown", ""), encoding="utf-8-sig")
+
+    # --- Angle restructure: pick a non-default story angle so the draft
+    #     cuts in from a different direction than the source articles ---
+    request = restructure_angle(request, brief_result)
 
     draft_payload = build_draft_payload(request, source_payload)
     draft_payload["analysis_brief"] = safe_dict(brief_result.get("analysis_brief"))
