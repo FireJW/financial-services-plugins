@@ -419,6 +419,25 @@ For Chinese stock analysis in this repo:
 - if the user says `latest` or uses relative dates like `today`, restate the
   conclusion with an exact date
 
+## Worktree & File Ownership Rules
+
+- Codex sandbox users (`CodexSandboxOffline`, `CodexSandboxOnline`) run under a
+  different Windows identity than the repo owner (`rickylu`). Files and
+  directories they create are owned by the sandbox account, which triggers git's
+  `safe.directory` protection for any later session running as `rickylu`.
+- **Do not create git worktrees** (`git worktree add`) from a Codex sandbox
+  session. Instead, produce patch files (`git format-patch`) and let the user or
+  a `rickylu`-owned session apply them.
+- If a task requires an isolated branch, create the branch in the existing repo
+  (`git branch` / `git checkout -b`) rather than adding a new worktree. Branch
+  creation does not produce ownership-mismatched directories.
+- If a worktree is absolutely necessary, the Codex agent must call
+  `takeown /f <path> /r /d y` and `icacls <path> /grant rickylu:F /t`
+  immediately after creation so subsequent sessions can operate on it.
+- All git commands that touch the worktree or index must run **serially** — never
+  in parallel. Parallel git operations on the same worktree produce misleading
+  status snapshots and can corrupt the index.
+
 ## Git Safety Rules
 
 - Before any delete, cleanup, move, rename, rollback, codemod, or batch file
