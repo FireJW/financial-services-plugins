@@ -150,6 +150,7 @@ def build_x_window_queries(request: dict[str, Any]) -> list[dict[str, str]]:
     keywords = unique_cleaned_strings(request.get("keywords", []), limit=8, min_length=3)
     phrase_clues = unique_cleaned_strings(request.get("phrase_clues", []), limit=8, min_length=8)
     entity_clues = unique_cleaned_strings(request.get("entity_clues", []), limit=8, min_length=3)
+    query_overrides = unique_cleaned_strings(request.get("query_overrides", []), limit=8, min_length=3)
 
     def add_query(query: str, reason: str) -> None:
         normalized_query = clean_text(query)
@@ -157,6 +158,9 @@ def build_x_window_queries(request: dict[str, Any]) -> list[dict[str, str]]:
             return
         seen_queries.add(normalized_query)
         queries.append({"query": normalized_query, "reason": clean_text(reason) or "window_capture"})
+
+    for query in query_overrides:
+        add_query(query, "query_override")
 
     for handle in handles:
         for phrase in phrase_clues[:4]:
@@ -803,8 +807,65 @@ def maybe_fetch_search_results(query: str) -> list[str]:
     return urls
 
 
-def discover_search_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
+def extract_status_urls_from_blob(*parts: str) -> list[str]:
+    urls: list[str] = []
+    for part in parts:
+        haystack = clean_text(part)
+        if not haystack:
+            continue
+        for handle, status_id in STATUS_URL_RE.findall(haystack):
+            normalized = canonical_status_url(f"https://x.com/{handle}/status/{status_id}")
+            if normalized and normalized not in urls:
+                urls.append(normalized)
+    return urls
+
+
+def maybe_fetch_x_search_results(search_url: str, session_context: dict[str, Any], screenshot_path: Path) -> list[str]:
+    artifact = fetch_page(search_url, screenshot_path, session_context)
+    if clean_text(artifact.error):
+        return []
+    return extract_status_urls_from_blob(artifact.final_url, artifact.links_text, artifact.html)
+
+
+def discover_search_candidates(request: dict[str, Any], session_context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     discovered: list[dict[str, Any]] = []
+    search_urls = build_window_capture_hints(request).get("search_urls", []) if session_context and session_context.get("strategy") == "remote_debugging" and session_context.get("active") else []
+
+    for index, item in enumerate(search_urls, start=1):
+        search_url = clean_text(item.get("url")) if isinstance(item, dict) else ""
+        query = clean_text(item.get("query")) if isinstance(item, dict) else ""
+        reason = clean_text(item.get("reason")) if isinstance(item, dict) else "x_live_search"
+        if not search_url:
+            continue
+        screenshot_path = request["output_dir"] / f"x-search-{index}.png"
+        try:
+            for url in maybe_fetch_x_search_results(search_url, session_context, screenshot_path):
+                if len(discovered) >= request.get("max_candidates", 50):
+                    break
+                if any(item.get("post_url") == url for item in discovered):
+                    continue
+                discovered.append(
+                    {
+                        "post_url": url,
+                        "discovery_reason": f"x_live_search:{reason}",
+                        "search_query": query,
+                        "search_url": search_url,
+                        "session_source": clean_text(session_context.get("source")),
+                    }
+                )
+        except OSError as exc:
+            discovered.append(
+                {
+                    "post_url": "",
+                    "discovery_reason": f"x_live_search:{reason}",
+                    "search_query": query,
+                    "search_url": search_url,
+                    "blocked_reason": f"x_live_search_failed: {exc}",
+                }
+            )
+        if len(discovered) >= request.get("max_candidates", 50):
+            break
+
     for query_spec in build_search_queries(request):
         query = query_spec.get("query", "")
         reason = query_spec.get("reason", "")
@@ -1664,7 +1725,7 @@ def collect_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
             candidates.append({**candidate, "post_url": canonical})
 
     if len(candidates) < request.get("max_candidates", 50):
-        for item in discover_search_candidates(request):
+        for item in discover_search_candidates(request, request.get("_session_context")):
             canonical = canonical_status_url(item.get("post_url", ""))
             if not canonical:
                 candidates.append(item)
@@ -1857,8 +1918,10 @@ def persist_x_index_outputs(result: dict[str, Any]) -> dict[str, str]:
 def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = parse_request(raw_payload)
     session_context = prepare_session_context(request)
+    request["_session_context"] = session_context
     collected_candidates = collect_candidates(request)
     reuse_summary = deepcopy(request.pop("_reuse_summary", {}))
+    request.pop("_session_context", None)
     x_posts = []
     blocked_candidates = []
     for index, candidate in enumerate(collected_candidates, start=1):

@@ -208,6 +208,27 @@ class WeekendMarketCandidateRuntimeTests(unittest.TestCase):
         oil_topic = candidate["candidate_topics"][1]
         self.assertTrue(any(row["source_kind"] == "x_live_index" for row in oil_topic["key_sources"]))
 
+    def test_english_alias_matching_does_not_treat_launched_as_launch(self) -> None:
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "x_live_index_results": [
+                    {
+                        "x_posts": [
+                            {
+                                "post_url": "https://x.com/dd/status/1",
+                                "author_handle": "DD_Geopolitics",
+                                "combined_summary": "The administration launched a new campaign to reopen Hormuz while commercial shipping stayed blocked.",
+                            }
+                        ]
+                    }
+                ]
+            }
+        )
+
+        topic_names = [item["topic_name"] for item in candidate["candidate_topics"]]
+        self.assertIn("oil_shipping", topic_names)
+        self.assertNotIn("commercial_space", topic_names)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,7 @@ from collections import Counter
 from copy import deepcopy
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 
@@ -85,6 +86,16 @@ def _logic_level(value: int, *, high_at: int, medium_at: int = 1) -> str:
 
 def _topic_label(topic_name: str) -> str:
     return TOPIC_LABELS.get(topic_name, topic_name)
+
+
+def _alias_matches_text(alias: str, normalized_text: str) -> bool:
+    cleaned_alias = _clean_text(alias).lower()
+    if not cleaned_alias or not normalized_text:
+        return False
+    if re.search(r"[a-z]", cleaned_alias):
+        pattern = rf"(?<![a-z0-9]){re.escape(cleaned_alias)}(?![a-z0-9])"
+        return re.search(pattern, normalized_text) is not None
+    return cleaned_alias in normalized_text
 
 
 def _normalize_live_post(row: Any) -> dict[str, Any] | None:
@@ -179,7 +190,7 @@ def _infer_topics_from_text(text: str) -> list[str]:
         return []
     matched: list[str] = []
     for topic_name, aliases in TOPIC_ALIASES.items():
-        if any(alias.lower() in normalized_text for alias in aliases):
+        if any(_alias_matches_text(alias, normalized_text) for alias in aliases):
             matched.append(topic_name)
     return matched
 
