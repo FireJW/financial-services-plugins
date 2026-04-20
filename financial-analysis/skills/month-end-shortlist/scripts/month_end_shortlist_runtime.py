@@ -1808,6 +1808,110 @@ def build_market_strength_discovery_candidates(rows: list[dict[str, Any]]) -> li
     return converted
 
 
+def is_market_strength_excluded(row: dict[str, Any], existing_tickers: set[str]) -> bool:
+    name = clean_text(row.get("name") or row.get("f14"))
+    ticker = clean_text(row.get("ticker") or row.get("f12"))
+    if not ticker or ticker in existing_tickers:
+        return True
+    if "ST" in name.upper():
+        return True
+    if to_float(row.get("day_turnover_cny")) < 100_000_000:
+        return True
+    if (
+        to_float(row.get("turnover_rate_pct")) < 0.5
+        and to_float(row.get("price")) == to_float(row.get("high"))
+        and to_float(row.get("price")) == to_float(row.get("low"))
+    ):
+        return True
+    return False
+
+
+def market_strength_score(row: dict[str, Any]) -> float:
+    price = to_float(row.get("price"))
+    high = to_float(row.get("high"))
+    low = to_float(row.get("low"))
+    day_pct = to_float(row.get("day_pct"))
+    turnover = to_float(row.get("day_turnover_cny"))
+
+    close_to_high = 0.0
+    if high > low:
+        close_to_high = (price - low) / (high - low)
+
+    turnover_score = min(turnover / 1_000_000_000, 3.0)
+    return round(day_pct * 2.0 + close_to_high * 5.0 + turnover_score, 4)
+
+
+def build_market_strength_candidates_from_universe(
+    universe_rows: list[dict[str, Any]],
+    *,
+    existing_tickers: set[str],
+    max_names: int = 10,
+) -> list[dict[str, Any]]:
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for raw in universe_rows:
+        if not isinstance(raw, dict):
+            continue
+        row = {
+            "ticker": clean_text(raw.get("ticker") or raw.get("f12")),
+            "name": clean_text(raw.get("name") or raw.get("f14")),
+            "price": to_float(raw.get("price") if raw.get("price") not in (None, "") else raw.get("f2")),
+            "high": to_float(raw.get("high") if raw.get("high") not in (None, "") else raw.get("f15")),
+            "low": to_float(raw.get("low") if raw.get("low") not in (None, "") else raw.get("f16")),
+            "pre_close": to_float(raw.get("pre_close") if raw.get("pre_close") not in (None, "") else raw.get("f18")),
+            "day_pct": to_float(raw.get("day_pct") if raw.get("day_pct") not in (None, "") else raw.get("f3")),
+            "day_turnover_cny": to_float(raw.get("day_turnover_cny") if raw.get("day_turnover_cny") not in (None, "") else raw.get("f6")),
+            "turnover_rate_pct": to_float(raw.get("turnover_rate_pct") if raw.get("turnover_rate_pct") not in (None, "") else raw.get("f8")),
+        }
+        if is_market_strength_excluded(row, existing_tickers):
+            continue
+        if row["day_pct"] <= 0:
+            continue
+        score = market_strength_score(row)
+        ranked.append((score, row))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    generated: list[dict[str, Any]] = []
+    for _, row in ranked[:max_names]:
+        high = to_float(row.get("high"))
+        low = to_float(row.get("low"))
+        price = to_float(row.get("price"))
+        day_pct = to_float(row.get("day_pct"))
+        turnover = to_float(row.get("day_turnover_cny"))
+        close_to_high = 0.0
+        if high > low:
+            close_to_high = (price - low) / (high - low)
+        generated.append(
+            normalize_market_strength_candidate(
+                {
+                    "ticker": row["ticker"],
+                    "name": row["name"],
+                    "strength_reason": "near_limit_close" if day_pct >= 8.0 and close_to_high >= 0.8 else "close_near_high",
+                    "close_strength": "high" if close_to_high >= 0.8 else "medium",
+                    "volume_signal": "expanding" if turnover >= 300_000_000 else "normal",
+                    "board_context": "high_conviction_momentum" if day_pct >= 8.0 else "trend_follow_through",
+                    "theme_guess": [],
+                    "source": "market_strength_scan",
+                }
+            )
+        )
+    return generated
+
+
+def merge_market_strength_candidate_inputs(
+    request_rows: list[dict[str, Any]],
+    generated_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in request_rows + generated_rows:
+        ticker = clean_text(row.get("ticker"))
+        if not ticker or ticker in seen:
+            continue
+        merged.append(row)
+        seen.add(ticker)
+    return merged
+
+
 def merge_discovery_candidate_inputs(
     manual_candidates: list[dict[str, Any]],
     auto_candidates: list[dict[str, Any]],
@@ -3738,10 +3842,22 @@ def run_month_end_shortlist(
         )
         discovery_candidates = deepcopy(prepared_payload.get("event_discovery_candidates") or [])
         discovery_context = deepcopy(prepared_payload.get("x_discovery_context") or {})
-        market_strength_candidates = deepcopy(prepared_payload.get("market_strength_candidates") or [])
+        request_market_strength = deepcopy(prepared_payload.get("market_strength_candidates") or [])
 
         # --- Fetch full universe once, then split by board ---
         full_universe = universe_fetcher(prepared_payload)
+        request_tickers = {clean_text(row.get("ticker")) for row in request_market_strength if clean_text(row.get("ticker"))}
+        event_tickers = {clean_text(row.get("ticker")) for row in discovery_candidates if clean_text(row.get("ticker"))}
+        existing_tickers = request_tickers | event_tickers
+        generated_market_strength = build_market_strength_candidates_from_universe(
+            full_universe,
+            existing_tickers=existing_tickers,
+            max_names=10,
+        )
+        market_strength_candidates = merge_market_strength_candidate_inputs(
+            request_market_strength,
+            generated_market_strength,
+        )
         board_to_track: dict[str, str] = {}
         for tn, cfg in TRACK_CONFIGS.items():
             for bv in cfg.get("board_values", ()):
@@ -3877,6 +3993,10 @@ for _extra in (
     "merge_track_results",
     "normalize_market_strength_candidate",
     "build_market_strength_discovery_candidates",
+    "is_market_strength_excluded",
+    "market_strength_score",
+    "build_market_strength_candidates_from_universe",
+    "merge_market_strength_candidate_inputs",
 ):
     if _extra not in __all__:
         __all__.append(_extra)

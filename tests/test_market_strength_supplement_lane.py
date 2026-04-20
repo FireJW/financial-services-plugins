@@ -20,6 +20,113 @@ import month_end_shortlist_runtime as module_under_test
 
 
 class MarketStrengthSupplementLaneTests(unittest.TestCase):
+    def test_build_market_strength_candidates_from_universe_selects_strongest_close_names(self) -> None:
+        rows = module_under_test.build_market_strength_candidates_from_universe(
+            [
+                {
+                    "ticker": "603268.SS",
+                    "name": "松发股份",
+                    "day_pct": 9.6,
+                    "price": 21.9,
+                    "high": 22.0,
+                    "low": 20.2,
+                    "pre_close": 20.0,
+                    "day_turnover_cny": 880000000.0,
+                    "turnover_rate_pct": 11.2,
+                },
+                {
+                    "ticker": "002980.SZ",
+                    "name": "华盛昌",
+                    "day_pct": 7.4,
+                    "price": 33.5,
+                    "high": 33.8,
+                    "low": 31.8,
+                    "pre_close": 31.2,
+                    "day_turnover_cny": 620000000.0,
+                    "turnover_rate_pct": 9.1,
+                },
+            ],
+            existing_tickers=set(),
+            max_names=5,
+        )
+
+        self.assertEqual([item["ticker"] for item in rows], ["603268.SS", "002980.SZ"])
+        self.assertEqual(rows[0]["source"], "market_strength_scan")
+
+    def test_build_market_strength_candidates_from_universe_excludes_st_illiquid_and_duplicate_names(self) -> None:
+        rows = module_under_test.build_market_strength_candidates_from_universe(
+            [
+                {
+                    "ticker": "000001.SZ",
+                    "name": "*ST示例",
+                    "day_pct": 5.0,
+                    "price": 5.2,
+                    "high": 5.2,
+                    "low": 5.0,
+                    "pre_close": 4.95,
+                    "day_turnover_cny": 500000000.0,
+                    "turnover_rate_pct": 6.0,
+                },
+                {
+                    "ticker": "000002.SZ",
+                    "name": "低流动性样本",
+                    "day_pct": 8.0,
+                    "price": 8.5,
+                    "high": 8.5,
+                    "low": 8.0,
+                    "pre_close": 7.8,
+                    "day_turnover_cny": 30000000.0,
+                    "turnover_rate_pct": 0.4,
+                },
+                {
+                    "ticker": "603268.SS",
+                    "name": "松发股份",
+                    "day_pct": 9.6,
+                    "price": 21.9,
+                    "high": 22.0,
+                    "low": 20.2,
+                    "pre_close": 20.0,
+                    "day_turnover_cny": 880000000.0,
+                    "turnover_rate_pct": 11.2,
+                },
+            ],
+            existing_tickers={"603268.SS"},
+            max_names=5,
+        )
+
+        self.assertEqual(rows, [])
+
+    def test_merge_market_strength_candidate_inputs_prefers_request_rows(self) -> None:
+        merged = module_under_test.merge_market_strength_candidate_inputs(
+            [
+                {
+                    "ticker": "603268.SS",
+                    "name": "松发股份",
+                    "strength_reason": "manual_override",
+                    "close_strength": "medium",
+                    "volume_signal": "normal",
+                    "board_context": "trend_follow_through",
+                    "theme_guess": [],
+                    "source": "market_strength_scan",
+                }
+            ],
+            [
+                {
+                    "ticker": "603268.SS",
+                    "name": "松发股份",
+                    "strength_reason": "near_limit_close",
+                    "close_strength": "high",
+                    "volume_signal": "expanding",
+                    "board_context": "high_conviction_momentum",
+                    "theme_guess": [],
+                    "source": "market_strength_scan",
+                }
+            ],
+        )
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["strength_reason"], "manual_override")
+
     def test_normalize_request_preserves_market_strength_candidates(self) -> None:
         normalized = module_under_test.normalize_request(
             {

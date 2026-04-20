@@ -206,6 +206,27 @@ class SplitUniverseByBoardTests(unittest.TestCase):
         self.assertIn("300857.SZ", tracks["chinext"]["history_by_ticker"])
         self.assertNotIn("000988.SZ", tracks["chinext"]["history_by_ticker"])
 
+    def test_split_universe_by_board_ignores_market_strength_candidates(self):
+        payload = {
+            "universe_candidates": [
+                self._make_candidate("000988.SZ", "华工科技"),
+                self._make_candidate("300857.SZ", "协创数据"),
+            ],
+            "market_strength_candidates": [
+                {"ticker": "603268.SS", "name": "松发股份"}
+            ],
+        }
+        tracks, out_of_scope = m.split_universe_by_board(payload)
+        self.assertEqual(
+            sorted(c["ticker"] for c in tracks["main_board"]["universe_candidates"]),
+            ["000988.SZ"],
+        )
+        self.assertEqual(
+            sorted(c["ticker"] for c in tracks["chinext"]["universe_candidates"]),
+            ["300857.SZ"],
+        )
+        self.assertEqual(out_of_scope, [])
+
 
 class MergeTrackResultsTests(unittest.TestCase):
     """Verify merge_track_results combines per-track results correctly."""
