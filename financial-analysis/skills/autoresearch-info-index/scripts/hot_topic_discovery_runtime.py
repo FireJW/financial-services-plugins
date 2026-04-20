@@ -49,6 +49,16 @@ LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
     "风险资产",
     "订单",
 }
+LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS = {
+    "official commentary",
+    "modernization",
+    "总书记",
+    "强调",
+    "看图学习",
+    "口径",
+    "宣传",
+    "会议精神",
+}
 DEFAULT_TOPIC_SCORE_WEIGHTS = {
     "timeliness": 0.25,
     "debate": 0.20,
@@ -947,6 +957,15 @@ def is_official_commentary_candidate(candidate: dict[str, Any]) -> bool:
     if re.match(r"^从.+看", title):
         return True
     return contains_any_keyword(text, {item.lower() for item in OFFICIAL_COMMENTARY_KEYWORDS})
+
+
+def is_live_snapshot_low_yield_candidate(candidate: dict[str, Any]) -> bool:
+    text = live_snapshot_signal_text(candidate)
+    if not contains_any_keyword(text, LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS):
+        return False
+    if contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
+        return False
+    return True
 
 
 def is_explicitly_offtopic_platform_candidate(candidate: dict[str, Any]) -> bool:
@@ -3075,8 +3094,17 @@ def freshness_reason(candidate: dict[str, Any], analysis_time: datetime) -> str:
     return "The newest public signal is older than 72 hours, so this is stale unless a new catalyst appears."
 
 
+def live_snapshot_signal_text(candidate: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            clean_text(candidate.get("title")),
+            " ".join(clean_string_list(candidate.get("keywords"))),
+        ]
+    ).lower()
+
+
 def live_snapshot_fit(candidate: dict[str, Any]) -> str:
-    text = candidate_match_text(candidate)
+    text = live_snapshot_signal_text(candidate)
     freshness = clean_text(candidate.get("freshness_bucket"))
     if freshness in {"0-6h", "6-24h"} and contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
         return "high_fit"
@@ -3525,6 +3553,9 @@ def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> 
             return False, "filtered diplomatic protocol topic"
         if is_official_commentary_candidate(candidate):
             return False, "filtered official commentary topic"
+    if request.get("discovery_profile") == "live_snapshot":
+        if is_live_snapshot_low_yield_candidate(candidate):
+            return False, "filtered low-yield live snapshot topic"
     freshness = clean_text(candidate.get("freshness_bucket"))
     stale_flags = clean_string_list(candidate.get("staleness_flags"))
     if freshness == ">72h" and not candidate.get("fresh_catalyst_present"):
