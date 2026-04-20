@@ -23,6 +23,41 @@ from reddit_bridge_runtime import build_comment_operator_review, build_operator_
 
 
 DEFAULT_DISCOVERY_SOURCES = ["weibo", "zhihu", "36kr", "google-news-world"]
+LIVE_SNAPSHOT_SOURCES = ["google-news-world", "36kr"]
+LIVE_SNAPSHOT_DEFAULT_LIMIT = 8
+LIVE_SNAPSHOT_DEFAULT_TOP_N = 5
+LIVE_SNAPSHOT_DEFAULT_MAX_PARALLEL_SOURCES = 2
+LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
+    "market",
+    "markets",
+    "oil",
+    "equities",
+    "stocks",
+    "guidance",
+    "earnings",
+    "capex",
+    "rollout",
+    "policy",
+    "conflict",
+    "supply chain",
+    "order",
+    "orders",
+    "oil price",
+    "risk asset",
+    "risk assets",
+    "油价",
+    "风险资产",
+    "订单",
+}
+LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS = {
+    "official commentary",
+    "modernization goal",
+    "must be achieved",
+    "总书记",
+    "看图学习",
+    "宣传",
+    "会议精神",
+}
 DEFAULT_TOPIC_SCORE_WEIGHTS = {
     "timeliness": 0.25,
     "debate": 0.20,
@@ -921,6 +956,23 @@ def is_official_commentary_candidate(candidate: dict[str, Any]) -> bool:
     if re.match(r"^从.+看", title):
         return True
     return contains_any_keyword(text, {item.lower() for item in OFFICIAL_COMMENTARY_KEYWORDS})
+
+
+def is_live_snapshot_low_yield_candidate(candidate: dict[str, Any]) -> bool:
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    if freshness not in {"0-6h", "6-24h"}:
+        return False
+    text = " ".join(
+        [
+            clean_text(candidate.get("title")),
+            " ".join(clean_string_list(candidate.get("keywords"))),
+        ]
+    ).lower()
+    if not contains_any_keyword(text, LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS):
+        return False
+    if contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
+        return False
+    return True
 
 
 def is_explicitly_offtopic_platform_candidate(candidate: dict[str, Any]) -> bool:
@@ -2769,11 +2821,12 @@ def normalize_agent_reach_sources(raw_payload: dict[str, Any]) -> list[str]:
 def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     analysis_time = parse_datetime(raw_payload.get("analysis_time"), fallback=now_utc()) or now_utc()
     discovery_profile = clean_text(raw_payload.get("discovery_profile")).lower() or "default"
+    is_live_snapshot = discovery_profile == "live_snapshot"
     explicit_sources = clean_string_list(raw_payload.get("sources"))
     sources = explicit_sources or (
         list(INTERNATIONAL_PRIMARY_SOURCES + INTERNATIONAL_FALLBACK_SOURCES)
         if discovery_profile == "international_first"
-        else list(DEFAULT_DISCOVERY_SOURCES)
+        else (list(LIVE_SNAPSHOT_SOURCES) if is_live_snapshot else list(DEFAULT_DISCOVERY_SOURCES))
     )
     agent_reach_sources = normalize_agent_reach_sources(raw_payload)
     manual_topic_candidates = [
@@ -2789,8 +2842,14 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "analysis_time": analysis_time,
         "discovery_profile": discovery_profile,
         "sources": sources,
-        "limit": max(1, int(raw_payload.get("limit", 10) or 10)),
-        "top_n": max(1, int(raw_payload.get("top_n", 5) or 5)),
+        "limit": max(
+            1,
+            int(raw_payload.get("limit", LIVE_SNAPSHOT_DEFAULT_LIMIT if is_live_snapshot else 10) or 10),
+        ),
+        "top_n": max(
+            1,
+            int(raw_payload.get("top_n", LIVE_SNAPSHOT_DEFAULT_TOP_N if is_live_snapshot else 5) or 5),
+        ),
         "query": query,
         "audience_keywords": clean_string_list(raw_payload.get("audience_keywords")),
         "preferred_topic_keywords": clean_string_list(
@@ -2807,7 +2866,16 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "min_total_score": max(0, int(raw_payload.get("min_total_score", 0) or 0)),
         "min_source_count": max(0, int(raw_payload.get("min_source_count", 0) or 0)),
         "manual_topic_candidates": manual_topic_candidates,
-        "max_parallel_sources": max(1, int(raw_payload.get("max_parallel_sources", min(4, len(sources))) or 1)),
+        "max_parallel_sources": max(
+            1,
+            int(
+                raw_payload.get(
+                    "max_parallel_sources",
+                    LIVE_SNAPSHOT_DEFAULT_MAX_PARALLEL_SOURCES if is_live_snapshot else min(4, len(sources)),
+                )
+                or 1
+            ),
+        ),
         "agent_reach_timeout_per_channel": max(1, int(raw_payload.get("agent_reach_timeout_per_channel", 30) or 1)),
         "agent_reach_max_results_per_channel": max(1, int(raw_payload.get("agent_reach_max_results_per_channel", raw_payload.get("limit", 10)) or 1)),
         "agent_reach_pseudo_home": clean_text(raw_payload.get("agent_reach_pseudo_home")),
@@ -3031,6 +3099,26 @@ def freshness_reason(candidate: dict[str, Any], analysis_time: datetime) -> str:
     if bucket == "24-72h":
         return "The story is still recent enough to matter, but it now sits in a carryover window."
     return "The newest public signal is older than 72 hours, so this is stale unless a new catalyst appears."
+
+
+def live_snapshot_fit(candidate: dict[str, Any]) -> str:
+    text = candidate_match_text(candidate)
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    if freshness in {"0-6h", "6-24h"} and contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
+        return "high_fit"
+    if freshness in {"0-6h", "6-24h"}:
+        return "medium_fit"
+    return "low_fit"
+
+
+def live_snapshot_reason(candidate: dict[str, Any]) -> str:
+    fit = live_snapshot_fit(candidate)
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    if fit == "high_fit":
+        return "This is still a real-time writeable topic because the new signal already changes market or policy expectations."
+    if fit == "medium_fit":
+        return f"Fresh headline in the {freshness} window, but it still needs a clearer second-order read-through."
+    return "Freshness alone is not enough here because the story still reads more like a narrow news flash than an analysis topic."
 
 
 def timeliness_score(candidate: dict[str, Any], analysis_time: datetime) -> int:
@@ -3379,6 +3467,9 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
     candidate["selection_reason"] = selection_reason_summary(candidate)
     candidate["risk_flags"] = risk_flags_for_candidate(candidate)
     candidate["source_mix"] = source_mix_summary(candidate)
+    if request.get("discovery_profile") == "live_snapshot":
+        candidate["live_snapshot_fit"] = live_snapshot_fit(candidate)
+        candidate["live_snapshot_reason"] = live_snapshot_reason(candidate)
     return candidate
 
 
@@ -3460,6 +3551,9 @@ def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> 
             return False, "filtered diplomatic protocol topic"
         if is_official_commentary_candidate(candidate):
             return False, "filtered official commentary topic"
+    if request.get("discovery_profile") == "live_snapshot":
+        if is_live_snapshot_low_yield_candidate(candidate):
+            return False, "filtered low-yield live snapshot topic"
     freshness = clean_text(candidate.get("freshness_bucket"))
     stale_flags = clean_string_list(candidate.get("staleness_flags"))
     if freshness == ">72h" and not candidate.get("fresh_catalyst_present"):
