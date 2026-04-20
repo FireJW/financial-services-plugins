@@ -409,6 +409,96 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             },
         ]
 
+    def recency_heat_candidates(self) -> list[dict]:
+        return [
+            {
+                "title": "Hormuz shipping risk returns as oil and stocks reverse",
+                "summary": "Reuters and Bloomberg both report a same-day market reset around renewed Strait of Hormuz disruption risk.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/reuters-hormuz-risk-reset",
+                        "published_at": "2026-04-20T09:10:00+00:00",
+                        "summary": "Oil and equity futures reverse as Hormuz shipping risk returns to the center of market pricing.",
+                    },
+                    {
+                        "source_name": "Bloomberg",
+                        "source_type": "major_news",
+                        "url": "https://example.com/bloomberg-hormuz-risk-reset",
+                        "published_at": "2026-04-20T09:05:00+00:00",
+                        "summary": "Traders pull back from the relief trade as shipping disruption risk returns within hours.",
+                    },
+                ],
+            },
+            {
+                "title": "DeepSeek excludes US chipmakers from new AI model testing",
+                "summary": "An older but still-discussed chip story with strong historical debate and multiple source echoes.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/reuters-deepseek-old",
+                        "published_at": "2026-04-18T09:00:00+00:00",
+                        "summary": "DeepSeek prioritizes Chinese suppliers in testing, reshaping the China AI chip stack debate.",
+                    },
+                    {
+                        "source_name": "Reddit r/singularity",
+                        "source_type": "social",
+                        "url": "https://example.com/reddit-deepseek-old",
+                        "published_at": "2026-04-18T09:20:00+00:00",
+                        "summary": "Users debate whether this changes the Nvidia versus Huawei timing gap.",
+                        "tags": ["provider:agent-reach:reddit", "subreddit:r/singularity"],
+                    },
+                    {
+                        "source_name": "X @semicapwatch",
+                        "source_type": "social",
+                        "url": "https://example.com/x-deepseek-old",
+                        "published_at": "2026-04-18T09:25:00+00:00",
+                        "summary": "X threads keep replaying the same China AI chip ecosystem argument.",
+                        "tags": ["provider:agent-reach:x"],
+                    },
+                ],
+            },
+            {
+                "title": "Old AI funding rumor says the whole sector is exploding again",
+                "summary": "A stale single-source funding rumor with weak confirmation and no fresh catalyst.",
+                "source_items": [
+                    {
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "url": "https://example.com/36kr-old-ai-funding-rumor",
+                        "published_at": "2026-02-10T08:00:00+00:00",
+                        "summary": "A flashy AI funding rumor without new filings, guidance, or second-source confirmation.",
+                    }
+                ],
+            },
+        ]
+
+    def continuing_story_candidates(self) -> list[dict]:
+        return [
+            {
+                "title": "US chip curbs story returns after a new filing and supplier guidance check",
+                "summary": "An older semiconductor story gets a fresh catalyst from a new filing and supplier guidance update.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/reuters-chip-curbs-original",
+                        "published_at": "2026-04-15T09:00:00+00:00",
+                        "summary": "Chip curbs pressure Chinese AI infrastructure planning and supplier roadmaps.",
+                    },
+                    {
+                        "source_name": "Bloomberg",
+                        "source_type": "major_news",
+                        "url": "https://example.com/bloomberg-chip-curbs-new-filing",
+                        "published_at": "2026-04-20T08:50:00+00:00",
+                        "summary": "A new filing and supplier guidance check push the chip curbs story back into the current market window.",
+                    },
+                ],
+            },
+        ]
+
     def feature_filter_candidates(self) -> list[dict]:
         return [
             {
@@ -2438,6 +2528,100 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         topic = result["ranked_topics"][0]
         for field in ("story_family", "recommended_angle", "why_now", "selection_reason", "risk_flags", "source_mix"):
             self.assertIn(field, topic)
+
+    def test_hot_topic_discovery_recency_hardening_breaks_score_ties_in_favor_of_fresh_story(self) -> None:
+        with (
+            patch("hot_topic_discovery_runtime.timeliness_score", return_value=60),
+            patch("hot_topic_discovery_runtime.discussion_score", return_value=50),
+            patch("hot_topic_discovery_runtime.relevance_score", return_value=55),
+            patch("hot_topic_discovery_runtime.depth_score", return_value=45),
+            patch("hot_topic_discovery_runtime.seo_score", return_value=40),
+            patch("hot_topic_discovery_runtime.positive_feedback_topic_bonus", return_value=0),
+        ):
+            result = run_hot_topic_discovery(
+                {
+                    "analysis_time": "2026-04-20T10:30:00+00:00",
+                    "manual_topic_candidates": self.recency_heat_candidates(),
+                    "audience_keywords": ["oil", "markets", "chips", "AI"],
+                    "top_n": 5,
+                }
+            )
+
+        ranked_topics = {item["title"]: item for item in result["ranked_topics"]}
+        fresh = ranked_topics["Hormuz shipping risk returns as oil and stocks reverse"]
+        stale = ranked_topics["DeepSeek excludes US chipmakers from new AI model testing"]
+
+        self.assertEqual(result["ranked_topics"][0]["title"], "Hormuz shipping risk returns as oil and stocks reverse")
+        self.assertGreater(fresh["score_breakdown"]["freshness_window_bonus"], 0)
+        self.assertLess(stale["score_breakdown"]["stale_story_penalty"], 0)
+        self.assertGreater(fresh["score_breakdown"]["total_score"], stale["score_breakdown"]["total_score"])
+
+    def test_hot_topic_discovery_emits_recency_and_heat_operator_fields(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "manual_topic_candidates": self.recency_heat_candidates(),
+                "audience_keywords": ["oil", "markets", "chips", "AI"],
+                "top_n": 5,
+            }
+        )
+
+        topic = next(
+            item
+            for item in result["ranked_topics"]
+            if item["title"] == "Hormuz shipping risk returns as oil and stocks reverse"
+        )
+
+        for field in (
+            "freshness_bucket",
+            "freshness_reason",
+            "heat_bucket",
+            "staleness_flags",
+            "is_continuing_story",
+            "fresh_catalyst_present",
+        ):
+            self.assertIn(field, topic)
+        self.assertEqual(topic["freshness_bucket"], "0-6h")
+        self.assertTrue(topic["freshness_reason"])
+        self.assertTrue(topic["heat_bucket"])
+
+    def test_hot_topic_discovery_filters_stale_weak_confirmation_topic(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "manual_topic_candidates": self.recency_heat_candidates(),
+                "audience_keywords": ["AI", "markets", "funding"],
+                "top_n": 5,
+            }
+        )
+
+        ranked_titles = {item["title"] for item in result["ranked_topics"]}
+        self.assertNotIn("Old AI funding rumor says the whole sector is exploding again", ranked_titles)
+        filtered = next(
+            item
+            for item in result["filtered_out_topics"]
+            if item["title"] == "Old AI funding rumor says the whole sector is exploding again"
+        )
+        self.assertIn("stale", filtered["filter_reason"])
+
+    def test_hot_topic_discovery_keeps_continuing_story_with_fresh_catalyst(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "manual_topic_candidates": self.continuing_story_candidates(),
+                "audience_keywords": ["AI", "chips", "policy", "markets"],
+                "top_n": 5,
+            }
+        )
+
+        topic = result["ranked_topics"][0]
+        self.assertEqual(
+            topic["title"],
+            "US chip curbs story returns after a new filing and supplier guidance check",
+        )
+        self.assertTrue(topic["is_continuing_story"])
+        self.assertTrue(topic["fresh_catalyst_present"])
+        self.assertIn("catalyst", topic["selection_reason"].lower())
 
     def test_hot_topic_discovery_filters_reddit_meta_discussion_threads(self) -> None:
         result = run_hot_topic_discovery(

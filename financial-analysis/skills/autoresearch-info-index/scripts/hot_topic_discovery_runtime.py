@@ -111,6 +111,40 @@ POSITIVE_FEEDBACK_CONTRARIAN_MARKERS = (
     "real moat",
     "actually",
 )
+FRESH_CATALYST_KEYWORDS = {
+    "new filing",
+    "filing",
+    "guidance",
+    "raises",
+    "cuts",
+    "update",
+    "updated",
+    "expands",
+    "expansion",
+    "rollout",
+    "order",
+    "orders",
+    "hearing",
+    "probe",
+    "ceasefire",
+    "sanction",
+    "sanctions",
+    "guidance check",
+}
+CONTINUING_STORY_KEYWORDS = {
+    "again",
+    "returns",
+    "return",
+    "back into",
+    "update",
+    "filing",
+    "guidance",
+    "rollout",
+    "hearing",
+    "probe",
+    "ceasefire",
+    "sanction",
+}
 AGENT_REACH_ENV_VAR = "AGENT_REACH_PROVIDERS"
 REDDIT_LISTING_ALIASES = {
     "best": "best",
@@ -1188,6 +1222,16 @@ def recommended_story_angle(candidate: dict[str, Any]) -> str:
 
 
 def why_now_summary(candidate: dict[str, Any]) -> str:
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    heat = clean_text(candidate.get("heat_bucket"))
+    if candidate.get("fresh_catalyst_present"):
+        return "这条题不是旧闻回放，而是过去 24 小时内出现了 fresh catalyst。"
+    if freshness == "0-6h" and heat.startswith("near_window"):
+        return "过去 6 小时内出现了近窗多源扩散，这波热度不是旧讨论残留。"
+    if freshness == "6-24h":
+        return "过去 24 小时内还有新的公开信号，时效性仍然足够强。"
+    if freshness == ">72h":
+        return "最新公开信号已经超过 72 小时，除非有新的催化剂，否则更像旧闻余波。"
     primary_count = primary_platform_signal_count(candidate)
     if primary_count and (is_rumor_like_candidate(candidate) or is_verification_like_candidate(candidate)):
         return "平台讨论在升温，而且真假混杂，适合做一次辨真假梳理。"
@@ -1197,6 +1241,15 @@ def why_now_summary(candidate: dict[str, Any]) -> str:
 
 
 def selection_reason_summary(candidate: dict[str, Any]) -> str:
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    if candidate.get("fresh_catalyst_present"):
+        return "保留这条题，不是因为旧闻本身，而是因为过去 24 小时内出现了 fresh catalyst。"
+    if freshness == "0-6h":
+        return "主因是这条题刚进入 6 小时内窗口，而且近窗热度来自真实扩散。"
+    if freshness == "6-24h":
+        return "主因是这条题仍处在 24 小时内窗口，时效和可写角度都还在。"
+    if freshness == ">72h":
+        return "这条题已经偏旧，只有在后续出现 fresh catalyst 时才适合保留。"
     primary_count = primary_platform_signal_count(candidate)
     if primary_count:
         return f"主因是平台侧已有 {primary_count} 条有效讨论信号，而且具备可写角度。"
@@ -2839,6 +2892,147 @@ def positive_feedback_topic_bonus(candidate: dict[str, Any]) -> int:
     return min(12, bonus)
 
 
+def candidate_source_age_minutes(candidate: dict[str, Any], analysis_time: datetime) -> list[float]:
+    ages = [
+        age_minutes(analysis_time, item.get("published_at", ""))
+        for item in safe_list(candidate.get("source_items"))
+        if isinstance(item, dict)
+    ]
+    if ages:
+        return ages
+    return [age_minutes(analysis_time, candidate.get("latest_published_at", ""))]
+
+
+def freshness_bucket(candidate: dict[str, Any], analysis_time: datetime) -> str:
+    newest_age = min(candidate_source_age_minutes(candidate, analysis_time))
+    if newest_age <= 360:
+        return "0-6h"
+    if newest_age <= 1440:
+        return "6-24h"
+    if newest_age <= 4320:
+        return "24-72h"
+    return ">72h"
+
+
+def newest_source_item(candidate: dict[str, Any]) -> dict[str, Any]:
+    source_items = [item for item in safe_list(candidate.get("source_items")) if isinstance(item, dict)]
+    if not source_items:
+        return {}
+    return max(source_items, key=lambda item: clean_text(item.get("published_at")))
+
+
+def is_continuing_story_candidate(candidate: dict[str, Any], analysis_time: datetime) -> bool:
+    ages = candidate_source_age_minutes(candidate, analysis_time)
+    if len(ages) < 2:
+        return False
+    newest_age = min(ages)
+    oldest_age = max(ages)
+    if newest_age > 1440:
+        return False
+    if oldest_age - newest_age < 1440:
+        return False
+    return contains_any_keyword(candidate_match_text(candidate), CONTINUING_STORY_KEYWORDS)
+
+
+def fresh_catalyst_present(candidate: dict[str, Any], analysis_time: datetime) -> bool:
+    if not is_continuing_story_candidate(candidate, analysis_time):
+        return False
+    latest_text = " ".join(
+        [
+            clean_text(newest_source_item(candidate).get("title") or candidate.get("title")),
+            clean_text(newest_source_item(candidate).get("summary")),
+            clean_text(candidate.get("summary")),
+        ]
+    ).lower()
+    return contains_any_keyword(latest_text, FRESH_CATALYST_KEYWORDS)
+
+
+def freshness_window_bonus(candidate: dict[str, Any], analysis_time: datetime) -> int:
+    bucket = freshness_bucket(candidate, analysis_time)
+    bonus = {
+        "0-6h": 12,
+        "6-24h": 8,
+        "24-72h": 0,
+        ">72h": 0,
+    }.get(bucket, 0)
+    if fresh_catalyst_present(candidate, analysis_time):
+        bonus += 4
+    return bonus
+
+
+def near_window_heat_bonus(candidate: dict[str, Any], analysis_time: datetime) -> int:
+    if freshness_bucket(candidate, analysis_time) not in {"0-6h", "6-24h"}:
+        return 0
+    bonus = 0
+    source_count = int(candidate.get("source_count", 0) or 0)
+    if source_count >= 2:
+        bonus += min(6, (source_count - 1) * 3)
+    primary_count = primary_platform_signal_count(candidate)
+    if primary_count:
+        bonus += min(4, primary_count * 2)
+    if len(safe_list(candidate.get("domains"))) >= 2:
+        bonus += 2
+    return min(10, bonus)
+
+
+def stale_story_penalty(candidate: dict[str, Any], analysis_time: datetime) -> int:
+    bucket = freshness_bucket(candidate, analysis_time)
+    weak_confirmation = int(candidate.get("source_count", 0) or 0) <= 1 and primary_platform_signal_count(candidate) == 0
+    if bucket == ">72h":
+        penalty = -10
+        if weak_confirmation:
+            penalty -= 8
+        return penalty
+    if bucket == "24-72h":
+        return -6 if weak_confirmation else -3
+    return 0
+
+
+def heat_bucket(candidate: dict[str, Any], analysis_time: datetime) -> str:
+    near_window_bonus = near_window_heat_bonus(candidate, analysis_time)
+    bucket = freshness_bucket(candidate, analysis_time)
+    if near_window_bonus >= 6:
+        return "near_window_multi_source"
+    if near_window_bonus > 0:
+        return "near_window_single_source"
+    if bucket == "24-72h":
+        return "carryover"
+    if bucket == ">72h":
+        return "stale_residual"
+    return "baseline"
+
+
+def staleness_flags(candidate: dict[str, Any], analysis_time: datetime) -> list[str]:
+    flags: list[str] = []
+    bucket = freshness_bucket(candidate, analysis_time)
+    if bucket == "24-72h":
+        flags.append("older_than_24h")
+    elif bucket == ">72h":
+        flags.append("older_than_72h")
+    if int(candidate.get("source_count", 0) or 0) <= 1 and primary_platform_signal_count(candidate) == 0:
+        flags.append("weak_confirmation")
+    if primary_platform_signal_count(candidate) == 0:
+        flags.append("fallback_only")
+    if is_continuing_story_candidate(candidate, analysis_time):
+        flags.append("continuing_story")
+    if fresh_catalyst_present(candidate, analysis_time):
+        flags.append("fresh_catalyst")
+    return flags
+
+
+def freshness_reason(candidate: dict[str, Any], analysis_time: datetime) -> str:
+    bucket = freshness_bucket(candidate, analysis_time)
+    if fresh_catalyst_present(candidate, analysis_time):
+        return "A continuing story picked up a fresh catalyst inside the current 24-hour window."
+    if bucket == "0-6h":
+        return "The newest public signal landed within the last 6 hours."
+    if bucket == "6-24h":
+        return "The newest public signal landed within the last 24 hours."
+    if bucket == "24-72h":
+        return "The story is still recent enough to matter, but it now sits in a carryover window."
+    return "The newest public signal is older than 72 hours, so this is stale unless a new catalyst appears."
+
+
 def timeliness_score(candidate: dict[str, Any], analysis_time: datetime) -> int:
     newest_age = age_minutes(analysis_time, candidate.get("latest_published_at", ""))
     if newest_age <= 15:
@@ -3066,12 +3260,24 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
     relevance = relevance_score(candidate, audience_keywords, preferred_topic_keywords)
     depth = depth_score(candidate)
     seo = seo_score(candidate["title"], candidate["keywords"])
+    freshness_window = freshness_window_bonus(candidate, analysis_time)
+    near_window_heat = near_window_heat_bonus(candidate, analysis_time)
+    stale_penalty = stale_story_penalty(candidate, analysis_time)
+    candidate["freshness_bucket"] = freshness_bucket(candidate, analysis_time)
+    candidate["freshness_reason"] = freshness_reason(candidate, analysis_time)
+    candidate["heat_bucket"] = heat_bucket(candidate, analysis_time)
+    candidate["staleness_flags"] = staleness_flags(candidate, analysis_time)
+    candidate["is_continuing_story"] = is_continuing_story_candidate(candidate, analysis_time)
+    candidate["fresh_catalyst_present"] = fresh_catalyst_present(candidate, analysis_time)
     total = clamp(
         timeliness * weights["timeliness"]
         + debate * weights["debate"]
         + relevance * weights["relevance"]
         + depth * weights["depth"]
         + seo * weights["seo"]
+        + freshness_window
+        + near_window_heat
+        + stale_penalty
     )
     if request.get("discovery_profile") == "international_first":
         primary_count = primary_platform_signal_count(candidate)
@@ -3106,11 +3312,20 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         "relevance": relevance,
         "depth": depth,
         "seo": seo,
+        "freshness_window_bonus": freshness_window,
+        "near_window_heat_bonus": near_window_heat,
+        "stale_story_penalty": stale_penalty,
         "positive_feedback_bonus": positive_feedback_bonus,
         "total_score": total,
         "weights": weights,
     }
     candidate["positive_feedback_topic_signals"] = positive_feedback_signals
+    if freshness_window:
+        reasons.append(f"freshness window +{freshness_window}")
+    if near_window_heat:
+        reasons.append(f"near-window heat +{near_window_heat}")
+    if stale_penalty:
+        reasons.append(f"stale penalty {stale_penalty}")
     if preferred_matches:
         reasons.append(f"topic preference match {', '.join(preferred_matches[:3])}")
     if positive_feedback_bonus:
@@ -3245,6 +3460,14 @@ def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> 
             return False, "filtered diplomatic protocol topic"
         if is_official_commentary_candidate(candidate):
             return False, "filtered official commentary topic"
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    stale_flags = clean_string_list(candidate.get("staleness_flags"))
+    if freshness == ">72h" and not candidate.get("fresh_catalyst_present"):
+        if "weak_confirmation" in stale_flags:
+            return False, "filtered stale weak-confirmation topic"
+        return False, "filtered stale topic without fresh catalyst"
+    if freshness == "24-72h" and "weak_confirmation" in stale_flags and not candidate.get("fresh_catalyst_present"):
+        return False, "filtered stale weak-confirmation topic"
     if excluded_matches:
         return False, f"excluded keywords: {', '.join(excluded_matches)}"
     if int(candidate.get("source_count", 0) or 0) < request["min_source_count"]:
