@@ -1379,6 +1379,48 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("## 方向参考映射", enriched["report_markdown"])
         self.assertNotIn("正式执行层", enriched["report_markdown"].split("## 方向参考映射", 1)[0])
 
+    def test_merge_track_results_labels_market_strength_supplement_names(self) -> None:
+        merged = module_under_test.merge_track_results(
+            track_results={
+                "main_board": {
+                    "filter_summary": {
+                        "track_name": "main_board",
+                        "track_label": "主板",
+                        "keep_threshold": 58.0,
+                        "universe_count": 0,
+                        "kept_count": 0,
+                    },
+                    "top_picks": [],
+                    "dropped": [],
+                    "diagnostic_scorecard": [],
+                    "near_miss_candidates": [],
+                    "midday_action_summary": [],
+                    "tier_output": {"T1": [], "T2": [], "T3": [], "T4": []},
+                    "report_markdown": "",
+                }
+            },
+            track_configs={"main_board": {"label": "主板"}},
+            base_request={
+                "template_name": "month_end_shortlist",
+                "target_date": "2026-04-21",
+                "market_strength_candidates": [
+                    {
+                        "ticker": "002980.SZ",
+                        "name": "华盛昌",
+                        "strength_reason": "near_limit_close",
+                        "close_strength": "high",
+                        "volume_signal": "expanding",
+                        "board_context": "high_conviction_momentum",
+                        "theme_guess": ["short_term_momentum"],
+                        "source": "market_strength_scan",
+                    }
+                ],
+            },
+        )
+
+        self.assertIn("市场强势补充", merged["report_markdown"])
+        self.assertIn("002980.SZ", merged["report_markdown"])
+
     def test_chain_map_does_not_produce_expectation_gap_without_evidence(self) -> None:
         """B5: chain map should not assign names to 预期差最大 without evidence."""
         entries = module_under_test.build_chain_map_entries(

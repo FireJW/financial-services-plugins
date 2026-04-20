@@ -590,6 +590,20 @@ def build_x_discovery_context(raw_request: dict[str, Any]) -> dict[str, Any]:
     return {"chain_map": list(chain_map_by_name.values())}
 
 
+def normalize_market_strength_candidate(raw: dict[str, Any]) -> dict[str, Any]:
+    theme_guess = raw.get("theme_guess") if isinstance(raw.get("theme_guess"), list) else []
+    return {
+        "ticker": clean_text(raw.get("ticker")),
+        "name": clean_text(raw.get("name")) or clean_text(raw.get("ticker")),
+        "strength_reason": clean_text(raw.get("strength_reason")) or "close_near_high",
+        "close_strength": clean_text(raw.get("close_strength")) or "medium",
+        "volume_signal": clean_text(raw.get("volume_signal")) or "unclear",
+        "board_context": clean_text(raw.get("board_context")) or "high_conviction_momentum",
+        "theme_guess": [clean_text(item) for item in theme_guess if clean_text(item)],
+        "source": clean_text(raw.get("source")) or "market_strength_scan",
+    }
+
+
 def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normalize_request: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
     normalized = apply_wrapper_filter_profile_override(
         raw_payload,
@@ -614,6 +628,15 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
         normalized["weekend_market_candidate_input"] = weekend_market_candidate_input
     else:
         normalized.pop("weekend_market_candidate_input", None)
+    market_strength_rows = raw_payload.get("market_strength_candidates")
+    if isinstance(market_strength_rows, list):
+        normalized["market_strength_candidates"] = [
+            normalize_market_strength_candidate(item)
+            for item in market_strength_rows
+            if isinstance(item, dict) and clean_text(item.get("ticker"))
+        ]
+    else:
+        normalized.pop("market_strength_candidates", None)
     batch_path = clean_text(normalized.get("x_style_batch_result_path"))
     if batch_path:
         path = Path(batch_path).expanduser().resolve()
@@ -1312,6 +1335,16 @@ def assign_tiers(
     assigned_tickers: set[str] = set()
     tiers: dict[str, list[dict[str, Any]]] = {"T1": [], "T2": [], "T3": [], "T4": []}
 
+    def is_market_strength_supplement(candidate: dict[str, Any]) -> bool:
+        tier_tags = candidate.get("tier_tags") if isinstance(candidate.get("tier_tags"), list) else []
+        return bool(candidate.get("market_strength_supplement")) or (
+            clean_text(candidate.get("primary_event_type")) == "market_strength_scan"
+        ) or (
+            clean_text(candidate.get("event_type")) == "market_strength_scan"
+        ) or (
+            "market_strength_supplement" in tier_tags
+        )
+
     # --- T1: top_picks from compiled core ---
     for c in sorted(
         top_picks,
@@ -1325,8 +1358,30 @@ def assign_tiers(
 
     # --- T2 Path A: promoted near-miss ---
     ordered_near_miss = sort_candidates_with_geopolitics_bias(near_miss_candidates, geopolitics_overlay)
-    ordered_watch = sort_candidates_with_geopolitics_bias(discovery_results.get("watch", []), geopolitics_overlay)
-    ordered_track = sort_candidates_with_geopolitics_bias(discovery_results.get("track", []), geopolitics_overlay)
+    qualified_rows = [
+        c for c in discovery_results.get("qualified", [])
+        if not is_market_strength_supplement(c)
+    ]
+    ordered_watch = sort_candidates_with_geopolitics_bias(
+        [c for c in discovery_results.get("watch", []) if not is_market_strength_supplement(c)],
+        geopolitics_overlay,
+    )
+    ordered_track = sort_candidates_with_geopolitics_bias(
+        [c for c in discovery_results.get("track", []) if not is_market_strength_supplement(c)],
+        geopolitics_overlay,
+    )
+    supplement_candidates = sort_candidates_with_geopolitics_bias(
+        [
+            c
+            for c in (
+                list(discovery_results.get("qualified", []))
+                + list(discovery_results.get("watch", []))
+                + list(discovery_results.get("track", []))
+            )
+            if is_market_strength_supplement(c)
+        ],
+        geopolitics_overlay,
+    )
 
     for c in ordered_near_miss:
         if c.get("ticker") in assigned_tickers:
@@ -1340,7 +1395,7 @@ def assign_tiers(
                 break
 
     # --- T2 Path B: discovery qualified ---
-    for c in discovery_results.get("qualified", []):
+    for c in qualified_rows:
         if c.get("ticker") in assigned_tickers:
             continue
         if len(tiers["T2"]) >= TIER_CAPS["T2"]:
@@ -1371,7 +1426,29 @@ def assign_tiers(
         tiers["T3"].append(c)
         assigned_tickers.add(c.get("ticker"))
 
+    for c in supplement_candidates:
+        if c.get("ticker") in assigned_tickers:
+            continue
+        if len(tiers["T3"]) >= TIER_CAPS["T3"]:
+            break
+        c["wrapper_tier"] = "T3"
+        c["market_strength_supplement"] = True
+        c["tier_tags"] = c.get("tier_tags", []) + ["market_strength_supplement"]
+        tiers["T3"].append(c)
+        assigned_tickers.add(c.get("ticker"))
+
     # --- T4: discovery track + chain/sympathy ---
+    for c in supplement_candidates:
+        if c.get("ticker") in assigned_tickers:
+            continue
+        if len(tiers["T4"]) >= TIER_CAPS["T4"]:
+            break
+        c["wrapper_tier"] = "T4"
+        c["market_strength_supplement"] = True
+        c["tier_tags"] = c.get("tier_tags", []) + ["market_strength_supplement"]
+        tiers["T4"].append(c)
+        assigned_tickers.add(c.get("ticker"))
+
     for c in ordered_track:
         if c.get("ticker") in assigned_tickers:
             continue
@@ -1687,6 +1764,48 @@ def build_discovery_candidates(raw_candidates: list[dict[str, Any]]) -> list[dic
         item["discovery_bucket"] = assign_discovery_bucket(item)
         rows.append(item)
     return rows
+
+
+def build_market_strength_discovery_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    converted: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        ticker = clean_text(row.get("ticker"))
+        if not ticker:
+            continue
+        theme_guess = row.get("theme_guess") if isinstance(row.get("theme_guess"), list) else []
+        chain_name = next((clean_text(item) for item in theme_guess if clean_text(item)), "unknown")
+        close_strength = clean_text(row.get("close_strength"))
+        volume_signal = clean_text(row.get("volume_signal"))
+        converted.append(
+            {
+                "ticker": ticker,
+                "name": clean_text(row.get("name")) or ticker,
+                "event_type": "market_strength_scan",
+                "event_strength": "strong" if close_strength == "high" else "medium",
+                "chain_name": chain_name,
+                "chain_role": "unknown",
+                "benefit_type": "mapping",
+                "sources": [
+                    {
+                        "source_type": "community_post",
+                        "summary": clean_text(row.get("strength_reason")) or "market strength supplement",
+                    }
+                ],
+                "market_validation": {
+                    "volume_multiple_5d": 2.0 if volume_signal == "expanding" else 1.0,
+                    "breakout": close_strength == "high",
+                    "relative_strength": "strong" if close_strength == "high" else "normal",
+                    "chain_resonance": False,
+                },
+                "market_strength_source": clean_text(row.get("source")) or "market_strength_scan",
+                "market_strength_reason": clean_text(row.get("strength_reason")),
+                "market_strength_board_context": clean_text(row.get("board_context")),
+                "market_strength_supplement": True,
+            }
+        )
+    return converted
 
 
 def merge_discovery_candidate_inputs(
@@ -2658,6 +2777,11 @@ def enrich_live_result_reporting(
     enriched["macro_geopolitics_candidate"] = build_macro_geopolitics_candidate(
         geopolitics_candidate_input
     )
+    market_strength_candidates = (
+        request_obj.get("market_strength_candidates")
+        if isinstance(request_obj.get("market_strength_candidates"), list)
+        else []
+    )
     dropped = [item for item in enriched.get("dropped", []) if isinstance(item, dict)]
 
     filter_summary = dict(enriched.get("filter_summary") or {})
@@ -2738,11 +2862,15 @@ def enrich_live_result_reporting(
             enriched["near_miss_candidates"] = near_miss_candidates
 
     auto_discovery_candidates = build_auto_discovery_candidates(assessed_candidates or [])
+    supplement_rows = build_market_strength_discovery_candidates(market_strength_candidates)
     discovery_rows = build_discovery_candidates(
-        merge_discovery_candidate_inputs(list(discovery_candidates or []), auto_discovery_candidates)
+        merge_discovery_candidate_inputs(list(discovery_candidates or []) + supplement_rows, auto_discovery_candidates)
     )
     if discovery_rows:
         event_cards = enrich_event_cards_with_chain_context(build_event_cards(discovery_rows), discovery_context)
+        for row in event_cards:
+            if clean_text(row.get("primary_event_type")) == "market_strength_scan":
+                row["market_strength_supplement"] = True
         enriched["event_cards"] = event_cards
         enriched["discovery_lane_summary"] = build_discovery_lane_summary(event_cards)
         enriched["chain_map_entries"] = build_chain_map_entries(event_cards, discovery_context)
@@ -3275,6 +3403,7 @@ def merge_track_results(
     *,
     discovery_candidates: list[dict[str, Any]] | None = None,
     discovery_context: dict[str, Any] | None = None,
+    market_strength_candidates: list[dict[str, Any]] | None = None,
     all_assessed: list[dict[str, Any]] | None = None,
     out_of_scope_dropped: list[dict[str, Any]] | None = None,
     base_request: dict[str, Any] | None = None,
@@ -3312,6 +3441,12 @@ def merge_track_results(
     merged["macro_geopolitics_candidate"] = build_macro_geopolitics_candidate(
         geopolitics_candidate_input
     )
+    if market_strength_candidates is None and isinstance(base_request, dict):
+        market_strength_candidates = (
+            base_request.get("market_strength_candidates")
+            if isinstance(base_request.get("market_strength_candidates"), list)
+            else []
+        )
 
     # Combine top_picks, dropped, diagnostic_scorecard, near_miss, midday_action
     all_top_picks: list[dict[str, Any]] = []
@@ -3382,11 +3517,15 @@ def merge_track_results(
     # --- Discovery / event-card enrichment (shared across tracks) ---
     all_assessed_combined = list(all_assessed or [])
     auto_discovery_candidates = build_auto_discovery_candidates(all_assessed_combined)
+    supplement_rows = build_market_strength_discovery_candidates(market_strength_candidates or [])
     discovery_rows = build_discovery_candidates(
-        merge_discovery_candidate_inputs(list(discovery_candidates or []), auto_discovery_candidates)
+        merge_discovery_candidate_inputs(list(discovery_candidates or []) + supplement_rows, auto_discovery_candidates)
     )
     if discovery_rows:
         event_cards = enrich_event_cards_with_chain_context(build_event_cards(discovery_rows), discovery_context)
+        for row in event_cards:
+            if clean_text(row.get("primary_event_type")) == "market_strength_scan":
+                row["market_strength_supplement"] = True
         merged["event_cards"] = event_cards
         merged["discovery_lane_summary"] = build_discovery_lane_summary(event_cards)
         merged["chain_map_entries"] = build_chain_map_entries(event_cards, discovery_context)
@@ -3448,7 +3587,8 @@ def merge_track_results(
     if isinstance(directly_actionable, list) and directly_actionable:
         report_lines.extend(["", "## 直接可执行", ""])
         for item in directly_actionable:
-            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
+            supplement_label = " `市场强势补充`" if item.get("market_strength_supplement") else ""
+            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}{supplement_label}")
             report_lines.append(f"  - 事件: `{item.get('event_type')}`")
             report_lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
             report_lines.append(f"  - 链条: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
@@ -3458,7 +3598,8 @@ def merge_track_results(
         report_lines.extend(["", "## 重点观察", ""])
         for item in priority_watchlist:
             confidence = item.get("rumor_confidence_range", {})
-            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}")
+            supplement_label = " `市场强势补充`" if item.get("market_strength_supplement") else ""
+            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}{supplement_label}")
             report_lines.append(f"  - 事件: `{item.get('event_type')}`")
             report_lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
             report_lines.append(f"  - 可信度区间: `{confidence.get('label')}` `{confidence.get('range')}`")
@@ -3467,7 +3608,8 @@ def merge_track_results(
     if isinstance(chain_tracking, list) and chain_tracking:
         report_lines.extend(["", "## 链条跟踪", ""])
         for item in chain_tracking:
-            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
+            supplement_label = " `市场强势补充`" if item.get("market_strength_supplement") else ""
+            report_lines.append(f"- `{item.get('ticker')}` {item.get('name')}{supplement_label}: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
 
     if decision_flow:
         geopolitics_overlay = request_obj.get("macro_geopolitics_overlay") if isinstance(request_obj.get("macro_geopolitics_overlay"), dict) else None
@@ -3596,6 +3738,7 @@ def run_month_end_shortlist(
         )
         discovery_candidates = deepcopy(prepared_payload.get("event_discovery_candidates") or [])
         discovery_context = deepcopy(prepared_payload.get("x_discovery_context") or {})
+        market_strength_candidates = deepcopy(prepared_payload.get("market_strength_candidates") or [])
 
         # --- Fetch full universe once, then split by board ---
         full_universe = universe_fetcher(prepared_payload)
@@ -3672,6 +3815,7 @@ def run_month_end_shortlist(
             TRACK_CONFIGS,
             discovery_candidates=discovery_candidates,
             discovery_context=discovery_context,
+            market_strength_candidates=market_strength_candidates,
             all_assessed=all_assessed,
             out_of_scope_dropped=out_of_scope,
             base_request=prepared_payload,
@@ -3731,6 +3875,8 @@ for _extra in (
     "split_universe_by_board",
     "enrich_track_result",
     "merge_track_results",
+    "normalize_market_strength_candidate",
+    "build_market_strength_discovery_candidates",
 ):
     if _extra not in __all__:
         __all__.append(_extra)
