@@ -63,6 +63,58 @@ BENCHMARK_TICKERS = {"000300.SS", "000300.SH"}
 MARKET_STRENGTH_UNIVERSE_LIMIT = 200
 MARKET_STRENGTH_MARKET_GROUPS = "m:0+t:6,m:0+t:13,m:0+t:80,m:1+t:2,m:1+t:23"
 MARKET_STRENGTH_FIELDS = "f12,f13,f14,f2,f3,f5,f6,f8,f9,f10,f15,f16,f17,f18,f20,f21,f23,f24,f25,f100"
+DEFAULT_STRATEGIC_BASE_WATCH_THEMES = (
+    "commercial_space",
+    "controlled_fusion",
+    "humanoid_robotics",
+    "semiconductor_equipment",
+)
+SETUP_LAUNCH_THEME_ALIASES: dict[str, tuple[str, ...]] = {
+    "commercial_space": (
+        "商业航天",
+        "卫星",
+        "卫星互联网",
+        "卫星链",
+        "航天",
+        "火箭",
+        "space",
+        "spacex",
+        "starlink",
+        "satellite",
+    ),
+    "controlled_fusion": (
+        "可控核聚变",
+        "核聚变",
+        "聚变",
+        "托卡马克",
+        "超导磁体",
+        "fusion",
+    ),
+    "humanoid_robotics": (
+        "人形机器人",
+        "具身智能",
+        "机器人",
+        "灵巧手",
+        "减速器",
+        "伺服",
+        "humanoid",
+        "robotics",
+        "robot",
+    ),
+    "semiconductor_equipment": (
+        "半导体设备",
+        "半导体",
+        "刻蚀",
+        "薄膜",
+        "光刻",
+        "清洗",
+        "量测",
+        "cmp",
+        "equipment",
+        "semiconductor",
+    ),
+}
+SETUP_LAUNCH_MAX_NAMES = 10
 
 
 def load_compiled_module():
@@ -610,6 +662,253 @@ def normalize_market_strength_candidate(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_setup_launch_candidate(raw: dict[str, Any]) -> dict[str, Any]:
+    theme_guess = raw.get("theme_guess") if isinstance(raw.get("theme_guess"), list) else []
+    setup_reasons = raw.get("setup_reasons") if isinstance(raw.get("setup_reasons"), list) else []
+    return {
+        "ticker": clean_text(raw.get("ticker")),
+        "name": clean_text(raw.get("name")) or clean_text(raw.get("ticker")),
+        "theme_guess": [clean_text(item) for item in theme_guess if clean_text(item)],
+        "setup_reasons": [clean_text(item) for item in setup_reasons if clean_text(item)],
+        "structure_repair": clean_text(raw.get("structure_repair")) or "low",
+        "volume_return": clean_text(raw.get("volume_return")) or "low",
+        "rs_improvement": clean_text(raw.get("rs_improvement")) or "low",
+        "distance_from_bottom_state": clean_text(raw.get("distance_from_bottom_state")) or "unknown",
+        "source": clean_text(raw.get("source")) or "setup_launch_scan",
+    }
+
+
+def resolve_setup_launch_theme_pool(
+    request_obj: dict[str, Any],
+    weekend_market_candidate: dict[str, Any] | None,
+) -> list[str]:
+    ordered: list[str] = []
+    candidate_topics = (
+        weekend_market_candidate.get("candidate_topics", [])
+        if isinstance(weekend_market_candidate, dict)
+        else []
+    )
+    for item in candidate_topics:
+        if not isinstance(item, dict):
+            continue
+        topic_name = clean_text(item.get("topic_name"))
+        if topic_name and topic_name not in ordered:
+            ordered.append(topic_name)
+    configured = request_obj.get("strategic_base_watch_themes")
+    if isinstance(configured, list):
+        configured_rows = [clean_text(item) for item in configured if clean_text(item)]
+    else:
+        configured_rows = list(DEFAULT_STRATEGIC_BASE_WATCH_THEMES)
+    for item in configured_rows:
+        if item and item not in ordered:
+            ordered.append(item)
+    return ordered
+
+
+def _setup_theme_intersections(raw: dict[str, Any], active_themes: list[str]) -> list[str]:
+    explicit = raw.get("theme_guess") if isinstance(raw.get("theme_guess"), list) else []
+    explicit_clean = [clean_text(item) for item in explicit if clean_text(item)]
+    matches: list[str] = [item for item in explicit_clean if item in active_themes]
+    if matches:
+        return list(dict.fromkeys(matches))
+    text_parts = [
+        clean_text(raw.get("name") or raw.get("f14")),
+        clean_text(raw.get("sector") or raw.get("industry") or raw.get("f100")),
+        clean_text(raw.get("chain_name")),
+        clean_text(raw.get("board_context")),
+    ]
+    text_blob = " ".join(item for item in text_parts if item).lower()
+    for theme_name in active_themes:
+        aliases = SETUP_LAUNCH_THEME_ALIASES.get(theme_name, ())
+        for alias in aliases:
+            normalized_alias = clean_text(alias).lower()
+            if normalized_alias and normalized_alias in text_blob:
+                matches.append(theme_name)
+                break
+    return list(dict.fromkeys(matches))
+
+
+def _setup_signal_score(value: str) -> float:
+    normalized = clean_text(value).lower()
+    if normalized == "high":
+        return 2.0
+    if normalized == "medium":
+        return 1.0
+    return 0.0
+
+
+def classify_structure_repair(row: dict[str, Any]) -> str:
+    snapshot = row.get("price_snapshot") if isinstance(row.get("price_snapshot"), dict) else {}
+    close = to_float(snapshot.get("close") if snapshot else row.get("price"))
+    ma20 = to_float(snapshot.get("ma20"))
+    ma50 = to_float(snapshot.get("ma50"))
+    pct_from_60d = to_float(row.get("pct_from_60d"))
+    day_pct = to_float(row.get("day_pct"))
+    if close and ma20 and ma50 and close > ma20 and close > ma50:
+        return "high"
+    if close and ma20 and close > ma20:
+        return "medium"
+    if pct_from_60d >= 8.0 and day_pct > 0:
+        return "medium"
+    return "low"
+
+
+def classify_volume_return(row: dict[str, Any]) -> str:
+    snapshot = row.get("price_snapshot") if isinstance(row.get("price_snapshot"), dict) else {}
+    volume_ratio = to_float(row.get("volume_ratio") if row.get("volume_ratio") not in (None, "") else snapshot.get("volume_ratio"))
+    turnover_rate = to_float(row.get("turnover_rate_pct") if row.get("turnover_rate_pct") not in (None, "") else row.get("f8"))
+    turnover = to_float(row.get("day_turnover_cny") if row.get("day_turnover_cny") not in (None, "") else row.get("f6"))
+    if volume_ratio >= 1.5 or turnover_rate >= 3.0 or turnover >= 500_000_000:
+        return "high"
+    if volume_ratio >= 1.1 or turnover_rate >= 1.0 or turnover >= 150_000_000:
+        return "medium"
+    return "low"
+
+
+def classify_rs_improvement(row: dict[str, Any]) -> str:
+    snapshot = row.get("price_snapshot") if isinstance(row.get("price_snapshot"), dict) else {}
+    rs90 = to_float(snapshot.get("rs90") if snapshot else row.get("rs90"))
+    pct_from_ytd = to_float(row.get("pct_from_ytd"))
+    day_pct = to_float(row.get("day_pct"))
+    if rs90 >= 90.0 or pct_from_ytd >= 20.0:
+        return "high"
+    if rs90 >= 70.0 or pct_from_ytd >= 5.0 or day_pct > 0:
+        return "medium"
+    return "low"
+
+
+def classify_distance_from_bottom_state(row: dict[str, Any]) -> str:
+    pct_from_60d = to_float(row.get("pct_from_60d"))
+    if pct_from_60d <= 3.0:
+        return "still_bottoming"
+    if pct_from_60d <= 35.0:
+        return "off_bottom_not_extended"
+    return "too_extended"
+
+
+def is_setup_launch_excluded(row: dict[str, Any], existing_tickers: set[str], active_themes: list[str]) -> bool:
+    ticker = clean_text(row.get("ticker"))
+    name = clean_text(row.get("name"))
+    if not ticker or ticker in existing_tickers:
+        return True
+    if "ST" in name.upper():
+        return True
+    if to_float(row.get("day_turnover_cny")) < 100_000_000:
+        return True
+    if not _setup_theme_intersections(row, active_themes):
+        return True
+    if classify_distance_from_bottom_state(row) == "too_extended":
+        return True
+    return False
+
+
+def setup_launch_score(row: dict[str, Any]) -> float:
+    structure_repair = classify_structure_repair(row)
+    volume_return = classify_volume_return(row)
+    rs_improvement = classify_rs_improvement(row)
+    bottom_state = classify_distance_from_bottom_state(row)
+    score = (
+        _setup_signal_score(structure_repair) * 2.0
+        + _setup_signal_score(volume_return) * 1.5
+        + _setup_signal_score(rs_improvement) * 1.5
+    )
+    if bottom_state == "off_bottom_not_extended":
+        score += 2.0
+    elif bottom_state == "still_bottoming":
+        score -= 2.0
+    else:
+        score -= 1.0
+    day_pct = to_float(row.get("day_pct"))
+    if 1.0 <= day_pct <= 6.0:
+        score += 1.0
+    return round(score, 4)
+
+
+def build_setup_launch_candidates_from_universe(
+    universe_rows: list[dict[str, Any]],
+    *,
+    active_themes: list[str],
+    existing_tickers: set[str],
+    max_names: int = SETUP_LAUNCH_MAX_NAMES,
+) -> list[dict[str, Any]]:
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for raw in universe_rows:
+        if not isinstance(raw, dict):
+            continue
+        row = {
+            "ticker": normalize_market_strength_universe_ticker(raw),
+            "name": clean_text(raw.get("name") or raw.get("f14")),
+            "sector": clean_text(raw.get("sector") or raw.get("industry") or raw.get("f100")),
+            "price": to_float(raw.get("price") if raw.get("price") not in (None, "") else raw.get("f2")),
+            "high": to_float(raw.get("high") if raw.get("high") not in (None, "") else raw.get("f15")),
+            "low": to_float(raw.get("low") if raw.get("low") not in (None, "") else raw.get("f16")),
+            "pre_close": to_float(raw.get("pre_close") if raw.get("pre_close") not in (None, "") else raw.get("f18")),
+            "day_pct": to_float(raw.get("day_pct") if raw.get("day_pct") not in (None, "") else raw.get("f3")),
+            "day_turnover_cny": to_float(raw.get("day_turnover_cny") if raw.get("day_turnover_cny") not in (None, "") else raw.get("f6")),
+            "turnover_rate_pct": to_float(raw.get("turnover_rate_pct") if raw.get("turnover_rate_pct") not in (None, "") else raw.get("f8")),
+            "pct_from_60d": to_float(raw.get("pct_from_60d")),
+            "pct_from_ytd": to_float(raw.get("pct_from_ytd")),
+            "volume_ratio": to_float(raw.get("volume_ratio")),
+            "price_snapshot": deepcopy(raw.get("price_snapshot")) if isinstance(raw.get("price_snapshot"), dict) else {},
+            "theme_guess": raw.get("theme_guess") if isinstance(raw.get("theme_guess"), list) else [],
+        }
+        if is_setup_launch_excluded(row, existing_tickers, active_themes):
+            continue
+        score = setup_launch_score(row)
+        if score < 4.0:
+            continue
+        ranked.append((score, row))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    generated: list[dict[str, Any]] = []
+    for _, row in ranked[:max_names]:
+        theme_guess = _setup_theme_intersections(row, active_themes)
+        structure_repair = classify_structure_repair(row)
+        volume_return = classify_volume_return(row)
+        rs_improvement = classify_rs_improvement(row)
+        distance_state = classify_distance_from_bottom_state(row)
+        setup_reasons: list[str] = []
+        if structure_repair in {"medium", "high"}:
+            setup_reasons.append("structure_repair_visible")
+        if volume_return in {"medium", "high"}:
+            setup_reasons.append("volume_return_visible")
+        if rs_improvement in {"medium", "high"}:
+            setup_reasons.append("rs_trend_improving")
+        if distance_state == "off_bottom_not_extended":
+            setup_reasons.append("off_bottom_not_extended")
+        generated.append(
+            normalize_setup_launch_candidate(
+                {
+                    "ticker": row["ticker"],
+                    "name": row["name"],
+                    "theme_guess": theme_guess,
+                    "setup_reasons": setup_reasons,
+                    "structure_repair": structure_repair,
+                    "volume_return": volume_return,
+                    "rs_improvement": rs_improvement,
+                    "distance_from_bottom_state": distance_state,
+                    "source": "setup_launch_scan",
+                }
+            )
+        )
+    return generated
+
+
+def merge_setup_launch_candidate_inputs(
+    request_rows: list[dict[str, Any]],
+    generated_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in request_rows + generated_rows:
+        ticker = clean_text(row.get("ticker"))
+        if not ticker or ticker in seen:
+            continue
+        merged.append(row)
+        seen.add(ticker)
+    return merged
+
+
 def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normalize_request: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
     normalized = apply_wrapper_filter_profile_override(
         raw_payload,
@@ -643,6 +942,22 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
         ]
     else:
         normalized.pop("market_strength_candidates", None)
+    setup_launch_rows = raw_payload.get("setup_launch_candidates")
+    if isinstance(setup_launch_rows, list):
+        normalized["setup_launch_candidates"] = [
+            normalize_setup_launch_candidate(item)
+            for item in setup_launch_rows
+            if isinstance(item, dict) and clean_text(item.get("ticker"))
+        ]
+    else:
+        normalized.pop("setup_launch_candidates", None)
+    strategic_themes = raw_payload.get("strategic_base_watch_themes")
+    if isinstance(strategic_themes, list):
+        normalized["strategic_base_watch_themes"] = list(
+            dict.fromkeys(clean_text(item) for item in strategic_themes if clean_text(item))
+        )
+    else:
+        normalized.pop("strategic_base_watch_themes", None)
     batch_path = clean_text(normalized.get("x_style_batch_result_path"))
     if batch_path:
         path = Path(batch_path).expanduser().resolve()
@@ -1814,6 +2129,35 @@ def build_market_strength_discovery_candidates(rows: list[dict[str, Any]]) -> li
     return converted
 
 
+def build_setup_launch_markdown(rows: list[dict[str, Any]] | None) -> list[str]:
+    items = [item for item in (rows or []) if isinstance(item, dict)]
+    if not items:
+        return []
+    lines = ["", "## 筑底启动补充", ""]
+    for item in items:
+        ticker = clean_text(item.get("ticker"))
+        name = clean_text(item.get("name")) or ticker
+        lines.append(f"- `{ticker}` {name}")
+        themes = item.get("theme_guess") if isinstance(item.get("theme_guess"), list) else []
+        if themes:
+            lines.append(
+                f"  - 主题: `{', '.join(clean_text(theme) for theme in themes if clean_text(theme))}`"
+            )
+        reasons = item.get("setup_reasons") if isinstance(item.get("setup_reasons"), list) else []
+        if reasons:
+            lines.append(
+                f"  - setup 理由: `{', '.join(clean_text(reason) for reason in reasons if clean_text(reason))}`"
+            )
+        lines.append(f"  - 结构修复: `{clean_text(item.get('structure_repair'))}`")
+        lines.append(f"  - 量能回流: `{clean_text(item.get('volume_return'))}`")
+        lines.append(f"  - RS 改善: `{clean_text(item.get('rs_improvement'))}`")
+        lines.append(
+            f"  - 底部状态: `{clean_text(item.get('distance_from_bottom_state'))}`"
+        )
+        lines.append(f"  - 来源: `{clean_text(item.get('source')) or 'setup_launch_scan'}`")
+    return lines
+
+
 def is_market_strength_excluded(row: dict[str, Any], existing_tickers: set[str]) -> bool:
     name = clean_text(row.get("name") or row.get("f14"))
     ticker = clean_text(row.get("ticker") or row.get("f12"))
@@ -2915,6 +3259,7 @@ def enrich_live_result_reporting(
     assessed_candidates: list[dict[str, Any]] | None = None,
     discovery_candidates: list[dict[str, Any]] | None = None,
     discovery_context: dict[str, Any] | None = None,
+    setup_launch_candidates: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     enriched = enrich_degraded_live_result(result, failure_candidates)
     request_obj = enriched.get("request") if isinstance(enriched.get("request"), dict) else {}
@@ -2941,6 +3286,15 @@ def enrich_live_result_reporting(
         if isinstance(request_obj.get("market_strength_candidates"), list)
         else []
     )
+    if setup_launch_candidates is None:
+        setup_launch_candidates = (
+            request_obj.get("setup_launch_candidates")
+            if isinstance(request_obj.get("setup_launch_candidates"), list)
+            else []
+        )
+    enriched["setup_launch_candidates"] = [
+        item for item in (setup_launch_candidates or []) if isinstance(item, dict)
+    ]
     dropped = [item for item in enriched.get("dropped", []) if isinstance(item, dict)]
 
     filter_summary = dict(enriched.get("filter_summary") or {})
@@ -3243,6 +3597,14 @@ def enrich_live_result_reporting(
             lines.append(f"- `{item.get('ticker')}` {item.get('name')}: `{item.get('chain_name')}` / `{item.get('chain_role')}`")
             lines.append(f"  - 事件状态: `{item.get('event_state', {}).get('label')}`")
             lines.append(f"  - 交易可用性: {item.get('trading_usability', {}).get('summary')}")
+
+    setup_launch_lines = build_setup_launch_markdown(
+        enriched.get("setup_launch_candidates")
+        if isinstance(enriched.get("setup_launch_candidates"), list)
+        else None
+    )
+    if setup_launch_lines and "## 筑底启动补充" not in "\n".join(lines):
+        lines.extend(setup_launch_lines)
 
     event_cards = enriched.get("event_cards", [])
     if decision_flow and "## 决策流" not in "\n".join(lines):
@@ -3563,6 +3925,7 @@ def merge_track_results(
     discovery_candidates: list[dict[str, Any]] | None = None,
     discovery_context: dict[str, Any] | None = None,
     market_strength_candidates: list[dict[str, Any]] | None = None,
+    setup_launch_candidates: list[dict[str, Any]] | None = None,
     all_assessed: list[dict[str, Any]] | None = None,
     out_of_scope_dropped: list[dict[str, Any]] | None = None,
     base_request: dict[str, Any] | None = None,
@@ -3606,6 +3969,15 @@ def merge_track_results(
             if isinstance(base_request.get("market_strength_candidates"), list)
             else []
         )
+    if setup_launch_candidates is None and isinstance(base_request, dict):
+        setup_launch_candidates = (
+            base_request.get("setup_launch_candidates")
+            if isinstance(base_request.get("setup_launch_candidates"), list)
+            else []
+        )
+    merged["setup_launch_candidates"] = [
+        item for item in (setup_launch_candidates or []) if isinstance(item, dict)
+    ]
 
     # Combine top_picks, dropped, diagnostic_scorecard, near_miss, midday_action
     all_top_picks: list[dict[str, Any]] = []
@@ -3775,6 +4147,14 @@ def merge_track_results(
         geopolitics_candidate = merged.get("macro_geopolitics_candidate") if isinstance(merged.get("macro_geopolitics_candidate"), dict) else None
         report_lines.extend(build_decision_flow_markdown(decision_flow, geopolitics_overlay, geopolitics_candidate))
 
+    setup_launch_lines = build_setup_launch_markdown(
+        merged.get("setup_launch_candidates")
+        if isinstance(merged.get("setup_launch_candidates"), list)
+        else None
+    )
+    if setup_launch_lines:
+        report_lines.extend(setup_launch_lines)
+
     event_cards = merged.get("event_cards", [])
     if isinstance(event_cards, list) and event_cards:
         report_lines.extend(["", "## Event Cards", ""])
@@ -3899,10 +4279,28 @@ def run_month_end_shortlist(
         discovery_candidates = deepcopy(prepared_payload.get("event_discovery_candidates") or [])
         discovery_context = deepcopy(prepared_payload.get("x_discovery_context") or {})
         request_market_strength = deepcopy(prepared_payload.get("market_strength_candidates") or [])
+        request_setup_launch = deepcopy(prepared_payload.get("setup_launch_candidates") or [])
+        weekend_market_candidate_input = (
+            prepared_payload.get("weekend_market_candidate_input")
+            if isinstance(prepared_payload.get("weekend_market_candidate_input"), dict)
+            else None
+        )
+        prepared_weekend_market_candidate, _ = build_weekend_market_candidate(
+            weekend_market_candidate_input
+        )
+        active_setup_themes = resolve_setup_launch_theme_pool(
+            prepared_payload,
+            prepared_weekend_market_candidate,
+        )
 
         # --- Fetch full universe once, then split by board ---
         full_universe = universe_fetcher(prepared_payload)
         request_tickers = {clean_text(row.get("ticker")) for row in request_market_strength if clean_text(row.get("ticker"))}
+        request_tickers.update(
+            clean_text(row.get("ticker"))
+            for row in request_setup_launch
+            if clean_text(row.get("ticker"))
+        )
         event_tickers = {clean_text(row.get("ticker")) for row in discovery_candidates if clean_text(row.get("ticker"))}
         existing_tickers = request_tickers | event_tickers
         effective_market_strength_fetcher = market_strength_universe_fetcher
@@ -3924,6 +4322,15 @@ def run_month_end_shortlist(
         market_strength_candidates = merge_market_strength_candidate_inputs(
             request_market_strength,
             generated_market_strength,
+        )
+        setup_launch_candidates = merge_setup_launch_candidate_inputs(
+            request_setup_launch,
+            build_setup_launch_candidates_from_universe(
+                full_universe,
+                active_themes=active_setup_themes,
+                existing_tickers=existing_tickers,
+                max_names=SETUP_LAUNCH_MAX_NAMES,
+            ),
         )
         board_to_track: dict[str, str] = {}
         for tn, cfg in TRACK_CONFIGS.items():
@@ -3999,6 +4406,7 @@ def run_month_end_shortlist(
             discovery_candidates=discovery_candidates,
             discovery_context=discovery_context,
             market_strength_candidates=market_strength_candidates,
+            setup_launch_candidates=setup_launch_candidates,
             all_assessed=all_assessed,
             out_of_scope_dropped=out_of_scope,
             base_request=prepared_payload,
@@ -4016,6 +4424,7 @@ if "__all__" not in globals():
 
 for _extra in (
     "BENCHMARK_TICKERS",
+    "DEFAULT_STRATEGIC_BASE_WATCH_THEMES",
     "load_json",
     "write_json",
     "wrap_bars_fetcher_with_benchmark_fallback",
@@ -4059,6 +4468,17 @@ for _extra in (
     "enrich_track_result",
     "merge_track_results",
     "normalize_market_strength_candidate",
+    "normalize_setup_launch_candidate",
+    "resolve_setup_launch_theme_pool",
+    "classify_structure_repair",
+    "classify_volume_return",
+    "classify_rs_improvement",
+    "classify_distance_from_bottom_state",
+    "is_setup_launch_excluded",
+    "setup_launch_score",
+    "build_setup_launch_candidates_from_universe",
+    "merge_setup_launch_candidate_inputs",
+    "build_setup_launch_markdown",
     "build_market_strength_discovery_candidates",
     "is_market_strength_excluded",
     "market_strength_score",
