@@ -529,6 +529,49 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             },
         ]
 
+    def live_snapshot_round2_candidates(self) -> list[dict]:
+        return [
+            {
+                "title": "ByteDance says AI spending drove profit sharply lower",
+                "summary": "A same-day company result with clear revenue, profit, and AI capex read-through.",
+                "source_items": [
+                    {
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "url": "https://example.com/bytedance-live-round2",
+                        "published_at": "2026-04-20T10:05:00+00:00",
+                        "summary": "ByteDance says revenue mix improved, but AI investment sharply reduced profit.",
+                    }
+                ],
+            },
+            {
+                "title": "International observation says US-Iran talks remain uncertain",
+                "summary": "A same-day political observation headline without oil, shipping, equities, or other market transmission.",
+                "source_items": [
+                    {
+                        "source_name": "google-news-world",
+                        "source_type": "major_news",
+                        "url": "https://example.com/us-iran-observation-round2",
+                        "published_at": "2026-04-20T10:08:00+00:00",
+                        "summary": "A same-day political observation headline without oil, shipping, equities, or other market transmission.",
+                    }
+                ],
+            },
+            {
+                "title": "Hormuz shipping risk jolts oil and equities again",
+                "summary": "A same-day conflict topic already transmitting into market pricing.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/hormuz-round2",
+                        "published_at": "2026-04-20T10:00:00+00:00",
+                        "summary": "Oil jumps and equities wobble again as Hormuz shipping risk returns to market pricing.",
+                    }
+                ],
+            },
+        ]
+
     def feature_filter_candidates(self) -> list[dict]:
         return [
             {
@@ -2623,6 +2666,75 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         filter_reasons = {item["filter_reason"] for item in result["filtered_out_topics"]}
         self.assertNotIn("filtered low-yield live snapshot topic", filter_reasons)
         self.assertIn("stale", filtered["filter_reason"])
+
+    def test_hot_topic_discovery_live_snapshot_promotes_company_financial_readthrough_to_high_fit(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": self.live_snapshot_round2_candidates(),
+            }
+        )
+
+        bytedance = next(
+            item
+            for item in result["ranked_topics"]
+            if item["title"] == "ByteDance says AI spending drove profit sharply lower"
+        )
+        self.assertEqual(bytedance["live_snapshot_fit"], "high_fit")
+
+    def test_hot_topic_discovery_live_snapshot_filters_generic_political_observation_without_market_readthrough(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": self.live_snapshot_round2_candidates(),
+            }
+        )
+
+        ranked_titles = {item["title"] for item in result["ranked_topics"]}
+        self.assertNotIn("International observation says US-Iran talks remain uncertain", ranked_titles)
+
+    def test_hot_topic_discovery_live_snapshot_keeps_conflict_topic_when_market_transmission_is_present(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": self.live_snapshot_round2_candidates(),
+            }
+        )
+
+        topic = next(
+            item
+            for item in result["ranked_topics"]
+            if item["title"] == "Hormuz shipping risk jolts oil and equities again"
+        )
+        self.assertEqual(topic["live_snapshot_fit"], "high_fit")
+
+    def test_hot_topic_discovery_live_snapshot_emits_source_timings(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": self.live_snapshot_round2_candidates(),
+            }
+        )
+
+        self.assertIn("source_timings", result)
+        self.assertGreaterEqual(len(result["source_timings"]), 1)
+        self.assertIn("duration_ms", result["source_timings"][0])
+        self.assertIn("status", result["source_timings"][0])
+
+    def test_hot_topic_discovery_report_includes_source_timings_section(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": self.live_snapshot_round2_candidates(),
+            }
+        )
+
+        self.assertIn("## Source Timings", result["report_markdown"])
 
     def test_hot_topic_discovery_recency_hardening_breaks_score_ties_in_favor_of_fresh_story(self) -> None:
         with (
