@@ -166,6 +166,113 @@ class SetupLaunchSupplementLaneTests(unittest.TestCase):
 
         self.assertEqual(rows, [])
 
+    def test_classify_structure_repair_prefers_sustained_repair_over_one_day_reclaim(self) -> None:
+        weak = {
+            "price": 10.2,
+            "day_pct": 1.2,
+            "pct_from_60d": 9.0,
+            "price_snapshot": {"close": 10.2, "ma20": 10.0, "ma50": 10.8},
+        }
+        strong = {
+            "price": 12.0,
+            "day_pct": 3.2,
+            "pct_from_60d": 18.0,
+            "price_snapshot": {
+                "close": 12.0,
+                "ma20": 11.3,
+                "ma50": 10.9,
+                "ma20_prev": 11.0,
+                "recent_low_trend": "higher_lows",
+            },
+        }
+
+        self.assertEqual(module_under_test.classify_structure_repair(weak), "medium")
+        self.assertEqual(module_under_test.classify_structure_repair(strong), "high")
+
+    def test_classify_volume_return_prefers_reaccumulation_over_single_day_spike(self) -> None:
+        spike = {
+            "day_turnover_cny": 620_000_000.0,
+            "turnover_rate_pct": 4.5,
+            "price_snapshot": {
+                "volume_ratio": 1.0,
+                "recent_turnover_avg": 160_000_000.0,
+                "base_turnover_avg": 150_000_000.0,
+            },
+        }
+        reaccumulation = {
+            "day_turnover_cny": 300_000_000.0,
+            "turnover_rate_pct": 2.6,
+            "price_snapshot": {
+                "volume_ratio": 1.3,
+                "recent_turnover_avg": 280_000_000.0,
+                "base_turnover_avg": 120_000_000.0,
+            },
+        }
+
+        self.assertEqual(module_under_test.classify_volume_return(spike), "medium")
+        self.assertEqual(module_under_test.classify_volume_return(reaccumulation), "high")
+
+    def test_classify_rs_improvement_prefers_improving_rs_over_flat_rs(self) -> None:
+        flat = {
+            "pct_from_ytd": 8.0,
+            "day_pct": 1.0,
+            "price_snapshot": {"rs90": 78.0, "rs90_prev": 79.0},
+        }
+        improving = {
+            "pct_from_ytd": 8.0,
+            "day_pct": 1.0,
+            "price_snapshot": {"rs90": 78.0, "rs90_prev": 68.0},
+        }
+
+        self.assertEqual(module_under_test.classify_rs_improvement(flat), "low")
+        self.assertEqual(module_under_test.classify_rs_improvement(improving), "medium")
+
+    def test_classify_distance_from_bottom_state_emits_four_stage_labels(self) -> None:
+        self.assertEqual(
+            module_under_test.classify_distance_from_bottom_state({"pct_from_60d": 2.0}),
+            "still_bottoming",
+        )
+        self.assertEqual(
+            module_under_test.classify_distance_from_bottom_state({"pct_from_60d": 16.0}),
+            "off_bottom_not_extended",
+        )
+        self.assertEqual(
+            module_under_test.classify_distance_from_bottom_state({"pct_from_60d": 42.0}),
+            "early_extension",
+        )
+        self.assertEqual(
+            module_under_test.classify_distance_from_bottom_state({"pct_from_60d": 66.0}),
+            "too_extended",
+        )
+
+    def test_theme_weights_can_change_setup_score_without_changing_contract(self) -> None:
+        row = {
+            "ticker": "603698.SS",
+            "name": "航天工程",
+            "pct_from_60d": 18.0,
+            "pct_from_ytd": 9.5,
+            "day_pct": 3.9,
+            "day_turnover_cny": 320_000_000.0,
+            "turnover_rate_pct": 2.8,
+            "price_snapshot": {
+                "close": 12.0,
+                "ma20": 11.3,
+                "ma50": 10.9,
+                "ma20_prev": 11.0,
+                "recent_low_trend": "higher_lows",
+                "recent_turnover_avg": 280_000_000.0,
+                "base_turnover_avg": 120_000_000.0,
+                "rs90": 82.0,
+                "rs90_prev": 70.0,
+            },
+        }
+
+        default_score = module_under_test.setup_launch_score(row)
+        weighted_score = module_under_test.setup_launch_score(row, theme_name="semiconductor_equipment")
+
+        self.assertNotEqual(default_score, weighted_score)
+        self.assertIsInstance(weighted_score, float)
+
     def test_classify_structure_repair_does_not_treat_one_day_rebound_as_high(self) -> None:
         level = module_under_test.classify_structure_repair(
             {
