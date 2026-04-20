@@ -51,11 +51,10 @@ LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
 }
 LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS = {
     "official commentary",
-    "modernization",
+    "modernization goal",
+    "must be achieved",
     "总书记",
-    "强调",
     "看图学习",
-    "口径",
     "宣传",
     "会议精神",
 }
@@ -960,7 +959,15 @@ def is_official_commentary_candidate(candidate: dict[str, Any]) -> bool:
 
 
 def is_live_snapshot_low_yield_candidate(candidate: dict[str, Any]) -> bool:
-    text = live_snapshot_signal_text(candidate)
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    if freshness not in {"0-6h", "6-24h"}:
+        return False
+    text = " ".join(
+        [
+            clean_text(candidate.get("title")),
+            " ".join(clean_string_list(candidate.get("keywords"))),
+        ]
+    ).lower()
     if not contains_any_keyword(text, LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS):
         return False
     if contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
@@ -3094,17 +3101,8 @@ def freshness_reason(candidate: dict[str, Any], analysis_time: datetime) -> str:
     return "The newest public signal is older than 72 hours, so this is stale unless a new catalyst appears."
 
 
-def live_snapshot_signal_text(candidate: dict[str, Any]) -> str:
-    return " ".join(
-        [
-            clean_text(candidate.get("title")),
-            " ".join(clean_string_list(candidate.get("keywords"))),
-        ]
-    ).lower()
-
-
 def live_snapshot_fit(candidate: dict[str, Any]) -> str:
-    text = live_snapshot_signal_text(candidate)
+    text = candidate_match_text(candidate)
     freshness = clean_text(candidate.get("freshness_bucket"))
     if freshness in {"0-6h", "6-24h"} and contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
         return "high_fit"

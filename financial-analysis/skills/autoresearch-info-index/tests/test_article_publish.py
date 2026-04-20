@@ -516,14 +516,14 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             },
             {
                 "title": "Official commentary says modernization goal must be achieved",
-                "summary": "A same-day official messaging headline without a clear market or industry read-through.",
+                "summary": "A same-day official messaging headline without a clear second-order read-through.",
                 "source_items": [
                     {
                         "source_name": "chinanews.com.cn",
                         "source_type": "major_news",
                         "url": "https://example.com/chinanews-live-snapshot",
                         "published_at": "2026-04-20T10:10:00+00:00",
-                        "summary": "A same-day official commentary headline about modernization without a clear market or industry read-through.",
+                        "summary": "A same-day official commentary headline about a modernization goal without a clear second-order read-through.",
                     }
                 ],
             },
@@ -2591,6 +2591,38 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         ranked_titles = {item["title"] for item in result["ranked_topics"]}
         self.assertIn("Hormuz shipping risk jolts oil and equities again", ranked_titles)
         self.assertNotIn("Official commentary says modernization goal must be achieved", ranked_titles)
+
+    def test_hot_topic_discovery_live_snapshot_does_not_apply_low_yield_filter_to_older_context(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": [
+                    {
+                        "title": "Official commentary says modernization goal must be achieved",
+                        "summary": "An older official messaging headline used as background context.",
+                        "source_items": [
+                            {
+                                "source_name": "chinanews.com.cn",
+                                "source_type": "major_news",
+                                "url": "https://example.com/chinanews-live-snapshot-older",
+                                "published_at": "2026-04-18T10:10:00+00:00",
+                                "summary": "An older official commentary headline used as background context.",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        filtered = next(
+            item
+            for item in result["filtered_out_topics"]
+            if item["title"] == "Official commentary says modernization goal must be achieved"
+        )
+        filter_reasons = {item["filter_reason"] for item in result["filtered_out_topics"]}
+        self.assertNotIn("filtered low-yield live snapshot topic", filter_reasons)
+        self.assertIn("stale", filtered["filter_reason"])
 
     def test_hot_topic_discovery_recency_hardening_breaks_score_ties_in_favor_of_fresh_story(self) -> None:
         with (
