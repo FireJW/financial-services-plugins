@@ -7,8 +7,11 @@ import json
 from pathlib import Path
 import re
 import sys
+import time
 from typing import Any, Callable
 from copy import deepcopy
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from earnings_momentum_discovery import (
     TRADING_PROFILE_BUCKETS,
     assign_discovery_bucket,
@@ -57,6 +60,9 @@ for _script_dir in (TRADINGAGENTS_SCRIPT_DIR, X_STYLE_SCRIPT_DIR):
 
 
 BENCHMARK_TICKERS = {"000300.SS", "000300.SH"}
+MARKET_STRENGTH_UNIVERSE_LIMIT = 200
+MARKET_STRENGTH_MARKET_GROUPS = "m:0+t:6,m:0+t:13,m:0+t:80,m:1+t:2,m:1+t:23"
+MARKET_STRENGTH_FIELDS = "f12,f13,f14,f2,f3,f5,f6,f8,f9,f10,f15,f16,f17,f18,f20,f21,f23,f24,f25,f100"
 
 
 def load_compiled_module():
@@ -1841,6 +1847,21 @@ def market_strength_score(row: dict[str, Any]) -> float:
     return round(day_pct * 2.0 + close_to_high * 5.0 + turnover_score, 4)
 
 
+def normalize_market_strength_universe_ticker(raw: dict[str, Any]) -> str:
+    ticker = clean_text(raw.get("ticker"))
+    if ticker:
+        return ticker
+    code = clean_text(raw.get("f12"))
+    market_id = clean_text(raw.get("f13"))
+    if not code:
+        return ""
+    if market_id == "1":
+        return f"{code}.SS"
+    if market_id == "0":
+        return f"{code}.SZ"
+    return code
+
+
 def build_market_strength_candidates_from_universe(
     universe_rows: list[dict[str, Any]],
     *,
@@ -1852,7 +1873,7 @@ def build_market_strength_candidates_from_universe(
         if not isinstance(raw, dict):
             continue
         row = {
-            "ticker": clean_text(raw.get("ticker") or raw.get("f12")),
+            "ticker": normalize_market_strength_universe_ticker(raw),
             "name": clean_text(raw.get("name") or raw.get("f14")),
             "price": to_float(raw.get("price") if raw.get("price") not in (None, "") else raw.get("f2")),
             "high": to_float(raw.get("high") if raw.get("high") not in (None, "") else raw.get("f15")),
@@ -1910,6 +1931,40 @@ def merge_market_strength_candidate_inputs(
         merged.append(row)
         seen.add(ticker)
     return merged
+
+
+def default_market_strength_universe_fetcher(request: dict[str, Any]) -> list[dict[str, Any]]:
+    params = {
+        "pn": "1",
+        "pz": str(int(request.get("market_strength_universe_limit", MARKET_STRENGTH_UNIVERSE_LIMIT) or MARKET_STRENGTH_UNIVERSE_LIMIT)),
+        "po": "1",
+        "np": "1",
+        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+        "fltt": "2",
+        "invt": "2",
+        "fid": "f3",
+        "fs": MARKET_STRENGTH_MARKET_GROUPS,
+        "fields": MARKET_STRENGTH_FIELDS,
+    }
+    request_url = f"{_compiled.EASTMONEY_CLIST_URL}?{urlencode(params)}"
+    req = Request(
+        request_url,
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"},
+        method="GET",
+    )
+
+    last_error: Exception | None = None
+    for attempt in range(4):
+        try:
+            with urlopen(req, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            return [item for item in safe_list(safe_dict(payload.get("data")).get("diff")) if isinstance(item, dict)]
+        except Exception as exc:
+            last_error = exc
+            time.sleep(1.0 * (attempt + 1))
+    raise RuntimeError(
+        f"market_strength_universe_fetch_failed: {clean_text(last_error) or 'unknown'}"
+    ) from last_error
 
 
 def merge_discovery_candidate_inputs(
@@ -3814,6 +3869,7 @@ def run_month_end_shortlist(
     raw_payload: dict[str, Any],
     *,
     universe_fetcher: Any = _compiled.default_universe_fetcher,
+    market_strength_universe_fetcher: Any | None = None,
     bars_fetcher: Any = default_bars_fetcher,
     html_fetcher: Any = _compiled.fetch_html,
 ) -> dict[str, Any]:
@@ -3849,8 +3905,19 @@ def run_month_end_shortlist(
         request_tickers = {clean_text(row.get("ticker")) for row in request_market_strength if clean_text(row.get("ticker"))}
         event_tickers = {clean_text(row.get("ticker")) for row in discovery_candidates if clean_text(row.get("ticker"))}
         existing_tickers = request_tickers | event_tickers
+        effective_market_strength_fetcher = market_strength_universe_fetcher
+        if effective_market_strength_fetcher is None:
+            effective_market_strength_fetcher = (
+                default_market_strength_universe_fetcher
+                if universe_fetcher is _compiled.default_universe_fetcher
+                else universe_fetcher
+            )
+        try:
+            market_strength_universe = effective_market_strength_fetcher(prepared_payload)
+        except Exception:
+            market_strength_universe = []
         generated_market_strength = build_market_strength_candidates_from_universe(
-            full_universe,
+            market_strength_universe,
             existing_tickers=existing_tickers,
             max_names=10,
         )
@@ -3995,8 +4062,10 @@ for _extra in (
     "build_market_strength_discovery_candidates",
     "is_market_strength_excluded",
     "market_strength_score",
+    "normalize_market_strength_universe_ticker",
     "build_market_strength_candidates_from_universe",
     "merge_market_strength_candidate_inputs",
+    "default_market_strength_universe_fetcher",
 ):
     if _extra not in __all__:
         __all__.append(_extra)
