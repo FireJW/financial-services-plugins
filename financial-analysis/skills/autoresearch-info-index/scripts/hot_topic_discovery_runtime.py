@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -58,6 +59,76 @@ LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS = {
     "宣传",
     "会议精神",
 }
+LIVE_SNAPSHOT_EXTENSION_KEYWORDS = {
+    "ai",
+    "model",
+    "chip",
+    "chips",
+    "market",
+    "markets",
+    "company",
+    "policy",
+    "robotaxi",
+    "supply chain",
+    "energy",
+    "macro",
+    "earnings",
+    "capex",
+    "AI",
+    "鑺墖",
+    "甯傚満",
+    "鍏徃",
+    "鏀跨瓥",
+    "渚涘簲閾?",
+    "鑳芥簮",
+    "瀹忚",
+}
+LIVE_SNAPSHOT_ANALYSIS_KEYWORDS.update(
+    {
+        "revenue",
+        "profit",
+        "margin",
+        "loss",
+        "sales",
+        "bond",
+        "yield",
+        "volatility",
+        "ceasefire",
+        "strait",
+        "shipping",
+        "sanction",
+        "tariff",
+        "negotiation",
+        "钀ユ敹",
+        "鍒╂鼎",
+        "鍑€鍒?",
+        "浜忔崯",
+        "鑲″競",
+        "鏀剁泭鐜?",
+        "娉㈠姩鐜?",
+        "鍋滅伀",
+        "娴峰场",
+        "鑸繍",
+        "鍒惰",
+        "鍏崇◣",
+        "璋堝垽",
+    }
+)
+LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS.update(
+    {
+        "international observation",
+        "global change",
+        "talks remain uncertain",
+        "observation",
+        "analysis says",
+        "灞€鍔胯蛋鍚戞湁鍑犵鍙兘",
+        "瑙傚療",
+        "鑳屽悗",
+        "鍙樺眬",
+        "瀵嗛泦璁垮崕",
+        "鐞嗘€с€佸姟瀹炲洖搴?",
+    }
+)
 DEFAULT_TOPIC_SCORE_WEIGHTS = {
     "timeliness": 0.25,
     "debate": 0.20,
@@ -3106,7 +3177,7 @@ def live_snapshot_fit(candidate: dict[str, Any]) -> str:
     freshness = clean_text(candidate.get("freshness_bucket"))
     if freshness in {"0-6h", "6-24h"} and contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
         return "high_fit"
-    if freshness in {"0-6h", "6-24h"}:
+    if freshness in {"0-6h", "6-24h"} and contains_any_keyword(text, LIVE_SNAPSHOT_EXTENSION_KEYWORDS):
         return "medium_fit"
     return "low_fit"
 
@@ -3629,6 +3700,12 @@ def build_markdown_report(result: dict[str, Any]) -> str:
         lines.extend(["", "## Filtered Out"])
         for item in result["filtered_out_topics"]:
             lines.append(f"- {item.get('title', '')}: {item.get('filter_reason', '')}")
+    if result.get("source_timings"):
+        lines.extend(["", "## Source Timings"])
+        for item in result["source_timings"]:
+            lines.append(
+                f"- {item.get('source', '')}: {item.get('status', '')} in {item.get('duration_ms', 0)} ms"
+            )
     return "\n".join(lines).strip() + "\n"
 
 
@@ -3637,28 +3714,63 @@ def run_hot_topic_discovery(raw_payload: dict[str, Any]) -> dict[str, Any]:
     analysis_time = request["analysis_time"]
     errors: list[dict[str, str]] = []
     clustered_topics: list[dict[str, Any]] = []
+    source_timings: list[dict[str, Any]] = []
 
     if request["manual_topic_candidates"]:
         for index, candidate in enumerate(request["manual_topic_candidates"], start=1):
             clustered_topics.append(normalize_manual_topic_candidate(candidate, request, index))
+        source_timings.append({"source": "manual_topic_candidates", "duration_ms": 0, "status": "ok"})
     else:
         raw_items: list[dict[str, Any]] = []
         sources = request["sources"]
         max_workers = min(request["max_parallel_sources"], max(1, len(sources)))
         if max_workers > 1 and len(sources) > 1:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_map = {executor.submit(fetch_source_items, source_name, request): source_name for source_name in sources}
+                future_map = {}
+                for source_name in sources:
+                    started = time.perf_counter()
+                    future = executor.submit(fetch_source_items, source_name, request)
+                    future_map[future] = (source_name, started)
                 for future in as_completed(future_map):
-                    source_name = future_map[future]
+                    source_name, started = future_map[future]
                     try:
                         raw_items.extend(future.result())
+                        source_timings.append(
+                            {
+                                "source": source_name,
+                                "duration_ms": int(round((time.perf_counter() - started) * 1000)),
+                                "status": "ok",
+                            }
+                        )
                     except Exception as exc:  # noqa: BLE001
+                        source_timings.append(
+                            {
+                                "source": source_name,
+                                "duration_ms": int(round((time.perf_counter() - started) * 1000)),
+                                "status": "error",
+                            }
+                        )
                         errors.append({"source": source_name, "message": str(exc)})
         else:
             for source_name in sources:
+                started = time.perf_counter()
                 try:
                     raw_items.extend(fetch_source_items(source_name, request))
+                    source_timings.append(
+                        {
+                            "source": source_name,
+                            "duration_ms": int(round((time.perf_counter() - started) * 1000)),
+                            "status": "ok",
+                        }
+                    )
                 except Exception as exc:  # noqa: BLE001
+                    source_timings.append(
+                        {
+                            "source": source_name,
+                            "duration_ms": int(round((time.perf_counter() - started) * 1000)),
+                            "status": "error",
+                        }
+                    )
                     errors.append({"source": source_name, "message": str(exc)})
 
         for index, cluster_items in enumerate(cluster_discovered_items(raw_items, request.get("query", "")), start=1):
@@ -3721,6 +3833,7 @@ def run_hot_topic_discovery(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "analysis_time": isoformat_or_blank(analysis_time),
         "sources_attempted": request["sources"],
         "errors": errors,
+        "source_timings": source_timings,
         "ranked_topics": kept_topics[: request["top_n"]],
         "operator_review_queue": operator_review_queue[: request["top_n"]],
         "filtered_out_topics": filtered_out_topics,
