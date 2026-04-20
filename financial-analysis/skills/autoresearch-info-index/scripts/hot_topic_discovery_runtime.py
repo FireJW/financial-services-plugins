@@ -27,6 +27,28 @@ LIVE_SNAPSHOT_SOURCES = ["google-news-world", "36kr"]
 LIVE_SNAPSHOT_DEFAULT_LIMIT = 8
 LIVE_SNAPSHOT_DEFAULT_TOP_N = 5
 LIVE_SNAPSHOT_DEFAULT_MAX_PARALLEL_SOURCES = 2
+LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
+    "market",
+    "markets",
+    "oil",
+    "equities",
+    "stocks",
+    "guidance",
+    "earnings",
+    "capex",
+    "rollout",
+    "policy",
+    "conflict",
+    "supply chain",
+    "order",
+    "orders",
+    "oil price",
+    "risk asset",
+    "risk assets",
+    "油价",
+    "风险资产",
+    "订单",
+}
 DEFAULT_TOPIC_SCORE_WEIGHTS = {
     "timeliness": 0.25,
     "debate": 0.20,
@@ -3053,6 +3075,26 @@ def freshness_reason(candidate: dict[str, Any], analysis_time: datetime) -> str:
     return "The newest public signal is older than 72 hours, so this is stale unless a new catalyst appears."
 
 
+def live_snapshot_fit(candidate: dict[str, Any]) -> str:
+    text = candidate_match_text(candidate)
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    if freshness in {"0-6h", "6-24h"} and contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
+        return "high_fit"
+    if freshness in {"0-6h", "6-24h"}:
+        return "medium_fit"
+    return "low_fit"
+
+
+def live_snapshot_reason(candidate: dict[str, Any]) -> str:
+    fit = live_snapshot_fit(candidate)
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    if fit == "high_fit":
+        return "This is still a real-time writeable topic because the new signal already changes market or policy expectations."
+    if fit == "medium_fit":
+        return f"Fresh headline in the {freshness} window, but it still needs a clearer second-order read-through."
+    return "Freshness alone is not enough here because the story still reads more like a narrow news flash than an analysis topic."
+
+
 def timeliness_score(candidate: dict[str, Any], analysis_time: datetime) -> int:
     newest_age = age_minutes(analysis_time, candidate.get("latest_published_at", ""))
     if newest_age <= 15:
@@ -3399,6 +3441,9 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
     candidate["selection_reason"] = selection_reason_summary(candidate)
     candidate["risk_flags"] = risk_flags_for_candidate(candidate)
     candidate["source_mix"] = source_mix_summary(candidate)
+    if request.get("discovery_profile") == "live_snapshot":
+        candidate["live_snapshot_fit"] = live_snapshot_fit(candidate)
+        candidate["live_snapshot_reason"] = live_snapshot_reason(candidate)
     return candidate
 
 
