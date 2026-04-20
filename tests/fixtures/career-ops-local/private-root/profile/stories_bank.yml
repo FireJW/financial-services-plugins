@@ -1,0 +1,30 @@
+{
+  "stories": [
+    {
+      "id": "ai-platform-launch",
+      "title": "AI Platform Launch",
+      "summary": "Launched an AI platform product that improved workflow automation for internal teams.",
+      "bullets": [
+        "Defined roadmap priorities for AI workflow features.",
+        "Partnered with engineering and design to ship the v1 platform."
+      ],
+      "themes": [
+        "ai platforms",
+        "workflow automation"
+      ]
+    },
+    {
+      "id": "product-ops-rhythm",
+      "title": "Product Ops Rhythm",
+      "summary": "Established planning and review cadences that improved execution quality across cross-functional teams.",
+      "bullets": [
+        "Standardized product review rituals.",
+        "Improved decision quality with shared metrics and operating reviews."
+      ],
+      "themes": [
+        "product operations",
+        "execution"
+      ]
+    }
+  ]
+}

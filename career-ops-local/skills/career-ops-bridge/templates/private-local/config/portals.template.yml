@@ -1,0 +1,10 @@
+{
+  "preferred_platforms": [
+    "boss",
+    "liepin"
+  ],
+  "session_mode": "existing_local_only",
+  "notifications": {
+    "enabled": false
+  }
+}
