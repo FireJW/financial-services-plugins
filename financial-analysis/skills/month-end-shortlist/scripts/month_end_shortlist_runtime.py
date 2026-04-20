@@ -115,6 +115,32 @@ SETUP_LAUNCH_THEME_ALIASES: dict[str, tuple[str, ...]] = {
     ),
 }
 SETUP_LAUNCH_MAX_NAMES = 10
+SETUP_LAUNCH_THEME_WEIGHTS: dict[str, dict[str, float]] = {
+    "commercial_space": {
+        "structure_repair": 1.05,
+        "volume_return": 1.1,
+        "rs_improvement": 1.0,
+        "distance_bonus": 1.0,
+    },
+    "controlled_fusion": {
+        "structure_repair": 1.0,
+        "volume_return": 1.1,
+        "rs_improvement": 1.0,
+        "distance_bonus": 1.0,
+    },
+    "humanoid_robotics": {
+        "structure_repair": 1.0,
+        "volume_return": 1.0,
+        "rs_improvement": 1.05,
+        "distance_bonus": 1.0,
+    },
+    "semiconductor_equipment": {
+        "structure_repair": 1.1,
+        "volume_return": 1.0,
+        "rs_improvement": 1.05,
+        "distance_bonus": 1.0,
+    },
+}
 
 
 def load_compiled_module():
@@ -737,16 +763,46 @@ def _setup_signal_score(value: str) -> float:
     return 0.0
 
 
+def _average_window(values: Any) -> float:
+    if not isinstance(values, list):
+        return 0.0
+    cleaned = [to_float(item) for item in values if to_float(item) > 0]
+    if not cleaned:
+        return 0.0
+    return sum(cleaned) / len(cleaned)
+
+
+def _rising_recent_lows(snapshot: dict[str, Any]) -> bool:
+    recent_lows = snapshot.get("recent_lows") if isinstance(snapshot.get("recent_lows"), list) else []
+    cleaned = [to_float(item) for item in recent_lows if to_float(item) > 0]
+    if len(cleaned) < 3:
+        return False
+    return cleaned[-1] >= cleaned[-2] >= cleaned[-3]
+
+
+def _theme_weight(theme_guess: list[str], key: str) -> float:
+    for theme_name in theme_guess:
+        weights = SETUP_LAUNCH_THEME_WEIGHTS.get(clean_text(theme_name), {})
+        if key in weights:
+            return float(weights[key])
+    return 1.0
+
+
 def classify_structure_repair(row: dict[str, Any]) -> str:
     snapshot = row.get("price_snapshot") if isinstance(row.get("price_snapshot"), dict) else {}
     close = to_float(snapshot.get("close") if snapshot else row.get("price"))
     ma20 = to_float(snapshot.get("ma20"))
     ma50 = to_float(snapshot.get("ma50"))
+    ma20_prev_5 = to_float(snapshot.get("ma20_prev_5"))
     pct_from_60d = to_float(row.get("pct_from_60d"))
     day_pct = to_float(row.get("day_pct"))
-    if close and ma20 and ma50 and close > ma20 and close > ma50:
+    reclaimed_ma20 = bool(close and ma20 and close > ma20)
+    reclaimed_ma50 = bool(close and ma50 and close > ma50)
+    ma20_turning_up = bool(ma20 and ma20_prev_5 and ma20 > ma20_prev_5)
+    higher_recent_lows = _rising_recent_lows(snapshot)
+    if reclaimed_ma20 and reclaimed_ma50 and ma20_turning_up and higher_recent_lows:
         return "high"
-    if close and ma20 and close > ma20:
+    if reclaimed_ma20 and (reclaimed_ma50 or ma20_turning_up or higher_recent_lows):
         return "medium"
     if pct_from_60d >= 8.0 and day_pct > 0:
         return "medium"
@@ -758,6 +814,14 @@ def classify_volume_return(row: dict[str, Any]) -> str:
     volume_ratio = to_float(row.get("volume_ratio") if row.get("volume_ratio") not in (None, "") else snapshot.get("volume_ratio"))
     turnover_rate = to_float(row.get("turnover_rate_pct") if row.get("turnover_rate_pct") not in (None, "") else row.get("f8"))
     turnover = to_float(row.get("day_turnover_cny") if row.get("day_turnover_cny") not in (None, "") else row.get("f6"))
+    recent_window = _average_window(snapshot.get("recent_turnover_window"))
+    base_window = _average_window(snapshot.get("base_turnover_window"))
+    if recent_window and base_window:
+        acceleration = recent_window / base_window if base_window else 0.0
+        if acceleration >= 1.8:
+            return "high"
+        if acceleration >= 1.25:
+            return "medium"
     if volume_ratio >= 1.5 or turnover_rate >= 3.0 or turnover >= 500_000_000:
         return "high"
     if volume_ratio >= 1.1 or turnover_rate >= 1.0 or turnover >= 150_000_000:
@@ -768,8 +832,15 @@ def classify_volume_return(row: dict[str, Any]) -> str:
 def classify_rs_improvement(row: dict[str, Any]) -> str:
     snapshot = row.get("price_snapshot") if isinstance(row.get("price_snapshot"), dict) else {}
     rs90 = to_float(snapshot.get("rs90") if snapshot else row.get("rs90"))
+    rs90_prev_5 = to_float(snapshot.get("rs90_prev_5"))
     pct_from_ytd = to_float(row.get("pct_from_ytd"))
     day_pct = to_float(row.get("day_pct"))
+    if rs90 and rs90_prev_5:
+        delta = rs90 - rs90_prev_5
+        if rs90 >= 85.0 or delta >= 18.0:
+            return "high"
+        if delta >= 8.0 or (rs90 >= 65.0 and delta > 0):
+            return "medium"
     if rs90 >= 90.0 or pct_from_ytd >= 20.0:
         return "high"
     if rs90 >= 70.0 or pct_from_ytd >= 5.0 or day_pct > 0:
@@ -783,6 +854,8 @@ def classify_distance_from_bottom_state(row: dict[str, Any]) -> str:
         return "still_bottoming"
     if pct_from_60d <= 35.0:
         return "off_bottom_not_extended"
+    if pct_from_60d <= 55.0:
+        return "early_extension"
     return "too_extended"
 
 
@@ -803,17 +876,23 @@ def is_setup_launch_excluded(row: dict[str, Any], existing_tickers: set[str], ac
 
 
 def setup_launch_score(row: dict[str, Any]) -> float:
+    theme_guess = _setup_theme_intersections(
+        row,
+        row.get("theme_guess") if isinstance(row.get("theme_guess"), list) else [],
+    )
     structure_repair = classify_structure_repair(row)
     volume_return = classify_volume_return(row)
     rs_improvement = classify_rs_improvement(row)
     bottom_state = classify_distance_from_bottom_state(row)
     score = (
-        _setup_signal_score(structure_repair) * 2.0
-        + _setup_signal_score(volume_return) * 1.5
-        + _setup_signal_score(rs_improvement) * 1.5
+        _setup_signal_score(structure_repair) * 2.0 * _theme_weight(theme_guess, "structure_repair")
+        + _setup_signal_score(volume_return) * 1.5 * _theme_weight(theme_guess, "volume_return")
+        + _setup_signal_score(rs_improvement) * 1.5 * _theme_weight(theme_guess, "rs_improvement")
     )
     if bottom_state == "off_bottom_not_extended":
-        score += 2.0
+        score += 2.0 * _theme_weight(theme_guess, "distance_bonus")
+    elif bottom_state == "early_extension":
+        score += 0.5 * _theme_weight(theme_guess, "distance_bonus")
     elif bottom_state == "still_bottoming":
         score -= 2.0
     else:
@@ -867,15 +946,38 @@ def build_setup_launch_candidates_from_universe(
         volume_return = classify_volume_return(row)
         rs_improvement = classify_rs_improvement(row)
         distance_state = classify_distance_from_bottom_state(row)
+        snapshot = row.get("price_snapshot") if isinstance(row.get("price_snapshot"), dict) else {}
         setup_reasons: list[str] = []
-        if structure_repair in {"medium", "high"}:
-            setup_reasons.append("structure_repair_visible")
+        close = to_float(snapshot.get("close") if snapshot else row.get("price"))
+        ma20 = to_float(snapshot.get("ma20"))
+        ma50 = to_float(snapshot.get("ma50"))
+        ma20_prev_5 = to_float(snapshot.get("ma20_prev_5"))
+        rs90 = to_float(snapshot.get("rs90"))
+        rs90_prev_5 = to_float(snapshot.get("rs90_prev_5"))
+        recent_window = _average_window(snapshot.get("recent_turnover_window"))
+        base_window = _average_window(snapshot.get("base_turnover_window"))
+        if close and ma20 and ma50 and close > ma20 and close > ma50:
+            setup_reasons.append("reclaimed_ma20_ma50")
+        elif close and ma20 and close > ma20:
+            setup_reasons.append("reclaimed_ma20")
+        if ma20 and ma20_prev_5 and ma20 > ma20_prev_5:
+            setup_reasons.append("ma20_turning_up")
+        if _rising_recent_lows(snapshot):
+            setup_reasons.append("higher_recent_lows")
         if volume_return in {"medium", "high"}:
-            setup_reasons.append("volume_return_visible")
+            if recent_window and base_window and recent_window > base_window:
+                setup_reasons.append("volume_reacceleration")
+            else:
+                setup_reasons.append("volume_return_visible")
         if rs_improvement in {"medium", "high"}:
-            setup_reasons.append("rs_trend_improving")
+            if rs90 and rs90_prev_5 and rs90 > rs90_prev_5:
+                setup_reasons.append("rs_trend_repair")
+            else:
+                setup_reasons.append("rs_trend_improving")
         if distance_state == "off_bottom_not_extended":
             setup_reasons.append("off_bottom_not_extended")
+        elif distance_state == "early_extension":
+            setup_reasons.append("early_extension")
         generated.append(
             normalize_setup_launch_candidate(
                 {

@@ -136,7 +136,7 @@ class SetupLaunchSupplementLaneTests(unittest.TestCase):
         self.assertEqual([item["ticker"] for item in rows], ["603698.SS"])
         self.assertEqual(rows[0]["source"], "setup_launch_scan")
         self.assertEqual(rows[0]["theme_guess"], ["commercial_space"])
-        self.assertIn("structure_repair_visible", rows[0]["setup_reasons"])
+        self.assertIn("reclaimed_ma20_ma50", rows[0]["setup_reasons"])
         self.assertEqual(rows[0]["distance_from_bottom_state"], "off_bottom_not_extended")
 
     def test_build_setup_launch_candidates_from_universe_requires_active_theme_match(self) -> None:
@@ -165,6 +165,148 @@ class SetupLaunchSupplementLaneTests(unittest.TestCase):
         )
 
         self.assertEqual(rows, [])
+
+    def test_classify_structure_repair_does_not_treat_one_day_rebound_as_high(self) -> None:
+        level = module_under_test.classify_structure_repair(
+            {
+                "price": 10.2,
+                "day_pct": 1.1,
+                "pct_from_60d": 4.0,
+                "price_snapshot": {
+                    "close": 10.2,
+                    "ma20": 10.0,
+                    "ma50": 10.6,
+                    "ma20_prev_5": 10.15,
+                    "recent_lows": [9.4, 9.2, 9.1],
+                },
+            }
+        )
+
+        self.assertNotEqual(level, "high")
+
+    def test_classify_volume_return_prefers_recent_vs_base_reacceleration(self) -> None:
+        level = module_under_test.classify_volume_return(
+            {
+                "day_turnover_cny": 220_000_000.0,
+                "turnover_rate_pct": 1.2,
+                "price_snapshot": {
+                    "recent_turnover_window": [220_000_000.0, 240_000_000.0, 230_000_000.0],
+                    "base_turnover_window": [90_000_000.0, 100_000_000.0, 95_000_000.0, 92_000_000.0],
+                },
+            }
+        )
+
+        self.assertIn(level, {"medium", "high"})
+
+    def test_classify_rs_improvement_accepts_moderate_absolute_rs_with_positive_trend(self) -> None:
+        level = module_under_test.classify_rs_improvement(
+            {
+                "day_pct": 2.2,
+                "pct_from_ytd": 4.0,
+                "price_snapshot": {
+                    "rs90": 68.0,
+                    "rs90_prev_5": 55.0,
+                },
+            }
+        )
+
+        self.assertIn(level, {"medium", "high"})
+
+    def test_classify_distance_from_bottom_state_distinguishes_early_extension(self) -> None:
+        self.assertEqual(
+            module_under_test.classify_distance_from_bottom_state({"pct_from_60d": 18.0}),
+            "off_bottom_not_extended",
+        )
+        self.assertEqual(
+            module_under_test.classify_distance_from_bottom_state({"pct_from_60d": 42.0}),
+            "early_extension",
+        )
+        self.assertEqual(
+            module_under_test.classify_distance_from_bottom_state({"pct_from_60d": 66.0}),
+            "too_extended",
+        )
+
+    def test_setup_launch_score_penalizes_early_extension_vs_off_bottom(self) -> None:
+        off_bottom = module_under_test.setup_launch_score(
+            {
+                "day_pct": 3.0,
+                "pct_from_60d": 18.0,
+                "pct_from_ytd": 8.0,
+                "day_turnover_cny": 260_000_000.0,
+                "turnover_rate_pct": 2.5,
+                "price_snapshot": {
+                    "close": 12.0,
+                    "ma20": 11.2,
+                    "ma50": 10.8,
+                    "ma20_prev_5": 10.9,
+                    "recent_lows": [10.6, 10.8, 11.0],
+                    "recent_turnover_window": [220_000_000.0, 260_000_000.0, 250_000_000.0],
+                    "base_turnover_window": [100_000_000.0, 110_000_000.0, 95_000_000.0],
+                    "rs90": 76.0,
+                    "rs90_prev_5": 61.0,
+                },
+            }
+        )
+        early_extension = module_under_test.setup_launch_score(
+            {
+                "day_pct": 3.0,
+                "pct_from_60d": 42.0,
+                "pct_from_ytd": 20.0,
+                "day_turnover_cny": 260_000_000.0,
+                "turnover_rate_pct": 2.5,
+                "price_snapshot": {
+                    "close": 12.0,
+                    "ma20": 11.2,
+                    "ma50": 10.8,
+                    "ma20_prev_5": 10.9,
+                    "recent_lows": [10.6, 10.8, 11.0],
+                    "recent_turnover_window": [220_000_000.0, 260_000_000.0, 250_000_000.0],
+                    "base_turnover_window": [100_000_000.0, 110_000_000.0, 95_000_000.0],
+                    "rs90": 76.0,
+                    "rs90_prev_5": 61.0,
+                },
+            }
+        )
+
+        self.assertGreater(off_bottom, early_extension)
+
+    def test_theme_weights_nudge_score_without_breaking_contract(self) -> None:
+        rows = module_under_test.build_setup_launch_candidates_from_universe(
+            [
+                {
+                    "ticker": "688000.SS",
+                    "name": "聚变样本",
+                    "sector": "可控核聚变",
+                    "price": 22.0,
+                    "high": 22.4,
+                    "low": 21.1,
+                    "pre_close": 21.3,
+                    "day_pct": 3.3,
+                    "day_turnover_cny": 260_000_000.0,
+                    "turnover_rate_pct": 2.4,
+                    "pct_from_60d": 19.0,
+                    "pct_from_ytd": 7.0,
+                    "price_snapshot": {
+                        "close": 22.0,
+                        "ma20": 21.2,
+                        "ma50": 20.5,
+                        "ma20_prev_5": 20.9,
+                        "recent_lows": [20.6, 20.8, 21.0],
+                        "recent_turnover_window": [230_000_000.0, 260_000_000.0, 250_000_000.0],
+                        "base_turnover_window": [110_000_000.0, 120_000_000.0, 105_000_000.0],
+                        "rs90": 74.0,
+                        "rs90_prev_5": 59.0,
+                    },
+                    "theme_guess": ["controlled_fusion"],
+                }
+            ],
+            active_themes=["controlled_fusion"],
+            existing_tickers=set(),
+            max_names=5,
+        )
+
+        self.assertEqual(rows[0]["source"], "setup_launch_scan")
+        self.assertEqual(rows[0]["theme_guess"], ["controlled_fusion"])
 
 
 if __name__ == "__main__":
