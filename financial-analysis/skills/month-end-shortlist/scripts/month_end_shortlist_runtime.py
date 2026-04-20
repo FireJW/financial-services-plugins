@@ -765,7 +765,7 @@ def _setup_signal_score(value: str) -> float:
 
 def _average_window(values: Any) -> float:
     if not isinstance(values, list):
-        return 0.0
+        return to_float(values)
     cleaned = [to_float(item) for item in values if to_float(item) > 0]
     if not cleaned:
         return 0.0
@@ -773,6 +773,9 @@ def _average_window(values: Any) -> float:
 
 
 def _rising_recent_lows(snapshot: dict[str, Any]) -> bool:
+    recent_low_trend = clean_text(snapshot.get("recent_low_trend")).lower()
+    if recent_low_trend in {"higher_lows", "rising", "up"}:
+        return True
     recent_lows = snapshot.get("recent_lows") if isinstance(snapshot.get("recent_lows"), list) else []
     cleaned = [to_float(item) for item in recent_lows if to_float(item) > 0]
     if len(cleaned) < 3:
@@ -793,7 +796,11 @@ def classify_structure_repair(row: dict[str, Any]) -> str:
     close = to_float(snapshot.get("close") if snapshot else row.get("price"))
     ma20 = to_float(snapshot.get("ma20"))
     ma50 = to_float(snapshot.get("ma50"))
-    ma20_prev_5 = to_float(snapshot.get("ma20_prev_5"))
+    ma20_prev_5 = to_float(
+        snapshot.get("ma20_prev_5")
+        if snapshot.get("ma20_prev_5") not in (None, "")
+        else snapshot.get("ma20_prev")
+    )
     pct_from_60d = to_float(row.get("pct_from_60d"))
     day_pct = to_float(row.get("day_pct"))
     reclaimed_ma20 = bool(close and ma20 and close > ma20)
@@ -814,16 +821,26 @@ def classify_volume_return(row: dict[str, Any]) -> str:
     volume_ratio = to_float(row.get("volume_ratio") if row.get("volume_ratio") not in (None, "") else snapshot.get("volume_ratio"))
     turnover_rate = to_float(row.get("turnover_rate_pct") if row.get("turnover_rate_pct") not in (None, "") else row.get("f8"))
     turnover = to_float(row.get("day_turnover_cny") if row.get("day_turnover_cny") not in (None, "") else row.get("f6"))
-    recent_window = _average_window(snapshot.get("recent_turnover_window"))
-    base_window = _average_window(snapshot.get("base_turnover_window"))
+    recent_window = _average_window(
+        snapshot.get("recent_turnover_window")
+        if snapshot.get("recent_turnover_window") not in (None, "")
+        else snapshot.get("recent_turnover_avg")
+    )
+    base_window = _average_window(
+        snapshot.get("base_turnover_window")
+        if snapshot.get("base_turnover_window") not in (None, "")
+        else snapshot.get("base_turnover_avg")
+    )
     if recent_window and base_window:
         acceleration = recent_window / base_window if base_window else 0.0
         if acceleration >= 1.8:
             return "high"
         if acceleration >= 1.25:
             return "medium"
-    if volume_ratio >= 1.5 or turnover_rate >= 3.0 or turnover >= 500_000_000:
+    if volume_ratio >= 1.5:
         return "high"
+    if turnover_rate >= 3.0 or turnover >= 500_000_000:
+        return "medium"
     if volume_ratio >= 1.1 or turnover_rate >= 1.0 or turnover >= 150_000_000:
         return "medium"
     return "low"
@@ -832,7 +849,11 @@ def classify_volume_return(row: dict[str, Any]) -> str:
 def classify_rs_improvement(row: dict[str, Any]) -> str:
     snapshot = row.get("price_snapshot") if isinstance(row.get("price_snapshot"), dict) else {}
     rs90 = to_float(snapshot.get("rs90") if snapshot else row.get("rs90"))
-    rs90_prev_5 = to_float(snapshot.get("rs90_prev_5"))
+    rs90_prev_5 = to_float(
+        snapshot.get("rs90_prev_5")
+        if snapshot.get("rs90_prev_5") not in (None, "")
+        else snapshot.get("rs90_prev")
+    )
     pct_from_ytd = to_float(row.get("pct_from_ytd"))
     day_pct = to_float(row.get("day_pct"))
     if rs90 and rs90_prev_5:
@@ -841,9 +862,12 @@ def classify_rs_improvement(row: dict[str, Any]) -> str:
             return "high"
         if delta >= 8.0 or (rs90 >= 65.0 and delta > 0):
             return "medium"
+        return "low"
     if rs90 >= 90.0 or pct_from_ytd >= 20.0:
         return "high"
-    if rs90 >= 70.0 or pct_from_ytd >= 5.0 or day_pct > 0:
+    if rs90 >= 70.0 and pct_from_ytd >= 12.0:
+        return "medium"
+    if pct_from_ytd >= 12.0 and day_pct > 0:
         return "medium"
     return "low"
 
@@ -875,11 +899,14 @@ def is_setup_launch_excluded(row: dict[str, Any], existing_tickers: set[str], ac
     return False
 
 
-def setup_launch_score(row: dict[str, Any]) -> float:
-    theme_guess = _setup_theme_intersections(
-        row,
-        row.get("theme_guess") if isinstance(row.get("theme_guess"), list) else [],
-    )
+def setup_launch_score(row: dict[str, Any], theme_name: str | None = None) -> float:
+    if theme_name:
+        theme_guess = [clean_text(theme_name)] if clean_text(theme_name) else []
+    else:
+        theme_guess = _setup_theme_intersections(
+            row,
+            row.get("theme_guess") if isinstance(row.get("theme_guess"), list) else [],
+        )
     structure_repair = classify_structure_repair(row)
     volume_return = classify_volume_return(row)
     rs_improvement = classify_rs_improvement(row)
