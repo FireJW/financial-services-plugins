@@ -499,6 +499,36 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             },
         ]
 
+    def live_snapshot_candidates(self) -> list[dict]:
+        return [
+            {
+                "title": "Hormuz shipping risk jolts oil and equities again",
+                "summary": "A same-day conflict and market read-through topic with clear analysis room.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/reuters-hormuz-live-snapshot",
+                        "published_at": "2026-04-20T10:00:00+00:00",
+                        "summary": "Oil jumps and equities wobble again as Hormuz disruption risk returns to market pricing.",
+                    }
+                ],
+            },
+            {
+                "title": "Official commentary says modernization goal must be achieved",
+                "summary": "A same-day official messaging headline without a clear market or industry read-through.",
+                "source_items": [
+                    {
+                        "source_name": "chinanews.com.cn",
+                        "source_type": "major_news",
+                        "url": "https://example.com/chinanews-live-snapshot",
+                        "published_at": "2026-04-20T10:10:00+00:00",
+                        "summary": "A same-day official commentary headline about modernization without a clear market or industry read-through.",
+                    }
+                ],
+            },
+        ]
+
     def feature_filter_candidates(self) -> list[dict]:
         return [
             {
@@ -2528,6 +2558,39 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         topic = result["ranked_topics"][0]
         for field in ("story_family", "recommended_angle", "why_now", "selection_reason", "risk_flags", "source_mix"):
             self.assertIn(field, topic)
+
+    def test_hot_topic_discovery_live_snapshot_uses_dedicated_default_source_pack(self) -> None:
+        request = hot_topic_discovery_runtime.normalize_request({"discovery_profile": "live_snapshot"})
+        self.assertEqual(request["sources"], ["google-news-world", "36kr"])
+        self.assertEqual(request["limit"], 8)
+        self.assertEqual(request["top_n"], 5)
+        self.assertEqual(request["max_parallel_sources"], 2)
+
+    def test_hot_topic_discovery_live_snapshot_emits_fit_fields(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": self.live_snapshot_candidates(),
+            }
+        )
+
+        topic = result["ranked_topics"][0]
+        self.assertIn("live_snapshot_fit", topic)
+        self.assertIn("live_snapshot_reason", topic)
+
+    def test_hot_topic_discovery_live_snapshot_filters_same_day_official_messaging(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": self.live_snapshot_candidates(),
+            }
+        )
+
+        ranked_titles = {item["title"] for item in result["ranked_topics"]}
+        self.assertIn("Hormuz shipping risk jolts oil and equities again", ranked_titles)
+        self.assertNotIn("Official commentary says modernization goal must be achieved", ranked_titles)
 
     def test_hot_topic_discovery_recency_hardening_breaks_score_ties_in_favor_of_fresh_story(self) -> None:
         with (
