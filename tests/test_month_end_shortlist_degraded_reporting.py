@@ -1330,6 +1330,70 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("aleabitoreddit", text)
         self.assertIn("https://x.com/aleabitoreddit", text)
 
+    def test_weekend_candidate_markdown_renders_multiple_topics_and_live_x_sources(self) -> None:
+        lines = module_under_test.build_weekend_market_candidate_markdown(
+            {
+                "candidate_topics": [
+                    {
+                        "topic_name": "oil_shipping",
+                        "topic_label": "油运 / Hormuz",
+                        "priority_rank": 1,
+                        "signal_strength": "high",
+                        "why_it_matters": "Live X headlines concentrated on Hormuz disruption.",
+                        "monday_watch": "Watch shipping first on Monday.",
+                        "ranking_logic": {
+                            "seed_alignment": "medium",
+                            "expansion_confirmation": "medium",
+                            "reddit_confirmation": "medium",
+                            "noise_or_disagreement": "low",
+                        },
+                        "ranking_reason": "Live X evidence was the most concentrated here.",
+                        "key_sources": [
+                            {
+                                "source_name": "DeItaone",
+                                "source_kind": "x_live_index",
+                                "url": "https://x.com/DeItaone/status/1",
+                                "summary": "Hormuz remained blocked in the weekend discussion.",
+                            }
+                        ],
+                    },
+                    {
+                        "topic_name": "commercial_space",
+                        "topic_label": "商业航天 / 卫星链",
+                        "priority_rank": 2,
+                        "signal_strength": "medium",
+                        "why_it_matters": "Commercial-space discussion stayed visible on live X.",
+                        "monday_watch": "Watch commercial-space follow-through.",
+                        "ranking_logic": {
+                            "seed_alignment": "low",
+                            "expansion_confirmation": "medium",
+                            "reddit_confirmation": "low",
+                            "noise_or_disagreement": "medium",
+                        },
+                        "ranking_reason": "Satellite-chain discussion ranked second after oil shipping.",
+                        "key_sources": [
+                            {
+                                "source_name": "LinQingV",
+                                "source_kind": "x_live_index",
+                                "url": "https://x.com/LinQingV/status/1",
+                                "summary": "Focused on TGV and upstream glass-furnace constraints tied to future advanced packaging demand.",
+                            }
+                        ],
+                    },
+                ],
+                "priority_watch_directions": ["油运 / Hormuz", "商业航天 / 卫星链"],
+                "status": "candidate_only",
+            },
+            [],
+        )
+        text = "\n".join(lines)
+        self.assertIn("油运 / Hormuz", text)
+        self.assertIn("商业航天 / 卫星链", text)
+        self.assertIn("### 为什么排第二", text)
+        self.assertIn("DeItaone", text)
+        self.assertIn("LinQingV", text)
+        self.assertIn("https://x.com/DeItaone/status/1", text)
+
     def test_weekend_candidate_markdown_falls_back_when_rich_fields_are_missing(self) -> None:
         text = "\n".join(
             module_under_test.build_weekend_market_candidate_markdown(

@@ -3,7 +3,66 @@ from __future__ import annotations
 
 from collections import Counter
 from copy import deepcopy
+import json
+from pathlib import Path
 from typing import Any
+
+
+TOPIC_LABELS: dict[str, str] = {
+    "optical_interconnect": "光通信 / 光模块",
+    "oil_shipping": "油运 / Hormuz",
+    "commercial_space": "商业航天 / 卫星链",
+    "satellite_chain": "卫星链 / 卫星互联网",
+    "tgv_upstream": "TGV / 玻璃基板上游熔炉",
+}
+
+TOPIC_ALIASES: dict[str, list[str]] = {
+    "optical_interconnect": [
+        "光通信",
+        "光互联",
+        "光模块",
+        "光器件",
+        "硅光子",
+        "photonics",
+        "optical interconnect",
+        "optics",
+    ],
+    "oil_shipping": [
+        "油运",
+        "油轮",
+        "shipping",
+        "tanker",
+        "hormuz",
+        "strait of hormuz",
+    ],
+    "commercial_space": [
+        "商业航天",
+        "火箭",
+        "航天发射",
+        "spacex",
+        "rocket",
+        "launch",
+        "space launch",
+        "starship",
+    ],
+    "satellite_chain": [
+        "卫星",
+        "卫星互联网",
+        "卫星链",
+        "星链",
+        "starlink",
+        "satellite",
+    ],
+    "tgv_upstream": [
+        "玻璃基板",
+        "tgv",
+        "熔炉",
+        "康宁",
+        "agc",
+        "schott",
+        "neg",
+    ],
+}
 
 
 def _clean_text(value: Any) -> str:
@@ -24,49 +83,176 @@ def _logic_level(value: int, *, high_at: int, medium_at: int = 1) -> str:
     return "low"
 
 
-def _select_key_sources(candidate_input: dict[str, Any], top_topic: str) -> list[dict[str, str]]:
+def _topic_label(topic_name: str) -> str:
+    return TOPIC_LABELS.get(topic_name, topic_name)
+
+
+def _normalize_live_post(row: Any) -> dict[str, Any] | None:
+    if not isinstance(row, dict):
+        return None
+    text_fields = [
+        _clean_text(row.get("combined_summary")),
+        _clean_text(row.get("post_text_raw")),
+        _clean_text(row.get("post_summary")),
+    ]
+    thread_posts = row.get("thread_posts") if isinstance(row.get("thread_posts"), list) else []
+    thread_texts = [
+        _clean_text(item.get("post_text_raw") or item.get("post_summary"))
+        for item in thread_posts
+        if isinstance(item, dict)
+    ]
+    text_blob = " ".join(part for part in [*text_fields, *thread_texts] if part)
+    url = _clean_text(row.get("post_url"))
+    handle = _clean_text(row.get("author_handle"))
+    if not text_blob and not url and not handle:
+        return None
+    return {
+        "post_url": url,
+        "author_handle": handle,
+        "author_display_name": _clean_text(row.get("author_display_name")),
+        "combined_summary": _clean_text(row.get("combined_summary")),
+        "post_text_raw": _clean_text(row.get("post_text_raw")),
+        "post_summary": _clean_text(row.get("post_summary")),
+        "text_blob": text_blob,
+        "session_source": _clean_text(row.get("session_source")),
+        "discovery_reason": _clean_text(row.get("discovery_reason")),
+    }
+
+
+def _normalize_live_result(row: Any) -> dict[str, Any] | None:
+    if not isinstance(row, dict):
+        return None
+    x_posts = [_normalize_live_post(item) for item in row.get("x_posts", [])]
+    normalized_posts = [item for item in x_posts if item]
+    if not normalized_posts:
+        return None
+    return {
+        "x_posts": normalized_posts,
+        "session_bootstrap": deepcopy(row.get("session_bootstrap")) if isinstance(row.get("session_bootstrap"), dict) else {},
+    }
+
+
+def _load_live_result_from_path(raw_path: str) -> dict[str, Any] | None:
+    path = Path(raw_path)
+    if not raw_path or not path.exists() or not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return _normalize_live_result(payload)
+
+
+def _iter_live_posts(candidate_input: dict[str, Any]) -> list[dict[str, Any]]:
+    live_posts: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    def append_posts(results: list[dict[str, Any]]) -> None:
+        for payload in results:
+            for row in payload.get("x_posts", []):
+                url = _clean_text(row.get("post_url"))
+                dedupe_key = url or f"{_clean_text(row.get('author_handle'))}:{_clean_text(row.get('text_blob'))}"
+                if dedupe_key in seen_urls:
+                    continue
+                seen_urls.add(dedupe_key)
+                live_posts.append(row)
+
+    normalized_inline_results = [
+        item
+        for item in (_normalize_live_result(row) for row in candidate_input.get("x_live_index_results", []))
+        if item
+    ]
+    append_posts(normalized_inline_results)
+
+    loaded_results: list[dict[str, Any]] = []
+    for raw_path in candidate_input.get("x_live_index_result_paths", []):
+        normalized = _load_live_result_from_path(raw_path)
+        if normalized:
+            loaded_results.append(normalized)
+    append_posts(loaded_results)
+    return live_posts
+
+
+def _infer_topics_from_text(text: str) -> list[str]:
+    normalized_text = _clean_text(text).lower()
+    if not normalized_text:
+        return []
+    matched: list[str] = []
+    for topic_name, aliases in TOPIC_ALIASES.items():
+        if any(alias.lower() in normalized_text for alias in aliases):
+            matched.append(topic_name)
+    return matched
+
+
+def _select_key_sources(
+    candidate_input: dict[str, Any],
+    topic_name: str,
+    live_posts: list[dict[str, Any]],
+) -> list[dict[str, str]]:
     key_sources: list[dict[str, str]] = []
 
     for row in candidate_input.get("x_seed_inputs", []):
-        if top_topic not in row.get("tags", []):
+        if topic_name not in row.get("tags", []):
             continue
         key_sources.append(
             {
                 "source_name": _clean_text(row.get("display_name")) or _clean_text(row.get("handle")),
                 "source_kind": "x_seed",
                 "url": _clean_text(row.get("url")),
-                "summary": f"Preferred seed concentrated on {top_topic}.",
+                "summary": f"Preferred seed concentrated on {_topic_label(topic_name)}.",
             }
         )
         break
 
+    for row in live_posts:
+        if topic_name not in _infer_topics_from_text(row.get("text_blob")):
+            continue
+        key_sources.append(
+            {
+                "source_name": _clean_text(row.get("author_display_name")) or _clean_text(row.get("author_handle")),
+                "source_kind": "x_live_index",
+                "url": _clean_text(row.get("post_url")),
+                "summary": _clean_text(row.get("combined_summary") or row.get("post_summary") or row.get("post_text_raw")),
+            }
+        )
+        if len(key_sources) >= 2:
+            break
+
     for row in candidate_input.get("x_expansion_inputs", []):
-        if top_topic not in row.get("theme_overlap", []):
+        if topic_name not in row.get("theme_overlap", []):
             continue
         key_sources.append(
             {
                 "source_name": _clean_text(row.get("handle")),
                 "source_kind": "x_expansion",
                 "url": _clean_text(row.get("url")),
-                "summary": _clean_text(row.get("why_included")) or f"Expansion layer confirmed {top_topic}.",
+                "summary": _clean_text(row.get("why_included")) or f"Expansion layer confirmed {_topic_label(topic_name)}.",
             }
         )
         break
 
     for row in candidate_input.get("reddit_inputs", []):
-        if top_topic not in row.get("theme_tags", []):
+        if topic_name not in row.get("theme_tags", []):
             continue
         key_sources.append(
             {
                 "source_name": _clean_text(row.get("subreddit")),
                 "source_kind": "reddit_confirmation",
                 "url": _clean_text(row.get("thread_url")),
-                "summary": _clean_text(row.get("thread_summary")) or f"Reddit discussion confirmed {top_topic}.",
+                "summary": _clean_text(row.get("thread_summary")) or f"Reddit discussion confirmed {_topic_label(topic_name)}.",
             }
         )
         break
 
-    return key_sources[:3]
+    deduped: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in key_sources:
+        key = (_clean_text(row.get("source_kind")), _clean_text(row.get("url")) or _clean_text(row.get("source_name")))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return deduped[:3]
 
 
 def normalize_weekend_market_candidate_input(raw: Any) -> dict[str, Any] | None:
@@ -126,6 +312,8 @@ def normalize_weekend_market_candidate_input(raw: Any) -> dict[str, Any] | None:
         "x_seed_inputs": [item for item in (normalize_seed(row) for row in raw.get("x_seed_inputs", [])) if item],
         "x_expansion_inputs": [item for item in (normalize_expansion(row) for row in raw.get("x_expansion_inputs", [])) if item],
         "reddit_inputs": [item for item in (normalize_reddit(row) for row in raw.get("reddit_inputs", [])) if item],
+        "x_live_index_results": [item for item in (_normalize_live_result(row) for row in raw.get("x_live_index_results", [])) if item],
+        "x_live_index_result_paths": [item for item in (_clean_text(path) for path in raw.get("x_live_index_result_paths", [])) if item],
     }
     return normalized if any(normalized.values()) else None
 
@@ -149,6 +337,8 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
 
     topic_counter: Counter[str] = Counter()
     reference_candidates: dict[str, list[str]] = {}
+    live_posts = _iter_live_posts(candidate_input)
+    live_topic_rows: dict[str, list[dict[str, Any]]] = {}
 
     for row in candidate_input.get("x_seed_inputs", []):
         for topic in row.get("tags", []):
@@ -163,6 +353,11 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
     for row in candidate_input.get("reddit_inputs", []):
         for topic in row.get("theme_tags", []):
             topic_counter[topic] += 1
+
+    for row in live_posts:
+        for topic in _infer_topics_from_text(row.get("text_blob")):
+            topic_counter[topic] += 2
+            live_topic_rows.setdefault(topic, []).append(row)
 
     if not topic_counter:
         return (
@@ -180,60 +375,76 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
             [],
         )
 
-    top_topic, top_score = topic_counter.most_common(1)[0]
-    seed_count = sum(1 for row in candidate_input.get("x_seed_inputs", []) if top_topic in row.get("tags", []))
-    expansion_count = sum(1 for row in candidate_input.get("x_expansion_inputs", []) if top_topic in row.get("theme_overlap", []))
-    reddit_count = sum(1 for row in candidate_input.get("reddit_inputs", []) if top_topic in row.get("theme_tags", []))
-    deduped_names = list(dict.fromkeys(name for name in reference_candidates.get(top_topic, []) if name))
-    leaders = deduped_names[:2]
-    high_beta_names = deduped_names[2:4]
-    ranking_logic = {
-        "seed_alignment": _logic_level(seed_count, high_at=2),
-        "expansion_confirmation": _logic_level(expansion_count, high_at=1),
-        "reddit_confirmation": _logic_level(reddit_count, high_at=1),
-        "noise_or_disagreement": "low",
-    }
-    ranking_reason = (
-        f"Preferred X seeds and confirmation layers aligned most clearly on {top_topic}, "
-        "so it ranks first for Monday watch."
-    )
-    key_sources = _select_key_sources(candidate_input, top_topic)
+    candidate_topics: list[dict[str, Any]] = []
+    direction_reference_map: list[dict[str, Any]] = []
+    top_topics = topic_counter.most_common(3)
 
-    candidate = {
-        "candidate_topics": [
+    for priority_rank, (topic_name, topic_score) in enumerate(top_topics, start=1):
+        seed_count = sum(1 for row in candidate_input.get("x_seed_inputs", []) if topic_name in row.get("tags", []))
+        expansion_count = sum(1 for row in candidate_input.get("x_expansion_inputs", []) if topic_name in row.get("theme_overlap", []))
+        reddit_count = sum(1 for row in candidate_input.get("reddit_inputs", []) if topic_name in row.get("theme_tags", []))
+        live_count = len(live_topic_rows.get(topic_name, []))
+        deduped_names = list(dict.fromkeys(name for name in reference_candidates.get(topic_name, []) if name))
+        leaders = deduped_names[:2]
+        high_beta_names = deduped_names[2:4]
+        ranking_logic = {
+            "seed_alignment": _logic_level(seed_count, high_at=2),
+            "expansion_confirmation": _logic_level(expansion_count, high_at=1),
+            "reddit_confirmation": _logic_level(reddit_count, high_at=1),
+            "noise_or_disagreement": "low" if live_count >= 1 or reddit_count >= 1 else "medium",
+        }
+
+        if live_count and not seed_count:
+            ranking_reason = (
+                f"Live X evidence clustered most clearly on {_topic_label(topic_name)}, "
+                f"so it ranks #{priority_rank} even without heavy manual seed tagging."
+            )
+        else:
+            ranking_reason = (
+                f"Preferred X seeds and confirmation layers aligned most clearly on {_topic_label(topic_name)}, "
+                f"so it ranks #{priority_rank} for Monday watch."
+            )
+
+        key_sources = _select_key_sources(candidate_input, topic_name, live_posts)
+        candidate_topics.append(
             {
-                "topic_name": top_topic,
-                "topic_label": top_topic,
-                "priority_rank": 1,
-                "signal_strength": "high" if top_score >= 6 else "medium",
-                "why_it_matters": "Preferred X seeds converged on the same weekend topic and expansion inputs reinforced it.",
-                "monday_watch": f"Watch whether {top_topic} continues to lead on Monday open.",
+                "topic_name": topic_name,
+                "topic_label": _topic_label(topic_name),
+                "priority_rank": priority_rank,
+                "signal_strength": "high" if topic_score >= 6 else "medium",
+                "why_it_matters": "Live X evidence and tagged confirmation inputs converged on this weekend direction.",
+                "monday_watch": f"Watch whether {_topic_label(topic_name)} continues to lead on Monday open.",
                 "ranking_logic": ranking_logic,
                 "ranking_reason": ranking_reason,
                 "key_sources": key_sources,
             }
-        ],
-        "beneficiary_chains": [top_topic],
+        )
+        direction_reference_map.append(
+            {
+                "direction_key": topic_name,
+                "direction_label": _topic_label(topic_name),
+                "leaders": [{"ticker": "", "name": name} for name in leaders],
+                "high_beta_names": [{"ticker": "", "name": name} for name in high_beta_names],
+                "mapping_note": "Direction reference only. Not a formal execution layer.",
+            }
+        )
+
+    top_score = top_topics[0][1]
+    live_topic_count = sum(len(rows) for rows in live_topic_rows.values())
+    candidate = {
+        "candidate_topics": candidate_topics,
+        "beneficiary_chains": [item["topic_name"] for item in candidate_topics],
         "headwind_chains": [],
-        "priority_watch_directions": [top_topic],
+        "priority_watch_directions": [item["topic_label"] for item in candidate_topics],
         "signal_strength": "high" if top_score >= 6 else "medium",
         "evidence_summary": [
-            "Preferred X seeds aligned on the same weekend direction.",
+            f"Live X contributed {live_topic_count} matched post(s) across the surfaced weekend themes." if live_topic_count else "Weekend themes were driven mainly by tagged manual inputs.",
             "Reddit acted as confirmation instead of driving topic selection.",
         ],
-        "x_seed_alignment": "high" if top_score >= 6 else "medium",
-        "reddit_confirmation": "confirming",
+        "x_seed_alignment": "high" if any(item["ranking_logic"]["seed_alignment"] == "high" for item in candidate_topics) else "medium",
+        "reddit_confirmation": "confirming" if any(item["ranking_logic"]["reddit_confirmation"] != "low" for item in candidate_topics) else "mixed",
         "status": "candidate_only",
     }
-    direction_reference_map = [
-        {
-            "direction_key": top_topic,
-            "direction_label": top_topic,
-            "leaders": [{"ticker": "", "name": name} for name in leaders],
-            "high_beta_names": [{"ticker": "", "name": name} for name in high_beta_names],
-            "mapping_note": "Direction reference only. Not a formal execution layer.",
-        }
-    ]
     return candidate, direction_reference_map
 
 

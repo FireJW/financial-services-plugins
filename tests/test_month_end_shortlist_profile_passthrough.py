@@ -48,6 +48,20 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
                             "thread_summary": "Optics still strong",
                         }
                     ],
+                    "x_live_index_results": [
+                        {
+                            "x_posts": [
+                                {
+                                    "post_url": "https://x.com/live/status/1",
+                                    "author_handle": "live_seed",
+                                    "combined_summary": "商业航天和卫星互联网升温。",
+                                }
+                            ]
+                        }
+                    ],
+                    "x_live_index_result_paths": [
+                        "D:\\Users\\rickylu\\dev\\financial-services-plugins-clean\\.tmp\\weekend-market-candidate-actual\\result.x-index.weekend-mix.live.json"
+                    ],
                 },
             }
         )
@@ -58,6 +72,11 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
         self.assertNotIn("ignored", candidate_input["x_seed_inputs"][0])
         self.assertEqual(candidate_input["x_expansion_inputs"][0]["handle"], "aleabitoreddit")
         self.assertEqual(candidate_input["reddit_inputs"][0]["subreddit"], "stocks")
+        self.assertEqual(candidate_input["x_live_index_results"][0]["x_posts"][0]["author_handle"], "live_seed")
+        self.assertEqual(
+            candidate_input["x_live_index_result_paths"][0],
+            "D:\\Users\\rickylu\\dev\\financial-services-plugins-clean\\.tmp\\weekend-market-candidate-actual\\result.x-index.weekend-mix.live.json",
+        )
 
     def test_normalize_request_preserves_cleaned_geopolitics_candidate_input(self) -> None:
         normalized = module_under_test.normalize_request(
