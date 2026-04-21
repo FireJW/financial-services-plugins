@@ -2379,7 +2379,15 @@ def intraday_confirmation_gate(candidate: dict[str, Any]) -> dict[str, Any]:
         is_direction_ref = "direction_leader" in tags or "direction_high_beta" in tags
         is_high_signal = clean_text(direction_boost.get("signal_strength")) == "high"
         if is_direction_ref and is_high_signal:
+            dk = clean_text(direction_boost.get("direction_key")) or ""
+            result["gate_bypass_note"] = f"方向层免确认：{dk} 信号强度=high"
             return result  # bypass gate
+
+    # Note when direction bypass is blocked by review_force_gate
+    if force_gate:
+        tags = set(result.get("tier_tags") or [])
+        if "direction_leader" in tags or "direction_high_beta" in tags:
+            result["gate_bypass_note"] = "方向层免确认：不适用（复盘强制门控优先）"
 
     # Check marginal conditions
     gap = result.get("keep_threshold_gap")
@@ -3456,6 +3464,39 @@ def build_decision_flow_card(
     event_risk = build_event_risk_trigger({**event_context, **card})
     if event_risk:
         flow_card["triggers"]["event_risk"] = event_risk
+
+    # Direction layer labels
+    direction_boost = card.get("direction_boost") if isinstance(card.get("direction_boost"), dict) else {}
+    if direction_boost:
+        d_total = direction_boost.get("total_delta", 0)
+        d_label = clean_text(direction_boost.get("direction_key")) or "unknown"
+        d_role = clean_text(direction_boost.get("direction_role")) or ""
+        d_signal = clean_text(direction_boost.get("signal_strength")) or ""
+        d_momentum = clean_text(direction_boost.get("momentum_signal")) or ""
+
+        role_label = {"leader": "龙头", "high_beta": "高弹性"}.get(d_role, d_role)
+        direction_notes: list[str] = []
+        if d_total > 0:
+            direction_notes.append(f"方向层加分：+{d_total}（{d_label} {role_label}）")
+            direction_notes.append(f"方向信号强度：{d_signal}")
+            original_score = round(float(flow_card.get("score") or 0) - d_total, 1)
+            direction_notes.append(f"原始得分：{original_score} → 方向调整后：{flow_card.get('score')}")
+        if "direction_promoted" in tier_tags:
+            original_tier = clean_text(card.get("original_tier")) or "?"
+            current_tier = clean_text(card.get("wrapper_tier")) or "?"
+            direction_notes.append(f"方向层晋级：{original_tier} → {current_tier}（{d_label} {role_label}，信号={d_signal}）")
+        if d_momentum:
+            momentum_labels = {
+                "confirmed": "confirmed（前日复盘确认）",
+                "strengthening": "strengthening（前日方向强化）",
+                "caution": "caution（前日方向过激，加分减半）",
+                "fading": "fading（前日方向衰退）",
+            }
+            direction_notes.append(f"方向动量：{momentum_labels.get(d_momentum, d_momentum)}")
+        if direction_notes:
+            existing_notes = flow_card.get("direction_notes", [])
+            flow_card["direction_notes"] = existing_notes + direction_notes
+
     return flow_card
 
 
@@ -3682,6 +3723,22 @@ def build_weekend_market_candidate_markdown(
             mapping_note = clean_text(item.get("mapping_note"))
             if mapping_note:
                 lines.append(f"  - 说明: {mapping_note}")
+
+    # Direction execution integration summary
+    if direction_reference_map:
+        lines.append("")
+        lines.append("## 方向层执行整合")
+        lines.append("")
+        has_resolved = any(
+            any(clean_text(item.get("ticker")) for item in entry.get("leaders", []))
+            or any(clean_text(item.get("ticker")) for item in entry.get("high_beta_names", []))
+            for entry in direction_reference_map
+        )
+        if has_resolved:
+            lines.append("方向层已解析代码，可参与执行层评分、晋级和门控。")
+        else:
+            lines.append("方向层代码未解析，仅作参考。")
+        lines.append("")
 
     return lines
 

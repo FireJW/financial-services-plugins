@@ -391,5 +391,39 @@ class MomentumProxyTests(unittest.TestCase):
         self.assertEqual(entry["momentum_signal"], "fading")
 
 
+class DecisionFlowCardDirectionTests(unittest.TestCase):
+    """Spec Section 6: decision flow card direction labels."""
+
+    def test_decision_flow_card_direction_labels(self):
+        """Card contains direction labels when direction_boost is present."""
+        import month_end_shortlist_runtime as runtime
+
+        factor = {
+            "ticker": "300308",
+            "name": "中际旭创",
+            "action": "可执行",
+            "score": 58.0,
+            "keep_threshold_gap": 5.0,
+            "tier_tags": ["direction_leader", "direction_theme_aligned", "direction_promoted"],
+            "direction_boost": {
+                "theme_delta": 3,
+                "reference_delta": 6,
+                "total_delta": 9,
+                "direction_key": "optical_interconnect",
+                "direction_role": "leader",
+                "signal_strength": "high",
+                "momentum_signal": "confirmed",
+            },
+            "wrapper_tier": "T1",
+            "original_tier": "T2",
+        }
+        card = runtime.build_decision_flow_card(
+            factor, keep_threshold=53.0, event_card=None, chain_entry=None,
+        )
+        card_str = str(card)
+        self.assertIn("方向层加分", card_str)
+        self.assertIn("方向信号强度", card_str)
+
+
 if __name__ == "__main__":
     unittest.main()

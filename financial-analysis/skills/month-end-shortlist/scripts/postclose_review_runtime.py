@@ -276,6 +276,24 @@ def build_review_markdown(review: dict[str, Any]) -> str:
         lines.append("- 无需调整")
     lines.append("")
 
+    # Direction momentum section
+    direction_momentum = review.get("direction_momentum", [])
+    if direction_momentum:
+        lines.append("## 方向动量信号")
+        lines.append("")
+        lines.append("| 方向 | 对齐数 | 正确 | 过激 | 错过 | 信号 |")
+        lines.append("|---|---|---|---|---|---|")
+        for m in direction_momentum:
+            lines.append(
+                f"| {m.get('direction_label', m.get('direction_key', '?'))} "
+                f"| {m.get('aligned_candidates_count', 0)} "
+                f"| {m.get('aligned_correct', 0)} "
+                f"| {m.get('aligned_too_aggressive', 0)} "
+                f"| {m.get('aligned_missed', 0)} "
+                f"| {m.get('momentum_signal', '?')} |"
+            )
+        lines.append("")
+
     return "\n".join(lines)
 
 
