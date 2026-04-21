@@ -2806,6 +2806,7 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertGreaterEqual(len(result["source_timings"]), 1)
         self.assertIn("duration_ms", result["source_timings"][0])
         self.assertIn("status", result["source_timings"][0])
+        self.assertIn("total_runtime_ms", result)
 
     def test_hot_topic_discovery_report_includes_source_timings_section(self) -> None:
         result = run_hot_topic_discovery(

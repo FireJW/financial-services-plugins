@@ -28,6 +28,10 @@ LIVE_SNAPSHOT_SOURCES = ["google-news-world", "36kr"]
 LIVE_SNAPSHOT_DEFAULT_LIMIT = 8
 LIVE_SNAPSHOT_DEFAULT_TOP_N = 5
 LIVE_SNAPSHOT_DEFAULT_MAX_PARALLEL_SOURCES = 2
+LIVE_SNAPSHOT_MEDIUM_FIT_LIMIT = 2
+LIVE_SNAPSHOT_MEDIUM_FIT_MIN_SCORE = 70
+LIVE_SNAPSHOT_SOURCE_ORDER = ["36kr", "google-news-world"]
+LIVE_SNAPSHOT_GOOGLE_WORLD_TIMEOUT_SECONDS = 15
 LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
     "market",
     "markets",
@@ -3192,6 +3196,63 @@ def live_snapshot_reason(candidate: dict[str, Any]) -> str:
     return "Freshness alone is not enough here because the story still reads more like a narrow news flash than an analysis topic."
 
 
+def live_snapshot_rank_reason(candidate: dict[str, Any]) -> str:
+    fit = clean_text(candidate.get("live_snapshot_fit"))
+    total = int(safe_dict(candidate.get("score_breakdown")).get("total_score", 0) or 0)
+    if fit == "high_fit":
+        return "kept as high_fit"
+    if fit == "medium_fit" and total >= LIVE_SNAPSHOT_MEDIUM_FIT_MIN_SCORE:
+        return "eligible medium_fit backup"
+    if fit == "medium_fit":
+        return "filtered because medium_fit score below floor"
+    return "filtered because low_fit"
+
+
+def ordered_sources_for_request(request: dict[str, Any]) -> list[str]:
+    sources = list(request["sources"])
+    if request.get("discovery_profile") != "live_snapshot":
+        return sources
+    ordered: list[str] = []
+    for preferred in LIVE_SNAPSHOT_SOURCE_ORDER:
+        if preferred in sources:
+            ordered.append(preferred)
+    for source in sources:
+        if source not in ordered:
+            ordered.append(source)
+    return ordered
+
+
+def fetch_source_items_with_live_snapshot_budget(source_name: str, request: dict[str, Any]) -> list[dict[str, Any]]:
+    if request.get("discovery_profile") != "live_snapshot" or source_name != "google-news-world":
+        return fetch_source_items(source_name, request)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(fetch_source_items, source_name, request)
+        try:
+            return future.result(timeout=LIVE_SNAPSHOT_GOOGLE_WORLD_TIMEOUT_SECONDS)
+        except Exception as exc:  # noqa: BLE001
+            future.cancel()
+            raise RuntimeError(f"live snapshot source budget exceeded for {source_name}: {exc}") from exc
+
+
+def enforce_live_snapshot_fit_gate(
+    kept_topics: list[dict[str, Any]],
+    filtered_out_topics: list[dict[str, Any]],
+    top_n: int,
+) -> list[dict[str, Any]]:
+    high_fit = [topic for topic in kept_topics if clean_text(topic.get("live_snapshot_fit")) == "high_fit"]
+    medium_fit = [topic for topic in kept_topics if clean_text(topic.get("live_snapshot_fit")) == "medium_fit"]
+    low_fit = [topic for topic in kept_topics if clean_text(topic.get("live_snapshot_fit")) == "low_fit"]
+    for topic in low_fit:
+        filtered_out_topics.append(
+            {
+                "title": clean_text(topic.get("title")),
+                "filter_reason": "deprioritized low-fit live snapshot topic",
+                "total_score": safe_dict(topic.get("score_breakdown")).get("total_score", 0),
+            }
+        )
+    return (high_fit + medium_fit[:LIVE_SNAPSHOT_MEDIUM_FIT_LIMIT])[:top_n]
+
+
 def timeliness_score(candidate: dict[str, Any], analysis_time: datetime) -> int:
     newest_age = age_minutes(analysis_time, candidate.get("latest_published_at", ""))
     if newest_age <= 15:
@@ -3541,6 +3602,7 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
     if request.get("discovery_profile") == "live_snapshot":
         candidate["live_snapshot_fit"] = live_snapshot_fit(candidate)
         candidate["live_snapshot_reason"] = live_snapshot_reason(candidate)
+        candidate["live_snapshot_rank_reason"] = live_snapshot_rank_reason(candidate)
     return candidate
 
 
@@ -3622,9 +3684,6 @@ def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> 
             return False, "filtered diplomatic protocol topic"
         if is_official_commentary_candidate(candidate):
             return False, "filtered official commentary topic"
-    if request.get("discovery_profile") == "live_snapshot":
-        if is_live_snapshot_low_yield_candidate(candidate):
-            return False, "filtered low-yield live snapshot topic"
     freshness = clean_text(candidate.get("freshness_bucket"))
     stale_flags = clean_string_list(candidate.get("staleness_flags"))
     if freshness == ">72h" and not candidate.get("fresh_catalyst_present"):
@@ -3633,6 +3692,15 @@ def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> 
         return False, "filtered stale topic without fresh catalyst"
     if freshness == "24-72h" and "weak_confirmation" in stale_flags and not candidate.get("fresh_catalyst_present"):
         return False, "filtered stale weak-confirmation topic"
+    if request.get("discovery_profile") == "live_snapshot":
+        fit = clean_text(candidate.get("live_snapshot_fit"))
+        total = int(safe_dict(candidate.get("score_breakdown")).get("total_score", 0) or 0)
+        if fit == "low_fit":
+            return False, "filtered low_fit live snapshot topic"
+        if fit == "medium_fit" and total < LIVE_SNAPSHOT_MEDIUM_FIT_MIN_SCORE:
+            return False, "filtered medium_fit live snapshot topic below floor"
+        if is_live_snapshot_low_yield_candidate(candidate):
+            return False, "filtered low-yield live snapshot topic"
     if excluded_matches:
         return False, f"excluded keywords: {', '.join(excluded_matches)}"
     if int(candidate.get("source_count", 0) or 0) < request["min_source_count"]:
@@ -3710,6 +3778,7 @@ def build_markdown_report(result: dict[str, Any]) -> str:
 
 
 def run_hot_topic_discovery(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    run_started = time.perf_counter()
     request = normalize_request(raw_payload)
     analysis_time = request["analysis_time"]
     errors: list[dict[str, str]] = []
@@ -3834,6 +3903,7 @@ def run_hot_topic_discovery(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "sources_attempted": request["sources"],
         "errors": errors,
         "source_timings": source_timings,
+        "total_runtime_ms": int(round((time.perf_counter() - run_started) * 1000)),
         "ranked_topics": kept_topics[: request["top_n"]],
         "operator_review_queue": operator_review_queue[: request["top_n"]],
         "filtered_out_topics": filtered_out_topics,
