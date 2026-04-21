@@ -81,5 +81,97 @@ class GenerateAdjustmentTests(unittest.TestCase):
         self.assertFalse(adj["gate_next_run"])
 
 
+from unittest.mock import patch, MagicMock
+
+
+def _bar(timestamp, o, c, h, l, vol, amt):
+    return {"timestamp": timestamp, "open": o, "close": c, "high": h, "low": l, "volume": vol, "amount": amt}
+
+
+def _fade_bars():
+    """Bars that classify as fade_from_high."""
+    return [
+        _bar("09:30", 10.5, 10.8, 11.0, 10.5, 2000, 21600.0),
+        _bar("09:45", 10.8, 10.9, 11.0, 10.7, 2000, 21800.0),
+        _bar("10:00", 10.9, 10.7, 11.0, 10.6, 2000, 21400.0),
+        _bar("10:15", 10.7, 10.5, 10.8, 10.4, 1000, 10500.0),
+        _bar("10:30", 10.5, 10.3, 10.6, 10.2, 1000, 10300.0),
+        _bar("10:45", 10.3, 10.1, 10.4, 10.0, 1000, 10100.0),
+        _bar("11:00", 10.1, 10.0, 10.2, 9.9, 1000, 10000.0),
+        _bar("11:15", 10.0, 9.9, 10.1, 9.8, 1000, 9900.0),
+        _bar("13:00", 9.9, 9.8, 10.0, 9.7, 1000, 9800.0),
+        _bar("13:15", 9.8, 9.7, 9.9, 9.6, 1000, 9700.0),
+        _bar("13:30", 9.7, 9.7, 9.8, 9.6, 1000, 9700.0),
+        _bar("13:45", 9.7, 9.6, 9.8, 9.5, 1000, 9600.0),
+        _bar("14:00", 9.6, 9.6, 9.7, 9.5, 1000, 9600.0),
+        _bar("14:15", 9.6, 9.6, 9.7, 9.5, 1000, 9600.0),
+    ]
+
+
+class RunPostcloseReviewTests(unittest.TestCase):
+    """Spec Section 2.4-2.5: full orchestrator."""
+
+    def _make_result(self, candidates):
+        return {
+            "top_picks": candidates,
+            "near_miss_candidates": [],
+            "filter_summary": {"keep_threshold": 55.0},
+        }
+
+    @patch("postclose_review_runtime._fetch_intraday_bars_for_review")
+    def test_full_review_produces_correct_structure(self, mock_bars):
+        from postclose_review_runtime import run_postclose_review
+        mock_bars.return_value = _fade_bars()
+        result_json = self._make_result([
+            {"ticker": "000988", "name": "华工科技", "midday_action": "可执行",
+             "score": 58.0, "prev_close": 10.0, "close": 9.854},
+        ])
+        review = run_postclose_review(result_json, "2026-04-20")
+        self.assertEqual(review["trade_date"], "2026-04-20")
+        self.assertEqual(len(review["candidates_reviewed"]), 1)
+        cand = review["candidates_reviewed"][0]
+        self.assertEqual(cand["ticker"], "000988")
+        self.assertEqual(cand["judgment"], "plan_too_aggressive")
+        self.assertEqual(cand["adjustment"], "downgrade")
+        self.assertEqual(cand["intraday_structure"], "fade_from_high")
+        self.assertEqual(review["summary"]["too_aggressive"], 1)
+        self.assertTrue(len(review["prior_review_adjustments"]) >= 0)
+
+    @patch("postclose_review_runtime._fetch_intraday_bars_for_review")
+    def test_intraday_fetch_failure_still_produces_judgment(self, mock_bars):
+        from postclose_review_runtime import run_postclose_review
+        mock_bars.return_value = []  # fetch failure → empty
+        result_json = self._make_result([
+            {"ticker": "000988", "name": "华工科技", "midday_action": "可执行",
+             "score": 58.0, "prev_close": 10.0, "close": 9.854},
+        ])
+        review = run_postclose_review(result_json, "2026-04-20")
+        cand = review["candidates_reviewed"][0]
+        self.assertEqual(cand["intraday_structure"], "unavailable")
+        self.assertEqual(cand["judgment"], "plan_too_aggressive")
+
+    def test_empty_result_produces_empty_review(self):
+        from postclose_review_runtime import run_postclose_review
+        result_json = self._make_result([])
+        review = run_postclose_review(result_json, "2026-04-20")
+        self.assertEqual(review["summary"]["total_reviewed"], 0)
+        self.assertEqual(review["candidates_reviewed"], [])
+
+    @patch("postclose_review_runtime._fetch_intraday_bars_for_review")
+    def test_markdown_report_matches_template_structure(self, mock_bars):
+        from postclose_review_runtime import run_postclose_review, build_review_markdown
+        mock_bars.return_value = _fade_bars()
+        result_json = self._make_result([
+            {"ticker": "000988", "name": "华工科技", "midday_action": "可执行",
+             "score": 58.0, "prev_close": 10.0, "close": 9.854},
+        ])
+        review = run_postclose_review(result_json, "2026-04-20")
+        md = build_review_markdown(review)
+        self.assertIn("操作建议摘要", md)
+        self.assertIn("000988", md)
+        self.assertIn("华工科技", md)
+        self.assertIn("次日观察点", md)
+
+
 if __name__ == "__main__":
     unittest.main()
