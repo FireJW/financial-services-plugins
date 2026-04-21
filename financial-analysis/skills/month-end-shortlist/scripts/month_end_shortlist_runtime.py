@@ -1152,6 +1152,18 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     return normalize_request_with_compiled(raw_payload, _compiled.normalize_request)
 
 
+def infer_execution_state(candidate: dict[str, Any]) -> str:
+    tier_tags = set(candidate.get("tier_tags", []) or [])
+    failures = set(candidate.get("hard_filter_failures", []) or [])
+    if candidate.get("fallback_cache_only") or "fallback_cache_only" in tier_tags:
+        return "stale_cache"
+    if clean_text(candidate.get("bars_source")) == "eastmoney_cache":
+        return "fresh_cache"
+    if candidate.get("fallback_snapshot_only") or "bars_fetch_failed" in failures:
+        return "blocked"
+    return "live"
+
+
 def build_bars_fetch_failed_candidate(candidate: dict[str, Any], error: Exception | str) -> dict[str, Any]:
     ticker = str(candidate.get("ticker", "")).strip()
     name = str(candidate.get("name", "")).strip()
@@ -1201,6 +1213,7 @@ def build_bars_fetch_failed_candidate(candidate: dict[str, Any], error: Exceptio
         "backtest_summary": {},
         "trade_card": {},
         "bars_fetch_error": str(error or "").strip(),
+        "execution_state": "blocked",
     }
 
 
@@ -1315,6 +1328,7 @@ def build_bars_cache_rescue_candidate(
         return None
     rescued["bars_source"] = "eastmoney_cache"
     rescued["fallback_cache_only"] = True
+    rescued["execution_state"] = "stale_cache"
     rescued["tier_tags"] = unique_strings(
         list(rescued.get("tier_tags", [])) + ["fallback_cache_only"]
     )
@@ -2037,6 +2051,7 @@ def build_bars_fallback_rescue_candidate(
     rescued["fallback_support_reason"] = support_reason
     rescued["fallback_snapshot"] = deepcopy(snapshot)
     rescued["fallback_snapshot_only"] = True
+    rescued["execution_state"] = "blocked"
     rescued["tier_tags"] = unique_strings(
         list(rescued.get("tier_tags", [])) + ["low_confidence_fallback", "fallback_snapshot_only"]
     )
@@ -4355,6 +4370,7 @@ def wrap_assess_candidate_with_bars_failure_fallback(
                                 html_fetcher=html_fetcher,
                             )
                             assessed["bars_source"] = "eastmoney_cache"
+                            assessed["execution_state"] = "fresh_cache"
                             if assessed_log is not None:
                                 assessed_log.append(deepcopy(assessed))
                             return assessed
@@ -4558,6 +4574,7 @@ for _extra in (
     "write_json",
     "wrap_bars_fetcher_with_benchmark_fallback",
     "build_bars_fetch_failed_candidate",
+    "infer_execution_state",
     "last_bar_date_from_rows",
     "classify_eastmoney_cache_freshness",
     "choose_eastmoney_cache_recovery_mode",

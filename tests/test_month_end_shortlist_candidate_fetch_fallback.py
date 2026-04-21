@@ -21,6 +21,16 @@ import month_end_shortlist_runtime as module_under_test
 
 
 class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
+    def test_infer_execution_state_defaults_plain_candidates_to_live(self) -> None:
+        state = module_under_test.infer_execution_state(
+            {
+                "ticker": "601600.SS",
+                "name": "中国铝业",
+                "hard_filter_failures": [],
+            }
+        )
+        self.assertEqual(state, "live")
+
     def test_last_cached_trade_date_from_row_sets_picks_latest_available_date(self) -> None:
         row_sets = [
             [{"date": "2026-04-17"}, {"date": "2026-04-18"}],
@@ -127,6 +137,13 @@ class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
         self.assertIn("bars_fetch_failed", result["hard_filter_failures"])
         self.assertIn("Eastmoney request failed", result["bars_fetch_error"])
 
+    def test_bars_fetch_failure_record_is_marked_as_blocked_execution_state(self) -> None:
+        failed = module_under_test.build_bars_fetch_failed_candidate(
+            {"ticker": "601975.SS", "name": "招商南油"},
+            RuntimeError("bars_fetch_failed for `601975.SS`: Eastmoney request failed"),
+        )
+        self.assertEqual(failed["execution_state"], "blocked")
+
     def test_classify_eastmoney_cache_freshness_marks_same_day_as_fresh(self) -> None:
         rows = [
             {"date": "2026-04-17"},
@@ -198,6 +215,7 @@ class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
         self.assertTrue(result["keep"])
         self.assertEqual(result["bars_source"], "eastmoney_cache")
         self.assertEqual(result["bars_row_count"], 2)
+        self.assertEqual(result["execution_state"], "fresh_cache")
 
 
 if __name__ == "__main__":

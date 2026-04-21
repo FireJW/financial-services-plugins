@@ -928,6 +928,7 @@ class TestBarsFallbackRescue(unittest.TestCase):
         self.assertIn("low_confidence_fallback", recovered["tier_tags"])
         self.assertIn("fallback_cache_only", recovered["tier_tags"])
         self.assertEqual(recovered["fallback_support_reason"], "structured_catalyst")
+        self.assertEqual(recovered["execution_state"], "stale_cache")
 
     def test_too_old_cache_does_not_rescue_candidate(self):
         candidate = self._make_failed_candidate(discovery_bucket="watch")
