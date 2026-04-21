@@ -355,3 +355,59 @@ def get_indicator(
     start_date = days_before(curr_date, max(look_back_days + MIN_HISTORY_DAYS, MIN_HISTORY_DAYS))
     rows = fetch_daily_bars(symbol, start_date, curr_date, fetcher=fetcher, env=env)
     return format_indicator_report(normalize_eastmoney_symbol(symbol), normalized_indicator, curr_date, look_back_days, rows)
+
+
+def classify_intraday_structure(bars_15min: list[dict]) -> str:
+    """Classify a single trading day's 15min bars into an intraday structure type.
+
+    Returns one of: 'strong_close', 'fade_from_high', 'weak_open_no_recovery', 'range_bound'.
+    """
+    if not bars_15min:
+        return "range_bound"
+
+    day_high = max(b["high"] for b in bars_15min)
+    day_low = min(b["low"] for b in bars_15min)
+    day_range = day_high - day_low
+    last_close = bars_15min[-1]["close"]
+    first_open = bars_15min[0]["open"]
+
+    # VWAP = cumulative amount / cumulative volume
+    total_amount = sum(b["amount"] for b in bars_15min)
+    total_volume = sum(b["volume"] for b in bars_15min)
+    vwap = total_amount / total_volume if total_volume > 0 else last_close
+
+    # Avoid division by zero for flat days
+    if day_range <= 0:
+        return "range_bound"
+
+    close_position = (last_close - day_low) / day_range  # 0.0 = at low, 1.0 = at high
+
+    # --- weak_open_no_recovery ---
+    first_bar = bars_15min[0]
+    first_drop_pct = (first_bar["close"] - first_bar["open"]) / first_bar["open"] if first_bar["open"] > 0 else 0
+    if first_drop_pct < -0.01:
+        recovered = any(b["close"] >= first_open for b in bars_15min[1:])
+        if not recovered:
+            return "weak_open_no_recovery"
+
+    # --- strong_close ---
+    if len(bars_15min) >= 2:
+        last_two = bars_15min[-2:]
+        last_two_above_vwap = all(b["close"] > vwap for b in last_two)
+        last_bar_green = last_two[-1]["close"] > last_two[-1]["open"]
+        if last_two_above_vwap and last_bar_green and close_position >= 0.80:
+            return "strong_close"
+
+    # --- fade_from_high ---
+    midpoint = len(bars_15min) // 2
+    first_half = bars_15min[:midpoint] if midpoint > 0 else bars_15min[:1]
+    first_half_high = max(b["high"] for b in first_half)
+    if first_half_high == day_high and last_close < vwap and close_position <= 0.40:
+        return "fade_from_high"
+
+    # --- range_bound ---
+    day_range_pct = day_range / day_low if day_low > 0 else 0
+    if day_range_pct < 0.03 and 0.30 <= close_position <= 0.70:
+        return "range_bound"
+
+    return "range_bound"
