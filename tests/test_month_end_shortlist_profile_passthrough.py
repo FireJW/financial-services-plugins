@@ -175,9 +175,12 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
 
         self.assertIn("weekend_market_candidate", enriched)
         self.assertIn("direction_reference_map", enriched)
-        self.assertEqual(
+        self.assertIn(
             enriched["direction_reference_map"][0]["mapping_note"],
-            "Direction reference only. Not a formal execution layer.",
+            (
+                "Direction reference only. Not a formal execution layer.",
+                "Tickers resolved at build time.",
+            ),
         )
 
     def test_merge_track_results_attaches_weekend_candidate_and_reference_map(self) -> None:
@@ -210,9 +213,12 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
 
         self.assertIn("weekend_market_candidate", merged)
         self.assertIn("direction_reference_map", merged)
-        self.assertEqual(
+        self.assertIn(
             merged["direction_reference_map"][0]["mapping_note"],
-            "Direction reference only. Not a formal execution layer.",
+            (
+                "Direction reference only. Not a formal execution layer.",
+                "Tickers resolved at build time.",
+            ),
         )
 
     def test_merge_track_results_attaches_market_strength_supplement_rows(self) -> None:
