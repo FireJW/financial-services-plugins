@@ -135,6 +135,7 @@ def run_postclose_review(
         judgment = classify_plan_outcome(plan_action=plan_action, actual_return_pct=actual_return)
         adj = generate_adjustment(judgment)
 
+        direction_boost = cand.get("direction_boost") if isinstance(cand.get("direction_boost"), dict) else {}
         candidates_reviewed.append({
             "ticker": ticker,
             "name": name,
@@ -142,6 +143,9 @@ def run_postclose_review(
             "actual_return_pct": actual_return,
             "intraday_structure": intraday_structure,
             "judgment": judgment,
+            "direction_aligned": bool(direction_boost),
+            "direction_key": direction_boost.get("direction_key") or None,
+            "direction_role": direction_boost.get("direction_role") or None,
             **adj,
         })
 
@@ -161,12 +165,72 @@ def run_postclose_review(
         for c in candidates_reviewed if c["adjustment"] != "hold"
     ]
 
+    direction_momentum = compute_direction_momentum(candidates_reviewed)
+
     return {
         "trade_date": trade_date,
         "candidates_reviewed": candidates_reviewed,
         "summary": summary,
         "prior_review_adjustments": prior_review_adjustments,
+        "direction_momentum": direction_momentum,
     }
+
+
+def compute_direction_momentum(
+    candidates_reviewed: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Compute direction momentum signals from reviewed candidates.
+
+    Groups direction-aligned candidates by direction_key and produces
+    a momentum_signal for each direction based on judgment distribution.
+
+    Returns list of direction momentum entries (empty for directions with
+    zero aligned candidates).
+    """
+    # Group by direction_key
+    by_key: dict[str, dict[str, Any]] = {}
+    for c in candidates_reviewed:
+        if not c.get("direction_aligned"):
+            continue
+        dk = (c.get("direction_key") or "").strip()
+        if not dk:
+            continue
+        if dk not in by_key:
+            by_key[dk] = {
+                "direction_key": dk,
+                "direction_label": dk,
+                "aligned_candidates_count": 0,
+                "aligned_correct": 0,
+                "aligned_too_aggressive": 0,
+                "aligned_missed": 0,
+            }
+        entry = by_key[dk]
+        entry["aligned_candidates_count"] += 1
+        judgment = (c.get("judgment") or "").strip()
+        if judgment == "plan_correct":
+            entry["aligned_correct"] += 1
+        elif judgment == "plan_too_aggressive":
+            entry["aligned_too_aggressive"] += 1
+        elif judgment == "missed_opportunity":
+            entry["aligned_missed"] += 1
+
+    result = []
+    for dk, entry in by_key.items():
+        count = entry["aligned_candidates_count"]
+        if count == 0:
+            continue
+        # Evaluation order: caution → strengthening → confirmed → fading
+        if entry["aligned_too_aggressive"] > 0:
+            signal = "caution"
+        elif entry["aligned_missed"] > 0 and entry["aligned_too_aggressive"] == 0:
+            signal = "strengthening"
+        elif entry["aligned_correct"] / count >= 0.5:
+            signal = "confirmed"
+        else:
+            signal = "fading"
+        entry["momentum_signal"] = signal
+        result.append(entry)
+    return result
 
 
 def build_review_markdown(review: dict[str, Any]) -> str:

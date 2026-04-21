@@ -337,5 +337,59 @@ class ConfirmationGateBypassTests(unittest.TestCase):
         self.assertEqual(result["midday_action"], "待确认")
 
 
+class MomentumProxyTests(unittest.TestCase):
+    """Spec Section 5: postclose review as momentum proxy."""
+
+    def _make_review_output(self, candidates_reviewed):
+        return {
+            "trade_date": "2026-04-21",
+            "candidates_reviewed": candidates_reviewed,
+            "summary": {},
+            "prior_review_adjustments": [],
+        }
+
+    def test_momentum_confirmed_full_boost(self):
+        """>=50% correct, zero too_aggressive → confirmed."""
+        from postclose_review_runtime import compute_direction_momentum
+
+        candidates = [
+            {"ticker": "300308", "judgment": "plan_correct", "direction_aligned": True,
+             "direction_key": "optical_interconnect", "direction_role": "leader"},
+            {"ticker": "300394", "judgment": "plan_correct", "direction_aligned": True,
+             "direction_key": "optical_interconnect", "direction_role": "high_beta"},
+        ]
+        momentum = compute_direction_momentum(candidates)
+        entry = [m for m in momentum if m["direction_key"] == "optical_interconnect"][0]
+        self.assertEqual(entry["momentum_signal"], "confirmed")
+        self.assertEqual(entry["aligned_correct"], 2)
+        self.assertEqual(entry["aligned_too_aggressive"], 0)
+
+    def test_momentum_caution_halves_boost(self):
+        """Any too_aggressive among aligned → caution."""
+        from postclose_review_runtime import compute_direction_momentum
+
+        candidates = [
+            {"ticker": "300308", "judgment": "plan_correct", "direction_aligned": True,
+             "direction_key": "optical_interconnect", "direction_role": "leader"},
+            {"ticker": "300394", "judgment": "plan_too_aggressive", "direction_aligned": True,
+             "direction_key": "optical_interconnect", "direction_role": "high_beta"},
+        ]
+        momentum = compute_direction_momentum(candidates)
+        entry = [m for m in momentum if m["direction_key"] == "optical_interconnect"][0]
+        self.assertEqual(entry["momentum_signal"], "caution")
+
+    def test_momentum_fading_zeros_boost(self):
+        """All aligned are correct_negative → fading."""
+        from postclose_review_runtime import compute_direction_momentum
+
+        candidates = [
+            {"ticker": "300308", "judgment": "plan_correct_negative", "direction_aligned": True,
+             "direction_key": "optical_interconnect", "direction_role": "leader"},
+        ]
+        momentum = compute_direction_momentum(candidates)
+        entry = [m for m in momentum if m["direction_key"] == "optical_interconnect"][0]
+        self.assertEqual(entry["momentum_signal"], "fading")
+
+
 if __name__ == "__main__":
     unittest.main()
