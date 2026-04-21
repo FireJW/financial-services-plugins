@@ -2,377 +2,403 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Tighten `live_snapshot` so real company/market read-through topics rise to `high_fit`, generic political observation topics fall out of the shortlist, and each source's runtime cost is visible in the result.
+**Goal:** Tighten `discovery_profile=live_snapshot` so it promotes real market/company read-through topics, suppresses political/newsy medium-fit leakage, limits medium-fit retention, and emits source timing diagnostics.
 
-**Architecture:** Keep `live_snapshot` opt-in and layer three narrow changes onto the current runtime: strengthen fit classification around real financial and market read-through signals, expand low-yield political/newsy filtering without banning conflict topics that already have market transmission, and add lightweight source timing diagnostics to the result and markdown report.
+**Architecture:** Keep the existing `live_snapshot` profile and extend only its fit heuristic, low-yield filtering, and final retention gate. Add top-level runtime timing fields without changing `default` or `international_first`, and verify all behavior through the shared `test_article_publish.py` suite plus a small CLI smoke.
 
-**Tech Stack:** Python 3.12, `hot_topic_discovery_runtime.py`, pytest via `test_article_publish.py`
+**Tech Stack:** Python 3.12, argparse CLI wrapper, `hot_topic_discovery_runtime.py`, pytest via `test_article_publish.py`
 
 ---
 
-### Task 1: Add RED tests for round-2 live snapshot hardening
+### Task 1: Add red tests for fit promotion, political filtering, medium-fit gating, and timing output
 
 **Files:**
 - Modify: `financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py`
 - Reference: `docs/superpowers/specs/2026-04-21-live-snapshot-hardening-round2-design.md`
 
-- [ ] **Step 1: Add round-2 live snapshot fixtures**
+- [ ] **Step 1: Add a second-round live snapshot fixture**
 
-Add focused helper candidates near the existing `live_snapshot_candidates()` helper:
+Add a new fixture helper near the existing `live_snapshot_candidates()` fixture:
 
 ```python
     def live_snapshot_round2_candidates(self) -> list[dict]:
         return [
             {
-                "title": "ByteDance says AI spending drove profit sharply lower",
+                "title": "ByteDance revenue mix shifts while AI spending drives profit down 70%",
                 "summary": "A same-day company result with clear revenue, profit, and AI capex read-through.",
                 "source_items": [
                     {
                         "source_name": "36kr",
                         "source_type": "major_news",
-                        "url": "https://example.com/bytedance-live-round2",
-                        "published_at": "2026-04-20T10:05:00+00:00",
-                        "summary": "ByteDance says revenue mix improved, but AI investment sharply reduced profit.",
+                        "url": "https://example.com/36kr-bytedance-round2",
+                        "published_at": "2026-04-21T08:30:00+00:00",
+                        "summary": "Overseas revenue hits a new high while AI investment pulls profit sharply lower.",
                     }
                 ],
             },
             {
-                "title": "International observation says US-Iran talks remain uncertain",
-                "summary": "A same-day political observation headline without oil, shipping, equities, or other market transmission.",
+                "title": "International observation: several paths remain for US-Iran negotiations",
+                "summary": "A same-day geopolitical explainer without a direct market, company, or supply-chain read-through.",
                 "source_items": [
                     {
-                        "source_name": "google-news-world",
+                        "source_name": "新华网",
                         "source_type": "major_news",
-                        "url": "https://example.com/us-iran-observation-round2",
-                        "published_at": "2026-04-20T10:08:00+00:00",
-                        "summary": "A same-day political observation headline without oil, shipping, equities, or other market transmission.",
+                        "url": "https://example.com/xinhua-us-iran-round2",
+                        "published_at": "2026-04-21T08:35:00+00:00",
+                        "summary": "A high-level situation explainer on negotiations and possible diplomatic paths.",
                     }
                 ],
             },
             {
-                "title": "Hormuz shipping risk jolts oil and equities again",
-                "summary": "A same-day conflict topic already transmitting into market pricing.",
+                "title": "Token anxiety grows as AI billing spreads through software teams",
+                "summary": "Fresh but softer same-day topic that may deserve medium-fit status, not top-slot priority.",
                 "source_items": [
                     {
-                        "source_name": "Reuters",
+                        "source_name": "36kr",
                         "source_type": "major_news",
-                        "url": "https://example.com/hormuz-round2",
-                        "published_at": "2026-04-20T10:00:00+00:00",
-                        "summary": "Oil jumps and equities wobble again as Hormuz shipping risk returns to market pricing.",
+                        "url": "https://example.com/36kr-token-anxiety-round2",
+                        "published_at": "2026-04-21T08:20:00+00:00",
+                        "summary": "Engineering teams are suddenly watching token spending as usage rises.",
+                    }
+                ],
+            },
+            {
+                "title": "Domestic model vendors quietly reshape go-to-market plans",
+                "summary": "Another fresh but weaker same-day topic that should not crowd out stronger read-through stories.",
+                "source_items": [
+                    {
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "url": "https://example.com/36kr-model-plans-round2",
+                        "published_at": "2026-04-21T08:10:00+00:00",
+                        "summary": "Vendors are shifting strategy, but the second-order market impact remains fuzzy.",
                     }
                 ],
             },
         ]
 ```
 
-- [ ] **Step 2: Add a failing test that company/financial read-through upgrades to `high_fit`**
+- [ ] **Step 2: Add a failing test that promotes real read-through topics to `high_fit`**
 
 ```python
-    def test_hot_topic_discovery_live_snapshot_promotes_company_financial_readthrough_to_high_fit(self) -> None:
+    def test_hot_topic_discovery_live_snapshot_promotes_financial_readthrough_to_high_fit(self) -> None:
         result = run_hot_topic_discovery(
             {
-                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "analysis_time": "2026-04-21T09:00:00+00:00",
                 "discovery_profile": "live_snapshot",
                 "manual_topic_candidates": self.live_snapshot_round2_candidates(),
             }
         )
-        bytedance = next(item for item in result["ranked_topics"] if item["title"] == "ByteDance says AI spending drove profit sharply lower")
-        self.assertEqual(bytedance["live_snapshot_fit"], "high_fit")
+        topic = next(
+            item for item in result["ranked_topics"]
+            if item["title"] == "ByteDance revenue mix shifts while AI spending drives profit down 70%"
+        )
+        self.assertEqual(topic["live_snapshot_fit"], "high_fit")
 ```
 
-- [ ] **Step 3: Add a failing test that generic political observation gets filtered or forced low**
+- [ ] **Step 3: Add a failing test that filters the geopolitical explainer**
 
 ```python
-    def test_hot_topic_discovery_live_snapshot_filters_generic_political_observation_without_market_readthrough(self) -> None:
+    def test_hot_topic_discovery_live_snapshot_filters_political_observer_style_topics(self) -> None:
         result = run_hot_topic_discovery(
             {
-                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "analysis_time": "2026-04-21T09:00:00+00:00",
                 "discovery_profile": "live_snapshot",
                 "manual_topic_candidates": self.live_snapshot_round2_candidates(),
             }
         )
         ranked_titles = {item["title"] for item in result["ranked_topics"]}
-        self.assertNotIn("International observation says US-Iran talks remain uncertain", ranked_titles)
+        self.assertNotIn("International observation: several paths remain for US-Iran negotiations", ranked_titles)
 ```
 
-- [ ] **Step 4: Add a failing test that conflict topics with market transmission still survive as `high_fit`**
+- [ ] **Step 4: Add a failing test for medium-fit retention cap**
 
 ```python
-    def test_hot_topic_discovery_live_snapshot_keeps_conflict_topic_when_market_transmission_is_present(self) -> None:
+    def test_hot_topic_discovery_live_snapshot_caps_medium_fit_retention(self) -> None:
         result = run_hot_topic_discovery(
             {
-                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "analysis_time": "2026-04-21T09:00:00+00:00",
                 "discovery_profile": "live_snapshot",
                 "manual_topic_candidates": self.live_snapshot_round2_candidates(),
             }
         )
-        topic = next(item for item in result["ranked_topics"] if item["title"] == "Hormuz shipping risk jolts oil and equities again")
-        self.assertEqual(topic["live_snapshot_fit"], "high_fit")
+        medium_titles = [
+            item["title"]
+            for item in result["ranked_topics"]
+            if item["live_snapshot_fit"] == "medium_fit"
+        ]
+        self.assertLessEqual(len(medium_titles), 2)
 ```
 
-- [ ] **Step 5: Add a failing test for source timing diagnostics**
+- [ ] **Step 5: Add a failing test for source timing output**
 
 ```python
-    def test_hot_topic_discovery_live_snapshot_emits_source_timings(self) -> None:
+    def test_hot_topic_discovery_live_snapshot_emits_source_timing_diagnostics(self) -> None:
         result = run_hot_topic_discovery(
             {
-                "analysis_time": "2026-04-20T10:30:00+00:00",
+                "analysis_time": "2026-04-21T09:00:00+00:00",
                 "discovery_profile": "live_snapshot",
                 "manual_topic_candidates": self.live_snapshot_round2_candidates(),
             }
         )
         self.assertIn("source_timings", result)
-        self.assertGreaterEqual(len(result["source_timings"]), 1)
-        self.assertIn("duration_ms", result["source_timings"][0])
-        self.assertIn("status", result["source_timings"][0])
+        self.assertIn("total_runtime_ms", result)
 ```
 
-- [ ] **Step 6: Add a failing test for markdown timing section**
-
-```python
-    def test_hot_topic_discovery_report_includes_source_timings_section(self) -> None:
-        result = run_hot_topic_discovery(
-            {
-                "analysis_time": "2026-04-20T10:30:00+00:00",
-                "discovery_profile": "live_snapshot",
-                "manual_topic_candidates": self.live_snapshot_round2_candidates(),
-            }
-        )
-        self.assertIn("## Source Timings", result["report_markdown"])
-```
-
-- [ ] **Step 7: Run the focused live-snapshot round-2 tests and confirm RED**
+- [ ] **Step 6: Run focused tests and confirm RED**
 
 Run:
 
 ```bash
-py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -k "live_snapshot and (financial_readthrough or political_observation or market_transmission or source_timings or timings_section)" -v
+py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -k "live_snapshot and (promotes_financial_readthrough_to_high_fit or political_observer_style_topics or caps_medium_fit_retention or emits_source_timing_diagnostics)" -v
 ```
 
-Expected: the new round-2 tests fail because the hardening has not been implemented yet.
+Expected: all new round-2 tests fail because the second-round hardening logic does not exist yet.
 
-- [ ] **Step 8: Commit the RED tests**
+- [ ] **Step 7: Commit the red tests**
 
 ```bash
 git add financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py
 git commit -m "test(autoresearch): add live snapshot hardening round 2 coverage"
 ```
 
-### Task 2: Expand `high_fit` signals and tighten `medium_fit`
+### Task 2: Expand `high_fit` detection for financial, market, and conflict read-through topics
 
 **Files:**
 - Modify: `financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery_runtime.py`
 - Test: `financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py`
 
-- [ ] **Step 1: Expand the analysis keyword set for real market/company read-through**
+- [ ] **Step 1: Expand the live snapshot high-signal keyword set**
 
-Extend the existing `LIVE_SNAPSHOT_ANALYSIS_KEYWORDS` set with the round-2 financial and market terms from the spec:
-
-```python
-LIVE_SNAPSHOT_ANALYSIS_KEYWORDS.update(
-    {
-        "revenue", "profit", "margin", "loss", "sales",
-        "guidance", "earnings", "capex", "order", "orders",
-        "bond", "yield", "volatility",
-        "ceasefire", "strait", "shipping", "sanction", "tariff", "negotiation",
-        "营收", "利润", "净利", "亏损", "指引", "财报", "资本开支",
-        "股市", "收益率", "波动率", "停火", "海峡", "航运", "制裁", "关税", "谈判",
-    }
-)
-```
-
-- [ ] **Step 2: Tighten `live_snapshot_fit()` so `medium_fit` is no longer the default bucket for every fresh headline**
-
-Keep the current `high_fit` condition, but make `medium_fit` require some business or policy extension instead of any fresh item:
+Replace the current narrow keyword set with a richer read-through-oriented set:
 
 ```python
-LIVE_SNAPSHOT_EXTENSION_KEYWORDS = {
-    "ai", "model", "chip", "chips", "market", "markets", "company", "policy",
-    "robotaxi", "supply chain", "energy", "macro", "earnings", "capex",
-    "AI", "芯片", "市场", "公司", "政策", "供应链", "能源", "宏观",
+LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
+    "revenue", "profit", "margin", "loss", "guidance", "earnings", "capex",
+    "order", "orders", "oil", "equities", "stocks", "risk assets", "shipping",
+    "strait", "inflation", "yield", "ceasefire", "negotiation", "sanction",
+    "disruption", "营收", "利润", "净利", "亏损", "指引", "财报",
+    "资本开支", "订单", "油价", "航运", "风险资产", "通胀", "谈判", "停火",
 }
 ```
 
-Then:
+- [ ] **Step 2: Keep the signal text narrow**
+
+Preserve the `live_snapshot_signal_text()` pattern so negative or generic summary prose does not accidentally trip `high_fit`:
+
+```python
+def live_snapshot_signal_text(candidate: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            clean_text(candidate.get("title")),
+            " ".join(clean_string_list(candidate.get("keywords"))),
+        ]
+    ).lower()
+```
+
+- [ ] **Step 3: Update `live_snapshot_fit()` to use the expanded read-through set**
 
 ```python
 def live_snapshot_fit(candidate: dict[str, Any]) -> str:
-    signal_text = live_snapshot_signal_text(candidate)
+    text = live_snapshot_signal_text(candidate)
     freshness = clean_text(candidate.get("freshness_bucket"))
-    if freshness in {"0-6h", "6-24h"} and contains_any_keyword(signal_text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
+    if freshness in {"0-6h", "6-24h"} and contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
         return "high_fit"
-    if freshness in {"0-6h", "6-24h"} and contains_any_keyword(signal_text, LIVE_SNAPSHOT_EXTENSION_KEYWORDS):
+    if freshness in {"0-6h", "6-24h"}:
         return "medium_fit"
     return "low_fit"
 ```
 
-- [ ] **Step 3: Run the focused fit tests**
+- [ ] **Step 4: Run the high-fit promotion test**
 
 Run:
 
 ```bash
-py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -k "live_snapshot and (financial_readthrough or market_transmission)" -v
+py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -k "promotes_financial_readthrough_to_high_fit" -v
 ```
 
-Expected: `ByteDance...` and `Hormuz...` both become `high_fit`.
+Expected: PASS
 
-- [ ] **Step 4: Commit the fit-hardening change**
+- [ ] **Step 5: Commit the fit-expansion change**
 
 ```bash
 git add financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery_runtime.py
 git add financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py
-git commit -m "feat(autoresearch): harden live snapshot fit classification"
+git commit -m "feat(autoresearch): promote live snapshot read-through topics"
 ```
 
-### Task 3: Expand low-yield filtering for political/newsy headlines
+### Task 3: Filter political/newsy leakage and cap retained medium-fit topics
 
 **Files:**
 - Modify: `financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery_runtime.py`
 - Test: `financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py`
 
-- [ ] **Step 1: Expand the low-yield keyword set to catch generic political observation**
+- [ ] **Step 1: Add a stronger low-yield keyword set**
 
-Extend `LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS` with phrases for generic observation framing:
+Define a separate set for political/newsy leakage:
 
 ```python
-LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS.update(
+LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS = {
+    "international observation",
+    "several paths remain",
+    "diplomatic",
+    "visit",
+    "visits",
+    "modernization",
+    "official commentary",
+    "观察",
+    "访华",
+    "政要",
+    "外交",
+    "口径",
+    "国际观察",
+}
+```
+
+- [ ] **Step 2: Tighten the low-yield helper**
+
+Keep it narrow and still let true market/policy transmission topics through:
+
+```python
+def is_live_snapshot_low_yield_candidate(candidate: dict[str, Any]) -> bool:
+    text = live_snapshot_signal_text(candidate)
+    if not contains_any_keyword(text, LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS):
+        return False
+    if contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
+        return False
+    return True
+```
+
+- [ ] **Step 3: Add a medium-fit retention gate in `run_hot_topic_discovery()`**
+
+After the normal keep/filter pass but before final truncation, gate `live_snapshot` results:
+
+```python
+def enforce_live_snapshot_fit_gate(
+    kept_topics: list[dict[str, Any]],
+    filtered_out_topics: list[dict[str, Any]],
+    top_n: int,
+) -> list[dict[str, Any]]:
+    high_fit = [topic for topic in kept_topics if topic.get("live_snapshot_fit") == "high_fit"]
+    medium_fit = [topic for topic in kept_topics if topic.get("live_snapshot_fit") == "medium_fit"]
+    low_fit = [topic for topic in kept_topics if topic.get("live_snapshot_fit") == "low_fit"]
+    for topic in low_fit:
+        filtered_out_topics.append(
+            {
+                "title": clean_text(topic.get("title")),
+                "filter_reason": "deprioritized low-fit live snapshot topic",
+                "total_score": safe_dict(topic.get("score_breakdown")).get("total_score", 0),
+            }
+        )
+    return (high_fit + medium_fit[:2])[:top_n]
+```
+
+Then call it only for `live_snapshot`.
+
+- [ ] **Step 4: Run the filter and medium-cap tests**
+
+Run:
+
+```bash
+py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -k "political_observer_style_topics or caps_medium_fit_retention" -v
+```
+
+Expected: PASS
+
+- [ ] **Step 5: Commit the filtering/gating change**
+
+```bash
+git add financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery_runtime.py
+git add financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py
+git commit -m "feat(autoresearch): tighten live snapshot ranking gate"
+```
+
+### Task 4: Emit source timing diagnostics
+
+**Files:**
+- Modify: `financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery_runtime.py`
+- Test: `financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py`
+
+- [ ] **Step 1: Import a monotonic timer**
+
+Add:
+
+```python
+from time import perf_counter
+```
+
+- [ ] **Step 2: Track per-source duration and item count**
+
+Inside `run_hot_topic_discovery()`, add:
+
+```python
+source_timings: list[dict[str, Any]] = []
+run_started = perf_counter()
+```
+
+For each source fetch:
+
+```python
+started = perf_counter()
+items = fetch_source_items(source_name, request)
+duration_ms = int(round((perf_counter() - started) * 1000))
+source_timings.append(
     {
-        "international observation",
-        "global change",
-        "talks remain uncertain",
-        "observation",
-        "analysis says",
-        "局势走向有几种可能",
-        "观察",
-        "背后",
-        "变局",
-        "密集访华",
-        "理性、务实回应",
+        "source": source_name,
+        "duration_ms": duration_ms,
+        "item_count": len(items),
+        "status": "ok",
     }
 )
 ```
 
-- [ ] **Step 2: Keep conflict topics that already have market transmission**
-
-Do not change the helper to blanket-filter conflict or negotiation terms. The existing guard:
+On exception:
 
 ```python
-if contains_any_keyword(text, LIVE_SNAPSHOT_ANALYSIS_KEYWORDS):
-    return False
+source_timings.append(
+    {
+        "source": source_name,
+        "duration_ms": duration_ms,
+        "item_count": 0,
+        "status": "error",
+    }
+)
 ```
 
-must remain in place so `"Hormuz..."` stays eligible.
+At the end:
 
-- [ ] **Step 3: Run the political-observation filter test**
+```python
+total_runtime_ms = int(round((perf_counter() - run_started) * 1000))
+```
+
+And add both fields to the final result.
+
+- [ ] **Step 3: Run the timing-output test**
 
 Run:
 
 ```bash
-py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -k "live_snapshot_filters_generic_political_observation_without_market_readthrough" -v
+py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -k "emits_source_timing_diagnostics" -v
 ```
 
 Expected: PASS
 
-- [ ] **Step 4: Commit the filtering change**
+- [ ] **Step 4: Commit the timing diagnostics**
 
 ```bash
 git add financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery_runtime.py
 git add financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py
-git commit -m "feat(autoresearch): expand live snapshot low-yield filtering"
+git commit -m "feat(autoresearch): emit live snapshot source timings"
 ```
 
-### Task 4: Add source timing diagnostics to runtime and report
-
-**Files:**
-- Modify: `financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery_runtime.py`
-- Test: `financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py`
-
-- [ ] **Step 1: Import monotonic timing support**
-
-At the top of the file, import:
-
-```python
-import time
-```
-
-- [ ] **Step 2: Capture per-source timings in `run_hot_topic_discovery()`**
-
-Create a local list:
-
-```python
-source_timings: list[dict[str, Any]] = []
-```
-
-For each source fetch, wrap with monotonic timing:
-
-```python
-started = time.perf_counter()
-try:
-    items = fetch_source_items(source_name, request)
-    raw_items.extend(items)
-    source_timings.append(
-        {
-            "source": source_name,
-            "duration_ms": int(round((time.perf_counter() - started) * 1000)),
-            "status": "ok",
-        }
-    )
-except Exception as exc:
-    source_timings.append(
-        {
-            "source": source_name,
-            "duration_ms": int(round((time.perf_counter() - started) * 1000)),
-            "status": "error",
-        }
-    )
-    errors.append({"source": source_name, "message": str(exc)})
-```
-
-Then include:
-
-```python
-"source_timings": source_timings,
-```
-
-in the final result object.
-
-- [ ] **Step 3: Add a markdown timing section**
-
-In `build_markdown_report()`, append:
-
-```python
-    if result.get("source_timings"):
-        lines.extend(["", "## Source Timings"])
-        for item in result["source_timings"]:
-            lines.append(
-                f"- {item.get('source', '')}: {item.get('status', '')} in {item.get('duration_ms', 0)} ms"
-            )
-```
-
-- [ ] **Step 4: Run the timing-focused tests**
-
-Run:
-
-```bash
-py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -k "live_snapshot and (source_timings or timings_section)" -v
-```
-
-Expected: PASS
-
-- [ ] **Step 5: Commit the timing diagnostics**
-
-```bash
-git add financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery_runtime.py
-git add financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py
-git commit -m "feat(autoresearch): add live snapshot source timing diagnostics"
-```
-
-### Task 5: Full regression and one smoke replay
+### Task 5: Full regression and one CLI smoke
 
 **Files:**
 - Modify: none
+- Verify: `financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py`
+- Verify manually: `financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery.py`
 
-- [ ] **Step 1: Run all round-2 live snapshot tests**
+- [ ] **Step 1: Run all live snapshot tests**
 
 Run:
 
@@ -380,7 +406,7 @@ Run:
 py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -k "live_snapshot" -v
 ```
 
-Expected: all live snapshot tests pass.
+Expected: all `live_snapshot` tests pass.
 
 - [ ] **Step 2: Run the full regression file**
 
@@ -390,47 +416,33 @@ Run:
 py -m pytest financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py -v
 ```
 
-Expected: full file passes, including `international_first`.
+Expected: full file passes, including `international_first` coverage.
 
-- [ ] **Step 3: Run one manual smoke replay**
+- [ ] **Step 3: Run a CLI smoke**
 
-Use a small manual payload similar to the round-2 fixtures and verify:
-
-- company/financial read-through topic reports `high_fit`
-- generic political observation topic is filtered
-- result includes `source_timings`
-- markdown includes `## Source Timings`
-
-- [ ] **Step 4: Commit only if debugging required small code cleanup**
-
-If debugging introduced any small cleanup beyond Tasks 2-4:
+Create a smoke request with one clear `high_fit` topic, run:
 
 ```bash
-git add <exact files>
-git commit -m "fix(autoresearch): tighten live snapshot round 2 runtime"
+py financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery.py <request.json> --output <result.json> --quiet
 ```
 
-### Task 6: Final branch verification snapshot
+Verify `result.json` contains:
 
-**Files:**
-- Modify: none
+- `live_snapshot_fit`
+- `live_snapshot_reason`
+- `source_timings`
+- `total_runtime_ms`
 
-- [ ] **Step 1: Record branch state**
+- [ ] **Step 4: Record final branch status**
 
 Run:
 
 ```bash
 git status --short --branch
-git log --oneline -8
+git log --oneline -6
 ```
 
-Expected: clean branch with task commits present.
+Expected:
 
-- [ ] **Step 2: Prepare completion summary**
-
-At handoff, report:
-
-- the task commit SHAs
-- the live snapshot tests run
-- the full regression result
-- the smoke replay result including `source_timings`
+- clean branch
+- commits in logical order

@@ -572,6 +572,88 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             },
         ]
 
+    def live_snapshot_round3_candidates(self) -> list[dict]:
+        return [
+            {
+                "title": "ByteDance says AI spending drove profit sharply lower",
+                "summary": "A same-day company financial read-through topic with profit and AI capex implications.",
+                "source_items": [
+                    {
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "url": "https://example.com/bytedance-profit-round3",
+                        "published_at": "2026-04-21T09:40:00+00:00",
+                        "summary": "ByteDance says heavier AI investment pushed profit sharply lower while overseas revenue kept rising.",
+                    }
+                ],
+            },
+            {
+                "title": "Hormuz shipping risk jolts oil and equities again",
+                "summary": "A same-day market-transmission topic tying shipping disruption to oil and equity repricing.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/hormuz-round3",
+                        "published_at": "2026-04-21T09:50:00+00:00",
+                        "summary": "Shipping risk in Hormuz pushes oil higher and drags risk assets lower.",
+                    }
+                ],
+            },
+            {
+                "title": "Anthropic cuts off a large Claude customer overnight",
+                "summary": "A fresh AI platform headline with some analysis room but weaker direct market transmission.",
+                "source_items": [
+                    {
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "url": "https://example.com/anthropic-round3",
+                        "published_at": "2026-04-21T09:55:00+00:00",
+                        "summary": "A large Claude customer loses service suddenly, raising questions about platform concentration.",
+                    }
+                ],
+            },
+            {
+                "title": "Meta token spending anxiety keeps spreading across AI teams",
+                "summary": "A fresh AI cost headline with extension room but no hard market transmission.",
+                "source_items": [
+                    {
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "url": "https://example.com/meta-token-round3",
+                        "published_at": "2026-04-21T09:56:00+00:00",
+                        "summary": "Developers complain that token costs are forcing new budgeting conversations across AI teams.",
+                    }
+                ],
+            },
+            {
+                "title": "Domestic model makers are all changing direction again",
+                "summary": "A fresh but weaker synthesis headline without a hard company or market read-through.",
+                "source_items": [
+                    {
+                        "source_name": "36kr",
+                        "source_type": "major_news",
+                        "url": "https://example.com/domestic-model-round3",
+                        "published_at": "2026-04-21T09:57:00+00:00",
+                        "summary": "Several domestic model makers appear to be shifting priorities again.",
+                    }
+                ],
+            },
+            {
+                "title": "Ceremony honors a historical ancestor",
+                "summary": "A same-day narrow news flash with no company, market, or policy read-through.",
+                "source_items": [
+                    {
+                        "source_name": "google-news-world",
+                        "source_type": "major_news",
+                        "url": "https://example.com/ceremony-round3",
+                        "published_at": "2026-04-21T09:58:00+00:00",
+                        "summary": "A same-day ceremony headline without analysis value for the live snapshot shortlist.",
+                    }
+                ],
+            },
+        ]
+
     def feature_filter_candidates(self) -> list[dict]:
         return [
             {
@@ -2724,6 +2806,7 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertGreaterEqual(len(result["source_timings"]), 1)
         self.assertIn("duration_ms", result["source_timings"][0])
         self.assertIn("status", result["source_timings"][0])
+        self.assertIn("total_runtime_ms", result)
 
     def test_hot_topic_discovery_report_includes_source_timings_section(self) -> None:
         result = run_hot_topic_discovery(
@@ -2735,6 +2818,56 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         )
 
         self.assertIn("## Source Timings", result["report_markdown"])
+
+    def test_hot_topic_discovery_live_snapshot_excludes_low_fit_topics_from_shortlist(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-21T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": self.live_snapshot_round3_candidates(),
+                "top_n": 6,
+            }
+        )
+
+        ranked_titles = {item["title"] for item in result["ranked_topics"]}
+        self.assertNotIn("Ceremony honors a historical ancestor", ranked_titles)
+
+    def test_hot_topic_discovery_live_snapshot_caps_medium_fit_backups(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-21T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "manual_topic_candidates": self.live_snapshot_round3_candidates(),
+                "top_n": 6,
+            }
+        )
+
+        medium_titles = [
+            item["title"]
+            for item in result["ranked_topics"]
+            if item.get("live_snapshot_fit") == "medium_fit"
+        ]
+        self.assertLessEqual(len(medium_titles), 2)
+
+    def test_hot_topic_discovery_live_snapshot_records_source_timing_even_when_source_errors(self) -> None:
+        def fake_fetch(source_name: str, request: dict) -> list[dict]:
+            if source_name == "google-news-world":
+                raise RuntimeError("timed out")
+            return []
+
+        with patch("hot_topic_discovery_runtime.fetch_source_items", side_effect=fake_fetch):
+            result = run_hot_topic_discovery(
+                {
+                    "analysis_time": "2026-04-21T10:30:00+00:00",
+                    "discovery_profile": "live_snapshot",
+                    "sources": ["36kr", "google-news-world"],
+                }
+            )
+
+        timing_by_source = {item["source"]: item for item in result["source_timings"]}
+        self.assertIn("google-news-world", timing_by_source)
+        self.assertEqual(timing_by_source["google-news-world"]["status"], "error")
+        self.assertIn("duration_ms", timing_by_source["google-news-world"])
 
     def test_hot_topic_discovery_recency_hardening_breaks_score_ties_in_favor_of_fresh_story(self) -> None:
         with (

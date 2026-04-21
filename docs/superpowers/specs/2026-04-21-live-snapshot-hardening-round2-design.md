@@ -2,369 +2,300 @@
 
 ## Goal
 
-在已经上线的 `discovery_profile=live_snapshot` 基础上，继续解决两类实际问题：
+在现有 `discovery_profile=live_snapshot` 基础上，继续解决两类剩余问题：
 
-1. **题目质量不够硬**
-   - 前排结果里仍然混入了泛政治、泛观察、泛时政分析题
-   - 很多结果都只落到 `medium_fit`
-   - 真正应该升到 `high_fit` 的公司/市场/冲突 read-through 题没有被显著拉开
+1. **榜单质量还不够像“可写题”**
+   - 公司/市场/冲突 read-through 题没有稳定升到 `high_fit`
+   - 泛政治/泛观察类 headline 还会以 `medium_fit` 混进前排
+   - `medium_fit` 太宽，导致榜单前排缺少真正强结论候选
 
-2. **运行过程缺少 timing 诊断**
-   - 现在能跑出结果，但 source-level latency 不可见
-   - 后续如果继续压缩快照时延，没有足够证据知道是哪个 source 在拖慢
-
-这轮目标不是重做架构，而是在现有 `live_snapshot` 上做第二层硬化：
-
-- 扩 `high_fit`
-- 压掉泛政治/泛观察 `medium_fit`
-- 给 `medium_fit` 增加更严格门槛
-- 增加 source timing 诊断
+2. **快照运行仍然偏慢**
+   - 目前已经能稳定跑通，但整体耗时仍偏高
+   - 缺少 per-source timing，无法直接判断是哪一层在拖慢 live snapshot
 
 ## Scope
 
-只改：
+第二轮只改：
 
 - `financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery_runtime.py`
 - `financial-analysis/skills/autoresearch-info-index/tests/test_article_publish.py`
 
-可选轻触：
+可选最小 CLI 透传：
 
 - `financial-analysis/skills/autoresearch-info-index/scripts/hot_topic_discovery.py`
-  - 仅当需要把 timing 一并写出到输出文件时
 
 不改：
 
+- `article_draft_flow_runtime.py`
+- `article_publish_runtime.py`
+- 任何发布链脚本
 - `default`
 - `international_first`
-- 文章生成链
-- 发布链
+- `live_snapshot` 的 source pack 选择
 
 ## Design Principles
 
-### 1. 继续保持显式 opt-in
+### 1. 不扩 profile，直接硬化现有 `live_snapshot`
 
-所有新增行为仍然只作用于：
+第二轮不新增 profile，也不改 `live_snapshot` 的 opt-in 边界。
 
-- `discovery_profile=live_snapshot`
+这轮目标是让现有 `live_snapshot` 更像“当天可写选题快照”，而不是“当天新闻列表”。
 
-不回灌到其它 discovery profile。
+### 2. `high_fit` 必须成为真正的前排信号
 
-### 2. 优先拉开 `high_fit` 与 `medium_fit`
+第一轮里所有结果都落成 `medium_fit`，说明 `high_fit` 的门槛定义不对，不是数据源问题。
 
-当前主要问题不是“全是错误题”，而是：
+第二轮要求：
 
-- 结果里大量题都只是 `medium_fit`
-- `high_fit` 太难被命中
+- 有明确财务、市场、冲突 read-through 的题，应该稳定命中 `high_fit`
+- `high_fit` 需要在榜单排序和保留逻辑里形成真实优先级
 
-这轮核心不是新增更多标签，而是让：
+### 3. `medium_fit` 应该是少量备选，不是默认状态
 
-- 真正能立刻写的题更容易进 `high_fit`
-- 泛观察和泛时政题更容易被压掉或降级
+`medium_fit` 的本意是：
 
-### 3. 先做解释性强化，再考虑更重的 source 重构
+- 新
+- 有一点可写空间
+- 但判断还不够强
 
-source timing 这轮只做**诊断信息**，不做新的 source scheduler。
+它不应该成为榜单前排的默认状态。
 
-原因：
+第二轮要把 `medium_fit` 收紧，并限制它在最终榜单中的占比。
 
-- 当前先把“哪个 source 慢、哪个 source 值得保留”看清
-- 再决定第三轮是否需要 source-level skip / budget 控制
+### 4. timing 先做诊断，不直接做调度重构
 
-## Problem Analysis
+第二轮先记录：
 
-### A. `high_fit` 命中面太窄
+- 每个 source 的抓取耗时
+- 整个 run 的总耗时
 
-第一轮的 `high_fit` 关键词更偏：
+先让 operator 看得见慢在哪，再决定第三轮要不要改 source scheduling。
 
-- `oil`
-- `equities`
-- `stocks`
-- `guidance`
-- `earnings`
-- `capex`
-- `policy`
-- `conflict`
+## Problems Observed In The First Live Run
 
-这导致两类本来该高优先的题没有被充分识别：
+基于 `2026-04-20` 的实际 `live_snapshot` 结果，观察到：
 
-1. **公司财务 read-through**
-   - revenue
-   - profit
-   - margin
-   - loss
-   - growth
-   - order / intake
+1. 前 8 条全部是 `medium_fit`
+2. `字节跳动2025年海外营收占比创新高，AI投入致公司净利大降70%` 这类明显有财务和市场 read-through 的题，没有被提升为 `high_fit`
+3. `多国政要密集访华背后...`、`台湾业界代表呼吁...`、`国际观察丨美伊谈判悬念丛生...` 这类泛政治/泛观察题仍然留在榜单前排
+4. 运行完成但整体耗时偏高，且当前结果里没有 source-level timing 信息
 
-2. **宏观/冲突 read-through**
-   - ceasefire
-   - negotiation
-   - sanctions
-   - strait
-   - shipping
-   - fuel / jet fuel
+## Desired Behavior
 
-### B. 泛政治/泛观察题仍然能混进前排
+第二轮之后，希望 `live_snapshot` 更接近下面这种筛法：
 
-当前 low-yield filter 主要压的是：
+### 更容易进前排
 
-- 明显官方口径
-- 明显宣传式标题
+- 财报、盈利、利润率、指引变化
+- 油价、风险资产、利率、航运、供给链 read-through
+- 冲突升级已经开始传到市场定价
+- 公司 rollout、订单、capex、供应链变化
 
-但还没压掉这些“更像时评而不是可写分析稿”的题：
+### 更容易被压掉
 
-- 多国政要密集访华背后……
-- 国际观察丨美伊谈判悬念丛生……
-- 台湾业界呼吁当局理性回应……
+- 泛时政观察
+- 外交礼仪与姿态型标题
+- 官媒口径或价值判断型 headline
+- 没有市场、产业、公司第二层含义的“国际观察”
 
-这些题的问题不是“不新”，而是：
+## Round 2 Changes
 
-- headline 新
-- 但 read-through 不够硬
-- 更像评论栏目，而不是当天分析稿入口
+### 1. Expand `high_fit` detection
 
-### C. `medium_fit` 缺少容量控制
+第一轮 `high_fit` 关键词集明显太窄。
 
-当前 `medium_fit` 只是一个分类，不是门槛。
+第二轮扩进去的重点方向：
 
-结果就是：
+- 财务与结果类
+  - `revenue`
+  - `profit`
+  - `margin`
+  - `loss`
+  - `guidance`
+  - `earnings`
+  - `capex`
+  - `order`
+  - `orders`
+- 市场传导类
+  - `oil`
+  - `equities`
+  - `stocks`
+  - `risk assets`
+  - `shipping`
+  - `strait`
+  - `inflation`
+  - `yield`
+- 冲突与谈判传导类
+  - `ceasefire`
+  - `negotiation`
+  - `sanction`
+  - `disruption`
+- 中文等价词
+  - `营收`
+  - `利润`
+  - `净利`
+  - `亏损`
+  - `指引`
+  - `财报`
+  - `资本开支`
+  - `订单`
+  - `油价`
+  - `航运`
+  - `风险资产`
+  - `通胀`
+  - `谈判`
+  - `停火`
 
-- `medium_fit` 会大量占满榜单
-- `high_fit` 没有形成明显的前排优先级
+要求：
 
-这轮需要把 `medium_fit` 从“可上榜”改成“受限保留”。
+- `high_fit` 判断不只看 title，还要允许看更短、更干净的 signal text
+- 但不能再像第一轮那样把否定句里的 `market` 一词误当成正向信号
 
-### D. source latency 不可见
+### 2. Expand low-yield filtering for political/newsy medium-fit topics
 
-现在只知道整轮 `live_snapshot` 的完成时间，不知道：
+第一轮只压掉了最直接的 `official commentary`。
 
-- `36kr` 花了多久
-- `google-news-world` 花了多久
-- 哪个 source 有明显 tail latency
+第二轮增加一层更强的 `live_snapshot` 低收益过滤，覆盖：
 
-没有这层 timing，就没法做下一轮速度优化。
-
-## Proposed Changes
-
-### 1. 扩 `high_fit` 关键词面
-
-在现有 `LIVE_SNAPSHOT_ANALYSIS_KEYWORDS` 基础上扩到两组：
+- 泛政治观察
+- 外交礼仪和访问盘点
+- 官方立场复述
+- `国际观察` 风格但没有市场/产业/company read-through 的题
 
-#### Company / market read-through
+约束：
 
-- `revenue`
-- `profit`
-- `margin`
-- `loss`
-- `growth`
-- `forecast`
-- `guidance`
-- `earnings`
-- `net income`
-- `gross margin`
-- `order`
-- `orders`
-- `order intake`
-- `capex`
-- `rollout`
+- 仍然只在 `live_snapshot` 生效
+- 不影响 `default`
+- 不影响 `international_first`
 
-中文对应：
+### 3. Add a medium-fit retention gate
 
-- `营收`
-- `利润`
-- `净利`
-- `毛利率`
-- `亏损`
-- `增长`
-- `指引`
-- `财报`
-- `订单`
-- `新增订单`
-- `资本开支`
+第二轮不直接重写整个排序，但增加一个保留门槛：
 
-#### Macro / conflict read-through
+- `high_fit` 默认优先保留
+- `medium_fit` 只保留少量上限
+- `low_fit` 默认不进最终榜单
 
-- `ceasefire`
-- `negotiation`
-- `talks`
-- `sanction`
-- `sanctions`
-- `strait`
-- `shipping`
-- `freight`
-- `fuel`
-- `jet fuel`
-- `hormuz`
+建议第一版 gate：
 
-中文对应：
+- 排序后保留全部 `high_fit`
+- `medium_fit` 最多只保留前 `2`
+- `low_fit` 直接过滤
 
-- `停火`
-- `谈判`
-- `会谈`
-- `制裁`
-- `海峡`
-- `航运`
-- `运费`
-- `燃油`
-- `航油`
-- `霍尔木兹`
+如果 `high_fit` 数量不足，再用前 `2` 个 `medium_fit` 填充
 
-### 2. 新增“泛政治/观察稿”压制层
+这样做的目标是：
 
-增加一个 live-specific helper，用于识别：
+- 让榜单前排更像“写稿候选”
+- 不让 `medium_fit` 把榜单填满
 
-- 国际观察
-- 时政观察
-- 背后逻辑
-- 多种可能
-- 如何看待
-- 为什么说
-- 形势走向
+### 4. Add source timing diagnostics
 
-这一类题如果同时满足：
+第二轮新增 source timing 输出，但不改并发模型。
 
-- 没有明显公司/市场/价格/供给链 read-through
-- 没有明确量化或公司层变量
+新增结果字段：
 
-则在 `live_snapshot` 下直接过滤或降级。
+- `source_timings`
+- `total_runtime_ms`
 
-这层规则只在 `live_snapshot` 生效。
+其中：
 
-### 3. 给 `medium_fit` 加保留门槛
+- `source_timings` 是一个列表，每个元素至少包含：
+  - `source`
+  - `duration_ms`
+  - `item_count`
+  - `status`
+- `total_runtime_ms` 是整个 run 的 wall-clock 时间
 
-不直接改成 hard filter 全清，而是：
+用途：
 
-#### Rule A
-
-`high_fit` 始终优先于 `medium_fit`
-
-#### Rule B
-
-`medium_fit` 只有在以下情况才允许保留：
-
-- freshness 在 `0-6h` 或 `6-24h`
-- 且不是 low-yield political/observation topic
-- 且 total score 不低于 live-specific floor
-
-#### Rule C
-
-如果当前结果中已经有足够多 `high_fit`，则只保留少量 `medium_fit`
-
-第一阶段建议：
-
-- `high_fit` 不限
-- `medium_fit` 最多保留 `2`
-
-这样能避免榜单被 `medium_fit` 占满。
-
-### 4. 增加 source timing diagnostics
-
-在 `run_hot_topic_discovery()` 的 source fetch 路径里记录每个 source 的 wall-clock duration。
-
-新增输出字段：
-
-- `source_timing`
-
-结构建议：
-
-```json
-[
-  {
-    "source": "google-news-world",
-    "duration_ms": 1240,
-    "status": "ok"
-  },
-  {
-    "source": "36kr",
-    "duration_ms": 2815,
-    "status": "ok"
-  }
-]
-```
-
-如果 source 报错：
-
-- 仍记录 `duration_ms`
-- `status = error`
-- 可附带 `message`
-
-### 5. 增强 report 输出
-
-`report.md` 顶部增加 timing 摘要：
-
-- source
-- duration
-- status
-
-目的是让 operator 一眼看出慢源。
+- 让 operator 直接看到哪个 source 慢
+- 为后续第三轮时延优化提供证据
 
 ## Runtime Integration
 
 ### `build_clustered_candidate()`
 
-继续在这里决定：
+需要改：
 
-- `live_snapshot_fit`
-- `live_snapshot_reason`
+- `live_snapshot_fit` 的判断逻辑
+- `live_snapshot_reason` 的文案逻辑
 
-新增逻辑：
+要求：
 
-- 扩 `high_fit`
-- 对明显 observation-style 标题做降级
+- 明确把财务/市场/冲突传导类题拉到 `high_fit`
+- 同时不再让“泛政治观察”轻易保留在 `medium_fit`
 
 ### `apply_topic_controls()`
 
-继续在这里做 live-specific keep/drop。
+新增：
 
-新增逻辑：
+- 第二轮的 low-yield political/newsy filter
 
-- `low_yield_observation`
-- `medium_fit` 容量控制 / floor
+要求：
+
+- 仍然只在 `live_snapshot` 下生效
 
 ### `run_hot_topic_discovery()`
 
 新增：
 
-- source fetch start/end timing
-- `source_timing` 输出
+- source-level timing 记录
+- total runtime 记录
+- final fit-gated retention for `live_snapshot`
+
+要求：
+
+- 先做 timing 记录，再做结果层 gating
+- 不改变其它 profile 的输出结构
+
+## Output Changes
+
+### New result fields
+
+在完整 result 顶层新增：
+
+- `source_timings`
+- `total_runtime_ms`
+
+### Updated `live_snapshot_reason`
+
+第一轮的 `medium_fit` 文案太统一，几乎全是：
+
+- `Fresh headline in the 0-6h window, but it still needs a clearer second-order read-through.`
+
+第二轮要更具体，至少区分：
+
+- 财务/市场/冲突传导型 `high_fit`
+- 泛观察型 `medium_fit`
+- 低收益快讯型 `low_fit`
 
 ## Testing
 
-需要新增这些测试：
+第二轮至少补这些测试：
 
-1. **公司财务题升到 `high_fit`**
-   - 例如 revenue / profit / margin / order 语义
-
-2. **冲突 read-through 题升到 `high_fit`**
-   - 例如 Hormuz / oil / shipping / ceasefire
-
-3. **泛政治观察题在 `live_snapshot` 下被压掉**
-   - headline 新，但没有硬 read-through
-
-4. **`medium_fit` 不会占满榜单**
-   - 在有 `high_fit` 时，`medium_fit` 只保留受限数量
-
-5. **`source_timing` 落到结果里**
-   - source 成功时有 duration
-   - source 失败时也有 duration + error status
-
-6. **不影响 `international_first`**
-   - 现有 `international_first` 相关测试保持绿
+1. 财务/市场 read-through 题命中 `high_fit`
+2. 泛政治观察题在 `live_snapshot` 下被过滤
+3. `medium_fit` 保留上限生效
+4. `live_snapshot` 结果里包含 `source_timings` 和 `total_runtime_ms`
+5. `international_first` 不受影响
 
 ## Non-Goals
 
-这轮仍然不做：
+第二轮明确不做：
 
-- 把 `agent-reach:reddit/x` 并入 `live_snapshot`
-- source-level scheduler / budget engine
-- 新的 discovery pipeline
-- 文章生成 / 发布链改动
+- 改 `live_snapshot` source pack
+- 接入 `agent-reach:reddit/x`
+- 改文章生成
+- 改发布链
+- 做 source scheduler 重构
 
 ## Acceptance Criteria
 
-只有满足以下条件，这轮才算完成：
+只有满足以下条件，第二轮才算完成：
 
-1. `high_fit` 不再过少，至少能稳定命中公司/市场/冲突 read-through 题。
-2. 泛政治/观察类 `medium_fit` 明显减少。
-3. 榜单不会再被 `medium_fit` 占满。
-4. `source_timing` 能告诉 operator 哪个 source 慢。
-5. 全量 `test_article_publish.py` 仍然通过。
+1. `high_fit` 不再长期为零。
+2. 泛政治/泛观察类题不会继续稳定混在榜单前排。
+3. `medium_fit` 不再占满整个榜单。
+4. `source_timings` 和 `total_runtime_ms` 能直接落到结果里。
+5. 全量 `test_article_publish.py` 回归仍然通过。
