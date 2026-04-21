@@ -69,5 +69,42 @@ class ResolveDirectionTickersTests(unittest.TestCase):
         self.assertEqual(entry["leaders"][1]["ticker"], "")
 
 
+class CrossCheckDirectionTickersTests(unittest.TestCase):
+    """Spec Section 1.3: execution-time cross-check against universe."""
+
+    def test_cross_check_direction_tickers_against_universe(self):
+        """Names matched against universe by name, in_universe flag set correctly."""
+        import month_end_shortlist_runtime as runtime
+
+        direction_map = [
+            {
+                "direction_key": "optical_interconnect",
+                "direction_label": "光通信 / 光模块",
+                "leaders": [
+                    {"ticker": "300308", "name": "中际旭创"},
+                    {"ticker": "", "name": "未知公司"},
+                ],
+                "high_beta_names": [
+                    {"ticker": "300394", "name": "天孚通信"},
+                ],
+                "mapping_note": "Tickers resolved at build time.",
+            }
+        ]
+        universe = [
+            {"ticker": "300308", "name": "中际旭创", "f12": "300308", "f14": "中际旭创"},
+            {"ticker": "300394", "name": "天孚通信", "f12": "300394", "f14": "天孚通信"},
+            {"ticker": "002236", "name": "大华股份", "f12": "002236", "f14": "大华股份"},
+        ]
+
+        enriched = runtime.cross_check_direction_tickers(direction_map, universe)
+        entry = enriched[0]
+        # 300308 is in universe
+        self.assertTrue(entry["leaders"][0]["in_universe"])
+        # 未知公司 has no ticker and no name match
+        self.assertFalse(entry["leaders"][1]["in_universe"])
+        # 300394 is in universe
+        self.assertTrue(entry["high_beta_names"][0]["in_universe"])
+
+
 if __name__ == "__main__":
     unittest.main()

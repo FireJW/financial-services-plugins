@@ -2447,6 +2447,44 @@ def review_based_priority_boost(
     return result
 
 
+def cross_check_direction_tickers(
+    direction_reference_map: list[dict[str, Any]],
+    universe: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Cross-check direction tickers against the fetched stock universe.
+
+    For entries with a ticker: verify ticker exists in universe.
+    For entries without a ticker: attempt match by name.
+    Adds ``in_universe: bool`` to each leader/high_beta entry.
+    """
+    universe_tickers = {
+        clean_text(row.get("ticker") or row.get("f12"))
+        for row in universe
+        if clean_text(row.get("ticker") or row.get("f12"))
+    }
+    universe_names: dict[str, str] = {}
+    for row in universe:
+        name = clean_text(row.get("name") or row.get("f14"))
+        ticker = clean_text(row.get("ticker") or row.get("f12"))
+        if name and ticker:
+            universe_names[name] = ticker
+
+    result = deepcopy(direction_reference_map)
+    for entry in result:
+        for group_key in ("leaders", "high_beta_names"):
+            for item in entry.get(group_key, []):
+                ticker = clean_text(item.get("ticker"))
+                name = clean_text(item.get("name"))
+                if ticker and ticker in universe_tickers:
+                    item["in_universe"] = True
+                elif not ticker and name and name in universe_names:
+                    item["ticker"] = universe_names[name]
+                    item["in_universe"] = True
+                else:
+                    item["in_universe"] = False
+    return result
+
+
 def build_discovery_lane_summary(discovery_rows: list[dict[str, Any]]) -> dict[str, int]:
     summary = {"qualified_count": 0, "watch_count": 0, "track_count": 0}
     for item in discovery_rows:
@@ -4905,6 +4943,7 @@ for _extra in (
     "build_market_strength_candidates_from_universe",
     "merge_market_strength_candidate_inputs",
     "default_market_strength_universe_fetcher",
+    "cross_check_direction_tickers",
 ):
     if _extra not in __all__:
         __all__.append(_extra)
