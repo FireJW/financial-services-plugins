@@ -106,5 +106,117 @@ class CrossCheckDirectionTickersTests(unittest.TestCase):
         self.assertTrue(entry["high_beta_names"][0]["in_universe"])
 
 
+class DirectionAlignmentBoostTests(unittest.TestCase):
+    """Spec Section 2: two-tier direction alignment scoring."""
+
+    def _make_weekend_candidate(self, signal_strength="high", status="candidate_only"):
+        return {
+            "candidate_topics": [{"topic_name": "optical_interconnect", "topic_label": "光通信 / 光模块"}],
+            "signal_strength": signal_strength,
+            "status": status,
+        }
+
+    def _make_direction_map(self, leader_ticker="300308", hb_ticker="300394"):
+        return [
+            {
+                "direction_key": "optical_interconnect",
+                "direction_label": "光通信 / 光模块",
+                "leaders": [{"ticker": leader_ticker, "name": "中际旭创", "in_universe": True}],
+                "high_beta_names": [{"ticker": hb_ticker, "name": "天孚通信", "in_universe": True}],
+                "mapping_note": "Tickers resolved at build time.",
+            }
+        ]
+
+    def _make_candidate(self, ticker="300308", score=50.0, matched_themes=None):
+        return {
+            "ticker": ticker,
+            "name": "中际旭创",
+            "score": score,
+            "adjusted_total_score": score,
+            "matched_themes": matched_themes or [],
+            "tier_tags": [],
+        }
+
+    def test_theme_alignment_boost_high_signal(self):
+        """Theme match + high signal → +3."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="999999", matched_themes=["optical_interconnect"])
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("high"),
+        )
+        boost = result[0]["direction_boost"]
+        self.assertEqual(boost["theme_delta"], 3)
+        self.assertEqual(boost["reference_delta"], 0)
+
+    def test_theme_alignment_boost_medium_signal(self):
+        """Theme match + medium signal → +1."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="999999", matched_themes=["optical_interconnect"])
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("medium"),
+        )
+        self.assertEqual(result[0]["direction_boost"]["theme_delta"], 1)
+
+    def test_reference_map_leader_boost(self):
+        """Leader ticker match → +6."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300308", matched_themes=[])
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("high"),
+        )
+        boost = result[0]["direction_boost"]
+        self.assertEqual(boost["reference_delta"], 6)
+        self.assertEqual(boost["direction_role"], "leader")
+
+    def test_reference_map_high_beta_boost(self):
+        """High-beta ticker match → +4."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300394", matched_themes=[])
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("high"),
+        )
+        boost = result[0]["direction_boost"]
+        self.assertEqual(boost["reference_delta"], 4)
+        self.assertEqual(boost["direction_role"], "high_beta")
+
+    def test_leader_and_theme_boost_stack(self):
+        """Both match → +3 + +6 = +9."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300308", score=50.0, matched_themes=["optical_interconnect"])
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("high"),
+        )
+        boost = result[0]["direction_boost"]
+        self.assertEqual(boost["theme_delta"], 3)
+        self.assertEqual(boost["reference_delta"], 6)
+        self.assertEqual(boost["total_delta"], 9)
+        self.assertEqual(result[0]["adjusted_total_score"], 59.0)
+
+    def test_no_boost_when_insufficient_signal(self):
+        """Direction status insufficient → candidates unchanged."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300308", score=50.0)
+        wmc = self._make_weekend_candidate(status="insufficient_signal")
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), wmc,
+        )
+        self.assertNotIn("direction_boost", result[0])
+        self.assertEqual(result[0]["adjusted_total_score"], 50.0)
+
+    def test_no_boost_when_no_direction(self):
+        """weekend_market_candidate is None → no-op."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300308", score=50.0)
+        result = runtime.direction_alignment_boost([cand], [], None)
+        self.assertNotIn("direction_boost", result[0])
+
+
 if __name__ == "__main__":
     unittest.main()

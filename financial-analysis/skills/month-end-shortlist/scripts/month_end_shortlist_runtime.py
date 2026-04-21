@@ -2485,6 +2485,136 @@ def cross_check_direction_tickers(
     return result
 
 
+_DIRECTION_THEME_BOOST = {"high": 3, "medium": 1, "low": 0}
+_DIRECTION_REFERENCE_BOOST = {"leader": 6, "high_beta": 4}
+_DIRECTION_MOMENTUM_HALVED = {"theme": 1, "leader": 3, "high_beta": 2}
+
+
+def direction_alignment_boost(
+    candidates: list[dict[str, Any]],
+    direction_reference_map: list[dict[str, Any]],
+    weekend_market_candidate: dict[str, Any] | None,
+    *,
+    direction_momentum: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Apply two-tier direction alignment scoring to candidates.
+
+    Tier 1: theme intersection boost (matched_themes ∩ direction topics).
+    Tier 2: reference map match boost (ticker match in leaders/high_beta).
+    Momentum modulation from prior review adjusts boost values.
+
+    Returns a new list of (possibly modified) candidate copies.
+    """
+    if not weekend_market_candidate or not isinstance(weekend_market_candidate, dict):
+        return [dict(c) for c in candidates]
+    if weekend_market_candidate.get("status") == "insufficient_signal":
+        return [dict(c) for c in candidates]
+    if not direction_reference_map:
+        return [dict(c) for c in candidates]
+
+    signal_strength = clean_text(weekend_market_candidate.get("signal_strength")) or "low"
+
+    # Build direction topic set from candidate_topics
+    direction_topics: set[str] = set()
+    for topic in weekend_market_candidate.get("candidate_topics", []):
+        tn = clean_text(topic.get("topic_name"))
+        if tn:
+            direction_topics.add(tn)
+
+    # Build ticker→(direction_key, role) lookup
+    ticker_to_direction: dict[str, tuple[str, str, str]] = {}  # ticker → (key, label, role)
+    direction_labels: dict[str, str] = {}
+    for entry in direction_reference_map:
+        dk = clean_text(entry.get("direction_key"))
+        dl = clean_text(entry.get("direction_label")) or dk
+        direction_labels[dk] = dl
+        for item in entry.get("leaders", []):
+            t = clean_text(item.get("ticker"))
+            if t:
+                ticker_to_direction[t] = (dk, dl, "leader")
+        for item in entry.get("high_beta_names", []):
+            t = clean_text(item.get("ticker"))
+            if t and t not in ticker_to_direction:  # leader takes precedence
+                ticker_to_direction[t] = (dk, dl, "high_beta")
+
+    # Build momentum lookup: direction_key → momentum_signal
+    momentum_by_key: dict[str, str] = {}
+    for m in (direction_momentum or []):
+        mk = clean_text(m.get("direction_key"))
+        if mk:
+            momentum_by_key[mk] = clean_text(m.get("momentum_signal")) or ""
+
+    result = []
+    for cand in candidates:
+        c = dict(cand)
+        matched_themes = set(c.get("matched_themes") or [])
+
+        # Tier 1: theme intersection
+        theme_delta = 0
+        matched_direction_key = ""
+        for dk in direction_topics:
+            if dk in matched_themes:
+                theme_delta = _DIRECTION_THEME_BOOST.get(signal_strength, 0)
+                matched_direction_key = dk
+                break
+
+        # Tier 2: reference map match
+        reference_delta = 0
+        direction_role = ""
+        ticker = clean_text(c.get("ticker"))
+        if ticker in ticker_to_direction:
+            dk, dl, role = ticker_to_direction[ticker]
+            reference_delta = _DIRECTION_REFERENCE_BOOST.get(role, 0)
+            direction_role = role
+            if not matched_direction_key:
+                matched_direction_key = dk
+
+        if theme_delta == 0 and reference_delta == 0:
+            result.append(c)
+            continue
+
+        # Momentum modulation
+        momentum_signal = momentum_by_key.get(matched_direction_key, "")
+        if momentum_signal == "fading":
+            theme_delta = 0
+            reference_delta = 0
+        elif momentum_signal == "caution":
+            theme_delta = _DIRECTION_MOMENTUM_HALVED["theme"] if theme_delta > 0 else 0
+            if direction_role == "leader":
+                reference_delta = _DIRECTION_MOMENTUM_HALVED["leader"] if reference_delta > 0 else 0
+            elif direction_role == "high_beta":
+                reference_delta = _DIRECTION_MOMENTUM_HALVED["high_beta"] if reference_delta > 0 else 0
+
+        total_delta = theme_delta + reference_delta
+        if total_delta > 0:
+            try:
+                current = float(c.get("adjusted_total_score") or c.get("score") or 0)
+                c["adjusted_total_score"] = round(current + total_delta, 2)
+            except (TypeError, ValueError):
+                pass
+
+            tags = list(c.get("tier_tags") or [])
+            if theme_delta > 0:
+                tags.append("direction_theme_aligned")
+            if direction_role:
+                tags.append(f"direction_{direction_role}")
+            c["tier_tags"] = tags
+
+        c["direction_boost"] = {
+            "theme_delta": theme_delta,
+            "reference_delta": reference_delta,
+            "total_delta": theme_delta + reference_delta,
+            "direction_key": matched_direction_key,
+            "direction_role": direction_role or None,
+            "signal_strength": signal_strength,
+        }
+        if momentum_signal:
+            c["direction_boost"]["momentum_signal"] = momentum_signal
+
+        result.append(c)
+    return result
+
+
 def build_discovery_lane_summary(discovery_rows: list[dict[str, Any]]) -> dict[str, int]:
     summary = {"qualified_count": 0, "watch_count": 0, "track_count": 0}
     for item in discovery_rows:
@@ -4944,6 +5074,7 @@ for _extra in (
     "merge_market_strength_candidate_inputs",
     "default_market_strength_universe_fetcher",
     "cross_check_direction_tickers",
+    "direction_alignment_boost",
 ):
     if _extra not in __all__:
         __all__.append(_extra)
