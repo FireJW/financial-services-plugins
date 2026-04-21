@@ -120,5 +120,54 @@ class ReviewBasedPriorityBoostTests(unittest.TestCase):
         self.assertTrue(downgraded.get("review_force_gate", False))
 
 
+class DecisionFlowCardLabelTests(unittest.TestCase):
+    """Spec Section 3.4: decision flow card label updates."""
+
+    def _make_factor(self, **overrides):
+        """Minimal decision factor dict for build_decision_flow_card."""
+        base = {
+            "ticker": "000988",
+            "name": "华工科技",
+            "action": "可执行",
+            "score": 58.0,
+            "keep_threshold_gap": 2.0,
+            "midday_status": "qualified",
+            "bars_source": "eastmoney_live",
+            "execution_state": "live",
+            "tier_tags": [],
+            "hard_filter_failures": [],
+            "logic_summary": "趋势模板通过",
+            "technical_summary": "均线多头结构",
+            "event_summary": "事件验证通过",
+        }
+        base.update(overrides)
+        return base
+
+    def test_decision_flow_card_shows_pending_confirmation_labels(self):
+        """pending_confirmation → card has 盘中确认, 分时确认."""
+        factor = self._make_factor(
+            midday_status="pending_confirmation",
+            action="待确认",
+        )
+        card = runtime.build_decision_flow_card(
+            factor, keep_threshold=55.0, event_card=None, chain_entry=None,
+        )
+        reminder = card.get("operation_reminder", "")
+        self.assertIn("盘中确认", reminder)
+        self.assertIn("分时确认", reminder)
+
+    def test_decision_flow_card_shows_review_boost_labels(self):
+        """review_upgraded tag → card has 复盘加分."""
+        factor = self._make_factor(
+            tier_tags=["review_upgraded"],
+            score=58.0,
+        )
+        card = runtime.build_decision_flow_card(
+            factor, keep_threshold=55.0, event_card=None, chain_entry=None,
+        )
+        reminder = card.get("operation_reminder", "")
+        self.assertIn("复盘加分", reminder)
+
+
 if __name__ == "__main__":
     unittest.main()

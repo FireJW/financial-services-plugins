@@ -3138,6 +3138,19 @@ def build_decision_flow_card(
     next_watch_items = card.get("next_watch_items") if isinstance(card.get("next_watch_items"), list) else []
     if next_watch_items:
         operation_parts.append(clean_text(next_watch_items[0]))
+    # --- Confirmation gate labels ---
+    midday_status_val = clean_text(card.get("midday_status"))
+    if midday_status_val == "pending_confirmation":
+        operation_parts.append("盘中确认：需等待 11:00 后分时确认")
+        operation_parts.append("确认条件：分时不出现 fade_from_high 或 weak_open_no_recovery")
+        operation_parts.append("确认后操作：按原计划执行")
+        operation_parts.append("未确认操作：降级为观察")
+    # --- Review boost/penalty labels ---
+    if "review_upgraded" in tier_tags:
+        operation_parts.append("复盘加分：+5（前日错过机会）")
+    elif "review_downgraded" in tier_tags:
+        operation_parts.append("复盘减分：-5（前日过于激进）")
+        operation_parts.append("强制确认门控：是")
     flow_card = {
         "ticker": ticker,
         "name": clean_text(card.get("name")) or ticker,
