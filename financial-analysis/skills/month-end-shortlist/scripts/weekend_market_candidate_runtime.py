@@ -6,7 +6,7 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Callable
 
 
 TOPIC_LABELS: dict[str, str] = {
@@ -329,6 +329,61 @@ def normalize_weekend_market_candidate_input(raw: Any) -> dict[str, Any] | None:
     return normalized if any(normalized.values()) else None
 
 
+def default_ticker_resolver(name: str) -> str | None:
+    """Resolve a Chinese company name to a 6-digit ticker code via Eastmoney suggest API.
+
+    Returns ticker string like '300308' or None if not found.
+    """
+    try:
+        from urllib.parse import urlencode
+        from urllib.request import Request, urlopen
+
+        url = (
+            "https://searchapi.eastmoney.com/api/suggest/get?"
+            + urlencode({"input": name, "type": "14", "token": "D43BF722C8E33BDC906FB84D85E326E8"})
+        )
+        req = Request(url, headers={"Referer": "https://quote.eastmoney.com/"})
+        with urlopen(req, timeout=5) as resp:
+            import json as _json
+            payload = _json.loads(resp.read())
+        data = payload.get("QuotationCodeTable", {}).get("Data") or []
+        for item in data:
+            code = (item.get("Code") or "").strip()
+            if code and re.fullmatch(r"\d{6}", code):
+                return code
+    except Exception:
+        pass
+    return None
+
+
+def resolve_direction_tickers(
+    direction_reference_map: list[dict[str, Any]],
+    *,
+    resolver: Callable[[str], str | None] | None = None,
+) -> list[dict[str, Any]]:
+    """Resolve empty ticker fields in direction_reference_map.
+
+    For each leader/high_beta entry with ticker == "", calls the resolver.
+    If resolution succeeds, fills the ticker field.
+    Updates mapping_note to indicate resolution was attempted.
+    """
+    if resolver is None:
+        resolver = default_ticker_resolver
+    result = deepcopy(direction_reference_map)
+    for entry in result:
+        any_resolved = False
+        for group_key in ("leaders", "high_beta_names"):
+            for item in entry.get(group_key, []):
+                if item.get("ticker") == "" and item.get("name"):
+                    resolved_ticker = resolver(item["name"])
+                    if resolved_ticker:
+                        item["ticker"] = resolved_ticker
+                        any_resolved = True
+        if any_resolved:
+            entry["mapping_note"] = "Tickers resolved at build time."
+    return result
+
+
 def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if not isinstance(candidate_input, dict):
         return (
@@ -456,10 +511,13 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
         "reddit_confirmation": "confirming" if any(item["ranking_logic"]["reddit_confirmation"] != "low" for item in candidate_topics) else "mixed",
         "status": "candidate_only",
     }
+    direction_reference_map = resolve_direction_tickers(direction_reference_map)
     return candidate, direction_reference_map
 
 
 __all__ = [
     "build_weekend_market_candidate",
     "normalize_weekend_market_candidate_input",
+    "default_ticker_resolver",
+    "resolve_direction_tickers",
 ]
