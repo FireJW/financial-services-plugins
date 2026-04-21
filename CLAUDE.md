@@ -82,6 +82,12 @@ Phrase-match shortcuts:
 - "这个登录态或动态页面抓一下" -> `opencli-index`
 - "直接给我完整成文流程" -> `article-workflow`
 
+Freshness wording guardrail:
+
+- `latest`, `today`, `recent`, `最新`, `今天`, `近期` do not automatically mean web-first
+- first check whether `news-index`, `x-index`, `agent-reach-bridge`, `opencli-index`, or `hot-topics` already fit the freshness need
+- only jump to generic web search when those native freshness routes do not fit
+
 ## Capability-First Routing
 
 Before using generic browsing, web search, or ad hoc scraping, always route through
