@@ -2351,6 +2351,52 @@ def classify_midday_status(candidate: dict[str, Any], near_miss_tickers: set[str
     return "watch"
 
 
+def intraday_confirmation_gate(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Apply confirmation gate to a marginally qualified candidate.
+
+    If the candidate's midday_action is '可执行' but it meets any marginal
+    condition, downgrade to '待确认' with midday_status 'pending_confirmation'.
+
+    Marginal conditions (any one triggers the gate):
+    - keep_threshold_gap <= 2 (marginal score)
+    - structured_catalyst_score < 10 or absent (weak catalyst)
+    - execution_state is 'fresh_cache' or 'stale_cache'
+    - forced via 'review_force_gate' flag
+
+    Returns a (possibly modified) copy of the candidate.
+    """
+    result = dict(candidate)
+    action = clean_text(result.get("midday_action"))
+    if action != "可执行":
+        return result
+
+    # Check marginal conditions
+    gap = result.get("keep_threshold_gap")
+    try:
+        gap_value = float(gap) if gap not in (None, "") else 999.0
+    except (TypeError, ValueError):
+        gap_value = 999.0
+
+    catalyst_score = result.get("structured_catalyst_score")
+    try:
+        catalyst_value = float(catalyst_score) if catalyst_score not in (None, "") else 0.0
+    except (TypeError, ValueError):
+        catalyst_value = 0.0
+
+    execution_state = clean_text(result.get("execution_state")) or infer_execution_state(result)
+    force_gate = bool(result.get("review_force_gate"))
+
+    is_marginal_gap = gap_value <= 2.0
+    is_weak_catalyst = catalyst_value < 10.0
+    is_degraded_data = execution_state in ("fresh_cache", "stale_cache")
+
+    if force_gate or is_marginal_gap or is_weak_catalyst or is_degraded_data:
+        result["midday_action"] = "待确认"
+        result["midday_status"] = "pending_confirmation"
+
+    return result
+
+
 def build_discovery_lane_summary(discovery_rows: list[dict[str, Any]]) -> dict[str, int]:
     summary = {"qualified_count": 0, "watch_count": 0, "track_count": 0}
     for item in discovery_rows:
@@ -4752,6 +4798,7 @@ for _extra in (
     "BOARD_THRESHOLD_OVERRIDES",
     "build_near_miss_candidates",
     "classify_midday_status",
+    "intraday_confirmation_gate",
     "build_midday_action_summary",
     "build_midday_action_summary_from_top_picks",
     "build_midday_action_summary_from_result",
