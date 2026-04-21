@@ -1658,6 +1658,38 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         )
         self.assertIn("数据来源：Eastmoney cache", card["operation_reminder"])
 
+    def test_prune_rescued_blocked_candidates_removes_cache_rescues_from_blocked_wall(self) -> None:
+        enriched = {
+            "filter_summary": {
+                "blocked_candidate_count": 1,
+                "bars_fetch_failed_tickers": ["601975.SS"],
+            },
+            "blocked_candidates": [
+                {
+                    "ticker": "601975.SS",
+                    "name": "招商南油",
+                    "bars_fetch_error": "bars_fetch_failed for `601975.SS`: Eastmoney request failed",
+                }
+            ],
+            "report_markdown": "# Test Report\n\n## Blocked Candidates\n\n- `601975.SS` 招商南油: `bars_fetch_failed for `601975.SS`: Eastmoney request failed`\n",
+        }
+
+        pruned = module_under_test.prune_rescued_blocked_candidates(
+            enriched,
+            [
+                {
+                    "ticker": "601975.SS",
+                    "execution_state": "stale_cache",
+                    "fallback_cache_only": True,
+                }
+            ],
+        )
+
+        self.assertEqual(pruned["filter_summary"]["blocked_candidate_count"], 0)
+        self.assertEqual(pruned["filter_summary"]["bars_fetch_failed_tickers"], [])
+        self.assertEqual(pruned["blocked_candidates"], [])
+        self.assertNotIn("## Blocked Candidates", pruned["report_markdown"])
+
     def test_decision_flow_marks_stale_cache_rescue_as_low_confidence_fallback(self) -> None:
         card = module_under_test.build_decision_flow_card(
             {
@@ -1675,6 +1707,38 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         )
         self.assertEqual(card["action_label"], "继续观察（low-confidence fallback）")
         self.assertIn("数据路径降级：Eastmoney cache only", card["operation_reminder"])
+
+    def test_prune_rescued_blocked_candidates_removes_cache_rescues_from_blocked_wall(self) -> None:
+        enriched = {
+            "filter_summary": {
+                "blocked_candidate_count": 1,
+                "bars_fetch_failed_tickers": ["601975.SS"],
+            },
+            "blocked_candidates": [
+                {
+                    "ticker": "601975.SS",
+                    "name": "招商南油",
+                    "bars_fetch_error": "bars_fetch_failed for `601975.SS`: Eastmoney request failed",
+                }
+            ],
+            "report_markdown": "# Test Report\n\n## Blocked Candidates\n\n- `601975.SS` 招商南油: `bars_fetch_failed for `601975.SS`: Eastmoney request failed`\n",
+        }
+
+        pruned = module_under_test.prune_rescued_blocked_candidates(
+            enriched,
+            [
+                {
+                    "ticker": "601975.SS",
+                    "execution_state": "stale_cache",
+                    "fallback_cache_only": True,
+                }
+            ],
+        )
+
+        self.assertEqual(pruned["filter_summary"]["blocked_candidate_count"], 0)
+        self.assertEqual(pruned["filter_summary"]["bars_fetch_failed_tickers"], [])
+        self.assertEqual(pruned["blocked_candidates"], [])
+        self.assertNotIn("## Blocked Candidates", pruned["report_markdown"])
 
 
 if __name__ == "__main__":

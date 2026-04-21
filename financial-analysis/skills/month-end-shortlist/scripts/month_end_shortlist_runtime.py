@@ -1448,6 +1448,64 @@ def prepend_report_metadata_lines(report_markdown: str, metadata_lines: list[str
     return "\n".join(merged_lines).strip() + "\n"
 
 
+def render_blocked_candidates_section(blocked_candidates: list[dict[str, Any]]) -> str:
+    if not blocked_candidates:
+        return ""
+    lines = ["## Blocked Candidates", ""]
+    for item in blocked_candidates:
+        ticker = clean_text(item.get("ticker")) or "unknown"
+        name = clean_text(item.get("name")) or ticker
+        reason = clean_text(item.get("bars_fetch_error")) or "bars_fetch_failed"
+        lines.append(f"- `{ticker}` {name}: `{reason}`")
+    return "\n".join(lines).strip()
+
+
+def replace_blocked_candidates_section(report_markdown: str, blocked_candidates: list[dict[str, Any]]) -> str:
+    body = str(report_markdown or "").rstrip()
+    marker = "\n## Blocked Candidates"
+    if marker in body:
+        body = body.split(marker, 1)[0].rstrip()
+    section = render_blocked_candidates_section(blocked_candidates)
+    if not section:
+        return body + ("\n" if body else "")
+    return "\n\n".join(part for part in [body, section] if part).strip() + "\n"
+
+
+def prune_rescued_blocked_candidates(
+    enriched: dict[str, Any],
+    rescued_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    rescued_tickers = {
+        clean_text(item.get("ticker"))
+        for item in rescued_rows
+        if isinstance(item, dict) and clean_text(item.get("ticker"))
+    }
+    if not rescued_tickers:
+        return enriched
+
+    updated = deepcopy(enriched)
+    blocked_candidates = [
+        item
+        for item in updated.get("blocked_candidates", [])
+        if isinstance(item, dict) and clean_text(item.get("ticker")) not in rescued_tickers
+    ]
+    updated["blocked_candidates"] = blocked_candidates
+
+    filter_summary = dict(updated.get("filter_summary") or {})
+    filter_summary["blocked_candidate_count"] = len(blocked_candidates)
+    filter_summary["bars_fetch_failed_tickers"] = [
+        clean_text(item.get("ticker"))
+        for item in blocked_candidates
+        if clean_text(item.get("ticker"))
+    ]
+    updated["filter_summary"] = filter_summary
+    updated["report_markdown"] = replace_blocked_candidates_section(
+        updated.get("report_markdown") or "",
+        blocked_candidates,
+    )
+    return updated
+
+
 def enrich_degraded_live_result(result: dict[str, Any], failure_candidates: list[dict[str, Any]]) -> dict[str, Any]:
     if not failure_candidates:
         enriched = deepcopy(result)
@@ -3566,6 +3624,7 @@ def enrich_live_result_reporting(
             if clean_text(item.get("ticker"))
         }
         if rescued_by_ticker:
+            enriched["bars_fallback_rescues"] = list(rescued_by_ticker.values())
             for tier_name in ("T1", "T2", "T4"):
                 tiers[tier_name] = [
                     item
@@ -3579,7 +3638,7 @@ def enrich_live_result_reporting(
             ]
             t3_rows.extend(rescued_by_ticker.values())
             tiers["T3"] = t3_rows
-            enriched["bars_fallback_rescues"] = list(rescued_by_ticker.values())
+            enriched = prune_rescued_blocked_candidates(enriched, list(rescued_by_ticker.values()))
         capped_tiers, overflow = apply_rendered_caps(tiers)
         enriched["tier_output"] = {
             tier_name: [
@@ -3939,6 +3998,7 @@ def enrich_track_result(
             if clean_text(item.get("ticker"))
         }
         if rescued_by_ticker:
+            enriched["bars_fallback_rescues"] = list(rescued_by_ticker.values())
             for tier_name in ("T1", "T2", "T4"):
                 tiers[tier_name] = [
                     item
@@ -3952,7 +4012,7 @@ def enrich_track_result(
             ]
             t3_rows.extend(rescued_by_ticker.values())
             tiers["T3"] = t3_rows
-            enriched["bars_fallback_rescues"] = list(rescued_by_ticker.values())
+            enriched = prune_rescued_blocked_candidates(enriched, list(rescued_by_ticker.values()))
         track_tier_caps = cfg.get("tier_caps", TIER_CAPS)
         capped_tiers, overflow = apply_rendered_caps(tiers, tier_caps=track_tier_caps)
         enriched["tier_output"] = {
@@ -4584,6 +4644,9 @@ for _extra in (
     "resolve_cache_baseline_metadata",
     "attach_cache_baseline_metadata",
     "enrich_degraded_live_result",
+    "render_blocked_candidates_section",
+    "replace_blocked_candidates_section",
+    "prune_rescued_blocked_candidates",
     "enrich_live_result_reporting",
     "build_diagnostic_scorecard_entry",
     "apply_board_threshold_overrides",
