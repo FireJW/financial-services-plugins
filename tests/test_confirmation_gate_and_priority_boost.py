@@ -80,5 +80,45 @@ class IntradayConfirmationGateTests(unittest.TestCase):
         self.assertEqual(result["midday_status"], "pending_confirmation")
 
 
+class ReviewBasedPriorityBoostTests(unittest.TestCase):
+    """Spec Section 3.2: review_based_priority_boost."""
+
+    def _base_candidate(self, ticker="002185", score=53.0):
+        return {
+            "ticker": ticker,
+            "name": "华天科技" if ticker == "002185" else "华工科技",
+            "score": score,
+            "keep": False,
+            "keep_threshold_gap": -2.0,
+            "tier_tags": [],
+            "midday_status": "near_miss",
+            "midday_action": "继续观察",
+        }
+
+    def test_review_upgrade_boosts_priority(self):
+        """Upgrade adjustment → score +5, tier tag 'review_upgraded'."""
+        candidates = [self._base_candidate("002185", 53.0)]
+        adjustments = [
+            {"ticker": "002185", "adjustment": "upgrade", "priority_delta": 5, "gate_next_run": False},
+        ]
+        result = runtime.review_based_priority_boost(candidates, adjustments)
+        boosted = result[0]
+        self.assertEqual(boosted["score"], 58.0)
+        self.assertIn("review_upgraded", boosted["tier_tags"])
+        self.assertFalse(boosted.get("review_force_gate", False))
+
+    def test_review_downgrade_reduces_priority_and_forces_gate(self):
+        """Downgrade adjustment → score -5, tier tag 'review_downgraded', force gate."""
+        candidates = [self._base_candidate("000988", 58.0)]
+        adjustments = [
+            {"ticker": "000988", "adjustment": "downgrade", "priority_delta": -5, "gate_next_run": True},
+        ]
+        result = runtime.review_based_priority_boost(candidates, adjustments)
+        downgraded = result[0]
+        self.assertEqual(downgraded["score"], 53.0)
+        self.assertIn("review_downgraded", downgraded["tier_tags"])
+        self.assertTrue(downgraded.get("review_force_gate", False))
+
+
 if __name__ == "__main__":
     unittest.main()

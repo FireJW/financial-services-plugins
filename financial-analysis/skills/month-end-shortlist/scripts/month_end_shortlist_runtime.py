@@ -2397,6 +2397,56 @@ def intraday_confirmation_gate(candidate: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def review_based_priority_boost(
+    candidates: list[dict[str, Any]],
+    prior_review_adjustments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Apply priority adjustments from a prior postclose review.
+
+    For each adjustment, find the matching candidate by ticker and:
+    - Apply priority_delta to score
+    - Add tier tag ('review_upgraded' or 'review_downgraded')
+    - Set review_force_gate if gate_next_run is True
+
+    Returns a new list of (possibly modified) candidate copies.
+    """
+    if not prior_review_adjustments:
+        return list(candidates)
+
+    adj_by_ticker: dict[str, dict[str, Any]] = {}
+    for adj in prior_review_adjustments:
+        ticker = clean_text(adj.get("ticker"))
+        if ticker:
+            adj_by_ticker[ticker] = adj
+
+    result = []
+    for cand in candidates:
+        c = dict(cand)
+        ticker = clean_text(c.get("ticker"))
+        if ticker in adj_by_ticker:
+            adj = adj_by_ticker[ticker]
+            try:
+                delta = float(adj.get("priority_delta", 0))
+            except (TypeError, ValueError):
+                delta = 0.0
+            current_score = c.get("score")
+            try:
+                c["score"] = round(float(current_score) + delta, 2) if current_score not in (None, "") else current_score
+            except (TypeError, ValueError):
+                pass
+            tags = list(c.get("tier_tags") or [])
+            adjustment_type = clean_text(adj.get("adjustment"))
+            if adjustment_type == "upgrade":
+                tags.append("review_upgraded")
+            elif adjustment_type == "downgrade":
+                tags.append("review_downgraded")
+            c["tier_tags"] = tags
+            if adj.get("gate_next_run"):
+                c["review_force_gate"] = True
+        result.append(c)
+    return result
+
+
 def build_discovery_lane_summary(discovery_rows: list[dict[str, Any]]) -> dict[str, int]:
     summary = {"qualified_count": 0, "watch_count": 0, "track_count": 0}
     for item in discovery_rows:
@@ -4799,6 +4849,7 @@ for _extra in (
     "build_near_miss_candidates",
     "classify_midday_status",
     "intraday_confirmation_gate",
+    "review_based_priority_boost",
     "build_midday_action_summary",
     "build_midday_action_summary_from_top_picks",
     "build_midday_action_summary_from_result",
