@@ -296,5 +296,46 @@ class DirectionTierPromotionTests(unittest.TestCase):
         self.assertEqual(promoted_count, 2)
 
 
+class ConfirmationGateBypassTests(unittest.TestCase):
+    """Spec Section 4: confirmation gate bypass for direction-aligned candidates."""
+
+    def _base_candidate(self, **overrides):
+        base = {
+            "ticker": "300308",
+            "name": "中际旭创",
+            "keep": True,
+            "score": 58.0,
+            "keep_threshold_gap": 1.5,  # marginal — would normally trigger gate
+            "midday_status": "qualified",
+            "midday_action": "可执行",
+            "structured_catalyst_score": 15.0,
+            "execution_state": "live",
+            "hard_filter_failures": [],
+            "tier_tags": ["direction_leader"],
+            "direction_boost": {
+                "signal_strength": "high",
+                "direction_key": "optical_interconnect",
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_gate_bypass_for_direction_leader_high_signal(self):
+        """Direction leader + high signal → stays 可执行 despite marginal gap."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._base_candidate()
+        result = runtime.intraday_confirmation_gate(cand)
+        self.assertEqual(result["midday_action"], "可执行")
+
+    def test_gate_bypass_blocked_by_review_force_gate(self):
+        """review_force_gate overrides direction bypass → gate triggers."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._base_candidate(review_force_gate=True)
+        result = runtime.intraday_confirmation_gate(cand)
+        self.assertEqual(result["midday_action"], "待确认")
+
+
 if __name__ == "__main__":
     unittest.main()

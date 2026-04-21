@@ -2370,6 +2370,17 @@ def intraday_confirmation_gate(candidate: dict[str, Any]) -> dict[str, Any]:
     if action != "可执行":
         return result
 
+    # Direction bypass: leader/high_beta + high signal → skip gate
+    # Priority: review_force_gate always wins (checked first below)
+    force_gate = bool(result.get("review_force_gate"))
+    if not force_gate:
+        tags = set(result.get("tier_tags") or [])
+        direction_boost = result.get("direction_boost") if isinstance(result.get("direction_boost"), dict) else {}
+        is_direction_ref = "direction_leader" in tags or "direction_high_beta" in tags
+        is_high_signal = clean_text(direction_boost.get("signal_strength")) == "high"
+        if is_direction_ref and is_high_signal:
+            return result  # bypass gate
+
     # Check marginal conditions
     gap = result.get("keep_threshold_gap")
     try:
@@ -2384,7 +2395,7 @@ def intraday_confirmation_gate(candidate: dict[str, Any]) -> dict[str, Any]:
         catalyst_value = 0.0
 
     execution_state = clean_text(result.get("execution_state")) or infer_execution_state(result)
-    force_gate = bool(result.get("review_force_gate"))
+    # force_gate already computed above for direction bypass
 
     is_marginal_gap = gap_value <= 2.0
     is_weak_catalyst = catalyst_value < 10.0
