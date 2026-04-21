@@ -122,5 +122,38 @@ class IntradayStructureClassificationTests(unittest.TestCase):
         self.assertIn(result, ("strong_close", "fade_from_high", "weak_open_no_recovery", "range_bound"))
 
 
+    def test_fetch_intraday_bars_filters_to_trade_date(self):
+        """fetch_intraday_bars filters returned bars to the requested trade_date."""
+        from unittest.mock import patch
+        from tradingagents_eastmoney_market import fetch_intraday_bars
+
+        mock_payload = {
+            "data": {
+                "klines": [
+                    "2026-04-18 14:45,10.0,10.1,10.2,9.9,1000,10050.0,0.5,1.0,0.2,0.1",
+                    "2026-04-20 09:30,10.5,10.6,10.7,10.4,2000,21200.0,0.5,1.0,0.2,0.1",
+                    "2026-04-20 09:45,10.6,10.7,10.8,10.5,1500,16050.0,0.5,1.0,0.2,0.1",
+                ]
+            }
+        }
+
+        def mock_fetcher(params, max_age, env):
+            return mock_payload
+
+        bars = fetch_intraday_bars("000988.SZ", "2026-04-20", fetcher=mock_fetcher)
+        self.assertEqual(len(bars), 2)
+        self.assertTrue(all(b["timestamp"].startswith("2026-04-20") for b in bars))
+
+    def test_fetch_intraday_bars_raises_on_empty(self):
+        """fetch_intraday_bars raises RuntimeError when no bars match trade_date."""
+        from tradingagents_eastmoney_market import fetch_intraday_bars
+
+        def mock_fetcher(params, max_age, env):
+            return {"data": {"klines": []}}
+
+        with self.assertRaises(RuntimeError):
+            fetch_intraday_bars("000988.SZ", "2026-04-20", fetcher=mock_fetcher)
+
+
 if __name__ == "__main__":
     unittest.main()

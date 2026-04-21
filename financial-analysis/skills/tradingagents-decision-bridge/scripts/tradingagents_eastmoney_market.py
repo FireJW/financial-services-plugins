@@ -411,3 +411,66 @@ def classify_intraday_structure(bars_15min: list[dict]) -> str:
         return "range_bound"
 
     return "range_bound"
+
+
+def _parse_intraday_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse Eastmoney kline payload into intraday bar dicts with full timestamp."""
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return []
+    klines = data.get("klines") or []
+    rows: list[dict[str, Any]] = []
+    for item in klines:
+        parts = [clean_text(part) for part in str(item or "").split(",")]
+        if len(parts) < 7:
+            continue
+        rows.append(
+            {
+                "timestamp": clean_text(parts[0]),
+                "open": to_float(parts[1]),
+                "close": to_float(parts[2]),
+                "high": to_float(parts[3]),
+                "low": to_float(parts[4]),
+                "volume": to_float(parts[5]),
+                "amount": to_float(parts[6]),
+            }
+        )
+    return rows
+
+
+def fetch_intraday_bars(
+    ticker: str,
+    trade_date: str,
+    *,
+    klt: int = 104,
+    fetcher: JsonFetcher | None = None,
+    env: dict[str, str] | None = None,
+) -> list[dict]:
+    """Fetch intraday bars (default 15min, klt=104) for a single trade_date.
+
+    Returns list[dict] with keys: timestamp, open, close, high, low, volume, amount.
+    Filters to bars whose timestamp starts with trade_date.
+    Raises RuntimeError if no bars match.
+    """
+    if fetcher is None:
+        fetcher = eastmoney_api_request
+    symbol = normalize_eastmoney_symbol(ticker)
+    payload = fetcher(
+        {
+            "secid": eastmoney_secid(symbol),
+            "beg": format_date_yyyymmdd(trade_date),
+            "end": format_date_yyyymmdd(trade_date),
+            "klt": str(klt),
+        },
+        EASTMONEY_CACHE_MAX_AGE_SECONDS,
+        env,
+    )
+    rows = _parse_intraday_items(payload)
+    if not isinstance(rows, list):
+        rows = []
+    # Filter to requested trade_date (Eastmoney may return adjacent days)
+    date_prefix = trade_date[:10]
+    filtered = [r for r in rows if str(r.get("timestamp", "")).startswith(date_prefix)]
+    if not filtered:
+        raise RuntimeError(f"No Eastmoney intraday bars for `{symbol}` on {trade_date}.")
+    return filtered

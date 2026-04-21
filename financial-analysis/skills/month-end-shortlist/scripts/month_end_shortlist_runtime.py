@@ -1376,6 +1376,50 @@ def eastmoney_cached_bars_for_candidate(
     return rows if isinstance(rows, list) else []
 
 
+def eastmoney_cached_intraday_bars_for_candidate(
+    ticker: str,
+    trade_date: str,
+    klt: int = 104,
+) -> list[dict[str, Any]]:
+    """Cache-first intraday bars fetch, mirroring eastmoney_cached_bars_for_candidate."""
+    from tradingagents_eastmoney_market import (
+        EASTMONEY_DEFAULT_UT,
+        _parse_intraday_items,
+        cache_path,
+        eastmoney_secid,
+        format_date_yyyymmdd,
+    )
+
+    normalized_ticker = clean_text(ticker)
+    normalized_date = clean_text(trade_date)[:10]
+    if not normalized_ticker or not normalized_date:
+        return []
+    query = {
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+        "klt": str(klt),
+        "fqt": "0",
+        "lmt": "10000",
+        "ut": EASTMONEY_DEFAULT_UT,
+        "secid": eastmoney_secid(normalized_ticker),
+        "beg": format_date_yyyymmdd(normalized_date),
+        "end": format_date_yyyymmdd(normalized_date),
+    }
+    cache_name = f"kline-{json.dumps(query, ensure_ascii=True, sort_keys=True)}.json"
+    path = cache_path(cache_name)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    rows = _parse_intraday_items(payload)
+    if not isinstance(rows, list):
+        return []
+    date_prefix = normalized_date[:10]
+    return [r for r in rows if str(r.get("timestamp", "")).startswith(date_prefix)]
+
+
 def attach_cache_baseline_metadata(
     result: dict[str, Any],
     candidates: list[dict[str, Any]],
@@ -4693,6 +4737,7 @@ for _extra in (
     "choose_eastmoney_cache_recovery_mode",
     "build_bars_cache_rescue_candidate",
     "eastmoney_cached_bars_for_candidate",
+    "eastmoney_cached_intraday_bars_for_candidate",
     "last_cached_trade_date_from_row_sets",
     "resolve_cache_baseline_metadata",
     "attach_cache_baseline_metadata",
