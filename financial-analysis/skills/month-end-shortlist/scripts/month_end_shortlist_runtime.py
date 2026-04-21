@@ -2615,6 +2615,103 @@ def direction_alignment_boost(
     return result
 
 
+def direction_tier_promotion(
+    tiered_candidates: dict[str, list[dict[str, Any]]],
+    direction_reference_map: list[dict[str, Any]],
+    weekend_market_candidate: dict[str, Any] | None,
+    *,
+    direction_momentum: list[dict[str, Any]] | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Promote direction-aligned candidates between tiers.
+
+    Only when signal_strength == "high":
+    - T2 leader/high_beta → T1 (if T1 < 10)
+    - T3 leader → T2 (if T2 < 5)
+    Max 2 promotions per run.
+    Momentum "caution" disables promotion for that direction.
+    """
+    if not weekend_market_candidate or not isinstance(weekend_market_candidate, dict):
+        return dict(tiered_candidates)
+    signal_strength = clean_text(weekend_market_candidate.get("signal_strength"))
+    if signal_strength != "high":
+        return dict(tiered_candidates)
+
+    # Build momentum caution set
+    caution_keys: set[str] = set()
+    for m in (direction_momentum or []):
+        if clean_text(m.get("momentum_signal")) == "caution":
+            caution_keys.add(clean_text(m.get("direction_key")))
+
+    # Build ticker→direction_key lookup
+    ticker_to_key: dict[str, str] = {}
+    for entry in direction_reference_map:
+        dk = clean_text(entry.get("direction_key"))
+        for item in entry.get("leaders", []):
+            t = clean_text(item.get("ticker"))
+            if t:
+                ticker_to_key[t] = dk
+        for item in entry.get("high_beta_names", []):
+            t = clean_text(item.get("ticker"))
+            if t and t not in ticker_to_key:
+                ticker_to_key[t] = dk
+
+    result = {k: list(v) for k, v in tiered_candidates.items()}
+    promotions = 0
+    max_promotions = 2
+
+    # T2 → T1
+    if promotions < max_promotions:
+        remaining_t2 = []
+        for c in result.get("T2", []):
+            tags = set(c.get("tier_tags") or [])
+            ticker = clean_text(c.get("ticker"))
+            dk = ticker_to_key.get(ticker, "")
+            is_direction = "direction_leader" in tags or "direction_high_beta" in tags
+            if (
+                is_direction
+                and promotions < max_promotions
+                and len(result.get("T1", [])) < TIER_CAPS["T1"]
+                and dk not in caution_keys
+            ):
+                promoted = dict(c)
+                promoted_tags = list(promoted.get("tier_tags") or [])
+                promoted_tags.append("direction_promoted")
+                promoted["tier_tags"] = promoted_tags
+                promoted["wrapper_tier"] = "T1"
+                result.setdefault("T1", []).append(promoted)
+                promotions += 1
+            else:
+                remaining_t2.append(c)
+        result["T2"] = remaining_t2
+
+    # T3 → T2 (leaders only)
+    if promotions < max_promotions:
+        remaining_t3 = []
+        for c in result.get("T3", []):
+            tags = set(c.get("tier_tags") or [])
+            ticker = clean_text(c.get("ticker"))
+            dk = ticker_to_key.get(ticker, "")
+            is_leader = "direction_leader" in tags
+            if (
+                is_leader
+                and promotions < max_promotions
+                and len(result.get("T2", [])) < TIER_CAPS["T2"]
+                and dk not in caution_keys
+            ):
+                promoted = dict(c)
+                promoted_tags = list(promoted.get("tier_tags") or [])
+                promoted_tags.append("direction_promoted")
+                promoted["tier_tags"] = promoted_tags
+                promoted["wrapper_tier"] = "T2"
+                result.setdefault("T2", []).append(promoted)
+                promotions += 1
+            else:
+                remaining_t3.append(c)
+        result["T3"] = remaining_t3
+
+    return result
+
+
 def build_discovery_lane_summary(discovery_rows: list[dict[str, Any]]) -> dict[str, int]:
     summary = {"qualified_count": 0, "watch_count": 0, "track_count": 0}
     for item in discovery_rows:
@@ -5075,6 +5172,7 @@ for _extra in (
     "default_market_strength_universe_fetcher",
     "cross_check_direction_tickers",
     "direction_alignment_boost",
+    "direction_tier_promotion",
 ):
     if _extra not in __all__:
         __all__.append(_extra)

@@ -218,5 +218,83 @@ class DirectionAlignmentBoostTests(unittest.TestCase):
         self.assertNotIn("direction_boost", result[0])
 
 
+class DirectionTierPromotionTests(unittest.TestCase):
+    """Spec Section 3: direction-based tier promotion."""
+
+    def _make_weekend_candidate(self, signal_strength="high"):
+        return {
+            "candidate_topics": [{"topic_name": "optical_interconnect", "topic_label": "光通信 / 光模块"}],
+            "signal_strength": signal_strength,
+            "status": "candidate_only",
+        }
+
+    def _make_direction_map(self):
+        return [
+            {
+                "direction_key": "optical_interconnect",
+                "direction_label": "光通信 / 光模块",
+                "leaders": [{"ticker": "300308", "name": "中际旭创", "in_universe": True}],
+                "high_beta_names": [{"ticker": "300394", "name": "天孚通信", "in_universe": True}],
+                "mapping_note": "Tickers resolved at build time.",
+            }
+        ]
+
+    def _make_tiered(self, t1_count=3, t2_count=2, t3_count=2):
+        tiers = {"T1": [], "T2": [], "T3": [], "T4": []}
+        for i in range(t1_count):
+            tiers["T1"].append({"ticker": f"T1_{i:03d}", "name": f"T1股{i}", "tier_tags": [], "wrapper_tier": "T1"})
+        for i in range(t2_count):
+            tiers["T2"].append({"ticker": f"T2_{i:03d}", "name": f"T2股{i}", "tier_tags": [], "wrapper_tier": "T2"})
+        for i in range(t3_count):
+            tiers["T3"].append({"ticker": f"T3_{i:03d}", "name": f"T3股{i}", "tier_tags": [], "wrapper_tier": "T3"})
+        return tiers
+
+    def test_tier_promotion_t2_to_t1_leader(self):
+        """Leader in T2 promoted to T1 when T1 < 10."""
+        import month_end_shortlist_runtime as runtime
+
+        tiers = self._make_tiered(t1_count=3, t2_count=2)
+        tiers["T2"].append({"ticker": "300308", "name": "中际旭创", "tier_tags": ["direction_leader"], "wrapper_tier": "T2"})
+        result = runtime.direction_tier_promotion(tiers, self._make_direction_map(), self._make_weekend_candidate())
+        t1_tickers = [c["ticker"] for c in result["T1"]]
+        self.assertIn("300308", t1_tickers)
+        promoted = [c for c in result["T1"] if c["ticker"] == "300308"][0]
+        self.assertIn("direction_promoted", promoted["tier_tags"])
+
+    def test_tier_promotion_respects_cap(self):
+        """No promotion when T1 is full (10)."""
+        import month_end_shortlist_runtime as runtime
+
+        tiers = self._make_tiered(t1_count=10, t2_count=2)
+        tiers["T2"].append({"ticker": "300308", "name": "中际旭创", "tier_tags": ["direction_leader"], "wrapper_tier": "T2"})
+        result = runtime.direction_tier_promotion(tiers, self._make_direction_map(), self._make_weekend_candidate())
+        t1_tickers = [c["ticker"] for c in result["T1"]]
+        self.assertNotIn("300308", t1_tickers)
+
+    def test_tier_promotion_max_2_per_run(self):
+        """Third promotion blocked by max-2 cap."""
+        import month_end_shortlist_runtime as runtime
+
+        tiers = self._make_tiered(t1_count=3, t2_count=0)
+        for i, ticker in enumerate(["300308", "300394", "300999"]):
+            tiers["T2"].append({"ticker": ticker, "name": f"Stock{i}", "tier_tags": ["direction_leader"], "wrapper_tier": "T2"})
+        drm = [
+            {
+                "direction_key": "optical_interconnect",
+                "direction_label": "光通信 / 光模块",
+                "leaders": [
+                    {"ticker": "300308", "name": "A", "in_universe": True},
+                    {"ticker": "300394", "name": "B", "in_universe": True},
+                    {"ticker": "300999", "name": "C", "in_universe": True},
+                ],
+                "high_beta_names": [],
+                "mapping_note": "Tickers resolved at build time.",
+            }
+        ]
+        result = runtime.direction_tier_promotion(tiers, drm, self._make_weekend_candidate())
+        promoted_count = sum(1 for c in result["T1"] if "direction_promoted" in c.get("tier_tags", []))
+        self.assertEqual(promoted_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
