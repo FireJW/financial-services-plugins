@@ -32,6 +32,7 @@ from earnings_momentum_discovery import (
 from weekend_market_candidate_runtime import (
     build_weekend_market_candidate,
     normalize_weekend_market_candidate_input,
+    resolve_direction_tickers,
 )
 
 
@@ -4399,6 +4400,9 @@ def enrich_track_result(
     *,
     track_name: str = "",
     track_config: dict[str, Any] | None = None,
+    direction_reference_map: list[dict[str, Any]] | None = None,
+    weekend_market_candidate: dict[str, Any] | None = None,
+    prior_review_adjustments: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Enrich a single track's compiled-runtime result.
 
@@ -4517,6 +4521,20 @@ def enrich_track_result(
         filter_summary["kept_count"] = len(top_picks)
         filter_summary["top_pick_count"] = len(top_picks)
         enriched["filter_summary"] = filter_summary
+        # Direction alignment boost (after review_based_priority_boost, before assign_tiers)
+        if direction_reference_map and weekend_market_candidate:
+            direction_momentum = None
+            if prior_review_adjustments and isinstance(prior_review_adjustments, list):
+                # Look for direction_momentum in the review data
+                for adj in prior_review_adjustments:
+                    if isinstance(adj, dict) and "direction_momentum" in adj:
+                        direction_momentum = adj["direction_momentum"]
+                        break
+            top_picks = direction_alignment_boost(
+                top_picks, direction_reference_map, weekend_market_candidate,
+                direction_momentum=direction_momentum,
+            )
+            enriched["top_picks"] = top_picks
         near_miss_for_tiers = enriched.get("near_miss_candidates", [])
         # Discovery results are empty at track level — merged later
         discovery_results: dict[str, list[dict[str, Any]]] = {"qualified": [], "watch": [], "track": []}
@@ -4531,6 +4549,12 @@ def enrich_track_result(
             discovery_results,
             keep_threshold,
         )
+        # Direction tier promotion (after assign_tiers)
+        if direction_reference_map and weekend_market_candidate:
+            tiers = direction_tier_promotion(
+                tiers, direction_reference_map, weekend_market_candidate,
+                direction_momentum=direction_momentum if 'direction_momentum' in dir() else None,
+            )
         rescued_by_ticker = {
             clean_text(item.get("ticker")): item
             for item in rescued_fallback_rows
@@ -5029,7 +5053,7 @@ def run_month_end_shortlist(
             if isinstance(prepared_payload.get("weekend_market_candidate_input"), dict)
             else None
         )
-        prepared_weekend_market_candidate, _ = build_weekend_market_candidate(
+        prepared_weekend_market_candidate, prepared_direction_ref_map = build_weekend_market_candidate(
             weekend_market_candidate_input
         )
         active_setup_themes = resolve_setup_launch_theme_pool(
@@ -5039,6 +5063,8 @@ def run_month_end_shortlist(
 
         # --- Fetch full universe once, then split by board ---
         full_universe = universe_fetcher(prepared_payload)
+        if prepared_direction_ref_map:
+            prepared_direction_ref_map = cross_check_direction_tickers(prepared_direction_ref_map, full_universe)
         request_tickers = {clean_text(row.get("ticker")) for row in request_market_strength if clean_text(row.get("ticker"))}
         request_tickers.update(
             clean_text(row.get("ticker"))
@@ -5140,6 +5166,8 @@ def run_month_end_shortlist(
                 track_assessed_log,
                 track_name=track_name,
                 track_config=track_cfg,
+                direction_reference_map=prepared_direction_ref_map if prepared_direction_ref_map else None,
+                weekend_market_candidate=prepared_weekend_market_candidate,
             )
             track_results[track_name] = enriched
             all_assessed.extend(track_assessed_log)
