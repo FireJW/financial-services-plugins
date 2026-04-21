@@ -36,6 +36,16 @@ plugin-name/
 2. Test commands with `/plugin:command-name` syntax
 3. Skills are invoked automatically when their trigger conditions match
 
+## Current Status and Direct Usage
+
+Before choosing a workflow in this repo, read:
+
+- `docs/superpowers/notes/2026-04-21-claude-status-and-direct-usage.md`
+
+That note records the currently observed branch/worktree state and the fastest
+native entrypoints for hot-topic discovery, news/X indexing, article workflow,
+and publishing work.
+
 ## Capability-First Routing
 
 Before using generic browsing, web search, or ad hoc scraping, always route through
