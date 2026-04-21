@@ -2,6 +2,40 @@
 
 Use this file before improvising a new workflow.
 
+## Native Retrieval Fast Map
+
+Generic web search and public scraping are fallback-only when one of the
+following native routes fits the task.
+
+- Multi-channel discovery breadth, upstream augmentation, or Agent Reach import
+  - Primary path: `financial-analysis/commands/agent-reach-bridge.md`
+  - Fallback rule: use web search only if Agent Reach is unavailable or the
+    needed source is outside the bridgeable channels
+- Fast current-state note with freshness windows and claim ledger
+  - Primary path: `financial-analysis/commands/news-index.md`
+  - Fallback rule: use web search only if native retrieval cannot cover the
+    required source set
+- X / Twitter threads, timestamps, screenshots, or reusable evidence packs
+  - Primary path: `financial-analysis/commands/x-index.md`
+  - Fallback rule: use public X scraping only after native signed-session paths
+    are unavailable
+- Authenticated or dynamic source capture
+  - Primary path: `financial-analysis/commands/opencli-index.md`
+  - Fallback rule: use manual browsing only if the page cannot be captured
+    through OpenCLI or a stronger native route exists
+- Topic ranking before drafting
+  - Primary path: `financial-analysis/commands/hot-topics.md`
+  - Fallback rule: use generic search only if the source mix is outside the
+    configured discovery surface
+- End-to-end article pipeline
+  - Primary path: `financial-analysis/commands/article-workflow.md`
+  - Fallback rule: use ad hoc browsing only when a required upstream source is
+    not reachable through `news-index`, `x-index`, `agent-reach-bridge`, or
+    `opencli-index`
+
+If a fallback happens, record which native route was checked first and why it
+was insufficient.
+
 ## X post evidence extraction
 
 - Trigger: user asks for X thread evidence, timestamps, screenshots, or original-post reconstruction

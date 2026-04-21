@@ -46,6 +46,42 @@ That note records the currently observed branch/worktree state and the fastest
 native entrypoints for hot-topic discovery, news/X indexing, article workflow,
 and publishing work.
 
+## Native-First Retrieval Contract
+
+Before using generic web search, public-page scraping, or ad hoc browsing for a
+fresh-information task:
+
+1. check `routing-index.md`
+2. match the task to a native command or skill
+3. use the native route first if one exists
+
+Default routing examples:
+
+- broader multi-channel discovery or upstream augmentation -> `agent-reach-bridge`
+- fast current-state note -> `news-index`
+- X / Twitter evidence -> `x-index`
+- authenticated or dynamic page capture -> `opencli-index`
+- topic ranking before drafting -> `hot-topics`
+- end-to-end content pipeline -> `article-workflow`
+
+Web search is fallback-only unless:
+
+- no native route exists
+- the native route cannot reach the needed source
+- the user explicitly asks for web-first collection
+
+If fallback is necessary, say which native route was checked and why it was not
+enough.
+
+Phrase-match shortcuts:
+
+- "今天有什么值得写" / "先排热点优先级" -> `hot-topics`
+- "给我一个当前态判断" / "最新进展到底怎样" -> `news-index`
+- "整理这个 X thread 的证据" -> `x-index`
+- "把 Agent Reach 的发现并进当前判断" -> `agent-reach-bridge`
+- "这个登录态或动态页面抓一下" -> `opencli-index`
+- "直接给我完整成文流程" -> `article-workflow`
+
 ## Capability-First Routing
 
 Before using generic browsing, web search, or ad hoc scraping, always route through
