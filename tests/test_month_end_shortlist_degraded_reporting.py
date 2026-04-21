@@ -1706,7 +1706,8 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
             chain_entry=None,
         )
         self.assertEqual(card["action_label"], "继续观察（low-confidence fallback）")
-        self.assertIn("数据路径降级：Eastmoney cache only", card["operation_reminder"])
+        self.assertIn("数据状态：低置信度 fallback", card["operation_reminder"])
+        self.assertIn("数据路径：cache baseline only", card["operation_reminder"])
 
     def test_prune_rescued_blocked_candidates_removes_cache_rescues_from_blocked_wall(self) -> None:
         enriched = {
@@ -1739,6 +1740,88 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertEqual(pruned["filter_summary"]["bars_fetch_failed_tickers"], [])
         self.assertEqual(pruned["blocked_candidates"], [])
         self.assertNotIn("## Blocked Candidates", pruned["report_markdown"])
+
+
+    def test_build_bars_source_summary_counts_live_fresh_stale_and_blocked(self) -> None:
+        result = {
+            "top_picks": [
+                {"ticker": "000001.SZ", "name": "平安银行", "score": 82.0},
+                {"ticker": "002384.SZ", "name": "东山精密", "score": 79.0, "bars_source": "eastmoney_cache"},
+            ],
+            "tier_output": {
+                "T3": [
+                    {
+                        "ticker": "601975.SS",
+                        "name": "招商南油",
+                        "score": 60.0,
+                        "bars_source": "eastmoney_cache",
+                        "fallback_cache_only": True,
+                        "tier_tags": ["low_confidence_fallback", "fallback_cache_only"],
+                    }
+                ]
+            },
+            "diagnostic_scorecard": [
+                {
+                    "ticker": "600123.SS",
+                    "name": "兰花科创",
+                    "score": 0.0,
+                    "midday_status": "blocked",
+                    "hard_filter_failures": ["bars_fetch_failed"],
+                }
+            ],
+        }
+
+        summary = module_under_test.build_bars_source_summary(result)
+
+        self.assertEqual(summary["live_count"], 1)
+        self.assertEqual(summary["fresh_cache_count"], 1)
+        self.assertEqual(summary["stale_cache_count"], 1)
+        self.assertEqual(summary["blocked_count"], 1)
+
+    def test_report_includes_execution_state_summary_and_preheat_hint(self) -> None:
+        result = {
+            "filter_summary": {
+                "cache_baseline_trade_date": "2026-04-18",
+                "cache_baseline_only": True,
+                "live_supplement_status": "unavailable",
+                "bars_source_summary": {
+                    "live_count": 1,
+                    "fresh_cache_count": 2,
+                    "stale_cache_count": 1,
+                    "blocked_count": 2,
+                },
+            },
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-20\n",
+            "top_picks": [],
+            "dropped": [],
+        }
+
+        enriched = module_under_test.enrich_degraded_live_result(result, [])
+
+        self.assertIn("执行闭环：live=1，fresh_cache=2，stale_cache=1，blocked=2", enriched["report_markdown"])
+        self.assertIn("preheat_eastmoney_cache.py", enriched["report_markdown"])
+
+    def test_decision_flow_marks_stale_cache_rescue_with_spec_labels(self) -> None:
+        card = module_under_test.build_decision_flow_card(
+            {
+                "ticker": "601975.SS",
+                "name": "招商南油",
+                "action": "继续观察",
+                "score": 60.0,
+                "keep_threshold_gap": -10.0,
+                "execution_state": "stale_cache",
+                "bars_source": "eastmoney_cache",
+                "tier_tags": ["low_confidence_fallback", "fallback_cache_only"],
+                "fallback_support_reason": "structured_catalyst",
+            },
+            keep_threshold=70.0,
+            event_card=None,
+            chain_entry=None,
+        )
+
+        self.assertEqual(card["action_label"], "继续观察（low-confidence fallback）")
+        self.assertIn("数据状态：低置信度 fallback", card["operation_reminder"])
+        self.assertIn("数据路径：cache baseline only", card["operation_reminder"])
 
 
 if __name__ == "__main__":

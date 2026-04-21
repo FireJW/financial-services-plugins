@@ -1411,18 +1411,64 @@ def attach_cache_baseline_metadata(
     return enriched
 
 
+def build_bars_source_summary(result: dict[str, Any]) -> dict[str, int]:
+    decision_factors = result.get("decision_factors")
+    if not isinstance(decision_factors, dict):
+        decision_factors = build_decision_factors_from_result(result)
+
+    summary = {
+        "live_count": 0,
+        "fresh_cache_count": 0,
+        "stale_cache_count": 0,
+        "blocked_count": 0,
+    }
+    seen: set[str] = set()
+    for section in ("qualified", "near_miss", "blocked"):
+        for item in decision_factors.get(section, []):
+            if not isinstance(item, dict):
+                continue
+            ticker = clean_text(item.get("ticker"))
+            if not ticker or ticker in seen:
+                continue
+            seen.add(ticker)
+            state = clean_text(item.get("execution_state")) or infer_execution_state(item)
+            if state == "fresh_cache":
+                summary["fresh_cache_count"] += 1
+            elif state == "stale_cache":
+                summary["stale_cache_count"] += 1
+            elif state == "blocked":
+                summary["blocked_count"] += 1
+            else:
+                summary["live_count"] += 1
+    return summary
+
+
 def build_cache_baseline_report_lines(result: dict[str, Any]) -> list[str]:
     summary = dict(result.get("filter_summary") or {})
     baseline_trade_date = clean_text(summary.get("cache_baseline_trade_date"))
-    if not baseline_trade_date:
-        return []
-
-    lines = [f"- 数据基线：最近交易日盘后缓存（{baseline_trade_date}）"]
+    lines: list[str] = []
+    if baseline_trade_date:
+        lines.append(f"- 数据基线：最近交易日盘后缓存（{baseline_trade_date}）")
     status = clean_text(summary.get("live_supplement_status"))
     if status == "unavailable":
         lines.append("- 实时补充：不可用，沿用缓存基线")
     elif status == "updated":
         lines.append("- 实时补充：已更新部分数据")
+
+    bars_source_summary = summary.get("bars_source_summary") if isinstance(summary.get("bars_source_summary"), dict) else {}
+    if bars_source_summary:
+        lines.append(
+            "- 执行闭环：live={live_count}，fresh_cache={fresh_cache_count}，stale_cache={stale_cache_count}，blocked={blocked_count}".format(
+                live_count=int(bars_source_summary.get("live_count") or 0),
+                fresh_cache_count=int(bars_source_summary.get("fresh_cache_count") or 0),
+                stale_cache_count=int(bars_source_summary.get("stale_cache_count") or 0),
+                blocked_count=int(bars_source_summary.get("blocked_count") or 0),
+            )
+        )
+        if int(bars_source_summary.get("blocked_count") or 0) > 0:
+            lines.append("- 缓存覆盖偏薄：可先运行 `preheat_eastmoney_cache.py` 预热后再重试 shortlist。")
+    if not lines:
+        return []
     return lines
 
 
@@ -2713,6 +2759,7 @@ def build_decision_factor_entry(candidate: dict[str, Any], action: str) -> dict[
         "fallback_snapshot_only": bool(candidate.get("fallback_snapshot_only")),
         "fallback_cache_only": bool(candidate.get("fallback_cache_only")),
         "bars_source": clean_text(candidate.get("bars_source")),
+        "execution_state": clean_text(candidate.get("execution_state")) or infer_execution_state(candidate),
     }
 
 
@@ -2925,11 +2972,17 @@ def build_decision_flow_card(
     operation_parts = [
         clean_text(event_context.get("trading_profile_usage")) or clean_text(card.get("trade_layer_summary")) or "先等更多确认。",
     ]
-    if is_fallback:
-        if "fallback_cache_only" in tier_tags or card.get("fallback_cache_only"):
-            operation_parts.append("数据路径降级：Eastmoney cache only")
-        else:
-            operation_parts.append("数据路径降级：local market snapshot only")
+    execution_state = clean_text(card.get("execution_state")) or infer_execution_state(card)
+    if execution_state == "stale_cache":
+        operation_parts.append("数据状态：低置信度 fallback")
+        operation_parts.append("数据路径：cache baseline only")
+        fallback_reason = clean_text(card.get("fallback_support_reason"))
+        if fallback_reason:
+            operation_parts.append(f"保留原因：{fallback_reason}")
+    elif execution_state == "fresh_cache":
+        operation_parts.append("数据来源：Eastmoney cache")
+    elif is_fallback:
+        operation_parts.append("数据路径降级：local market snapshot only")
         fallback_reason = clean_text(card.get("fallback_support_reason"))
         if fallback_reason:
             operation_parts.append(f"保留原因：{fallback_reason}")
@@ -4647,6 +4700,7 @@ for _extra in (
     "render_blocked_candidates_section",
     "replace_blocked_candidates_section",
     "prune_rescued_blocked_candidates",
+    "build_bars_source_summary",
     "enrich_live_result_reporting",
     "build_diagnostic_scorecard_entry",
     "apply_board_threshold_overrides",
