@@ -36,6 +36,7 @@ plugin-name/
 2. Test commands with `/plugin:command-name` syntax
 3. Skills are invoked automatically when their trigger conditions match
 
+<!-- codex:native-routing:start -->
 ## Current Status and Direct Usage
 
 Before choosing a workflow in this repo, read:
@@ -43,8 +44,8 @@ Before choosing a workflow in this repo, read:
 - `docs/superpowers/notes/2026-04-21-claude-status-and-direct-usage.md`
 
 That note records the currently observed branch/worktree state and the fastest
-native entrypoints for hot-topic discovery, news/X indexing, article workflow,
-and publishing work.
+native entrypoints for shortlist, cache-preheat, macro-health, and X-style
+assisted shortlist work.
 
 ## Native-First Retrieval Contract
 
@@ -63,6 +64,7 @@ Default routing examples:
 - authenticated or dynamic page capture -> `opencli-index`
 - topic ranking before drafting -> `hot-topics`
 - end-to-end content pipeline -> `article-workflow`
+- A-share shortlist generation -> `month-end-shortlist`
 
 Web search is fallback-only unless:
 
@@ -75,12 +77,23 @@ enough.
 
 Phrase-match shortcuts:
 
-- "今天有什么值得写" / "先排热点优先级" -> `hot-topics`
+- "月底短线" / "筛一批月底最有希望涨的" -> `month-end-shortlist`
+- "给 shortlist 叠一层宏观判断" -> `macro-health-assisted-shortlist`
+- "把 X 风格偏好叠进 shortlist" -> `x-style-assisted-shortlist`
+- "先预热 Eastmoney cache" / "减少 bars_fetch_failed" -> `financial-analysis/skills/month-end-shortlist/scripts/preheat_eastmoney_cache.py`
 - "给我一个当前态判断" / "最新进展到底怎样" -> `news-index`
 - "整理这个 X thread 的证据" -> `x-index`
 - "把 Agent Reach 的发现并进当前判断" -> `agent-reach-bridge`
 - "这个登录态或动态页面抓一下" -> `opencli-index`
-- "直接给我完整成文流程" -> `article-workflow`
+
+Freshness wording guardrail:
+
+- `latest`, `today`, `recent`, `最新`, `今天`, `近期` do not automatically mean web-first
+- first check whether `month-end-shortlist`, `news-index`, `x-index`, `agent-reach-bridge`, `opencli-index`, or `hot-topics` already fit the freshness need
+- only jump to generic web search when those native freshness routes do not fit
+<!-- codex:native-routing:end -->
+
+
 
 Freshness wording guardrail:
 

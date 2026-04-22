@@ -58,6 +58,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Preheat Eastmoney cache for selected tickers.")
     parser.add_argument("--tickers", default="", help="Comma-separated ticker list.")
     parser.add_argument("--tickers-file", default="", help="Path to txt/json ticker file.")
+    parser.add_argument("--target-date", default="", help="Target date (YYYY-MM-DD). Defaults to today.")
     return parser
 
 
@@ -134,7 +135,7 @@ def main() -> int:
     tickers = unique_tickers(tickers)
     if not tickers:
         parser.error("Provide --tickers or --tickers-file.")
-    target_date = datetime.now().date().isoformat()
+    target_date = args.target_date.strip() if args.target_date.strip() else datetime.now().date().isoformat()
     results = [preheat_ticker(ticker, target_date) for ticker in tickers]
     print_results(results)
     return 0 if any(row["status"] != "failed" for row in results) else 1

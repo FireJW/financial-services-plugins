@@ -2,6 +2,7 @@
 
 Use this file before improvising a new workflow.
 
+<!-- codex:native-routing-fast-map:start -->
 ## Native Retrieval Fast Map
 
 Generic web search and public scraping are fallback-only when one of the
@@ -32,9 +33,16 @@ following native routes fits the task.
   - Fallback rule: use ad hoc browsing only when a required upstream source is
     not reachable through `news-index`, `x-index`, `agent-reach-bridge`, or
     `opencli-index`
+- A-share shortlist generation or overlay-assisted ranking
+  - Primary path: `financial-analysis/commands/month-end-shortlist.md`
+  - Fallback rule: use generic search only if the task is truly outside the
+    repo's shortlist workflow and no overlay path fits
 
 If a fallback happens, record which native route was checked first and why it
 was insufficient.
+<!-- codex:native-routing-fast-map:end -->
+
+
 
 ## X post evidence extraction
 
