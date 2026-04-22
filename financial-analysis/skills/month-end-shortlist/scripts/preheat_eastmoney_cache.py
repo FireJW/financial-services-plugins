@@ -24,7 +24,7 @@ from tradingagents_eastmoney_market import (
 )
 
 
-DEFAULT_LOOKBACK_DAYS = 120
+DEFAULT_LOOKBACK_DAYS = 420
 
 
 def unique_tickers(values: Iterable[str]) -> list[str]:

@@ -28,8 +28,9 @@ HK_QUOTE_CACHE_MAX_AGE_SECONDS = 5 * 60
 EASTMONEY_DEFAULT_UT = "fa5fd1943c7b386f172d6893dbfba10b"
 SUPPORTED_MAINLAND_SUFFIXES = {".SZ", ".SH", ".SS"}
 
-_RETRY_ATTEMPTS = 4
-_RETRY_BACKOFF_BASE = 1.5  # seconds: 1.5, 3.0, 4.5
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF_BASE = 1.0  # seconds: 1.0, 2.0
+_REQUEST_TIMEOUT = 8  # seconds per attempt
 
 JsonFetcher = Callable[[dict[str, Any], int, dict[str, str] | None], dict[str, Any]]
 
@@ -150,7 +151,7 @@ def eastmoney_api_request(params: dict[str, Any], max_age_seconds: int, env: dic
     last_error: Exception | None = None
     for attempt in range(_RETRY_ATTEMPTS):
         try:
-            with urlopen(request, timeout=20) as response:
+            with urlopen(request, timeout=_REQUEST_TIMEOUT) as response:
                 payload = parse_json_like_payload(response.read().decode("utf-8"))
             write_cached_json(path, payload)
             return payload
@@ -194,7 +195,7 @@ def eastmoney_quote_api_request(params: dict[str, Any], max_age_seconds: int, en
     last_error: Exception | None = None
     for attempt in range(_RETRY_ATTEMPTS):
         try:
-            with urlopen(request, timeout=20) as response:
+            with urlopen(request, timeout=_REQUEST_TIMEOUT) as response:
                 payload = parse_json_like_payload(response.read().decode("utf-8"))
             write_cached_json(path, payload)
             return payload
