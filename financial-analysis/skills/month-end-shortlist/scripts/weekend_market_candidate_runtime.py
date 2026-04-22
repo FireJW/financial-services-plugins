@@ -71,6 +71,11 @@ _GEOPOLITICS_TOPIC_KEYWORDS = frozenset({
 })
 _STALE_POST_DAYS_DEFAULT = 7
 _STALE_POST_DAYS_GEOPOLITICS = 3
+_HEADWIND_KEYWORDS = frozenset({
+    "通胀", "inflation", "降息推迟", "利空", "压力大",
+    "回调风险", "获利了结", "泡沫", "过热",
+    "overbought", "overheated",
+})
 
 
 def _clean_text(value: Any) -> str:
@@ -129,6 +134,14 @@ def _is_stale_post(
 
     threshold = _STALE_POST_DAYS_GEOPOLITICS if is_geopolitics else _STALE_POST_DAYS_DEFAULT
     return age_days > threshold
+
+
+def _has_headwind_keywords(text: str) -> bool:
+    """Return True if text contains any headwind/bearish keywords."""
+    normalized = _clean_text(text).lower()
+    if not normalized:
+        return False
+    return any(kw in normalized for kw in _HEADWIND_KEYWORDS)
 
 
 def _logic_level(value: int, *, high_at: int, medium_at: int = 1) -> str:
@@ -484,9 +497,11 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
     for row in live_posts:
         inferred = _infer_topics_from_text(row.get("text_blob"))
         stale = _is_stale_post(row, reference_date, inferred_topics=inferred) if reference_date else False
+        mixed = bool(inferred) and _has_headwind_keywords(row.get("text_blob", ""))
+        weight = 0 if stale else (1 if mixed else 2)
         for topic in inferred:
-            if not stale:
-                topic_counter[topic] += 2
+            if weight:
+                topic_counter[topic] += weight
             live_topic_rows.setdefault(topic, []).append(row)
 
     if not topic_counter:

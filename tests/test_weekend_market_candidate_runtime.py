@@ -343,5 +343,173 @@ class FreshnessFilterTests(unittest.TestCase):
         self.assertIn("optical_interconnect", topic_names)
 
 
+class MixedSignalDetectionTests(unittest.TestCase):
+    """Tests for mixed-signal detection in live posts (signal quality improvement #2)."""
+
+    def test_mixed_signal_post_gets_reduced_weight(self) -> None:
+        """Post with both topic keywords and headwind keywords gets weight 1 instead of 2."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "x_live_index_results": [
+                    {
+                        "x_posts": [
+                            {
+                                "post_url": "https://x.com/mixed/status/1",
+                                "author_handle": "mixed_poster",
+                                "combined_summary": "Hormuz blocked again, oil shipping rates elevated. 但油价跳涨带来通胀压力。",
+                            }
+                        ]
+                    }
+                ],
+            }
+        )
+        # oil_shipping topic inferred, but headwind "通胀" present → weight 1 instead of 2
+        # With only weight 1, score < 6, so signal_strength should be "medium" not "high"
+        topic_names = [t["topic_name"] for t in candidate["candidate_topics"]]
+        self.assertIn("oil_shipping", topic_names)
+        oil_topic = next(t for t in candidate["candidate_topics"] if t["topic_name"] == "oil_shipping")
+        self.assertEqual(oil_topic["signal_strength"], "medium")
+
+    def test_pure_bullish_post_gets_full_weight(self) -> None:
+        """Post with only topic keywords (no headwind) gets full weight 2."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "x_live_index_results": [
+                    {
+                        "x_posts": [
+                            {
+                                "post_url": "https://x.com/bull/status/1",
+                                "author_handle": "bull_poster",
+                                "combined_summary": "光通信和光模块继续发酵，光器件需求强劲。",
+                            }
+                        ]
+                    }
+                ],
+            }
+        )
+        topic_names = [t["topic_name"] for t in candidate["candidate_topics"]]
+        self.assertIn("optical_interconnect", topic_names)
+
+    def test_headwind_only_post_not_flagged_as_mixed(self) -> None:
+        """Post with only headwind keywords but no topic match should not produce topics."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "x_live_index_results": [
+                    {
+                        "x_posts": [
+                            {
+                                "post_url": "https://x.com/bear/status/1",
+                                "author_handle": "bear_poster",
+                                "combined_summary": "通胀压力持续，降息推迟预期升温。",
+                            }
+                        ]
+                    }
+                ],
+            }
+        )
+        self.assertEqual(candidate["status"], "insufficient_signal")
+
+
+class RedditSkepticalDetectionTests(unittest.TestCase):
+    """Tests for Reddit skeptical title detection (signal quality improvement #5)."""
+
+    def test_skeptical_reddit_title_gets_zero_weight(self) -> None:
+        """Reddit thread with 'why still ripping' pattern should get zero weight."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "reddit_inputs": [
+                    {
+                        "subreddit": "ValueInvesting",
+                        "thread_url": "https://reddit.com/example",
+                        "thread_summary": "why are these shipping stocks still ripping?",
+                        "theme_tags": ["oil_shipping"],
+                        "direction_hint": "confirming",
+                    }
+                ],
+            }
+        )
+        # Skeptical title → zero weight → no topic produced (only source was reddit)
+        self.assertEqual(candidate["status"], "insufficient_signal")
+
+    def test_confirming_reddit_gets_full_weight(self) -> None:
+        """Reddit thread with confirming sentiment should get full weight."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "x_seed_inputs": [
+                    {
+                        "handle": "seed",
+                        "url": "https://x.com/seed",
+                        "display_name": "seed",
+                        "tags": ["optical_interconnect"],
+                        "candidate_names": ["中际旭创"],
+                    }
+                ],
+                "reddit_inputs": [
+                    {
+                        "subreddit": "stocks",
+                        "thread_url": "https://reddit.com/example",
+                        "thread_summary": "AI networking demand still supports optics",
+                        "theme_tags": ["optical_interconnect"],
+                        "direction_hint": "confirming",
+                    }
+                ],
+            }
+        )
+        topic = candidate["candidate_topics"][0]
+        self.assertEqual(topic["ranking_logic"]["reddit_confirmation"], "high")
+
+    def test_direction_hint_questioning_overrides(self) -> None:
+        """direction_hint='questioning' should override regardless of title content."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "reddit_inputs": [
+                    {
+                        "subreddit": "stocks",
+                        "thread_url": "https://reddit.com/example",
+                        "thread_summary": "Great outlook for optics sector",
+                        "theme_tags": ["optical_interconnect"],
+                        "direction_hint": "questioning",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(candidate["status"], "insufficient_signal")
+
+    def test_reddit_confirmation_set_to_questioning(self) -> None:
+        """When only skeptical reddit exists for a topic, reddit_confirmation should be 'questioning'."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "x_seed_inputs": [
+                    {
+                        "handle": "seed",
+                        "url": "https://x.com/seed",
+                        "display_name": "seed",
+                        "tags": ["oil_shipping"],
+                        "candidate_names": ["招商南油"],
+                    },
+                    {
+                        "handle": "seed2",
+                        "url": "https://x.com/seed2",
+                        "display_name": "seed2",
+                        "tags": ["oil_shipping"],
+                        "candidate_names": ["中远海能"],
+                    },
+                ],
+                "reddit_inputs": [
+                    {
+                        "subreddit": "ValueInvesting",
+                        "thread_url": "https://reddit.com/example",
+                        "thread_summary": "why are these shipping stocks still ripping?",
+                        "theme_tags": ["oil_shipping"],
+                        "direction_hint": "confirming",
+                    }
+                ],
+            }
+        )
+        topic = next(t for t in candidate["candidate_topics"] if t["topic_name"] == "oil_shipping")
+        self.assertEqual(topic["ranking_logic"]["reddit_confirmation"], "questioning")
+        self.assertEqual(topic["ranking_logic"]["noise_or_disagreement"], "medium")
+
+
 if __name__ == "__main__":
     unittest.main()
