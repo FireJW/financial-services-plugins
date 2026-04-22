@@ -4931,6 +4931,259 @@ def compact_chinese_title(text: Any, *, limit: int = 24) -> str:
     return cleaned
 
 
+# ---------------------------------------------------------------------------
+# Title Strategy Engine — headline strategy matrix & multi-candidate scoring
+# ---------------------------------------------------------------------------
+
+HEADLINE_STRATEGIES: dict[str, dict[str, Any]] = {
+    "insight": {
+        "templates_zh": [
+            "{fact}，但{counter}",
+            "{surface}背后，{hidden}",
+            "被忽略的{data}揭示了什么",
+            "{topic}：真正值得看的不是{obvious}，而是{hidden}",
+        ],
+    },
+    "contrast": {
+        "templates_zh": [
+            "{actor_a}说{claim_a}，数据说{claim_b}",
+            "{positive}，但{negative}",
+            "{event}：谁在赢，谁在装",
+            "{topic}的两面：{side_a}与{side_b}",
+        ],
+    },
+    "decision_frame": {
+        "templates_zh": [
+            "{topic}：{n}个信号判断{question}",
+            "看懂{event}只需要盯住这{n}件事",
+            "{topic}接下来怎么走，看这{n}个变量",
+        ],
+    },
+    "urgency": {
+        "templates_zh": [
+            "刚刚，{event}",
+            "突发！{event}",
+        ],
+    },
+    "question": {
+        "templates_zh": [
+            "{topic}最大的悬念不是{obvious}，而是{hidden}",
+            "{event}，接下来最该问的问题是什么",
+        ],
+    },
+}
+
+
+def _title_strategy_brief_data(analysis_brief: dict[str, Any]) -> dict[str, Any]:
+    """Extract structured data from analysis_brief for title strategy matching."""
+    canonical = safe_list(analysis_brief.get("canonical_facts"))
+    not_proven = safe_list(analysis_brief.get("not_proven"))
+    scenarios = safe_list(analysis_brief.get("scenario_matrix"))
+    open_qs = safe_list(analysis_brief.get("open_questions")) or safe_list(
+        analysis_brief.get("open_questions_zh")
+    )
+    return {
+        "canonical": canonical,
+        "not_proven": not_proven,
+        "scenarios": scenarios,
+        "open_qs": open_qs,
+        "has_denied": any(
+            clean_text(np.get("status")) == "denied" for np in not_proven
+        ),
+        "has_unclear": any(
+            clean_text(np.get("status")) in {"unclear", "inferred"} for np in not_proven
+        ),
+    }
+
+
+def resolve_headline_strategy(
+    request: dict[str, Any],
+    analysis_brief: dict[str, Any],
+    source_summary: dict[str, Any],
+) -> str:
+    """Pick the best headline strategy based on brief content features."""
+    bd = _title_strategy_brief_data(analysis_brief)
+
+    # Explicit override from request
+    explicit = clean_text(request.get("headline_strategy"))
+    if explicit and explicit in HEADLINE_STRATEGIES:
+        return explicit
+
+    # Has contradicted facts → insight
+    if bd["canonical"] and bd["has_denied"]:
+        return "insight"
+
+    # Opposing scenarios → contrast
+    if len(bd["scenarios"]) >= 2:
+        return "contrast"
+
+    # Multiple scenarios with triggers → decision_frame
+    if len(bd["scenarios"]) >= 2 and all(
+        clean_text(s.get("trigger")) for s in bd["scenarios"]
+    ):
+        return "decision_frame"
+
+    # High-value open questions → question
+    if len(bd["open_qs"]) >= 2:
+        return "question"
+
+    # Has unclear claims → insight (show what's not settled)
+    if bd["canonical"] and bd["has_unclear"]:
+        return "insight"
+
+    # Default
+    return "insight"
+
+
+def _extract_title_slots(
+    analysis_brief: dict[str, Any],
+    source_summary: dict[str, Any],
+) -> dict[str, str]:
+    """Extract slot values for title template filling."""
+    canonical = safe_list(analysis_brief.get("canonical_facts"))
+    not_proven = safe_list(analysis_brief.get("not_proven"))
+    scenarios = safe_list(analysis_brief.get("scenario_matrix"))
+    open_qs = safe_list(analysis_brief.get("open_questions_zh")) or safe_list(
+        analysis_brief.get("open_questions")
+    )
+    topic = clean_text(source_summary.get("topic")) or clean_text(
+        analysis_brief.get("topic")
+    ) or ""
+
+    # Primary fact
+    fact = ""
+    if canonical:
+        fact = clean_text(canonical[0].get("claim_text_zh")) or clean_text(
+            canonical[0].get("claim_text")
+        ) or clean_text(canonical[0].get("claim"))
+    # Counter / not-proven
+    counter = ""
+    if not_proven:
+        counter = clean_text(not_proven[0].get("claim_text_zh")) or clean_text(
+            not_proven[0].get("claim_text")
+        ) or clean_text(not_proven[0].get("claim"))
+
+    # Scenario sides
+    side_a = clean_text(scenarios[0].get("scenario")) if scenarios else ""
+    side_b = clean_text(scenarios[1].get("scenario")) if len(scenarios) >= 2 else ""
+
+    # Open question
+    question = clean_text(open_qs[0]) if open_qs else ""
+
+    return {
+        "topic": compact_chinese_title(topic, limit=12) if has_cjk(topic) else topic[:20],
+        "fact": compact_chinese_title(fact, limit=16) if fact else "",
+        "counter": compact_chinese_title(counter, limit=16) if counter else "",
+        "surface": compact_chinese_title(fact, limit=12) if fact else "",
+        "hidden": compact_chinese_title(counter, limit=12) if counter else "",
+        "data": compact_chinese_title(fact, limit=10) if fact else "",
+        "obvious": compact_chinese_title(fact, limit=10) if fact else "",
+        "event": compact_chinese_title(topic, limit=14) if has_cjk(topic) else topic[:18],
+        "positive": compact_chinese_title(fact, limit=14) if fact else "",
+        "negative": compact_chinese_title(counter, limit=14) if counter else "",
+        "actor_a": "",
+        "claim_a": compact_chinese_title(fact, limit=10) if fact else "",
+        "claim_b": compact_chinese_title(counter, limit=10) if counter else "",
+        "side_a": compact_chinese_title(side_a, limit=10),
+        "side_b": compact_chinese_title(side_b, limit=10),
+        "n": str(min(len(scenarios), 5)) if scenarios else "3",
+        "question": compact_chinese_title(question, limit=14) if question else "真假",
+    }
+
+
+def _fill_title_template(template: str, slots: dict[str, str]) -> str:
+    """Fill a title template with slot values. Returns empty if any required slot is missing."""
+    import re as _re
+    required_keys = _re.findall(r"\{(\w+)\}", template)
+    for key in required_keys:
+        if not slots.get(key):
+            return ""
+    try:
+        return template.format(**slots)
+    except (KeyError, IndexError):
+        return ""
+
+
+def score_title_candidate(title: str, strategy: str) -> int:
+    """Score a title candidate. Higher = better."""
+    if not title:
+        return 0
+    score = 50
+
+    # Tension / contrast markers → +15
+    if any(m in title for m in ("但", "却", "不是", "而是", "为什么", "背后")):
+        score += 15
+
+    # Contains specific numbers → +10
+    import re as _re
+    if _re.search(r"\d+", title):
+        score += 10
+
+    # Optimal length 12-25 chars → +10
+    title_len = len(title)
+    if 12 <= title_len <= 25:
+        score += 10
+    elif title_len < 8 or title_len > 32:
+        score -= 10
+
+    # Question mark → +8
+    if "？" in title or "?" in title:
+        score += 8
+
+    # Strategy-specific bonuses
+    if strategy == "insight" and any(m in title for m in ("揭示", "真正", "被忽略")):
+        score += 8
+    if strategy == "contrast" and any(m in title for m in ("说", "数据", "两面")):
+        score += 8
+    if strategy == "decision_frame" and any(m in title for m in ("信号", "判断", "变量")):
+        score += 8
+
+    # Penalize pure noun stacking (no verbs/connectors)
+    if not any(v in title for v in ("是", "在", "但", "却", "为", "让", "把", "说", "看", "盯")):
+        score -= 12
+
+    return max(0, min(100, score))
+
+
+def generate_title_candidates(
+    strategy: str,
+    request: dict[str, Any],
+    analysis_brief: dict[str, Any],
+    source_summary: dict[str, Any],
+    baseline_title: str,
+) -> list[dict[str, Any]]:
+    """Generate 3-5 title candidates with strategy and score."""
+    slots = _extract_title_slots(analysis_brief, source_summary)
+    templates = HEADLINE_STRATEGIES.get(strategy, {}).get("templates_zh", [])
+    candidates: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for tpl in templates:
+        raw = _fill_title_template(tpl, slots)
+        if not raw:
+            continue
+        title = compact_chinese_title(raw, limit=30)
+        if not title or title in seen or title_has_hanging_tail(title):
+            continue
+        seen.add(title)
+        candidates.append({
+            "title": title,
+            "strategy": strategy,
+            "score": score_title_candidate(title, strategy),
+        })
+
+    # Add baseline for comparison
+    if baseline_title and baseline_title not in seen:
+        candidates.append({
+            "title": baseline_title,
+            "strategy": "baseline",
+            "score": score_title_candidate(baseline_title, "baseline"),
+        })
+
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    return candidates
+
+
 def derive_chinese_title(request: dict[str, Any], analysis_brief: dict[str, Any], source_summary: dict[str, Any]) -> str:
     if clean_text(request.get("language_mode")) != "chinese":
         return ""
@@ -4984,6 +5237,24 @@ def finalize_article_title(
                 continue
             base_title = candidate
             break
+
+    # --- Title Strategy Engine: generate & score candidates ---
+    enable_strategy = clean_text(request.get("enable_title_strategy")) != "false"
+    if enable_strategy and analysis_brief:
+        strategy = resolve_headline_strategy(request, analysis_brief, source_summary)
+        candidates = generate_title_candidates(
+            strategy, request, analysis_brief, source_summary,
+            baseline_title=base_title or title,
+        )
+        if candidates:
+            best = candidates[0]
+            baseline_score = score_title_candidate(base_title or title, "baseline")
+            # Use strategy title if it beats baseline by ≥8 points
+            if best["strategy"] != "baseline" and best["score"] >= baseline_score + 8:
+                strategy_title = best["title"]
+                if strategy_title and not title_has_hanging_tail(strategy_title):
+                    base_title = strategy_title
+
     derived = base_title
     return apply_headline_hook(derived or title, request, source_summary)
 

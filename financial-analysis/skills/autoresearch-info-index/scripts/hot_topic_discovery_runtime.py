@@ -134,11 +134,12 @@ LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS.update(
     }
 )
 DEFAULT_TOPIC_SCORE_WEIGHTS = {
-    "timeliness": 0.25,
-    "debate": 0.20,
-    "relevance": 0.25,
-    "depth": 0.15,
-    "seo": 0.15,
+    "timeliness": 0.22,
+    "debate": 0.18,
+    "relevance": 0.23,
+    "depth": 0.14,
+    "seo": 0.13,
+    "information_gap": 0.10,
 }
 POSITIVE_FEEDBACK_HARD_INDUSTRY_KEYWORDS = {
     "chip",
@@ -220,6 +221,16 @@ POSITIVE_FEEDBACK_CONTRARIAN_MARKERS = (
     "but ",
     "real moat",
     "actually",
+    "误判",
+    "被低估",
+    "被高估",
+    "反转",
+    "拐点",
+    "underestimated",
+    "overestimated",
+    "turning point",
+    "the market is wrong",
+    "consensus is",
 )
 FRESH_CATALYST_KEYWORDS = {
     "new filing",
@@ -3029,10 +3040,86 @@ def positive_feedback_topic_bonus(candidate: dict[str, Any]) -> int:
     if signals["clear_actor"]:
         bonus += 3
     if signals["contrarian_frame"]:
-        bonus += 3
+        bonus += 5  # raised from 3 to 5 for contrarian signal amplification
     if signals["china_or_market_relevance"]:
         bonus += 3
-    return min(12, bonus)
+    return min(14, bonus)
+
+
+# ---------------------------------------------------------------------------
+# Information Gap & X Author Signal — Phase 3 additions
+# ---------------------------------------------------------------------------
+
+# X watchlist authors and their focus areas.
+# Maintained in sync with x-stock-picker-style-subject-registry and author-discovery.md.
+X_WATCHLIST_AUTHORS: dict[str, dict[str, Any]] = {
+    "twikejin": {"tier": 1, "focus": ["A股", "AI基建", "光模块", "电子布"]},
+    "LinQingV": {"tier": 1, "focus": ["存储", "DRAM", "兆易创新", "长鑫"]},
+    "tuolaji2024": {"tier": 1, "focus": ["光互联", "光模块"]},
+    "dmjk001": {"tier": 2, "focus": ["光互联", "硅光", "800G", "1.6T"]},
+    "Ariston_Macro": {"tier": 1, "focus": ["宏观", "利率", "政策", "macro", "rates"]},
+    "aleabitoreddit": {"tier": 2, "focus": ["AI基建", "半导体", "AI infra", "semiconductor"]},
+    "jukan05": {"tier": 2, "focus": ["半导体供应链", "semiconductor supply"]},
+}
+
+
+def information_gap_score(candidate: dict[str, Any]) -> int:
+    """Score the information gap: high public discussion but low depth coverage."""
+    score = 20  # baseline
+
+    source_items = safe_list(candidate.get("source_items"))
+    source_count = len(source_items)
+
+    # Check for analysis-tier sources (tier 0-2)
+    has_analysis_source = any(
+        int(safe_dict(s).get("source_tier", 99) or 99) <= 2
+        for s in source_items
+        if isinstance(s, dict)
+    )
+
+    # Multi-source discussion but no deep analysis source → high gap
+    if source_count >= 3 and not has_analysis_source:
+        score += 30
+    elif source_count >= 2 and not has_analysis_source:
+        score += 20
+
+    # Social-heavy but low professional coverage → high gap
+    social_providers = {"weibo", "zhihu", "reddit"}
+    social_count = sum(
+        1 for s in source_items
+        if isinstance(s, dict) and clean_text(s.get("provider")) in social_providers
+    )
+    pro_count = source_count - social_count
+    if social_count >= 2 and pro_count <= 1:
+        score += 15
+
+    # Contradicting signals in source items → public confusion → high gap
+    has_contradiction = candidate.get("has_contradicting_signals", False)
+    if not has_contradiction:
+        # Heuristic: check if title contains contradiction markers
+        title_lower = clean_text(candidate.get("title")).lower()
+        has_contradiction = any(
+            m in title_lower for m in ("争议", "矛盾", "但", "却", "dispute", "contradiction")
+        )
+    if has_contradiction:
+        score += 15
+
+    return clamp(score, 0, 100)
+
+
+def x_author_signal_bonus(candidate: dict[str, Any]) -> int:
+    """Bonus for topics overlapping with X watchlist authors' focus areas."""
+    text = candidate_match_text(candidate).lower()
+    bonus = 0
+    matched_authors: list[str] = []
+    for author, profile in X_WATCHLIST_AUTHORS.items():
+        for focus in profile["focus"]:
+            if focus.lower() in text:
+                tier_bonus = 6 if profile["tier"] == 1 else 3
+                bonus += tier_bonus
+                matched_authors.append(author)
+                break  # each author contributes at most once
+    return min(bonus, 15)
 
 
 def candidate_source_age_minutes(candidate: dict[str, Any], analysis_time: datetime) -> list[float]:
@@ -3480,6 +3567,7 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
     relevance = relevance_score(candidate, audience_keywords, preferred_topic_keywords)
     depth = depth_score(candidate)
     seo = seo_score(candidate["title"], candidate["keywords"])
+    info_gap = information_gap_score(candidate)
     freshness_window = freshness_window_bonus(candidate, analysis_time)
     near_window_heat = near_window_heat_bonus(candidate, analysis_time)
     stale_penalty = stale_story_penalty(candidate, analysis_time)
@@ -3495,6 +3583,7 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         + relevance * weights["relevance"]
         + depth * weights["depth"]
         + seo * weights["seo"]
+        + info_gap * weights.get("information_gap", 0.10)
         + freshness_window
         + near_window_heat
         + stale_penalty
@@ -3519,12 +3608,16 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
     positive_feedback_bonus = positive_feedback_topic_bonus(candidate)
     if positive_feedback_bonus:
         total = clamp(total + positive_feedback_bonus)
+    x_author_bonus = x_author_signal_bonus(candidate)
+    if x_author_bonus:
+        total = clamp(total + x_author_bonus)
     reasons = [
         f"新鲜度 {timeliness}",
         f"讨论空间 {debate}",
         f"受众相关性 {relevance}",
         f"延展深度 {depth}",
         f"SEO 价值 {seo}",
+        f"信息差 {info_gap}",
     ]
     candidate["score_breakdown"] = {
         "timeliness": timeliness,
@@ -3532,10 +3625,12 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         "relevance": relevance,
         "depth": depth,
         "seo": seo,
+        "information_gap": info_gap,
         "freshness_window_bonus": freshness_window,
         "near_window_heat_bonus": near_window_heat,
         "stale_story_penalty": stale_penalty,
         "positive_feedback_bonus": positive_feedback_bonus,
+        "x_author_signal_bonus": x_author_bonus,
         "total_score": total,
         "weights": weights,
     }
@@ -3557,6 +3652,8 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
             + ", ".join(active_positive_feedback_signals[:3])
             + f" (+{positive_feedback_bonus})"
         )
+    if x_author_bonus:
+        reasons.append(f"x_author_signal (+{x_author_bonus})")
     if candidate.get("reddit_subreddit_count", 0) > 1:
         reasons.append(f"reddit spread {candidate['reddit_subreddit_count']} subreddits")
     if candidate.get("reddit_subreddit_kind_count", 0) > 1:

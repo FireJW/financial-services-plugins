@@ -288,6 +288,174 @@ def article_text(article_package: dict[str, Any]) -> str:
     ).lower()
 
 
+# ---------------------------------------------------------------------------
+# Depth Enhancement — evidence utilization, proportional boundaries, insight
+# ---------------------------------------------------------------------------
+
+_INSIGHT_MARKERS_ZH = (
+    "但", "却", "反而", "真正的", "被忽略", "关键不在",
+    "表面上", "实际上", "换句话说", "矛盾在于", "核心问题是",
+    "不是", "而是", "背后", "值得注意", "容易误判",
+)
+_INSIGHT_MARKERS_EN = (
+    "but", "however", "actually", "the real", "overlooked",
+    "counterintuitively", "the key issue", "what matters",
+    "not ", "rather", "behind", "misleading",
+)
+
+
+def _fact_fingerprint(fact: dict[str, Any]) -> str:
+    """Extract a short searchable fingerprint from a canonical fact."""
+    text = clean_text(fact.get("claim_text_zh")) or clean_text(
+        fact.get("claim_text")
+    ) or clean_text(fact.get("claim"))
+    if not text:
+        return ""
+    # Use first 8 meaningful chars as fingerprint
+    stripped = text.replace(" ", "").lower()
+    return stripped[:12] if len(stripped) >= 4 else stripped
+
+
+def _scenario_fingerprint(scenario: dict[str, Any]) -> str:
+    text = clean_text(scenario.get("scenario"))
+    if not text:
+        return ""
+    return text.replace(" ", "").lower()[:12]
+
+
+def _check_evidence_utilization(
+    article_text: str,
+    canonical_facts: list[dict[str, Any]],
+    scenarios: list[dict[str, Any]],
+    open_questions: list[str],
+) -> dict[str, Any]:
+    """Check whether the article uses enough of the available evidence."""
+    if not canonical_facts:
+        return {"attack_id": "shallow-evidence-utilization", "severity": "pass"}
+
+    fact_hits = sum(
+        1 for f in canonical_facts
+        if _fact_fingerprint(f) and _fact_fingerprint(f) in article_text
+    )
+    fact_ratio = fact_hits / max(len(canonical_facts), 1)
+
+    scenario_used = any(
+        _scenario_fingerprint(s) and _scenario_fingerprint(s) in article_text
+        for s in scenarios
+    ) if scenarios else True  # no scenarios = no penalty
+
+    question_used = any(
+        clean_text(q).replace(" ", "").lower()[:10] in article_text
+        for q in open_questions
+    ) if open_questions else True
+
+    severity = "pass"
+    detail_parts: list[str] = []
+    if fact_ratio < 0.4:
+        severity = "major"
+        detail_parts.append(
+            f"Only {fact_hits}/{len(canonical_facts)} confirmed facts appear in the article ({fact_ratio:.0%})."
+        )
+    if not scenario_used and len(scenarios) >= 2:
+        severity = "major" if severity == "pass" else severity
+        detail_parts.append("Scenario matrix was generated but not reflected in the article.")
+    if not question_used and len(open_questions) >= 2:
+        if severity == "pass":
+            severity = "minor"
+        detail_parts.append("Open questions were generated but none appear in the article.")
+
+    return {
+        "attack_id": "shallow-evidence-utilization",
+        "severity": severity,
+        "title": "The article underutilizes available evidence from the analysis brief.",
+        "detail": " ".join(detail_parts) if detail_parts else "Evidence utilization is adequate.",
+        "fact_utilization_ratio": round(fact_ratio, 2),
+        "scenario_used": scenario_used,
+        "question_used": question_used,
+    }
+
+
+def _check_proportional_boundaries(
+    article_text: str,
+    not_proven_claims: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Each not_proven claim should have a corresponding boundary marker."""
+    if not not_proven_claims:
+        return {"attack_id": "missing-proportional-boundaries", "severity": "pass"}
+
+    boundary_markers = [
+        "未证实", "未确认", "不明确", "推断", "尚未", "仍不足以",
+        "not proven", "unclear", "inference", "unconfirmed", "not confirmed",
+        "last public indication",
+    ]
+    marker_count = sum(article_text.count(m) for m in boundary_markers)
+    claim_count = len(not_proven_claims)
+    ratio = marker_count / max(claim_count, 1)
+
+    severity = "pass"
+    if ratio < 0.3:
+        severity = "major"
+    elif ratio < 0.5:
+        severity = "minor"
+
+    return {
+        "attack_id": "missing-proportional-boundaries",
+        "severity": severity,
+        "title": "Boundary language is not proportional to unresolved claims.",
+        "detail": (
+            f"{marker_count} boundary marker(s) found for {claim_count} unresolved claim(s) "
+            f"(ratio {ratio:.1f}). Each unresolved claim should have its own boundary marker."
+        ),
+        "boundary_ratio": round(ratio, 2),
+        "marker_count": marker_count,
+        "claim_count": claim_count,
+    }
+
+
+def _check_insight_depth(article_text: str) -> dict[str, Any]:
+    """Check whether the article contains analytical depth markers."""
+    hits = sum(1 for m in _INSIGHT_MARKERS_ZH if m in article_text)
+    hits += sum(1 for m in _INSIGHT_MARKERS_EN if m in article_text)
+
+    severity = "pass"
+    if hits == 0:
+        severity = "major"
+    elif hits < 3:
+        severity = "minor"
+
+    return {
+        "attack_id": "shallow-insight-depth",
+        "severity": severity,
+        "title": "The article lacks analytical depth markers.",
+        "detail": (
+            f"Found {hits} insight/contrast marker(s). "
+            "A deep analysis article should contain counter-intuitive insights, "
+            "causal reasoning, or explicit contrast between surface appearance and reality."
+        ),
+        "insight_marker_count": hits,
+    }
+
+
+def _run_depth_checks(
+    article_text: str,
+    analysis_brief: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Run all depth enhancement checks. Returns attack dicts for non-pass results."""
+    canonical = safe_list(analysis_brief.get("canonical_facts"))
+    not_proven = safe_list(analysis_brief.get("not_proven"))
+    scenarios = safe_list(analysis_brief.get("scenario_matrix"))
+    open_qs = clean_string_list(
+        analysis_brief.get("open_questions_zh")
+    ) or clean_string_list(analysis_brief.get("open_questions"))
+
+    checks = [
+        _check_evidence_utilization(article_text, canonical, scenarios, open_qs),
+        _check_proportional_boundaries(article_text, not_proven),
+        _check_insight_depth(article_text),
+    ]
+    return [c for c in checks if c.get("severity") != "pass"]
+
+
 def has_boundary_language(text: str) -> bool:
     markers = [
         "not proven",
@@ -484,6 +652,12 @@ def build_red_team_review(
             }
         )
 
+    # --- Depth Enhancement Checks (Phase 2) ---
+    enable_depth = clean_text(safe_dict(article_package.get("request")).get("enable_depth_checks")) != "false"
+    if enable_depth:
+        depth_attacks = _run_depth_checks(text, analysis_brief)
+        attacks.extend(depth_attacks)
+
     remaining_risks = clean_string_list(analysis_brief.get("misread_risks"))
     if thesis_unacceptable or any(item.get("severity") == "critical" for item in attacks):
         quality_gate = "block"
@@ -544,6 +718,25 @@ def rewrite_request_after_attack(request: dict[str, Any], analysis_brief: dict[s
     language_mode = rewrite_language_mode(rewritten)
 
     include_updates = localized_rewrite_instructions(language_mode, not_proven, attack_ids)
+
+    # --- Depth enhancement rewrite instructions ---
+    if "shallow-evidence-utilization" in attack_ids:
+        canonical_count = len(safe_list(analysis_brief.get("canonical_facts")))
+        if language_mode == "chinese":
+            include_updates.append(f"确保引用至少{max(canonical_count // 2, 2)}个已确认事实，并将场景分析转化为读者决策框架")
+        else:
+            include_updates.append(f"Reference at least {max(canonical_count // 2, 2)} confirmed facts and convert scenario analysis into a reader decision framework")
+    if "missing-proportional-boundaries" in attack_ids:
+        if language_mode == "chinese":
+            include_updates.append("为每个未确认声明添加明确的不确定性标记（如'未证实'、'尚未确认'）")
+        else:
+            include_updates.append("Add explicit uncertainty markers for each unresolved claim")
+    if "shallow-insight-depth" in attack_ids:
+        if language_mode == "chinese":
+            include_updates.append("文章需要至少一个反直觉洞察或因果推演，不能只是信息汇总")
+        else:
+            include_updates.append("Include at least one counter-intuitive insight or causal chain, not just information summary")
+
     rewritten["must_include"] = clean_string_list(existing_include + include_updates)
     rewritten["must_avoid"] = clean_string_list(
         existing_avoid
