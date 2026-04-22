@@ -2516,6 +2516,7 @@ def direction_alignment_boost(
     weekend_market_candidate: dict[str, Any] | None,
     *,
     direction_momentum: list[dict[str, Any]] | None = None,
+    geopolitics_overlay: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Apply two-tier direction alignment scoring to candidates.
 
@@ -2531,6 +2532,13 @@ def direction_alignment_boost(
         return [dict(c) for c in candidates]
     if not direction_reference_map:
         return [dict(c) for c in candidates]
+
+    headline_downweight = False
+    if isinstance(geopolitics_overlay, dict):
+        regime = clean_text(geopolitics_overlay.get("regime_label"))
+        headline_risk = clean_text(geopolitics_overlay.get("headline_risk"))
+        if regime in ("escalation", "whipsaw") and headline_risk == "high":
+            headline_downweight = True
 
     signal_strength = clean_text(weekend_market_candidate.get("signal_strength")) or "low"
 
@@ -2605,6 +2613,14 @@ def direction_alignment_boost(
             elif direction_role == "high_beta":
                 reference_delta = _DIRECTION_MOMENTUM_HALVED["high_beta"] if reference_delta > 0 else 0
 
+        # Headline risk downweight (same halving as caution)
+        if headline_downweight and theme_delta > 0:
+            theme_delta = min(theme_delta, _DIRECTION_MOMENTUM_HALVED["theme"])
+            if direction_role == "leader":
+                reference_delta = min(reference_delta, _DIRECTION_MOMENTUM_HALVED["leader"])
+            elif direction_role == "high_beta":
+                reference_delta = min(reference_delta, _DIRECTION_MOMENTUM_HALVED["high_beta"])
+
         total_delta = theme_delta + reference_delta
         if total_delta > 0:
             try:
@@ -2630,6 +2646,8 @@ def direction_alignment_boost(
         }
         if momentum_signal:
             c["direction_boost"]["momentum_signal"] = momentum_signal
+        if headline_downweight:
+            c["direction_boost"]["headline_downweight"] = True
 
         result.append(c)
     return result
@@ -4403,6 +4421,7 @@ def enrich_track_result(
     direction_reference_map: list[dict[str, Any]] | None = None,
     weekend_market_candidate: dict[str, Any] | None = None,
     prior_review_adjustments: list[dict[str, Any]] | None = None,
+    geopolitics_overlay: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Enrich a single track's compiled-runtime result.
 
@@ -4533,6 +4552,7 @@ def enrich_track_result(
             top_picks = direction_alignment_boost(
                 top_picks, direction_reference_map, weekend_market_candidate,
                 direction_momentum=direction_momentum,
+                geopolitics_overlay=geopolitics_overlay,
             )
             enriched["top_picks"] = top_picks
         near_miss_for_tiers = enriched.get("near_miss_candidates", [])
@@ -5168,6 +5188,7 @@ def run_month_end_shortlist(
                 track_config=track_cfg,
                 direction_reference_map=prepared_direction_ref_map if prepared_direction_ref_map else None,
                 weekend_market_candidate=prepared_weekend_market_candidate,
+                geopolitics_overlay=prepared_payload.get("macro_geopolitics_overlay"),
             )
             track_results[track_name] = enriched
             all_assessed.extend(track_assessed_log)

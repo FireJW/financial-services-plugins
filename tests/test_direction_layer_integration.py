@@ -425,5 +425,95 @@ class DecisionFlowCardDirectionTests(unittest.TestCase):
         self.assertIn("方向信号强度", card_str)
 
 
+class HeadlineRiskDownweightTests(unittest.TestCase):
+    """headline_risk=high quantitative downweight for direction boosts."""
+
+    def _make_weekend_candidate(self, signal_strength="high", status="candidate_only"):
+        return {
+            "candidate_topics": [{"topic_name": "optical_interconnect", "topic_label": "光通信 / 光模块"}],
+            "signal_strength": signal_strength,
+            "status": status,
+        }
+
+    def _make_direction_map(self, leader_ticker="300308", hb_ticker="300394"):
+        return [
+            {
+                "direction_key": "optical_interconnect",
+                "direction_label": "光通信 / 光模块",
+                "leaders": [{"ticker": leader_ticker, "name": "中际旭创", "in_universe": True}],
+                "high_beta_names": [{"ticker": hb_ticker, "name": "天孚通信", "in_universe": True}],
+                "mapping_note": "Tickers resolved at build time.",
+            }
+        ]
+
+    def _make_candidate(self, ticker="300308", score=50.0, matched_themes=None):
+        return {
+            "ticker": ticker,
+            "name": "中际旭创",
+            "score": score,
+            "adjusted_total_score": score,
+            "matched_themes": matched_themes or [],
+            "tier_tags": [],
+        }
+
+    def test_headline_risk_high_halves_direction_boost(self):
+        """escalation + headline_risk=high → leader boost 6→3."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300308", matched_themes=["optical_interconnect"])
+        overlay = {"regime_label": "escalation", "headline_risk": "high"}
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("high"),
+            geopolitics_overlay=overlay,
+        )
+        boost = result[0]["direction_boost"]
+        self.assertEqual(boost["reference_delta"], 3)  # 6 halved to 3
+        self.assertEqual(boost["theme_delta"], 1)  # 3 halved to 1
+        self.assertTrue(boost.get("headline_downweight"))
+
+    def test_headline_risk_low_no_downweight(self):
+        """escalation + headline_risk=low → full boost."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300308", matched_themes=["optical_interconnect"])
+        overlay = {"regime_label": "escalation", "headline_risk": "low"}
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("high"),
+            geopolitics_overlay=overlay,
+        )
+        boost = result[0]["direction_boost"]
+        self.assertEqual(boost["reference_delta"], 6)  # full
+        self.assertEqual(boost["theme_delta"], 3)  # full
+        self.assertNotIn("headline_downweight", boost)
+
+    def test_no_overlay_no_downweight(self):
+        """No geopolitics_overlay → full boost (backward compat)."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300308", matched_themes=["optical_interconnect"])
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("high"),
+        )
+        boost = result[0]["direction_boost"]
+        self.assertEqual(boost["reference_delta"], 6)
+        self.assertEqual(boost["theme_delta"], 3)
+        self.assertNotIn("headline_downweight", boost)
+
+    def test_whipsaw_headline_risk_high_also_halves(self):
+        """whipsaw regime + high risk → halved."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300308", matched_themes=["optical_interconnect"])
+        overlay = {"regime_label": "whipsaw", "headline_risk": "high"}
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("high"),
+            geopolitics_overlay=overlay,
+        )
+        boost = result[0]["direction_boost"]
+        self.assertEqual(boost["reference_delta"], 3)
+        self.assertEqual(boost["theme_delta"], 1)
+        self.assertTrue(boost.get("headline_downweight"))
+
+
 if __name__ == "__main__":
     unittest.main()
