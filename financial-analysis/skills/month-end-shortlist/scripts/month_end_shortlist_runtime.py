@@ -2614,8 +2614,9 @@ def direction_alignment_boost(
                 reference_delta = _DIRECTION_MOMENTUM_HALVED["high_beta"] if reference_delta > 0 else 0
 
         # Headline risk downweight (same halving as caution)
-        if headline_downweight and theme_delta > 0:
-            theme_delta = min(theme_delta, _DIRECTION_MOMENTUM_HALVED["theme"])
+        if headline_downweight:
+            if theme_delta > 0:
+                theme_delta = min(theme_delta, _DIRECTION_MOMENTUM_HALVED["theme"])
             if direction_role == "leader":
                 reference_delta = min(reference_delta, _DIRECTION_MOMENTUM_HALVED["leader"])
             elif direction_role == "high_beta":

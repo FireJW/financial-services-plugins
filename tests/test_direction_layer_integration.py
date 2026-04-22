@@ -514,6 +514,21 @@ class HeadlineRiskDownweightTests(unittest.TestCase):
         self.assertEqual(boost["theme_delta"], 1)
         self.assertTrue(boost.get("headline_downweight"))
 
+    def test_headline_downweight_applies_to_reference_only_candidate(self):
+        """Reference-only candidate (no theme match) still gets reference_delta halved."""
+        import month_end_shortlist_runtime as runtime
+
+        cand = self._make_candidate(ticker="300308", matched_themes=[])  # no theme match
+        overlay = {"regime_label": "escalation", "headline_risk": "high"}
+        result = runtime.direction_alignment_boost(
+            [cand], self._make_direction_map(), self._make_weekend_candidate("high"),
+            geopolitics_overlay=overlay,
+        )
+        boost = result[0]["direction_boost"]
+        self.assertEqual(boost["theme_delta"], 0)  # no theme match
+        self.assertEqual(boost["reference_delta"], 3)  # 6 halved to 3
+        self.assertTrue(boost.get("headline_downweight"))
+
 
 if __name__ == "__main__":
     unittest.main()
