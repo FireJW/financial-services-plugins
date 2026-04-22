@@ -144,6 +144,31 @@ def _has_headwind_keywords(text: str) -> bool:
     return any(kw in normalized for kw in _HEADWIND_KEYWORDS)
 
 
+_REDDIT_SKEPTICAL_PATTERNS = [
+    re.compile(r"why.*still", re.IGNORECASE),
+    re.compile(r"how long can.*last", re.IGNORECASE),
+    re.compile(r"overvalued|bubble|peak|overbought|顶部|见顶|泡沫", re.IGNORECASE),
+]
+
+
+def _classify_reddit_sentiment(thread_summary: str, direction_hint: str) -> str:
+    """Classify reddit thread sentiment as confirming, questioning, or neutral.
+
+    Args:
+        thread_summary: The thread title/summary text.
+        direction_hint: The direction_hint field from the reddit input.
+
+    Returns one of: 'confirming', 'questioning', 'neutral'.
+    """
+    if direction_hint == "questioning":
+        return "questioning"
+    if any(pattern.search(thread_summary) for pattern in _REDDIT_SKEPTICAL_PATTERNS):
+        return "questioning"
+    if direction_hint == "confirming":
+        return "confirming"
+    return "neutral"
+
+
 def _logic_level(value: int, *, high_at: int, medium_at: int = 1) -> str:
     if value >= high_at:
         return "high"
@@ -487,9 +512,17 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
             topic_counter[topic] += 1
             reference_candidates.setdefault(topic, []).extend(row.get("candidate_names", []))
 
+    reddit_questioning_topics: set[str] = set()
     for row in candidate_input.get("reddit_inputs", []):
+        sentiment = _classify_reddit_sentiment(
+            _clean_text(row.get("thread_summary")),
+            _clean_text(row.get("direction_hint")),
+        )
         for topic in row.get("theme_tags", []):
-            topic_counter[topic] += 1
+            if sentiment == "questioning":
+                reddit_questioning_topics.add(topic)
+            else:
+                topic_counter[topic] += 1
 
     # Derive reference_date from candidate_input or default to empty (no filtering)
     reference_date = _clean_text(candidate_input.get("reference_date"))
@@ -527,7 +560,15 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
     for priority_rank, (topic_name, topic_score) in enumerate(top_topics, start=1):
         seed_count = sum(1 for row in candidate_input.get("x_seed_inputs", []) if topic_name in row.get("tags", []))
         expansion_count = sum(1 for row in candidate_input.get("x_expansion_inputs", []) if topic_name in row.get("theme_overlap", []))
-        reddit_count = sum(1 for row in candidate_input.get("reddit_inputs", []) if topic_name in row.get("theme_tags", []))
+        reddit_count = sum(
+            1 for row in candidate_input.get("reddit_inputs", [])
+            if topic_name in row.get("theme_tags", [])
+            and _classify_reddit_sentiment(
+                _clean_text(row.get("thread_summary")),
+                _clean_text(row.get("direction_hint")),
+            ) != "questioning"
+        )
+        has_questioning = topic_name in reddit_questioning_topics
         live_count = len(live_topic_rows.get(topic_name, []))
         deduped_names = list(dict.fromkeys(name for name in reference_candidates.get(topic_name, []) if name))
         leaders = deduped_names[:2]
@@ -535,8 +576,10 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
         ranking_logic = {
             "seed_alignment": _logic_level(seed_count, high_at=2),
             "expansion_confirmation": _logic_level(expansion_count, high_at=1),
-            "reddit_confirmation": _logic_level(reddit_count, high_at=1),
-            "noise_or_disagreement": "low" if live_count >= 1 or reddit_count >= 1 else "medium",
+            "reddit_confirmation": "questioning" if has_questioning and reddit_count == 0
+                else _logic_level(reddit_count, high_at=1),
+            "noise_or_disagreement": "medium" if has_questioning
+                else ("low" if live_count >= 1 or reddit_count >= 1 else "medium"),
         }
 
         if live_count and not seed_count:
