@@ -165,7 +165,10 @@ def run_postclose_review(
         for c in candidates_reviewed if c["adjustment"] != "hold"
     ]
 
-    direction_momentum = compute_direction_momentum(candidates_reviewed)
+    divergence_warnings = detect_direction_divergence(candidates_reviewed)
+    direction_momentum = compute_direction_momentum(
+        candidates_reviewed, divergence_warnings=divergence_warnings,
+    )
 
     return {
         "trade_date": trade_date,
@@ -173,11 +176,55 @@ def run_postclose_review(
         "summary": summary,
         "prior_review_adjustments": prior_review_adjustments,
         "direction_momentum": direction_momentum,
+        "direction_divergence_warnings": divergence_warnings,
     }
+
+
+def detect_direction_divergence(
+    candidates_reviewed: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Detect high-beta divergence within direction-aligned candidates.
+
+    When high_beta stocks significantly underperform leaders in the same
+    direction, it signals potential topping / exhaustion.
+
+    Returns list of divergence warning dicts.
+    """
+    by_key: dict[str, dict[str, list[float]]] = {}
+    for c in candidates_reviewed:
+        if not c.get("direction_aligned"):
+            continue
+        dk = (c.get("direction_key") or "").strip()
+        role = (c.get("direction_role") or "").strip()
+        if not dk or role not in ("leader", "high_beta"):
+            continue
+        if dk not in by_key:
+            by_key[dk] = {"leader": [], "high_beta": []}
+        ret = c.get("actual_return_pct")
+        if ret is not None:
+            by_key[dk][role].append(float(ret))
+
+    warnings: list[dict[str, Any]] = []
+    for dk, roles in by_key.items():
+        if not roles["leader"] or not roles["high_beta"]:
+            continue
+        leader_avg = sum(roles["leader"]) / len(roles["leader"])
+        hb_avg = sum(roles["high_beta"]) / len(roles["high_beta"])
+        if hb_avg < leader_avg and hb_avg < 0.5:
+            warnings.append({
+                "direction_key": dk,
+                "divergence_type": "high_beta_lagging",
+                "leader_avg_return": round(leader_avg, 2),
+                "high_beta_avg_return": round(hb_avg, 2),
+                "warning": f"High-beta stocks ({hb_avg:+.2f}%) significantly lag leaders ({leader_avg:+.2f}%) — potential topping signal.",
+            })
+    return warnings
 
 
 def compute_direction_momentum(
     candidates_reviewed: list[dict[str, Any]],
+    *,
+    divergence_warnings: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Compute direction momentum signals from reviewed candidates.
 
@@ -215,6 +262,7 @@ def compute_direction_momentum(
             entry["aligned_missed"] += 1
 
     result = []
+    diverged_keys = {w["direction_key"] for w in (divergence_warnings or [])}
     for dk, entry in by_key.items():
         count = entry["aligned_candidates_count"]
         if count == 0:
@@ -228,6 +276,10 @@ def compute_direction_momentum(
             signal = "confirmed"
         else:
             signal = "fading"
+        # Divergence detection: downgrade "confirmed" to "caution" if high-beta lagging
+        if dk in diverged_keys and signal == "confirmed":
+            signal = "caution"
+            entry["divergence_detected"] = True
         entry["momentum_signal"] = signal
         result.append(entry)
     return result
@@ -291,6 +343,19 @@ def build_review_markdown(review: dict[str, Any]) -> str:
                 f"| {m.get('aligned_too_aggressive', 0)} "
                 f"| {m.get('aligned_missed', 0)} "
                 f"| {m.get('momentum_signal', '?')} |"
+            )
+        lines.append("")
+
+    divergence_warnings = review.get("direction_divergence_warnings", [])
+    if divergence_warnings:
+        lines.append("## 方向分化预警")
+        lines.append("")
+        for w in divergence_warnings:
+            lines.append(
+                f"- **{w.get('direction_key', '?')}**: "
+                f"leader avg {w.get('leader_avg_return', 0):+.2f}% vs "
+                f"high_beta avg {w.get('high_beta_avg_return', 0):+.2f}% — "
+                f"{w.get('warning', '')}"
             )
         lines.append("")
 

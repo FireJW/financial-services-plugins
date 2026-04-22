@@ -16,7 +16,12 @@ SCRIPT_DIR = (
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from postclose_review_runtime import classify_plan_outcome, generate_adjustment
+from postclose_review_runtime import (
+    classify_plan_outcome,
+    compute_direction_momentum,
+    detect_direction_divergence,
+    generate_adjustment,
+)
 
 
 class ClassifyPlanOutcomeTests(unittest.TestCase):
@@ -171,6 +176,62 @@ class RunPostcloseReviewTests(unittest.TestCase):
         self.assertIn("000988", md)
         self.assertIn("华工科技", md)
         self.assertIn("次日观察点", md)
+
+
+class DirectionDivergenceTests(unittest.TestCase):
+    """Tests for high-beta divergence detection (signal quality improvement #4)."""
+
+    def test_divergence_detected_when_high_beta_lags_leader(self) -> None:
+        """High-beta at +0.05% vs leader at +3.18% should trigger divergence warning."""
+        candidates = [
+            {"direction_aligned": True, "direction_key": "oil_shipping",
+             "direction_role": "leader", "actual_return_pct": 3.18, "judgment": "plan_correct"},
+            {"direction_aligned": True, "direction_key": "oil_shipping",
+             "direction_role": "high_beta", "actual_return_pct": 0.05, "judgment": "plan_correct"},
+        ]
+        warnings = detect_direction_divergence(candidates)
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["direction_key"], "oil_shipping")
+        self.assertEqual(warnings[0]["divergence_type"], "high_beta_lagging")
+        self.assertAlmostEqual(warnings[0]["leader_avg_return"], 3.18)
+        self.assertAlmostEqual(warnings[0]["high_beta_avg_return"], 0.05)
+
+    def test_no_divergence_when_high_beta_strong(self) -> None:
+        """High-beta at +3% vs leader at +2% should not trigger divergence."""
+        candidates = [
+            {"direction_aligned": True, "direction_key": "optical",
+             "direction_role": "leader", "actual_return_pct": 2.0, "judgment": "plan_correct"},
+            {"direction_aligned": True, "direction_key": "optical",
+             "direction_role": "high_beta", "actual_return_pct": 3.0, "judgment": "plan_correct"},
+        ]
+        warnings = detect_direction_divergence(candidates)
+        self.assertEqual(len(warnings), 0)
+
+    def test_divergence_downgrades_confirmed_to_caution(self) -> None:
+        """Direction with divergence warning should have momentum downgraded from confirmed to caution."""
+        candidates = [
+            {"direction_aligned": True, "direction_key": "oil_shipping",
+             "direction_role": "leader", "actual_return_pct": 3.18, "judgment": "plan_correct"},
+            {"direction_aligned": True, "direction_key": "oil_shipping",
+             "direction_role": "high_beta", "actual_return_pct": 0.05, "judgment": "plan_correct"},
+        ]
+        warnings = detect_direction_divergence(candidates)
+        momentum = compute_direction_momentum(candidates, divergence_warnings=warnings)
+        oil_entry = next(m for m in momentum if m["direction_key"] == "oil_shipping")
+        # Without divergence, 100% correct → "confirmed". With divergence → "caution"
+        self.assertEqual(oil_entry["momentum_signal"], "caution")
+        self.assertTrue(oil_entry.get("divergence_detected"))
+
+    def test_no_divergence_without_both_roles(self) -> None:
+        """Direction with only leaders (no high_beta) should not trigger divergence."""
+        candidates = [
+            {"direction_aligned": True, "direction_key": "optical",
+             "direction_role": "leader", "actual_return_pct": 2.0, "judgment": "plan_correct"},
+            {"direction_aligned": True, "direction_key": "optical",
+             "direction_role": "leader", "actual_return_pct": 1.5, "judgment": "plan_correct"},
+        ]
+        warnings = detect_direction_divergence(candidates)
+        self.assertEqual(len(warnings), 0)
 
 
 if __name__ == "__main__":
