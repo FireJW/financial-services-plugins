@@ -65,6 +65,13 @@ TOPIC_ALIASES: dict[str, list[str]] = {
     ],
 }
 
+_GEOPOLITICS_TOPIC_KEYWORDS = frozenset({
+    "oil", "shipping", "defense", "gold", "energy", "hormuz",
+    "geopolit", "war", "military", "sanctions",
+})
+_STALE_POST_DAYS_DEFAULT = 7
+_STALE_POST_DAYS_GEOPOLITICS = 3
+
 
 def _clean_text(value: Any) -> str:
     return str(value).strip() if value is not None else ""
@@ -74,6 +81,54 @@ def _clean_list(values: Any) -> list[str]:
     if not isinstance(values, list):
         return []
     return [item for item in (_clean_text(value) for value in values) if item]
+
+
+def _is_stale_post(
+    post: dict[str, Any],
+    reference_date: str,
+    *,
+    inferred_topics: list[str] | None = None,
+) -> bool:
+    """Check if a live post is too old to count as a fresh weekend signal.
+
+    Args:
+        post: Normalized live post dict (must have 'posted_at' key).
+        reference_date: ISO date string (YYYY-MM-DD) to measure age against.
+        inferred_topics: Topics inferred from the post text.
+
+    Returns True if the post is stale (should get zero weight).
+    """
+    from datetime import date, datetime
+
+    posted_at = _clean_text(post.get("posted_at"))
+    if not posted_at:
+        return False  # missing timestamp → don't penalize
+
+    try:
+        # Parse ISO 8601 — handle both "2026-04-09T12:57:32+00:00" and "2026-04-09"
+        posted_date = datetime.fromisoformat(posted_at.replace("Z", "+00:00")).date()
+    except (ValueError, TypeError):
+        return False  # unparseable → don't penalize
+
+    try:
+        ref_date = date.fromisoformat(reference_date[:10])
+    except (ValueError, TypeError):
+        return False
+
+    age_days = (ref_date - posted_date).days
+    if age_days < 0:
+        return False  # future post → not stale
+
+    # Geopolitics topics use stricter threshold
+    is_geopolitics = False
+    for topic in (inferred_topics or []):
+        topic_lower = topic.lower()
+        if any(kw in topic_lower for kw in _GEOPOLITICS_TOPIC_KEYWORDS):
+            is_geopolitics = True
+            break
+
+    threshold = _STALE_POST_DAYS_GEOPOLITICS if is_geopolitics else _STALE_POST_DAYS_DEFAULT
+    return age_days > threshold
 
 
 def _logic_level(value: int, *, high_at: int, medium_at: int = 1) -> str:
@@ -127,6 +182,7 @@ def _normalize_live_post(row: Any) -> dict[str, Any] | None:
         "text_blob": text_blob,
         "session_source": _clean_text(row.get("session_source")),
         "discovery_reason": _clean_text(row.get("discovery_reason")),
+        "posted_at": _clean_text(row.get("posted_at")),
     }
 
 
@@ -218,14 +274,16 @@ def _select_key_sources(
     for row in live_posts:
         if topic_name not in _infer_topics_from_text(row.get("text_blob")):
             continue
-        key_sources.append(
-            {
-                "source_name": _clean_text(row.get("author_display_name")) or _clean_text(row.get("author_handle")),
-                "source_kind": "x_live_index",
-                "url": _clean_text(row.get("post_url")),
-                "summary": _clean_text(row.get("combined_summary") or row.get("post_summary") or row.get("post_text_raw")),
-            }
-        )
+        source_entry = {
+            "source_name": _clean_text(row.get("author_display_name")) or _clean_text(row.get("author_handle")),
+            "source_kind": "x_live_index",
+            "url": _clean_text(row.get("post_url")),
+            "summary": _clean_text(row.get("combined_summary") or row.get("post_summary") or row.get("post_text_raw")),
+        }
+        posted_at = _clean_text(row.get("posted_at"))
+        if posted_at:
+            source_entry["posted_at"] = posted_at
+        key_sources.append(source_entry)
         if len(key_sources) >= 2:
             break
 
@@ -420,9 +478,15 @@ def build_weekend_market_candidate(candidate_input: dict[str, Any] | None) -> tu
         for topic in row.get("theme_tags", []):
             topic_counter[topic] += 1
 
+    # Derive reference_date from candidate_input or default to empty (no filtering)
+    reference_date = _clean_text(candidate_input.get("reference_date"))
+
     for row in live_posts:
-        for topic in _infer_topics_from_text(row.get("text_blob")):
-            topic_counter[topic] += 2
+        inferred = _infer_topics_from_text(row.get("text_blob"))
+        stale = _is_stale_post(row, reference_date, inferred_topics=inferred) if reference_date else False
+        for topic in inferred:
+            if not stale:
+                topic_counter[topic] += 2
             live_topic_rows.setdefault(topic, []).append(row)
 
     if not topic_counter:

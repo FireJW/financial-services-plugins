@@ -230,5 +230,118 @@ class WeekendMarketCandidateRuntimeTests(unittest.TestCase):
         self.assertNotIn("commercial_space", topic_names)
 
 
+class FreshnessFilterTests(unittest.TestCase):
+    """Tests for X evidence freshness filtering (signal quality improvement #1)."""
+
+    def test_stale_post_excluded_from_topic_scoring(self) -> None:
+        """Live post older than 7 days should get zero weight in topic scoring."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "reference_date": "2026-04-22",
+                "x_live_index_results": [
+                    {
+                        "x_posts": [
+                            {
+                                "post_url": "https://x.com/old/status/1",
+                                "author_handle": "old_poster",
+                                "posted_at": "2026-04-10T12:00:00+00:00",
+                                "combined_summary": "光通信和光模块继续发酵。",
+                            }
+                        ]
+                    }
+                ],
+            }
+        )
+        # Post is 12 days old (> 7 day threshold) → should not produce a topic
+        self.assertEqual(candidate["status"], "insufficient_signal")
+
+    def test_fresh_post_included_in_topic_scoring(self) -> None:
+        """Live post within 7 days should get full weight in topic scoring."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "reference_date": "2026-04-22",
+                "x_live_index_results": [
+                    {
+                        "x_posts": [
+                            {
+                                "post_url": "https://x.com/fresh/status/1",
+                                "author_handle": "fresh_poster",
+                                "posted_at": "2026-04-20T12:00:00+00:00",
+                                "combined_summary": "光通信和光模块继续发酵。",
+                            }
+                        ]
+                    }
+                ],
+            }
+        )
+        topic_names = [t["topic_name"] for t in candidate["candidate_topics"]]
+        self.assertIn("optical_interconnect", topic_names)
+
+    def test_geopolitics_topic_uses_stricter_threshold(self) -> None:
+        """Posts about geopolitics topics older than 3 days should be stale."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "reference_date": "2026-04-22",
+                "x_live_index_results": [
+                    {
+                        "x_posts": [
+                            {
+                                "post_url": "https://x.com/geo/status/1",
+                                "author_handle": "geo_poster",
+                                "posted_at": "2026-04-17T12:00:00+00:00",
+                                "combined_summary": "Hormuz blocked again, oil shipping and tanker rates remain elevated.",
+                            }
+                        ]
+                    }
+                ],
+            }
+        )
+        # Post is 5 days old, but oil_shipping is geopolitics → 3-day threshold → stale
+        self.assertEqual(candidate["status"], "insufficient_signal")
+
+    def test_missing_posted_at_treated_as_fresh(self) -> None:
+        """Posts without posted_at should not be penalized (treated as fresh)."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "reference_date": "2026-04-22",
+                "x_live_index_results": [
+                    {
+                        "x_posts": [
+                            {
+                                "post_url": "https://x.com/no_date/status/1",
+                                "author_handle": "no_date_poster",
+                                "combined_summary": "光通信和光模块继续发酵。",
+                            }
+                        ]
+                    }
+                ],
+            }
+        )
+        topic_names = [t["topic_name"] for t in candidate["candidate_topics"]]
+        self.assertIn("optical_interconnect", topic_names)
+
+    def test_no_reference_date_skips_freshness_check(self) -> None:
+        """When no reference_date is provided, all posts are treated as fresh (backward compat)."""
+        candidate, _ = module_under_test.build_weekend_market_candidate(
+            {
+                "x_live_index_results": [
+                    {
+                        "x_posts": [
+                            {
+                                "post_url": "https://x.com/old/status/2",
+                                "author_handle": "old_poster",
+                                "posted_at": "2026-01-01T12:00:00+00:00",
+                                "combined_summary": "光通信和光模块继续发酵。",
+                            }
+                        ]
+                    }
+                ],
+            }
+        )
+        # No reference_date → no filtering → post counts
+        topic_names = [t["topic_name"] for t in candidate["candidate_topics"]]
+        self.assertIn("optical_interconnect", topic_names)
+
+
 if __name__ == "__main__":
     unittest.main()
