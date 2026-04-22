@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -26,6 +27,9 @@ EASTMONEY_CACHE_MAX_AGE_SECONDS = 12 * 60 * 60
 HK_QUOTE_CACHE_MAX_AGE_SECONDS = 5 * 60
 EASTMONEY_DEFAULT_UT = "fa5fd1943c7b386f172d6893dbfba10b"
 SUPPORTED_MAINLAND_SUFFIXES = {".SZ", ".SH", ".SS"}
+
+_RETRY_ATTEMPTS = 4
+_RETRY_BACKOFF_BASE = 1.5  # seconds: 1.5, 3.0, 4.5
 
 JsonFetcher = Callable[[dict[str, Any], int, dict[str, str] | None], dict[str, Any]]
 
@@ -143,16 +147,26 @@ def eastmoney_api_request(params: dict[str, Any], max_age_seconds: int, env: dic
         },
         method="GET",
     )
-    try:
-        with urlopen(request, timeout=20) as response:
-            payload = parse_json_like_payload(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        raise RuntimeError(f"Eastmoney request failed with HTTP {exc.code}.") from exc
-    except (URLError, OSError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Eastmoney request failed: {clean_text(str(exc)) or exc.__class__.__name__}") from exc
+    last_error: Exception | None = None
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            with urlopen(request, timeout=20) as response:
+                payload = parse_json_like_payload(response.read().decode("utf-8"))
+            write_cached_json(path, payload)
+            return payload
+        except HTTPError as exc:
+            if exc.code < 500:
+                raise RuntimeError(f"Eastmoney request failed with HTTP {exc.code}.") from exc
+            last_error = exc
+        except (URLError, OSError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            last_error = exc
+        if attempt < _RETRY_ATTEMPTS - 1:
+            time.sleep(_RETRY_BACKOFF_BASE * (attempt + 1))
 
-    write_cached_json(path, payload)
-    return payload
+    raise RuntimeError(
+        f"Eastmoney request failed after {_RETRY_ATTEMPTS} attempts: "
+        f"{clean_text(str(last_error)) or last_error.__class__.__name__}"
+    ) from last_error
 
 
 def eastmoney_quote_api_request(params: dict[str, Any], max_age_seconds: int, env: dict[str, str] | None = None) -> dict[str, Any]:
@@ -177,16 +191,26 @@ def eastmoney_quote_api_request(params: dict[str, Any], max_age_seconds: int, en
         },
         method="GET",
     )
-    try:
-        with urlopen(request, timeout=20) as response:
-            payload = parse_json_like_payload(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        raise RuntimeError(f"Eastmoney quote request failed with HTTP {exc.code}.") from exc
-    except (URLError, OSError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Eastmoney quote request failed: {clean_text(str(exc)) or exc.__class__.__name__}") from exc
+    last_error: Exception | None = None
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            with urlopen(request, timeout=20) as response:
+                payload = parse_json_like_payload(response.read().decode("utf-8"))
+            write_cached_json(path, payload)
+            return payload
+        except HTTPError as exc:
+            if exc.code < 500:
+                raise RuntimeError(f"Eastmoney quote request failed with HTTP {exc.code}.") from exc
+            last_error = exc
+        except (URLError, OSError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            last_error = exc
+        if attempt < _RETRY_ATTEMPTS - 1:
+            time.sleep(_RETRY_BACKOFF_BASE * (attempt + 1))
 
-    write_cached_json(path, payload)
-    return payload
+    raise RuntimeError(
+        f"Eastmoney quote request failed after {_RETRY_ATTEMPTS} attempts: "
+        f"{clean_text(str(last_error)) or last_error.__class__.__name__}"
+    ) from last_error
 
 
 def to_float(value: Any) -> float:

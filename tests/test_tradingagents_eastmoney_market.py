@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import io
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
+from urllib.error import HTTPError, URLError
 
 
 SCRIPT_DIR = (
@@ -18,7 +21,9 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from tradingagents_eastmoney_market import (
+    _RETRY_ATTEMPTS,
     cache_path,
+    eastmoney_api_request,
     eastmoney_hk_secid,
     eastmoney_secid,
     fetch_hk_quote_snapshot,
@@ -165,6 +170,86 @@ class TradingAgentsEastmoneyMarketTests(unittest.TestCase):
     def test_fetch_hk_quote_snapshot_rejects_non_hk_symbol(self) -> None:
         with self.assertRaises(ValueError):
             fetch_hk_quote_snapshot("AAPL", fetcher=fake_hk_quote_fetcher)
+
+
+class EastmoneyRetryTests(unittest.TestCase):
+    """Tests for retry logic in eastmoney_api_request()."""
+
+    VALID_PAYLOAD = '{"rc": 0, "data": {"klines": ["2026-04-22,10,11,12,9,1000,5000,5.0,2.0,0.2,1.0"]}}'
+
+    @patch("tradingagents_eastmoney_market.write_cached_json")
+    @patch("tradingagents_eastmoney_market.read_cached_json", return_value=None)
+    @patch("tradingagents_eastmoney_market.time.sleep")
+    @patch("tradingagents_eastmoney_market.urlopen")
+    def test_retries_on_transport_error(self, mock_urlopen, mock_sleep, _mock_cache_read, _mock_cache_write) -> None:
+        """urlopen fails twice with URLError, succeeds on 3rd attempt."""
+        mock_response = MagicMock()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.read.return_value = self.VALID_PAYLOAD.encode("utf-8")
+
+        mock_urlopen.side_effect = [
+            URLError("Connection reset"),
+            URLError("Connection reset"),
+            mock_response,
+        ]
+
+        result = eastmoney_api_request({"secid": "1.600105"}, 3600)
+        self.assertEqual(result["rc"], 0)
+        self.assertEqual(mock_urlopen.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
+
+    @patch("tradingagents_eastmoney_market.read_cached_json", return_value=None)
+    @patch("tradingagents_eastmoney_market.time.sleep")
+    @patch("tradingagents_eastmoney_market.urlopen")
+    def test_no_retry_on_4xx(self, mock_urlopen, mock_sleep, _mock_cache_read) -> None:
+        """4xx HTTP errors should fail immediately without retry."""
+        mock_urlopen.side_effect = HTTPError(
+            url="https://example.com", code=403, msg="Forbidden",
+            hdrs=None, fp=io.BytesIO(b""),  # type: ignore[arg-type]
+        )
+
+        with self.assertRaises(RuntimeError) as ctx:
+            eastmoney_api_request({"secid": "1.600105"}, 3600)
+        self.assertIn("HTTP 403", str(ctx.exception))
+        self.assertEqual(mock_urlopen.call_count, 1)
+        mock_sleep.assert_not_called()
+
+    @patch("tradingagents_eastmoney_market.write_cached_json")
+    @patch("tradingagents_eastmoney_market.read_cached_json", return_value=None)
+    @patch("tradingagents_eastmoney_market.time.sleep")
+    @patch("tradingagents_eastmoney_market.urlopen")
+    def test_retries_on_5xx(self, mock_urlopen, mock_sleep, _mock_cache_read, _mock_cache_write) -> None:
+        """5xx HTTP errors should be retried."""
+        mock_response = MagicMock()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.read.return_value = self.VALID_PAYLOAD.encode("utf-8")
+
+        mock_urlopen.side_effect = [
+            HTTPError(url="https://example.com", code=502, msg="Bad Gateway",
+                      hdrs=None, fp=io.BytesIO(b"")),  # type: ignore[arg-type]
+            HTTPError(url="https://example.com", code=503, msg="Service Unavailable",
+                      hdrs=None, fp=io.BytesIO(b"")),  # type: ignore[arg-type]
+            mock_response,
+        ]
+
+        result = eastmoney_api_request({"secid": "1.600105"}, 3600)
+        self.assertEqual(result["rc"], 0)
+        self.assertEqual(mock_urlopen.call_count, 3)
+
+    @patch("tradingagents_eastmoney_market.read_cached_json", return_value=None)
+    @patch("tradingagents_eastmoney_market.time.sleep")
+    @patch("tradingagents_eastmoney_market.urlopen")
+    def test_fails_after_max_retries(self, mock_urlopen, mock_sleep, _mock_cache_read) -> None:
+        """After exhausting all retry attempts, should raise RuntimeError."""
+        mock_urlopen.side_effect = URLError("Connection reset")
+
+        with self.assertRaises(RuntimeError) as ctx:
+            eastmoney_api_request({"secid": "1.600105"}, 3600)
+        self.assertIn(f"after {_RETRY_ATTEMPTS} attempts", str(ctx.exception))
+        self.assertEqual(mock_urlopen.call_count, _RETRY_ATTEMPTS)
+        self.assertEqual(mock_sleep.call_count, _RETRY_ATTEMPTS - 1)
 
 
 if __name__ == "__main__":

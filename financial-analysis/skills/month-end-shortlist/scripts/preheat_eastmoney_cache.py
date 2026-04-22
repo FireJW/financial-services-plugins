@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 import sys
@@ -76,16 +77,23 @@ def eastmoney_cache_already_exists(ticker: str, start_date: str, end_date: str) 
     return cache_path(cache_name).exists()
 
 
-def preheat_ticker(ticker: str, target_date: str) -> dict[str, str]:
+def preheat_ticker(ticker: str, target_date: str, *, max_retries: int = 2) -> dict[str, str]:
     ticker = unique_tickers([ticker])[0]
     target_dt = date.fromisoformat(target_date[:10])
     start_date = (target_dt - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat()
     if eastmoney_cache_already_exists(ticker, start_date, target_dt.isoformat()):
         return {"ticker": ticker, "status": "cache_hit", "message": ""}
-    try:
-        rows = fetch_eastmoney_daily_bars(ticker, start_date, target_dt.isoformat())
-    except Exception as exc:
-        return {"ticker": ticker, "status": "failed", "message": str(exc)}
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            rows = fetch_eastmoney_daily_bars(ticker, start_date, target_dt.isoformat())
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                time.sleep(1.0 * (attempt + 1))
+    else:
+        return {"ticker": ticker, "status": "failed", "message": str(last_exc)}
     if not rows:
         return {"ticker": ticker, "status": "failed", "message": "No rows returned"}
     return {"ticker": ticker, "status": "cache_written", "message": ""}
