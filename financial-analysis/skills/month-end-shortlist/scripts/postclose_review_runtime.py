@@ -101,6 +101,7 @@ def run_postclose_review(
     plan_md: str | None = None,
     *,
     x_risk_alerts: list[dict[str, Any]] | None = None,
+    prior_near_miss_evictions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run the full postclose review pipeline.
 
@@ -108,6 +109,10 @@ def run_postclose_review(
         result_json: Parsed shortlist result.json dict.
         trade_date: The date being reviewed (YYYY-MM-DD).
         plan_md: Optional morning plan markdown (unused in v1, reserved).
+        x_risk_alerts: X watchlist risk warnings to surface in the report.
+        prior_near_miss_evictions: Eviction records from the previous day's
+            review.  Candidates appearing here AND declining again today get
+            ``consecutive_decline_days`` incremented.
 
     Returns:
         Review output dict with candidates_reviewed, summary, prior_review_adjustments.
@@ -167,6 +172,15 @@ def run_postclose_review(
         for c in candidates_reviewed if c["adjustment"] != "hold"
     ]
 
+    # Near-miss auto-eviction: observation candidates that declined should be
+    # flagged for removal from the watchlist.  Condition: plan_action was
+    # "继续观察" AND actual return < 0 (i.e. plan_correct_negative with a loss).
+    # The consuming pipeline uses this list to drop them from the next run's
+    # near_miss pool so they stop occupying plan space.
+    near_miss_evictions = _compute_near_miss_evictions(
+        candidates_reviewed, prior_near_miss_evictions=prior_near_miss_evictions,
+    )
+
     divergence_warnings = detect_direction_divergence(candidates_reviewed)
     direction_momentum = compute_direction_momentum(
         candidates_reviewed, divergence_warnings=divergence_warnings,
@@ -177,10 +191,68 @@ def run_postclose_review(
         "candidates_reviewed": candidates_reviewed,
         "summary": summary,
         "prior_review_adjustments": prior_review_adjustments,
+        "near_miss_evictions": near_miss_evictions,
         "direction_momentum": direction_momentum,
         "direction_divergence_warnings": divergence_warnings,
         "x_risk_alerts": x_risk_alerts or [],
     }
+
+
+def _compute_near_miss_evictions(
+    candidates_reviewed: list[dict[str, Any]],
+    *,
+    prior_near_miss_evictions: list[dict[str, Any]] | None = None,
+    eviction_threshold_days: int = 2,
+) -> list[dict[str, Any]]:
+    """Compute near-miss auto-eviction list.
+
+    A near-miss candidate (plan_action == "继续观察") that declines (return < 0)
+    accumulates ``consecutive_decline_days``.  Once it reaches
+    ``eviction_threshold_days``, it is marked ``evicted: true`` and should be
+    dropped from the next run's near-miss pool.
+
+    First decline → consecutive_decline_days = 1, evicted = false.
+    Second consecutive decline → consecutive_decline_days = 2, evicted = true.
+
+    If the candidate rises (return >= 0), its streak resets and it is removed
+    from the eviction list entirely.
+    """
+    prior_by_ticker: dict[str, dict[str, Any]] = {}
+    for ev in (prior_near_miss_evictions or []):
+        t = (ev.get("ticker") or "").strip()
+        if t:
+            prior_by_ticker[t] = ev
+
+    evictions: list[dict[str, Any]] = []
+    for c in candidates_reviewed:
+        if c.get("plan_action") != "继续观察":
+            continue
+        ticker = (c.get("ticker") or "").strip()
+        name = (c.get("name") or "").strip()
+        ret = c.get("actual_return_pct")
+        if ret is None:
+            continue
+
+        if ret < 0:
+            prior = prior_by_ticker.get(ticker)
+            prev_days = int(prior.get("consecutive_decline_days", 0)) if prior else 0
+            days = prev_days + 1
+            evicted = days >= eviction_threshold_days
+            reason = (
+                f"连续{days}日观察期下跌"
+                + (f"（累计: {', '.join(prior.get('decline_history', []) + [f'{ret:+.2f}%'])}）" if prior else f"（{ret:+.2f}%）")
+            )
+            evictions.append({
+                "ticker": ticker,
+                "name": name,
+                "consecutive_decline_days": days,
+                "evicted": evicted,
+                "reason": reason,
+            })
+        # If ret >= 0, streak resets — candidate is NOT added to evictions,
+        # effectively removing it from the tracking list.
+
+    return evictions
 
 
 def detect_direction_divergence(
@@ -341,6 +413,23 @@ def build_review_markdown(review: dict[str, Any]) -> str:
     else:
         lines.append("- 无需调整")
     lines.append("")
+
+    # Section: near-miss evictions
+    evictions = review.get("near_miss_evictions", [])
+    if evictions:
+        lines.append("## 观察池清退")
+        lines.append("")
+        lines.append("| 代码 | 名称 | 连续下跌天数 | 状态 | 原因 |")
+        lines.append("|---|---|---|---|---|")
+        for ev in evictions:
+            status = "🔴 **已清退**" if ev.get("evicted") else "⚠️ 预警"
+            lines.append(
+                f"| {ev.get('ticker', '?')} | {ev.get('name', '?')} "
+                f"| {ev.get('consecutive_decline_days', 0)} "
+                f"| {status} "
+                f"| {ev.get('reason', '')} |"
+            )
+        lines.append("")
 
     # Direction momentum section
     direction_momentum = review.get("direction_momentum", [])

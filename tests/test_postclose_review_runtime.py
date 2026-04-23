@@ -17,6 +17,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from postclose_review_runtime import (
+    _compute_near_miss_evictions,
     classify_plan_outcome,
     compute_direction_momentum,
     detect_direction_divergence,
@@ -324,6 +325,88 @@ class XRiskAlertsAndConsistencyTests(unittest.TestCase):
         review = run_postclose_review(result_json, "2026-04-22", x_risk_alerts=alerts)
         self.assertEqual(len(review["x_risk_alerts"]), 1)
         self.assertEqual(review["x_risk_alerts"][0]["ticker"], "300620")
+
+
+class NearMissEvictionTests(unittest.TestCase):
+    """Observation-pool auto-eviction: near-miss candidates that decline
+    consecutively should be flagged and eventually evicted."""
+
+    def test_first_decline_creates_warning(self) -> None:
+        """First day decline → consecutive_decline_days=1, evicted=False."""
+        candidates = [
+            {"ticker": "600111", "name": "北方稀土", "plan_action": "继续观察",
+             "actual_return_pct": -0.89, "judgment": "plan_correct_negative"},
+        ]
+        evictions = _compute_near_miss_evictions(candidates)
+        self.assertEqual(len(evictions), 1)
+        self.assertEqual(evictions[0]["ticker"], "600111")
+        self.assertEqual(evictions[0]["consecutive_decline_days"], 1)
+        self.assertFalse(evictions[0]["evicted"])
+
+    def test_second_consecutive_decline_triggers_eviction(self) -> None:
+        """Second consecutive decline → evicted=True."""
+        candidates = [
+            {"ticker": "600111", "name": "北方稀土", "plan_action": "继续观察",
+             "actual_return_pct": -5.76, "judgment": "plan_correct_negative"},
+        ]
+        prior = [
+            {"ticker": "600111", "consecutive_decline_days": 1,
+             "decline_history": ["-0.89%"]},
+        ]
+        evictions = _compute_near_miss_evictions(candidates, prior_near_miss_evictions=prior)
+        self.assertEqual(len(evictions), 1)
+        ev = evictions[0]
+        self.assertEqual(ev["ticker"], "600111")
+        self.assertEqual(ev["consecutive_decline_days"], 2)
+        self.assertTrue(ev["evicted"])
+        self.assertIn("连续2日", ev["reason"])
+
+    def test_positive_return_resets_streak(self) -> None:
+        """If candidate rises, it is removed from eviction tracking."""
+        candidates = [
+            {"ticker": "600111", "name": "北方稀土", "plan_action": "继续观察",
+             "actual_return_pct": 1.5, "judgment": "plan_correct_negative"},
+        ]
+        prior = [
+            {"ticker": "600111", "consecutive_decline_days": 1,
+             "decline_history": ["-0.89%"]},
+        ]
+        evictions = _compute_near_miss_evictions(candidates, prior_near_miss_evictions=prior)
+        self.assertEqual(len(evictions), 0)
+
+    def test_non_observation_candidates_ignored(self) -> None:
+        """Only 继续观察 candidates are eligible for eviction."""
+        candidates = [
+            {"ticker": "300620", "name": "光库科技", "plan_action": "可执行",
+             "actual_return_pct": -10.91, "judgment": "plan_too_aggressive"},
+        ]
+        evictions = _compute_near_miss_evictions(candidates)
+        self.assertEqual(len(evictions), 0)
+
+    def test_eviction_rendered_in_markdown(self) -> None:
+        from postclose_review_runtime import build_review_markdown
+        review = {
+            "trade_date": "2026-04-23",
+            "candidates_reviewed": [],
+            "summary": {"total_reviewed": 0, "correct": 0, "too_aggressive": 0, "missed": 0, "correct_negative": 0},
+            "prior_review_adjustments": [],
+            "near_miss_evictions": [
+                {"ticker": "600111", "name": "北方稀土", "consecutive_decline_days": 2,
+                 "evicted": True, "reason": "连续2日观察期下跌（累计: -0.89%, -5.76%）"},
+                {"ticker": "603799", "name": "华友钴业", "consecutive_decline_days": 1,
+                 "evicted": False, "reason": "连续1日观察期下跌（-3.78%）"},
+            ],
+            "direction_momentum": [],
+            "direction_divergence_warnings": [],
+            "x_risk_alerts": [],
+        }
+        md = build_review_markdown(review)
+        self.assertIn("观察池清退", md)
+        self.assertIn("600111", md)
+        self.assertIn("北方稀土", md)
+        self.assertIn("已清退", md)
+        self.assertIn("603799", md)
+        self.assertIn("预警", md)
 
 
 if __name__ == "__main__":
