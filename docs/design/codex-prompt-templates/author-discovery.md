@@ -25,14 +25,57 @@ Read these before searching:
 
 ## Seed Authors Already Tracked
 
+### Manual Curated (operator hand-picked, highest trust)
+
 Use these as the current quality bar and style anchor:
 
-- `Ariston_Macro`
-- `LinQingV`
-- `twikejin`
-- `tuolaji2024`
-- `aleabitoreddit`
-- `jukan05`
+- `Ariston_Macro` — macro, rates, policy, top-down
+- `LinQingV` — memory/DRAM, 长鑫存储, 兆易创新, InP supply chain
+- `twikejin` — A-share themes, AI infra, optical, electronic cloth
+- `tuolaji2024` — optical interconnect, industry-chain, event-driven
+- `aleabitoreddit` — cross-market AI infra, semiconductor, photonics chokepoints
+- `jukan05` — semiconductor supply-chain, packaging, PCB/CCL
+- `dmjk001` — optical interconnect, silicon photonics, 800G/1.6T
+
+### Auto Discovery (community-recommended, lower trust, monitor-only)
+
+Source: `@LucyBuilding` thread (2026-04-22).
+These accounts are not yet operator-validated. Use for signal enrichment
+and cross-reference, not as primary trade-plan sources.
+
+#### Macro & Market Structure
+
+- `morganhousel` — investment psychology, long-term thinking
+- `LizAnnSonders` — macro, liquidity, market structure, charts
+- `BittelJulien` — global macro, asset allocation, liquidity
+- `charliebilello` — historical data, cycle comparison
+- `awealthofcs` — long-term investment framework
+- `Ritholtz` — market commentary, macro observation
+- `LynAldenContact` — monetary/fiscal/energy/credit macro framework
+- `biancoresearch` — rates, bond market, policy expectations
+- `josephwang` — Fed, reserves, USD liquidity, financial plumbing
+
+#### Semiconductor, AI Infra & Supply Chain
+
+- `dylan522p` — AI infra, GPU, cloud capex, HBM/memory
+- `Beth_Kindig` — tech growth stocks, AI main line
+- `BenBajarin` — industry analysis, supply chain, product cycles
+- `HedgeMind` — institutional positioning, AI infrastructure, US tech
+- `TheValueist` — semiconductor industry, value analysis
+- `MikeLongTerm` — semiconductor supply chain, AI demand data
+
+#### Tech Business Models & Research Frameworks
+
+- `stratechery` — platform companies, AI business models, industry structure
+- `ByrneHobart` — finance + tech + business model synthesis
+- `BrianFeroldi` — fundamentals, earnings, business model teardown
+- `10kdiver` — probability thinking, valuation framework, long-term returns
+
+#### Trading Frameworks & Market Structure
+
+- `PeterLBrandt` — veteran trader, market structure reference
+- `alphatrends` — technical analysis, trend framework
+- `bespokeinvest` — data statistics, charts, cross-validation
 
 ## Priority Coverage Gaps
 

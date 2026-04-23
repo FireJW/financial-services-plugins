@@ -3052,14 +3052,43 @@ def positive_feedback_topic_bonus(candidate: dict[str, Any]) -> int:
 
 # X watchlist authors and their focus areas.
 # Maintained in sync with x-stock-picker-style-subject-registry and author-discovery.md.
+# source: "manual" = operator hand-picked (highest trust, used for trade-plan input)
+#          "auto"   = community-recommended (monitor-only, signal enrichment)
 X_WATCHLIST_AUTHORS: dict[str, dict[str, Any]] = {
-    "twikejin": {"tier": 1, "focus": ["A股", "AI基建", "光模块", "电子布"]},
-    "LinQingV": {"tier": 1, "focus": ["存储", "DRAM", "兆易创新", "长鑫"]},
-    "tuolaji2024": {"tier": 1, "focus": ["光互联", "光模块"]},
-    "dmjk001": {"tier": 2, "focus": ["光互联", "硅光", "800G", "1.6T"]},
-    "Ariston_Macro": {"tier": 1, "focus": ["宏观", "利率", "政策", "macro", "rates"]},
-    "aleabitoreddit": {"tier": 2, "focus": ["AI基建", "半导体", "AI infra", "semiconductor"]},
-    "jukan05": {"tier": 2, "focus": ["半导体供应链", "semiconductor supply"]},
+    # --- Manual Curated (operator hand-picked) ---
+    "twikejin": {"tier": 1, "source": "manual", "focus": ["A股", "AI基建", "光模块", "电子布"]},
+    "LinQingV": {"tier": 1, "source": "manual", "focus": ["存储", "DRAM", "兆易创新", "长鑫"]},
+    "tuolaji2024": {"tier": 1, "source": "manual", "focus": ["光互联", "光模块"]},
+    "dmjk001": {"tier": 2, "source": "manual", "focus": ["光互联", "硅光", "800G", "1.6T"]},
+    "Ariston_Macro": {"tier": 1, "source": "manual", "focus": ["宏观", "利率", "政策", "macro", "rates"]},
+    "aleabitoreddit": {"tier": 2, "source": "manual", "focus": ["AI基建", "半导体", "AI infra", "semiconductor"]},
+    "jukan05": {"tier": 2, "source": "manual", "focus": ["半导体供应链", "semiconductor supply"]},
+    # --- Auto Discovery: Macro & Market Structure (via @LucyBuilding 2026-04-22) ---
+    "morganhousel": {"tier": 3, "source": "auto", "focus": ["investment psychology", "long-term thinking"]},
+    "LizAnnSonders": {"tier": 3, "source": "auto", "focus": ["macro", "liquidity", "market structure"]},
+    "BittelJulien": {"tier": 3, "source": "auto", "focus": ["global macro", "asset allocation", "liquidity"]},
+    "charliebilello": {"tier": 3, "source": "auto", "focus": ["historical data", "cycle comparison"]},
+    "awealthofcs": {"tier": 3, "source": "auto", "focus": ["long-term investment framework"]},
+    "Ritholtz": {"tier": 3, "source": "auto", "focus": ["market commentary", "macro"]},
+    "LynAldenContact": {"tier": 3, "source": "auto", "focus": ["monetary", "fiscal", "energy", "credit", "macro"]},
+    "biancoresearch": {"tier": 3, "source": "auto", "focus": ["rates", "bond market", "policy expectations"]},
+    "josephwang": {"tier": 3, "source": "auto", "focus": ["Fed", "reserves", "USD liquidity", "plumbing"]},
+    # --- Auto Discovery: Semiconductor, AI Infra & Supply Chain ---
+    "dylan522p": {"tier": 3, "source": "auto", "focus": ["AI infra", "GPU", "cloud capex", "HBM", "memory"]},
+    "Beth_Kindig": {"tier": 3, "source": "auto", "focus": ["tech growth", "AI main line"]},
+    "BenBajarin": {"tier": 3, "source": "auto", "focus": ["industry analysis", "supply chain", "product cycles"]},
+    "HedgeMind": {"tier": 3, "source": "auto", "focus": ["institutional positioning", "AI infra", "US tech"]},
+    "TheValueist": {"tier": 3, "source": "auto", "focus": ["semiconductor", "value analysis"]},
+    "MikeLongTerm": {"tier": 3, "source": "auto", "focus": ["semiconductor supply chain", "AI demand data"]},
+    # --- Auto Discovery: Tech Business Models & Research Frameworks ---
+    "stratechery": {"tier": 3, "source": "auto", "focus": ["platform", "AI business models", "industry structure"]},
+    "ByrneHobart": {"tier": 3, "source": "auto", "focus": ["finance", "tech", "business model synthesis"]},
+    "BrianFeroldi": {"tier": 3, "source": "auto", "focus": ["fundamentals", "earnings", "business model"]},
+    "10kdiver": {"tier": 3, "source": "auto", "focus": ["probability", "valuation", "long-term returns"]},
+    # --- Auto Discovery: Trading Frameworks & Market Structure ---
+    "PeterLBrandt": {"tier": 3, "source": "auto", "focus": ["trading", "market structure"]},
+    "alphatrends": {"tier": 3, "source": "auto", "focus": ["technical analysis", "trend framework"]},
+    "bespokeinvest": {"tier": 3, "source": "auto", "focus": ["data statistics", "charts", "cross-validation"]},
 }
 
 

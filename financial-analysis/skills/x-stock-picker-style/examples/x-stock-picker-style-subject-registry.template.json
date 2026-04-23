@@ -4,6 +4,7 @@
       "handle": "twikejin",
       "display_name": "laofashi",
       "url": "https://x.com/twikejin",
+      "source": "manual",
       "notes": "Operator supplied seed account for A-share theme and catalyst pattern study.",
       "tags": ["A-share", "theme-basket", "catalyst"],
       "candidate_names": [
@@ -31,6 +32,7 @@
       "handle": "tuolaji2024",
       "display_name": "tuolaji2024",
       "url": "https://x.com/tuolaji2024",
+      "source": "manual",
       "notes": "Operator supplied seed account for industry-chain and event-driven study.",
       "tags": ["A-share", "industry-chain", "event-driven", "optical"],
       "candidate_names": [
@@ -68,6 +70,7 @@
       "handle": "aleabitoreddit",
       "display_name": "aleabitoreddit",
       "url": "https://x.com/aleabitoreddit",
+      "source": "manual",
       "notes": "Cross-market AI infrastructure / semiconductor theme source. Use for overseas logic -> A-share basket mapping rather than direct copy-trading.",
       "tags": ["cross-market", "AI-infra", "semiconductor", "A-share-mapping"],
       "candidate_names": [
@@ -128,6 +131,7 @@
       "handle": "jukan05",
       "display_name": "jukan05",
       "url": "https://x.com/jukan05",
+      "source": "manual",
       "notes": "Cross-market semiconductor and supply-chain signal source. Best used for sector/chain mapping into A-share, not as a direct ticker source.",
       "tags": ["cross-market", "semiconductor", "supply-chain", "A-share-mapping"],
       "candidate_names": [
@@ -180,6 +184,7 @@
       "handle": "Ariston_Macro",
       "display_name": "Ariston_Macro",
       "url": "https://x.com/Ariston_Macro",
+      "source": "manual",
       "notes": "Macro-focused market intelligence account for top-down regime, liquidity, rates, and policy framing. Use as a macro context source rather than a direct A-share ticker source.",
       "tags": ["macro", "cross-market", "rates", "policy", "top-down"],
       "candidate_names": [],
@@ -187,6 +192,51 @@
         "macro_regime": ["liquidity", "rates", "yield", "dollar", "policy", "inflation", "growth", "term premium"]
       },
       "logic_basket_rules": []
+    }
+  ],
+  "auto_discovery_subjects": [
+    {
+      "_comment": "Source: @LucyBuilding thread (2026-04-22). Monitor-only, not operator-validated.",
+      "_group": "macro_market_structure",
+      "handles": [
+        {"handle": "morganhousel", "url": "https://x.com/morganhousel", "focus": "investment psychology, long-term thinking"},
+        {"handle": "LizAnnSonders", "url": "https://x.com/LizAnnSonders", "focus": "macro, liquidity, market structure, charts"},
+        {"handle": "BittelJulien", "url": "https://x.com/BittelJulien", "focus": "global macro, asset allocation, liquidity"},
+        {"handle": "charliebilello", "url": "https://x.com/charliebilello", "focus": "historical data, cycle comparison"},
+        {"handle": "awealthofcs", "url": "https://x.com/awealthofcs", "focus": "long-term investment framework"},
+        {"handle": "Ritholtz", "url": "https://x.com/Ritholtz", "focus": "market commentary, macro observation"},
+        {"handle": "LynAldenContact", "url": "https://x.com/LynAldenContact", "focus": "monetary/fiscal/energy/credit macro framework"},
+        {"handle": "biancoresearch", "url": "https://x.com/biancoresearch", "focus": "rates, bond market, policy expectations"},
+        {"handle": "josephwang", "url": "https://x.com/josephwang", "focus": "Fed, reserves, USD liquidity, financial plumbing"}
+      ]
+    },
+    {
+      "_group": "semiconductor_ai_infra_supply_chain",
+      "handles": [
+        {"handle": "dylan522p", "url": "https://x.com/dylan522p", "focus": "AI infra, GPU, cloud capex, HBM/memory"},
+        {"handle": "Beth_Kindig", "url": "https://x.com/Beth_Kindig", "focus": "tech growth stocks, AI main line"},
+        {"handle": "BenBajarin", "url": "https://x.com/BenBajarin", "focus": "industry analysis, supply chain, product cycles"},
+        {"handle": "HedgeMind", "url": "https://x.com/HedgeMind", "focus": "institutional positioning, AI infra, US tech"},
+        {"handle": "TheValueist", "url": "https://x.com/TheValueist", "focus": "semiconductor industry, value analysis"},
+        {"handle": "MikeLongTerm", "url": "https://x.com/MikeLongTerm", "focus": "semiconductor supply chain, AI demand data"}
+      ]
+    },
+    {
+      "_group": "tech_business_models_research_frameworks",
+      "handles": [
+        {"handle": "stratechery", "url": "https://x.com/stratechery", "focus": "platform companies, AI business models, industry structure"},
+        {"handle": "ByrneHobart", "url": "https://x.com/ByrneHobart", "focus": "finance + tech + business model synthesis"},
+        {"handle": "BrianFeroldi", "url": "https://x.com/BrianFeroldi", "focus": "fundamentals, earnings, business model teardown"},
+        {"handle": "10kdiver", "url": "https://x.com/10kdiver", "focus": "probability thinking, valuation framework, long-term returns"}
+      ]
+    },
+    {
+      "_group": "trading_frameworks_market_structure",
+      "handles": [
+        {"handle": "PeterLBrandt", "url": "https://x.com/PeterLBrandt", "focus": "veteran trader, market structure reference"},
+        {"handle": "alphatrends", "url": "https://x.com/alphatrends", "focus": "technical analysis, trend framework"},
+        {"handle": "bespokeinvest", "url": "https://x.com/bespokeinvest", "focus": "data statistics, charts, cross-validation"}
+      ]
     }
   ]
 }
