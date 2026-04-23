@@ -99,6 +99,8 @@ def run_postclose_review(
     result_json: dict[str, Any],
     trade_date: str,
     plan_md: str | None = None,
+    *,
+    x_risk_alerts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run the full postclose review pipeline.
 
@@ -177,6 +179,7 @@ def run_postclose_review(
         "prior_review_adjustments": prior_review_adjustments,
         "direction_momentum": direction_momentum,
         "direction_divergence_warnings": divergence_warnings,
+        "x_risk_alerts": x_risk_alerts or [],
     }
 
 
@@ -280,6 +283,17 @@ def compute_direction_momentum(
         if dk in diverged_keys and signal == "confirmed":
             signal = "caution"
             entry["divergence_detected"] = True
+        # Overheat dampener: if any aligned stock surged >5% today,
+        # downgrade strengthening → caution (short-term mean-reversion risk)
+        if signal == "strengthening":
+            aligned_returns = [
+                c["actual_return_pct"]
+                for c in candidates_reviewed
+                if c.get("direction_key") == dk and c.get("actual_return_pct") is not None
+            ]
+            if any(r > 5.0 for r in aligned_returns):
+                signal = "caution"
+                entry["overheat_detected"] = True
         entry["momentum_signal"] = signal
         result.append(entry)
     return result
@@ -357,6 +371,51 @@ def build_review_markdown(review: dict[str, Any]) -> str:
                 f"high_beta avg {w.get('high_beta_avg_return', 0):+.2f}% — "
                 f"{w.get('warning', '')}"
             )
+        lines.append("")
+
+    # X risk alerts — surface critical watchlist warnings with original text
+    x_risk_alerts = review.get("x_risk_alerts", [])
+    if x_risk_alerts:
+        lines.append("## ⚠️ X 情报风险警告")
+        lines.append("")
+        for alert in x_risk_alerts:
+            ticker = alert.get("ticker", "?")
+            author = alert.get("author", "?")
+            alert_text = alert.get("alert_text", "")
+            alert_type = alert.get("alert_type", "risk")
+            source_url = alert.get("source_url", "")
+            url_suffix = f" [{source_url}]" if source_url else ""
+            lines.append(f"> **{ticker}** — @{author}{url_suffix}")
+            lines.append(f'> "{alert_text}"')
+            lines.append(f"> 类型: {alert_type}")
+            lines.append("")
+
+    # Consistency check — warned tickers should not be top-3 priority
+    warned_tickers: set[str] = set()
+    for c in review.get("candidates_reviewed", []):
+        if c.get("judgment") == "plan_too_aggressive":
+            warned_tickers.add(c["ticker"])
+    for alert in x_risk_alerts:
+        t = alert.get("ticker", "").strip()
+        if t:
+            warned_tickers.add(t)
+    for m in review.get("direction_momentum", []):
+        if m.get("overheat_detected"):
+            dk = m.get("direction_key", "")
+            for c in review.get("candidates_reviewed", []):
+                if c.get("direction_key") == dk:
+                    warned_tickers.add(c["ticker"])
+    if warned_tickers:
+        lines.append("## ⚠️ 一致性检查")
+        lines.append("")
+        lines.append("以下标的有风险警告，**不应排入执行摘要前3优先**：")
+        for t in sorted(warned_tickers):
+            name = ""
+            for c in review.get("candidates_reviewed", []):
+                if c.get("ticker") == t:
+                    name = c.get("name", "")
+                    break
+            lines.append(f"- {t}" + (f" ({name})" if name else ""))
         lines.append("")
 
     return "\n".join(lines)

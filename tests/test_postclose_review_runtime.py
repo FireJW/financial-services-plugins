@@ -234,5 +234,97 @@ class DirectionDivergenceTests(unittest.TestCase):
         self.assertEqual(len(warnings), 0)
 
 
+class OverheatDampenerTests(unittest.TestCase):
+    """4/23 lesson: strengthening with >5% single-day surge should downgrade to caution."""
+
+    def test_overheat_downgrades_strengthening_to_caution(self) -> None:
+        """Direction with missed_opportunity + >5% return → overheat → caution."""
+        candidates = [
+            {"direction_aligned": True, "direction_key": "optical",
+             "direction_role": "leader", "actual_return_pct": 7.64, "judgment": "missed_opportunity"},
+            {"direction_aligned": True, "direction_key": "optical",
+             "direction_role": "high_beta", "actual_return_pct": 7.06, "judgment": "missed_opportunity"},
+        ]
+        momentum = compute_direction_momentum(candidates, divergence_warnings=[])
+        optical = next(m for m in momentum if m["direction_key"] == "optical")
+        self.assertEqual(optical["momentum_signal"], "caution")
+        self.assertTrue(optical.get("overheat_detected"))
+
+    def test_no_overheat_on_moderate_returns(self) -> None:
+        """Direction with missed_opportunity but <5% returns → strengthening preserved."""
+        candidates = [
+            {"direction_aligned": True, "direction_key": "optical",
+             "direction_role": "leader", "actual_return_pct": 3.5, "judgment": "missed_opportunity"},
+            {"direction_aligned": True, "direction_key": "optical",
+             "direction_role": "high_beta", "actual_return_pct": 4.2, "judgment": "missed_opportunity"},
+        ]
+        momentum = compute_direction_momentum(candidates, divergence_warnings=[])
+        optical = next(m for m in momentum if m["direction_key"] == "optical")
+        self.assertEqual(optical["momentum_signal"], "strengthening")
+        self.assertFalse(optical.get("overheat_detected", False))
+
+
+class XRiskAlertsAndConsistencyTests(unittest.TestCase):
+    """4/23 lesson: X risk alerts must surface in markdown; consistency check flags warned tickers."""
+
+    def test_x_risk_alerts_rendered_in_markdown(self) -> None:
+        from postclose_review_runtime import build_review_markdown
+        review = {
+            "trade_date": "2026-04-22",
+            "candidates_reviewed": [],
+            "summary": {"total_reviewed": 0, "correct": 0, "too_aggressive": 0, "missed": 0, "correct_negative": 0},
+            "prior_review_adjustments": [],
+            "direction_momentum": [],
+            "direction_divergence_warnings": [],
+            "x_risk_alerts": [
+                {
+                    "ticker": "300620",
+                    "author": "tuolaji2024",
+                    "alert_text": "光库科技 Q1 财报，最水的高增长报告，明天市场应该不会原谅",
+                    "alert_type": "earnings_risk",
+                },
+            ],
+        }
+        md = build_review_markdown(review)
+        self.assertIn("X 情报风险警告", md)
+        self.assertIn("tuolaji2024", md)
+        self.assertIn("300620", md)
+        self.assertIn("最水的高增长报告", md)
+        self.assertIn("earnings_risk", md)
+
+    def test_consistency_check_flags_warned_tickers(self) -> None:
+        from postclose_review_runtime import build_review_markdown
+        review = {
+            "trade_date": "2026-04-22",
+            "candidates_reviewed": [
+                {"ticker": "300620", "name": "光库科技", "plan_action": "可执行",
+                 "actual_return_pct": -10.91, "intraday_structure": "fade_from_high",
+                 "judgment": "plan_too_aggressive", "adjustment": "downgrade",
+                 "priority_delta": -5, "gate_next_run": True,
+                 "direction_aligned": True, "direction_key": "optical", "direction_role": "leader"},
+            ],
+            "summary": {"total_reviewed": 1, "correct": 0, "too_aggressive": 1, "missed": 0, "correct_negative": 0},
+            "prior_review_adjustments": [{"ticker": "300620", "adjustment": "downgrade", "priority_delta": -5, "gate_next_run": True}],
+            "direction_momentum": [{"direction_key": "optical", "overheat_detected": True, "momentum_signal": "caution",
+                                     "aligned_candidates_count": 1, "aligned_correct": 0, "aligned_too_aggressive": 1, "aligned_missed": 0}],
+            "direction_divergence_warnings": [],
+            "x_risk_alerts": [{"ticker": "300620", "author": "tuolaji2024", "alert_text": "test", "alert_type": "earnings_risk"}],
+        }
+        md = build_review_markdown(review)
+        self.assertIn("一致性检查", md)
+        self.assertIn("300620", md)
+        self.assertIn("不应排入执行摘要前3优先", md)
+
+    @patch("postclose_review_runtime._fetch_intraday_bars_for_review")
+    def test_x_risk_alerts_passed_through_run_postclose_review(self, mock_bars) -> None:
+        from postclose_review_runtime import run_postclose_review
+        mock_bars.return_value = []
+        result_json = {"top_picks": [], "near_miss_candidates": []}
+        alerts = [{"ticker": "300620", "author": "tuolaji2024", "alert_text": "test", "alert_type": "earnings_risk"}]
+        review = run_postclose_review(result_json, "2026-04-22", x_risk_alerts=alerts)
+        self.assertEqual(len(review["x_risk_alerts"]), 1)
+        self.assertEqual(review["x_risk_alerts"][0]["ticker"], "300620")
+
+
 if __name__ == "__main__":
     unittest.main()
