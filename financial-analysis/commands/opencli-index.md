@@ -46,8 +46,12 @@ Recommended v1 usage:
 
 - `opencli.result_path` for a deterministic offline import
 - `opencli.result` when a previous step already produced the payload in memory
+- `opencli.input_mode = "codex_iab"` when the current Codex in-app Browser Use
+  session has produced a dynamic-page capture payload
 - `financial-analysis\skills\autoresearch-info-index\examples\opencli-bridge-request.template.json`
   for the bridge contract itself
+- `financial-analysis\skills\autoresearch-info-index\examples\opencli-codex-iab-request.template.json`
+  for the Browser Use capture contract
 - start from `financial-analysis\skills\autoresearch-info-index\examples\opencli-source-profile.template.json`
   when you need a reviewed source-policy stub for a new site profile
 
@@ -74,9 +78,14 @@ Operator note:
 
 - `opencli-index` is best treated as a capture adapter, not a source of final
   judgment
+- Codex IAB Browser Use is also a capture adapter here; the bridge imports its
+  visible text, final URL, screenshot, and capture metadata, then lets
+  `news-index` judge the evidence
 - use it to get authenticated or dynamic material into the repo's evidence
   pipeline, then let `news-index`, `completion-check`, and `operator-summary`
   decide whether the capture is actually usable
+- keep X and WeChat on their native routes; use `codex_iab` here for dynamic
+  non-X/non-WeChat pages that need the in-app browser's rendered view
 
 Request example:
 

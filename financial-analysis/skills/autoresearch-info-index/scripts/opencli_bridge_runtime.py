@@ -84,6 +84,13 @@ BLOCKED_STATUS_MARKERS = {
     "unavailable",
 }
 RUNNER_BLOCKED_MARKERS = ("blocked", "login", "auth", "captcha", "paywall", "session")
+CODEX_IAB_INPUT_MODES = {"codex_iab", "codex_iab_capture", "browser_use", "browser_use_capture"}
+CODEX_IAB_PAYLOAD_KEYS = (
+    "codex_iab_capture",
+    "codex_iab",
+    "browser_use_capture",
+    "browser_capture",
+)
 
 
 def now_utc() -> datetime:
@@ -195,8 +202,14 @@ def load_json_from_path(path: Path) -> Any:
 def normalize_input_mode(raw_payload: dict[str, Any]) -> str:
     opencli_block = safe_dict(raw_payload.get("opencli"))
     requested = normalize_key(opencli_block.get("input_mode") or raw_payload.get("opencli_input_mode"))
+    if requested in CODEX_IAB_INPUT_MODES:
+        return "codex_iab"
     if requested in {"inline_payload", "result_path", "command"}:
         return requested
+    if any(opencli_block.get(key) not in (None, "", [], {}) for key in CODEX_IAB_PAYLOAD_KEYS):
+        return "codex_iab"
+    if any(raw_payload.get(key) not in (None, "", [], {}) for key in CODEX_IAB_PAYLOAD_KEYS):
+        return "codex_iab"
     if opencli_block.get("result") not in (None, "", [], {}) or raw_payload.get("opencli_result") not in (None, "", [], {}):
         return "inline_payload"
     if clean_text(opencli_block.get("result_path") or raw_payload.get("opencli_result_path")):
@@ -212,6 +225,105 @@ def normalize_command(value: Any) -> list[str]:
     if isinstance(value, str):
         return [clean_text(token) for token in shlex.split(value, posix=False) if clean_text(token)]
     return []
+
+
+def flatten_codex_iab_captures(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        for key in ("captures", "items", "pages", "results"):
+            nested = value.get(key)
+            if isinstance(nested, list):
+                return flatten_codex_iab_captures(nested)
+        return [value]
+    if isinstance(value, list):
+        captures: list[dict[str, Any]] = []
+        for item in value:
+            if isinstance(item, dict):
+                captures.extend(flatten_codex_iab_captures(item))
+        return captures
+    return []
+
+
+def resolve_codex_iab_capture_payload(raw_payload: dict[str, Any]) -> Any:
+    opencli_block = safe_dict(raw_payload.get("opencli"))
+    for key in CODEX_IAB_PAYLOAD_KEYS:
+        value = opencli_block.get(key)
+        if value not in (None, "", [], {}):
+            return value
+    for key in CODEX_IAB_PAYLOAD_KEYS:
+        value = raw_payload.get(key)
+        if value not in (None, "", [], {}):
+            return value
+    result_path = clean_text(
+        opencli_block.get("codex_iab_result_path")
+        or opencli_block.get("browser_use_result_path")
+        or raw_payload.get("codex_iab_result_path")
+        or raw_payload.get("browser_use_result_path")
+    )
+    if result_path:
+        return load_json_from_path(Path(result_path).expanduser().resolve())
+    return {}
+
+
+def normalize_codex_iab_capture(capture: dict[str, Any], index: int) -> dict[str, Any]:
+    item = deepcopy(capture)
+    final_url = clean_text(item.get("final_url") or item.get("resolved_url") or item.get("url"))
+    url = clean_text(item.get("url") or final_url)
+    source_url = final_url or url
+    title = clean_text(item.get("title") or item.get("tab_title") or item.get("source_name"))
+    visible_text = clean_text(
+        item.get("visible_text")
+        or item.get("text")
+        or item.get("page_text")
+        or item.get("dom_snapshot_excerpt")
+        or item.get("dom_snapshot")
+    )
+    captured_at = clean_text(
+        item.get("captured_at")
+        or item.get("observed_at")
+        or item.get("timestamp")
+        or item.get("created_at")
+    )
+    status = normalize_key(item.get("status") or item.get("capture_status") or "ok")
+    blocked_reason = clean_text(item.get("blocked_reason") or item.get("error") or item.get("failure_reason"))
+    access_mode = "blocked" if blocked_reason or status in BLOCKED_STATUS_MARKERS else clean_text(item.get("access_mode") or "browser_session")
+    screenshot_path = clean_text(item.get("screenshot_path") or item.get("page_screenshot_path") or item.get("screenshot"))
+    artifacts = safe_list(item.get("artifact_manifest") or item.get("artifacts"))
+    if screenshot_path and not any(clean_text(entry.get("path")) == screenshot_path for entry in artifacts if isinstance(entry, dict)):
+        artifacts = [
+            *artifacts,
+            {
+                "role": "page_screenshot",
+                "path": screenshot_path,
+                "source_url": source_url,
+                "media_type": "image/png",
+            },
+        ]
+    item.update(
+        {
+            "title": title or brand_for_host(host_for(source_url)) or f"Codex IAB capture {index:02d}",
+            "url": source_url,
+            "final_url": final_url,
+            "captured_at": captured_at,
+            "visible_text": visible_text,
+            "access_mode": access_mode,
+            "status": status,
+            "blocked_reason": blocked_reason,
+            "artifact_manifest": artifacts,
+            "session_source": "codex_iab",
+            "capture_adapter": "codex_iab",
+        }
+    )
+    if visible_text and not clean_text(item.get("summary")):
+        item["summary"] = visible_text
+    return item
+
+
+def build_codex_iab_opencli_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    captures = flatten_codex_iab_captures(resolve_codex_iab_capture_payload(raw_payload))
+    return {
+        "items": [normalize_codex_iab_capture(capture, index) for index, capture in enumerate(captures, start=1)],
+        "capture_adapter": "codex_iab",
+    }
 
 
 def classify_runner_failure(message: str) -> str:
@@ -304,6 +416,18 @@ def run_opencli_command(raw_payload: dict[str, Any]) -> tuple[Any, str, str, dic
 def resolve_opencli_payload(raw_payload: dict[str, Any]) -> tuple[Any, str, str, dict[str, Any]]:
     opencli_block = safe_dict(raw_payload.get("opencli"))
     input_mode = normalize_input_mode(raw_payload)
+    if input_mode == "codex_iab":
+        return (
+            build_codex_iab_opencli_payload(raw_payload),
+            "codex_iab",
+            "",
+            {
+                "mode": "codex_iab",
+                "status": "ok",
+                "payload_source": "codex_iab",
+                "reason": "",
+            },
+        )
     if input_mode == "command":
         return run_opencli_command(raw_payload)
     inline_payload = opencli_block.get("result")
@@ -571,6 +695,8 @@ def normalize_opencli_item(item: dict[str, Any], request: dict[str, Any], index:
             "opencli": {
                 "site_profile": request["site_profile"],
                 "payload_source": request["payload_source"],
+                "capture_adapter": clean_text(item.get("capture_adapter")),
+                "session_source": clean_text(item.get("session_source")),
                 "blocked_reason": blocked_reason,
                 "timestamp_fallback": timestamp_fallback,
                 "source_policy": {
@@ -748,6 +874,8 @@ def prepare_opencli_bridge(
         notes.append(f"- Loaded OpenCLI payload from `{request['result_path']}`")
     if request["payload_source"] == "command_result_path" and request["result_path"]:
         notes.append(f"- OpenCLI runner wrote a result file at `{request['result_path']}`")
+    if request["payload_source"] == "codex_iab":
+        notes.append("- Codex IAB Browser Use capture imported as OpenCLI-compatible evidence.")
     runner_summary = safe_dict(request.get("runner_summary"))
     if runner_summary:
         runner_status = clean_text(runner_summary.get("status"))

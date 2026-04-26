@@ -85,6 +85,8 @@ Phrase-match shortcuts:
 - "整理这个 X thread 的证据" -> `x-index`
 - "把 Agent Reach 的发现并进当前判断" -> `agent-reach-bridge`
 - "这个登录态或动态页面抓一下" -> `opencli-index`
+- "直接给我完整成文流程" -> `article-workflow`
+- "找封面图" / "换封面" -> 先查 `financial-analysis/skills/autoresearch-info-index/templates/cover-image-sourcing-guide.md`
 
 Freshness wording guardrail:
 
@@ -94,12 +96,6 @@ Freshness wording guardrail:
 <!-- codex:native-routing:end -->
 
 
-
-Freshness wording guardrail:
-
-- `latest`, `today`, `recent`, `最新`, `今天`, `近期` do not automatically mean web-first
-- first check whether `news-index`, `x-index`, `agent-reach-bridge`, `opencli-index`, or `hot-topics` already fit the freshness need
-- only jump to generic web search when those native freshness routes do not fit
 
 ## Capability-First Routing
 
@@ -197,12 +193,15 @@ instead of assuming `pwsh` is available.
 
 - Do not use `.gemini/antigravity/scratch/` as the canonical home for this repo.
 - The canonical working copy for this repo should be:
+  - `/home/rickylu/dev/financial-services-plugins`
+- The Windows fallback copy remains at:
   - `D:\Users\rickylu\dev\financial-services-plugins`
-- WSL remains optional, but if used, keep the canonical repo inside the Linux filesystem, not `/mnt/c/...`.
+- Prefer WSL for normal development and do not use `/mnt/d/...` as the primary working copy unless the user explicitly asks for Windows-side work.
 - Do not change the user's active C-drive Codex home/config unless they explicitly ask for a Codex configuration migration.
 - Before risky recovery or agent-heavy work, run:
   - `.\scripts\check-workspace-safety.ps1`
   - `.\scripts\repo-snapshot.ps1 -BackupRoot "D:\Users\rickylu\repo-safety-backups\financial-services-plugins" -MirrorLatest -IncludeGit`
+- Those PowerShell safety commands are Windows-side fallback tools; for normal WSL-first development, stay in `/home/rickylu/dev/financial-services-plugins`.
 - To prepare a stable non-scratch working copy, use:
   - `.\scripts\prepare-safe-workspace.ps1 -TargetRoot "D:\Users\rickylu\dev" -IncludeGit -IncludeTmp -Execute`
 - To lift the main lines into focused sibling workspaces, use:

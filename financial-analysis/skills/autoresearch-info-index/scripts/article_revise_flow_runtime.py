@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from article_feedback_profiles import (
+    apply_topic_lane_defaults,
     feedback_profile_status,
     normalize_profile_feedback,
     parse_bool,
@@ -176,7 +177,7 @@ def normalize_revision_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     if analysis_time is None:
         raise ValueError("Unable to determine analysis_time for article revision")
 
-    return {
+    request = {
         "analysis_time": analysis_time,
         "topic": clean_text(raw_payload.get("topic") or prior_request.get("topic") or source_summary.get("topic")),
         "title_hint": clean_text(raw_payload.get("title_hint") or raw_payload.get("title_override") or prior_request.get("title_hint")),
@@ -214,6 +215,18 @@ def normalize_revision_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "article_result": article_result,
         "feedback": feedback,
     }
+    lane_context = " ".join(
+        [
+            clean_text(source_summary.get("topic")),
+            clean_text(source_summary.get("summary")),
+            " ".join(
+                clean_text(item.get("source_name"))
+                for item in safe_list(safe_dict(article_result.get("article_package")).get("citations"))
+                if isinstance(item, dict)
+            ),
+        ]
+    )
+    return apply_topic_lane_defaults(request, extra_text=lane_context)
 
 
 def reorder_candidates(image_candidates: list[dict[str, Any]], keep_image_ids: list[str], drop_image_ids: list[str]) -> list[dict[str, Any]]:
@@ -333,9 +346,10 @@ def _check_evidence_utilization(
     if not canonical_facts:
         return {"attack_id": "shallow-evidence-utilization", "severity": "pass"}
 
+    normalized_article_text = article_text.replace(" ", "").lower()
     fact_hits = sum(
         1 for f in canonical_facts
-        if _fact_fingerprint(f) and _fact_fingerprint(f) in article_text
+        if _fact_fingerprint(f) and _fact_fingerprint(f) in normalized_article_text
     )
     fact_ratio = fact_hits / max(len(canonical_facts), 1)
 
@@ -653,7 +667,16 @@ def build_red_team_review(
         )
 
     # --- Depth Enhancement Checks (Phase 2) ---
-    enable_depth = clean_text(safe_dict(article_package.get("request")).get("enable_depth_checks")) != "false"
+    package_request = safe_dict(article_package.get("request"))
+    try:
+        requested_length = int(package_request.get("target_length_chars", 0) or 0)
+    except (TypeError, ValueError):
+        requested_length = 0
+    framework = clean_text(package_request.get("article_framework"))
+    enable_depth = (
+        clean_text(package_request.get("enable_depth_checks")) != "false"
+        and (framework == "deep_analysis" or requested_length >= 2000)
+    )
     if enable_depth:
         depth_attacks = _run_depth_checks(text, analysis_brief)
         attacks.extend(depth_attacks)

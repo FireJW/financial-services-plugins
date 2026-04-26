@@ -43,3 +43,30 @@ If the user gives editing feedback:
 - update the reusable writing memory or workflow memory
 - avoid treating one-off wording edits as universal rules unless the user makes
   the preference explicit
+
+## Platform-Ready Formatting (Chinese)
+
+When the article targets WeChat or Toutiao, the final output must be
+platform-ready plain text, not raw markdown:
+
+- **No markdown bold** (`**text**`): platform renderers handle it
+  inconsistently. Use plain text for emphasis.
+- **No heading markers** (`##`, `###`): titles are plain text lines.
+- **No horizontal rules** (`---`): remove all separators.
+- **No numbered list prefixes** (`1. 2. 3.`): state items directly.
+- **No metadata blockquote** at the top (analysis time, data sources).
+- **No title repetition** in the body (`# Title`): the title is filled
+  separately in the platform editor.
+- **Source label**: use `来源：` not `信源说明：`.
+- **No toolchain exposure**: never mention "索引管线", "交叉验证",
+  "本地索引" or similar internal pipeline terms.
+
+## Voice Preferences (Chinese)
+
+- Open with a direct statement (`就在昨天，…`), not a template hook
+  (`说一件昨天发生的事`).
+- Drop filler words: `就是做 Claude 的` → `做 Claude 的`.
+- Use `消息` to introduce a source naturally.
+- Prefer `接下来关注什么` over `接下来盯什么` (slightly more formal).
+- Add `有` for spoken flow: `需要盯的三个` → `需要盯的有三个`.
+- Simplify numbered labels: `坑一` → `一`.

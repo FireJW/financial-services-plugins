@@ -23,6 +23,7 @@ from article_draft_flow_runtime import (
     build_draft_claim_map,
     build_sections,
     chinese_watch_item,
+    normalize_request as normalize_article_draft_request,
     polish_chinese_wechat_paragraph,
     split_chinese_wechat_breaths,
     topic_prefers_business_shorthand,
@@ -125,6 +126,89 @@ class ArticleWorkflowTests(unittest.TestCase):
                 ],
             }
         )
+
+    def test_article_draft_normalize_request_applies_tech_lane_defaults(self) -> None:
+        source_result = run_news_index(
+            {
+                "topic": "Agentic AI reprices the semiconductor supply chain",
+                "analysis_time": "2026-04-25T12:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-1",
+                        "claim_text": "A large AI infrastructure deal is pushing compute demand upstream.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "tech-1",
+                        "source_name": "The Information",
+                        "source_type": "major_news",
+                        "published_at": "2026-04-25T11:00:00+00:00",
+                        "observed_at": "2026-04-25T11:05:00+00:00",
+                        "url": "https://example.com/tech-1",
+                        "text_excerpt": (
+                            "Google and Anthropic are expanding TPU and GPU capacity, "
+                            "pulling Broadcom, TSMC, packaging, and cloud infrastructure into focus."
+                        ),
+                        "claim_ids": ["claim-1"],
+                        "claim_states": {"claim-1": "support"},
+                    }
+                ],
+            }
+        )
+
+        request = normalize_article_draft_request(
+            {
+                "source_result": source_result,
+                "language_mode": "chinese",
+            }
+        )
+
+        self.assertEqual(request["article_framework"], "deep_analysis")
+        self.assertEqual(request["style_memory"]["target_band"], "tech_supply_chain_commentary")
+        self.assertIn("顺着钱的流向看下去", request["personal_phrase_bank"])
+        self.assertIn(
+            "把公司新闻翻译成资金流向、订单流向、产能流向或部署变量",
+            request["must_include"],
+        )
+
+    def test_article_draft_normalize_request_keeps_non_tech_topics_out_of_tech_lane(self) -> None:
+        source_result = run_news_index(
+            {
+                "topic": "Consumer beverage brand refresh sparks debate",
+                "analysis_time": "2026-04-25T12:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-1",
+                        "claim_text": "A beverage brand refresh is driving marketing debate.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "brand-1",
+                        "source_name": "Campaign",
+                        "source_type": "major_news",
+                        "published_at": "2026-04-25T11:00:00+00:00",
+                        "observed_at": "2026-04-25T11:05:00+00:00",
+                        "url": "https://example.com/brand-1",
+                        "text_excerpt": "The redesign is polarizing consumers and advertisers, but it is mainly a branding story.",
+                        "claim_ids": ["claim-1"],
+                        "claim_states": {"claim-1": "support"},
+                    }
+                ],
+            }
+        )
+
+        request = normalize_article_draft_request(
+            {
+                "source_result": source_result,
+                "language_mode": "chinese",
+            }
+        )
+
+        self.assertEqual(request["article_framework"], "auto")
+        self.assertNotEqual(request.get("style_memory", {}).get("target_band"), "tech_supply_chain_commentary")
+        self.assertNotIn("顺着钱的流向看下去", request["personal_phrase_bank"])
 
     def build_seed_x_request(self, tmpdir: Path) -> dict:
         tmpdir.mkdir(parents=True, exist_ok=True)

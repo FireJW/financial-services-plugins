@@ -76,6 +76,7 @@ DEFAULT_X_RESULT_FILENAME = "x-index-result.json"
 DEFAULT_X_REPORT_FILENAME = "x-index-report.md"
 DEFAULT_REUSE_SCAN_LIMIT = 24
 DEFAULT_WINDOW_QUERY_LIMIT = 6
+CODEX_IAB_SESSION_STRATEGIES = {"codex_iab", "codex_iab_capture", "browser_use", "browser_use_capture"}
 
 
 @dataclass
@@ -535,9 +536,16 @@ def unique_notes(values: list[str]) -> list[str]:
     return notes
 
 
+def normalize_browser_session_strategy(value: Any) -> str:
+    strategy = clean_text(value).lower().replace("-", "_").replace(" ", "_")
+    if strategy in CODEX_IAB_SESSION_STRATEGIES:
+        return "codex_iab"
+    return strategy
+
+
 def prepare_session_context(request: dict[str, Any]) -> dict[str, Any]:
     session_request = request.get("browser_session", {})
-    strategy = clean_text(session_request.get("strategy"))
+    strategy = normalize_browser_session_strategy(session_request.get("strategy"))
     context = {
         "requested": bool(strategy),
         "strategy": strategy,
@@ -551,6 +559,20 @@ def prepare_session_context(request: dict[str, Any]) -> dict[str, Any]:
         "notes": [],
     }
     if not strategy:
+        return context
+
+    if strategy == "codex_iab":
+        context.update(
+            {
+                "active": False,
+                "status": "operator_capture_required",
+                "source": "codex_iab",
+                "notes": [
+                    "Codex IAB Browser Use runs inside the active Codex session and cannot be launched from this Python runtime.",
+                    "Capture the page with Browser Use, then import that artifact through opencli-index with input_mode=codex_iab.",
+                ],
+            }
+        )
         return context
 
     if strategy == "cookie_file":

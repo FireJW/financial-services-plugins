@@ -142,6 +142,58 @@ class OpenCliBridgeTests(unittest.TestCase):
                 }
             )
 
+    def test_bridge_imports_codex_iab_capture_as_browser_session_evidence(self) -> None:
+        screenshot_path = self.temp_dir / "codex-iab-page.png"
+        screenshot_path.write_bytes(b"png")
+
+        result = run_opencli_bridge(
+            {
+                "topic": "Official dynamic page through Codex IAB",
+                "analysis_time": "2026-04-03T08:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "driver-state-known",
+                        "claim_text": "The latest external driver can be described with an exact date.",
+                    }
+                ],
+                "opencli": {
+                    "input_mode": "codex_iab",
+                    "site_profile": "official-dynamic-page",
+                    "codex_iab_capture": {
+                        "title": "Regulator dashboard update",
+                        "url": "https://regulator.example.com/dashboard",
+                        "final_url": "https://regulator.example.com/dashboard?tab=latest",
+                        "captured_at": "2026-04-03T07:20:00+00:00",
+                        "visible_text": "The dashboard says the latest external driver improved on April 3.",
+                        "dom_snapshot_excerpt": "RootWebArea Regulator dashboard",
+                        "screenshot_path": str(screenshot_path),
+                        "session_name": "Codex Browser Use capture",
+                        "tab_id": "1",
+                    },
+                },
+            }
+        )
+
+        observation = result["retrieval_result"]["observations"][0]
+        self.assertEqual(result["request"]["input_mode"], "codex_iab")
+        self.assertEqual(result["import_summary"]["payload_source"], "codex_iab")
+        self.assertEqual(result["runner_summary"]["mode"], "codex_iab")
+        self.assertEqual(observation["origin"], "opencli")
+        self.assertEqual(observation["access_mode"], "browser_session")
+        self.assertEqual(observation["source_type"], "official_release")
+        self.assertIn("latest external driver improved", observation["text_excerpt"])
+        self.assertEqual(observation["artifact_manifest"][0]["role"], "page_screenshot")
+        self.assertEqual(observation["artifact_manifest"][0]["path"], str(screenshot_path))
+        self.assertEqual(
+            observation["raw_metadata"]["opencli"]["capture_adapter"],
+            "codex_iab",
+        )
+        self.assertEqual(
+            observation["raw_metadata"]["source_item"]["session_source"],
+            "codex_iab",
+        )
+        self.assertIn("Codex IAB Browser Use capture", result["report_markdown"])
+
     def test_bridge_falls_back_to_observed_at_when_policy_allows_missing_publication_time(self) -> None:
         result = run_opencli_bridge(
             {

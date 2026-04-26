@@ -44,6 +44,29 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
+    def test_normalize_request_defaults_wechat_push_backend_to_api(self) -> None:
+        request = normalize_request(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": self.manual_topic_candidates(),
+                "output_dir": str(self.temp_dir / "default-api-backend"),
+                "push_to_wechat": True,
+            }
+        )
+        self.assertEqual(request["push_backend"], "api")
+
+    def test_normalize_request_preserves_explicit_auto_wechat_push_backend(self) -> None:
+        request = normalize_request(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": self.manual_topic_candidates(),
+                "output_dir": str(self.temp_dir / "explicit-auto-backend"),
+                "push_to_wechat": True,
+                "push_backend": "auto",
+            }
+        )
+        self.assertEqual(request["push_backend"], "auto")
+
     def manual_topic_candidates(self) -> list[dict]:
         return [
             {

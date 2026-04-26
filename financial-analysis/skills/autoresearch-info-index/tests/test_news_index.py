@@ -538,6 +538,28 @@ class NewsIndexTests(unittest.TestCase):
         self.assertFalse(context["active"])
         self.assertTrue(any("new Edge window" in note for note in context["notes"]))
 
+    def test_prepare_session_context_codex_iab_records_operator_capture_route(self) -> None:
+        request = parse_request(
+            {
+                "topic": "Codex IAB bootstrap",
+                "analysis_time": "2026-04-02T12:00:00+00:00",
+                "browser_session": {
+                    "strategy": "codex_iab",
+                    "required": True,
+                },
+            }
+        )
+
+        context = prepare_session_context(request)
+
+        self.assertTrue(context["requested"])
+        self.assertFalse(context["active"])
+        self.assertEqual(context["strategy"], "codex_iab")
+        self.assertEqual(context["source"], "codex_iab")
+        self.assertEqual(context["status"], "operator_capture_required")
+        self.assertTrue(any("Browser Use" in note for note in context["notes"]))
+        self.assertTrue(any("opencli-index" in note for note in context["notes"]))
+
     def test_build_window_capture_hints_outputs_direct_x_search_urls(self) -> None:
         request = parse_request(
             {

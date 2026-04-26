@@ -19,7 +19,13 @@ from article_evidence_bundle import (
     build_image_candidates as shared_build_image_candidates,
     build_shared_evidence_bundle,
 )
-from article_feedback_profiles import feedback_profile_status, load_feedback_profiles, merge_request_with_profiles, resolve_profile_dir
+from article_feedback_profiles import (
+    apply_topic_lane_defaults,
+    feedback_profile_status,
+    load_feedback_profiles,
+    merge_request_with_profiles,
+    resolve_profile_dir,
+)
 from news_index_runtime import isoformat_or_blank, load_json, parse_datetime, short_excerpt, write_json
 
 
@@ -162,6 +168,22 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     profile_dir = resolve_profile_dir(request.get("feedback_profile_dir"))
     profiles = load_feedback_profiles(profile_dir, request.get("topic", "article-topic"))
     request = merge_request_with_profiles(request, profiles)
+    lane_context = " ".join(
+        [
+            clean_text(source_request.get("topic")),
+            clean_text(source_request.get("summary")),
+            " ".join(
+                clean_text(item.get("text_excerpt") or item.get("summary") or item.get("title"))
+                for item in safe_list(
+                    source_result.get("sources")
+                    or source_result.get("ranked_sources")
+                    or source_result.get("candidates")
+                )
+                if isinstance(item, dict)
+            ),
+        ]
+    )
+    request = apply_topic_lane_defaults(request, extra_text=lane_context)
     request["tone"] = clean_text(request.get("tone") or "neutral-cautious")
     request["max_images"] = max(0, min(int(request.get("max_images", 3) or 3), 8))
     request["human_signal_ratio"] = normalize_human_signal_ratio(
@@ -3930,8 +3952,11 @@ def article_ready_fact_texts(
 def localized_trend_texts(trend_lines: list[dict[str, Any]], *, mode: str, limit: int = 2) -> list[str]:
     texts: list[str] = []
     for item in trend_lines:
+        raw_text = preferred_brief_item_text(item, mode=mode, field="detail", zh_field="detail_zh")
+        if not raw_text:
+            raw_text = clean_text(item.get("detail") or item.get("detail_zh"))
         text = localized_brief_text(
-            preferred_brief_item_text(item, mode=mode, field="detail", zh_field="detail_zh"),
+            raw_text,
             mode,
         )
         if text:
@@ -5925,6 +5950,8 @@ def build_sections_from_brief(
             spread_sentences.append(f"这轮讨论还在往前走，核心不是热度，而是{trend_texts[0]}")
         if shadow_source_count > 0:
             spread_sentences.append(f"与此同时，还有{shadow_source_count}路更新更快但噪音也更大的信号在不断抬高情绪")
+        if trend_texts and not any(trend_texts[0] in sentence for sentence in spread_sentences):
+            spread_sentences.append(trend_texts[0])
         spread_sentences.append(
             f"所以你现在看到的，不只是一个标题在回潮，而是在看{chinese_focus_cluster(_focus_spread, fallback='更具体的变化', flavor='story_test')}"
         )
@@ -5958,7 +5985,7 @@ def build_sections_from_brief(
 
         impact_sentences: list[str] = []
         if focus_for_progression:
-            impact_sentences.append(f"如果这波变化继续往下走，{chinese_progression_phrase(_focus_impact or focus_for_progression)}")
+            impact_sentences.append(f"如果这波变化继续往下走，{chinese_progression_phrase(focus_for_progression)}")
             impact_sentences.append(chinese_focus_outcome_sentence(_focus_impact or focus_for_progression))
         else:
             impact_sentences.append("真正值得盯的，不是表面热度，而是它会不会开始改变真实决策")

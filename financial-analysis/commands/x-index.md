@@ -44,6 +44,9 @@ Guardrails:
 
 - `x-index` is the repository-native X / Twitter route
 - prefer `remote_debugging` on Windows when a signed browser session is available
+- `browser_session.strategy = "codex_iab"` records that an operator-side Codex
+  Browser Use capture is required; it does not pretend the Python runtime can
+  launch or own the in-app browser
 - reuse recent successful `x-index` results when they are still relevant before
   recollecting the same evidence
 - do not start with public X page scraping when the native workflow can reuse a

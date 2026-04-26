@@ -1,0 +1,36 @@
+{
+  "topic": "Official dynamic page through Codex IAB",
+  "analysis_time": "2026-04-03T08:00:00+00:00",
+  "questions": [
+    "What changed in the latest rendered page state?"
+  ],
+  "use_case": "opencli-codex-iab-bridge",
+  "mode": "generic",
+  "claims": [
+    {
+      "claim_id": "driver-state-known",
+      "claim_text": "The latest external driver can be described with an exact date."
+    }
+  ],
+  "opencli": {
+    "input_mode": "codex_iab",
+    "site_profile": "official-dynamic-page",
+    "codex_iab_capture": {
+      "title": "Regulator dashboard update",
+      "url": "https://regulator.example.com/dashboard",
+      "final_url": "https://regulator.example.com/dashboard?tab=latest",
+      "captured_at": "2026-04-03T07:20:00+00:00",
+      "visible_text": "Visible text copied from the Codex in-app Browser Use capture.",
+      "dom_snapshot_excerpt": "Short DOM snapshot excerpt or locator-relevant text.",
+      "screenshot_path": "C:\\path\\to\\codex-iab-page.png",
+      "session_name": "Codex Browser Use capture",
+      "tab_id": "1"
+    },
+    "source_policy": {
+      "source_type": "official_release",
+      "channel": "shadow",
+      "access_mode": "browser_session",
+      "allow_observed_at_fallback": true
+    }
+  }
+}

@@ -187,6 +187,145 @@ def apply_style_memory_defaults(request: dict[str, Any], style_memory: dict[str,
     return merged
 
 
+GENERAL_COMMENTARY_STYLE_MEMORY = {
+    "target_band": "commentary_variable_first",
+    "voice_summary": (
+        "Lead with one clear judgment, not chronology. Use one anchor event or signal, "
+        "then explain why it changes the variable readers should track."
+    ),
+    "preferred_transitions": [
+        "先看结论",
+        "表面上看",
+        "真正值得注意的",
+    ],
+    "must_land": [
+        "先用一句总判断说明这条新闻为什么值得写",
+        "用一个最强锚点事件、交易或经营信号带出主线",
+        "把新闻翻译成后续值得跟踪的变量，而不是只复述标题",
+    ],
+    "avoid_patterns": [
+        "只按时间顺序复述新闻，不解释为什么重要",
+        "只堆数字和公司名，不说明变量传导",
+    ],
+}
+
+
+TECH_INFRA_STYLE_MEMORY = {
+    "target_band": "tech_supply_chain_commentary",
+    "voice_summary": (
+        "Treat technology headlines as supply-chain and deployment variables. "
+        "Start with one thesis, anchor on one transaction, partnership, capex plan, "
+        "or capacity signal, then follow the flow of money, orders, capacity, and infrastructure."
+    ),
+    "preferred_transitions": [
+        "往下拆",
+        "顺着钱的流向看下去",
+        "真正值得重估的",
+    ],
+    "must_land": [
+        "把公司新闻翻译成资金流向、订单流向、产能流向或部署变量",
+        "解释这条线最终落到哪些芯片、封装、服务器、云资源或上游环节",
+        "不要停在模型热度，要落到资本开支、部署成本、供给约束或基础设施受益者",
+    ],
+    "avoid_patterns": [
+        "只写模型热度，不落到部署、产能、资本开支或供应链",
+        "把融资或合作新闻直接等同于长期产业胜负",
+    ],
+    "slot_guidance": {
+        "lede": [
+            "用一句判断说明这不是普通公司新闻，而是一条会传导到上游变量的信号",
+        ],
+        "facts": [
+            "先给出一个最强锚点交易、合作、capex 或 capacity signal",
+        ],
+        "impact": [
+            "顺着钱流、订单流、产能流往上游写，讲清楚谁会被重新定价",
+        ],
+        "watch": [
+            "把后续跟踪点落到 GPU、TPU、封装、服务器、云厂商或数据中心约束",
+        ],
+    },
+}
+
+
+TECH_TOPIC_TOKENS = (
+    "ai",
+    "agentic ai",
+    "agent",
+    "model",
+    "llm",
+    "gpu",
+    "tpu",
+    "semiconductor",
+    "chip",
+    "chips",
+    "datacenter",
+    "data center",
+    "cloud",
+    "inference",
+    "training",
+    "broadcom",
+    "nvidia",
+    "anthropic",
+    "google cloud",
+    "tsmc",
+    "intel",
+    "台积",
+    "半导体",
+    "芯片",
+    "算力",
+    "云厂商",
+    "推理",
+    "训练",
+    "封装",
+    "服务器",
+    "数据中心",
+    "昇腾",
+    "英伟达",
+    "博通",
+    "台积电",
+)
+
+
+def topic_lane_text(request: dict[str, Any], extra_text: Any = None) -> str:
+    parts = [
+        clean_text(request.get("topic")),
+        clean_text(request.get("title_hint")),
+        clean_text(request.get("title_hint_zh")),
+        clean_text(request.get("subtitle_hint")),
+        clean_text(request.get("subtitle_hint_zh")),
+        clean_text(request.get("angle")),
+        clean_text(request.get("angle_zh")),
+    ]
+    for item in clean_string_list(request.get("must_include")):
+        parts.append(item)
+    if extra_text not in (None, "", [], {}):
+        if isinstance(extra_text, (list, tuple, set)):
+            parts.extend(clean_text(item) for item in extra_text)
+        else:
+            parts.append(clean_text(extra_text))
+    return " ".join(part for part in parts if part).lower()
+
+
+def is_technology_topic(text: str) -> bool:
+    lowered = clean_text(text).lower()
+    if not lowered:
+        return False
+    return any(token in lowered for token in TECH_TOPIC_TOKENS)
+
+
+def apply_topic_lane_defaults(request: dict[str, Any], *, extra_text: Any = None) -> dict[str, Any]:
+    merged = deepcopy(request)
+    if is_technology_topic(topic_lane_text(merged, extra_text)):
+        style_memory = merge_style_memory(GENERAL_COMMENTARY_STYLE_MEMORY, safe_dict(merged.get("style_memory")))
+        style_memory = merge_style_memory(style_memory, TECH_INFRA_STYLE_MEMORY)
+        if clean_text(merged.get("article_framework")) in {"", "auto"}:
+            merged["article_framework"] = "deep_analysis"
+        return apply_style_memory_defaults(merged, style_memory)
+
+    return merged
+
+
 def default_profile_dir() -> Path:
     return runtime_subdir("article-feedback-profiles")
 

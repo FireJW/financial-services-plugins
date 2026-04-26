@@ -6,6 +6,11 @@ That means every imported OpenCLI item must still be mapped into the native
 `news-index` trust model explicitly instead of inheriting authority from the
 fact that a page was reachable through a richer capture path.
 
+Codex IAB Browser Use captures follow the same rule. They can preserve the
+rendered URL, visible text, DOM snapshot excerpts, and screenshots from the
+current Codex in-app browser, but they still enter the system as capture
+adapter evidence and must be judged by `news-index`.
+
 ## V1 Rules
 
 1. default imported OpenCLI items to `channel=shadow`
@@ -34,6 +39,7 @@ Use for:
 - hard-to-render dynamic pages
 - internal dashboards or exported summaries
 - one-off authenticated content where the domain is not yet curated
+- one-off Codex IAB Browser Use captures of rendered dynamic pages
 
 ### `broker-research-portal`
 
@@ -91,6 +97,9 @@ Reason:
 
 - the repo already has native workflows with stronger signed-session and
   operator-memory rules for those domains
+- Codex IAB can still help an operator preview or inspect those pages, but the
+  imported evidence route should stay native unless a reviewed exception is
+  added
 
 ## Policy Review Checklist
 

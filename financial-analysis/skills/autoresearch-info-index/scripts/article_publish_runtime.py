@@ -113,6 +113,67 @@ def split_title_claims(clean_title: str) -> list[str]:
     return [clean_title] if clean_title else []
 
 
+def load_editorial_context(output_dir: Path) -> dict[str, Any]:
+    """Load editorial-context.md from the article output directory.
+
+    Returns a dict with optional keys: market_relevance_override, rejected_directions,
+    analytical_chain, must_include_facts, style_constraints.  Returns {} if the file
+    does not exist.
+    """
+    ec_path = output_dir / "editorial-context.md"
+    if not ec_path.exists():
+        return {}
+    try:
+        text = ec_path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    sections: dict[str, str] = {}
+    current_heading = ""
+    current_lines: list[str] = []
+    for line in text.splitlines():
+        heading_match = re.match(r"^##\s+(.+)", line)
+        if heading_match:
+            if current_heading:
+                sections[current_heading] = "\n".join(current_lines).strip()
+            current_heading = heading_match.group(1).strip()
+            current_lines = []
+        elif not line.strip().startswith("<!--"):
+            current_lines.append(line)
+    if current_heading:
+        sections[current_heading] = "\n".join(current_lines).strip()
+
+    result: dict[str, Any] = {}
+    # Market relevance override
+    mr_section = sections.get("Market Relevance Override", "")
+    if mr_section:
+        items = [line.lstrip("- ").strip() for line in mr_section.splitlines() if line.strip().startswith("-")]
+        if items:
+            result["market_relevance_override"] = items
+    # Rejected directions
+    rejected = sections.get("Rejected Titles / Directions", "")
+    if rejected:
+        items = [line.lstrip("- ").lstrip("❌ ").strip() for line in rejected.splitlines() if line.strip().startswith("-") or line.strip().startswith("❌")]
+        if items:
+            result["rejected_directions"] = items
+    # Analytical chain (pass as-is for prompt injection)
+    chain = sections.get("Analytical Chain", "") or sections.get("Analytical Chain (must follow this, not generic filler)", "")
+    if chain:
+        result["analytical_chain"] = chain
+    # Must-include facts
+    facts = sections.get("Must-Include Facts", "") or sections.get("Numbers That Must Appear in the Article", "")
+    if facts:
+        items = [line.lstrip("- ").strip() for line in facts.splitlines() if line.strip().startswith("-")]
+        if items:
+            result["must_include_facts"] = items
+    # Style constraints
+    style = sections.get("Style Constraints", "")
+    if style:
+        items = [line.lstrip("- ").strip() for line in style.splitlines() if line.strip().startswith("-")]
+        if items:
+            result["style_constraints"] = items
+    return result
+
+
 def localized_market_relevance(selected_topic: dict[str, Any], clean_title: str, *, developer_tooling: bool) -> list[str]:
     if developer_tooling:
         return ["产品边界、工具调用与权限设计", "浏览器控制、工作流编排"]
@@ -147,7 +208,14 @@ def localized_market_relevance(selected_topic: dict[str, Any], clean_title: str,
         )
     ):
         return ["先进制程产能和设备订单", "资本开支、产能扩张和先进封装"]
-    if any(token in keywords for token in ("ai", "agent")):
+    # Guard: only classify as AI/agent topic when the combined text clearly centres
+    # on AI/agent subject matter AND the topic is not a macro/conflict/commodity topic.
+    _macro_conflict_tokens = ("oil", "crude", "inflation", "cpi", "retail", "tariff", "war", "conflict", "sanctions", "霍尔木兹", "油价", "通胀", "零售", "关税", "制裁")
+    _is_macro = any(tok in combined for tok in _macro_conflict_tokens)
+    _ai_core_tokens = ("ai model", "ai agent", "大模型", "人工智能", "llm", "gpt", "claude", "copilot", "openai", "anthropic")
+    _ai_in_combined = any(tok in combined for tok in _ai_core_tokens)
+    _ai_keyword_only = any(tok in keywords for tok in ("ai", "agent"))
+    if (_ai_in_combined or _ai_keyword_only) and not _is_macro:
         return ["融资意愿、订单能见度和预算投放", "招聘节奏、组织扩张和行业景气度"]
     return ["谁会真正受影响，变化会传到哪里", "这件事什么时候会从热度变成判断题"]
 
@@ -207,7 +275,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "human_review_approved": bool(payload.get("human_review_approved")),
         "human_review_approved_by": clean_text(payload.get("human_review_approved_by")),
         "human_review_note": clean_text(payload.get("human_review_note")),
-        "push_backend": clean_text(payload.get("push_backend")) or "auto",
+        "push_backend": clean_text(payload.get("push_backend")) or "api",
         "wechat_app_id": clean_text(payload.get("wechat_app_id")),
         "wechat_app_secret": clean_text(payload.get("wechat_app_secret")),
         "allow_insecure_inline_credentials": bool(payload.get("allow_insecure_inline_credentials")),
@@ -267,6 +335,10 @@ def build_news_request_from_topic(selected_topic: dict[str, Any], raw_request: d
         )
 
     market_relevance_zh = localized_market_relevance(selected_topic, title, developer_tooling=developer_tooling) if zh_mode else []
+    # Override market_relevance from editorial-context.md if present
+    _ec = load_editorial_context(Path(clean_text(raw_request.get("output_dir")) or "."))
+    if _ec.get("market_relevance_override"):
+        market_relevance_zh = _ec["market_relevance_override"]
     market_relevance = market_relevance_zh[:] if market_relevance_zh else clean_string_list(selected_topic.get("keywords"))[:3]
     questions = (
         [
@@ -296,11 +368,19 @@ def build_news_request_from_topic(selected_topic: dict[str, Any], raw_request: d
 
 
 def markdown_to_html(markdown_text: str) -> str:
+    def escape_text(value: str) -> str:
+        # Text nodes do not need quote escaping; keeping apostrophes readable
+        # avoids literal entity leakage like Tom&#x27;s in downstream editors.
+        return escape(value, quote=False)
+
     lines = markdown_text.splitlines()
     html: list[str] = ['<article style="font-family:\'PingFang SC\',\'Hiragino Sans GB\',\'Microsoft YaHei\',sans-serif;color:#1f2329;font-size:16px;line-height:1.9;">']
     for raw_line in lines:
         line = raw_line.rstrip()
         if not line:
+            continue
+        if line.strip() == "---":
+            html.append('<hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;" />')
             continue
         image_match = re.match(r"!\[(.*?)\]\((.*?)\)", line)
         if image_match:
@@ -309,15 +389,17 @@ def markdown_to_html(markdown_text: str) -> str:
             html.append(f'<p><img src="{src}" alt="{alt}" style="max-width:100%;border-radius:8px;" /></p>')
             continue
         if line.startswith("# "):
-            html.append(f"<h1>{escape(line[2:])}</h1>")
+            html.append(f"<h1>{escape_text(line[2:])}</h1>")
         elif line.startswith("## "):
-            html.append(f"<h2>{escape(line[3:])}</h2>")
+            html.append(f"<h2>{escape_text(line[3:])}</h2>")
         elif line.startswith("> "):
-            html.append(f"<blockquote>{escape(line[2:])}</blockquote>")
+            html.append(f"<blockquote>{escape_text(line[2:])}</blockquote>")
         elif line.startswith("_") and line.endswith("_"):
-            html.append(f"<p><em>{escape(line.strip('_'))}</em></p>")
+            html.append(f"<p><em>{escape_text(line.strip('_'))}</em></p>")
         else:
-            html.append(f"<p>{escape(line)}</p>")
+            content = escape_text(line)
+            content = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", content)
+            html.append(f"<p>{content}</p>")
     html.append("</article>")
     return "\n".join(html) + "\n"
 
@@ -432,6 +514,11 @@ CANONICAL_MUST_AVOID = [
     "更实的变量",
     "经营变量",
     "经营层",
+    "说一件昨天发生的事",
+    "先把最新的催化剂说清楚",
+    "先把发生了什么说清楚",
+    "经本地索引管线交叉验证",
+    "信源说明",
 ]
 
 
@@ -441,6 +528,10 @@ def build_chinese_publish_markdown(selected_topic: dict[str, Any], article_packa
     selected_images = [safe_dict(item) for item in safe_list(article_package.get("selected_images")) if isinstance(item, dict)]
     composition_style = clean_text(request.get("composition_style"))
     market_relevance_zh = localized_market_relevance(selected_topic, title, developer_tooling=developer_tooling)
+    # Override market_relevance from editorial-context.md if present in build_chinese_publish_markdown
+    _ec_chinese = load_editorial_context(Path(clean_text(request.get("output_dir")) or "."))
+    if _ec_chinese.get("market_relevance_override"):
+        market_relevance_zh = _ec_chinese["market_relevance_override"]
     formatted_source_lines = [
         format_source_line(
             item,
