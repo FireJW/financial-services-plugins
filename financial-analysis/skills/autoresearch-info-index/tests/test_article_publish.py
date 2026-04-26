@@ -2060,6 +2060,131 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertIn("Preferred keywords: AI, agent", result["report_markdown"])
         self.assertIn("Filtered out topics: 1", result["report_markdown"])
 
+    def test_hot_topic_discovery_defaults_to_heat_first_ranking(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": [
+                    {
+                        "title": "White House dinner shooting suspect targeted Trump officials",
+                        "summary": "A breaking national political violence story confirmed by multiple major outlets.",
+                        "source_items": [
+                            {
+                                "source_name": "CBS",
+                                "source_type": "major_news",
+                                "url": "https://example.com/cbs-white-house-dinner-shooting",
+                                "published_at": "2026-03-29T10:24:00+00:00",
+                                "summary": "CBS reports the suspect admitted targeting Trump administration officials.",
+                                "heat_score": 95000,
+                            },
+                            {
+                                "source_name": "Reuters",
+                                "source_type": "major_news",
+                                "url": "https://example.com/reuters-white-house-dinner-shooting",
+                                "published_at": "2026-03-29T10:22:00+00:00",
+                                "summary": "Reuters confirms the attack is being investigated as political violence.",
+                                "heat_score": 87000,
+                            },
+                            {
+                                "source_name": "AP",
+                                "source_type": "major_news",
+                                "url": "https://example.com/ap-white-house-dinner-shooting",
+                                "published_at": "2026-03-29T10:20:00+00:00",
+                                "summary": "AP reports heightened security around current and former officials.",
+                                "heat_score": 81000,
+                            },
+                        ],
+                    },
+                    {
+                        "title": "AI agent hiring rebound becomes a business story",
+                        "summary": "Multiple sources debate whether hiring demand is really returning.",
+                        "source_items": [
+                            {
+                                "source_name": "36kr",
+                                "source_type": "major_news",
+                                "url": "https://example.com/36kr-agent-hiring",
+                                "published_at": "2026-03-29T10:15:00+00:00",
+                                "summary": "36kr reports hiring is returning at selected AI agent startups.",
+                                "heat_score": 2800,
+                            },
+                            {
+                                "source_name": "google-news-search",
+                                "source_type": "major_news",
+                                "url": "https://example.com/google-agent-hiring",
+                                "published_at": "2026-03-29T10:10:00+00:00",
+                                "summary": "Overseas outlets discuss the business impact of AI-agent hiring.",
+                                "heat_score": 2100,
+                            },
+                        ],
+                    },
+                ],
+                "audience_keywords": ["AI", "business", "investing", "industry"],
+                "top_n": 2,
+            }
+        )
+
+        self.assertEqual(result["ranked_topics"][0]["title"], "White House dinner shooting suspect targeted Trump officials")
+        self.assertGreater(
+            result["ranked_topics"][0]["score_breakdown"]["heat"],
+            result["ranked_topics"][1]["score_breakdown"]["heat"],
+        )
+        self.assertLess(
+            result["ranked_topics"][0]["score_breakdown"]["relevance"],
+            result["ranked_topics"][1]["score_breakdown"]["relevance"],
+        )
+
+    def test_hot_topic_discovery_keeps_explicit_exclusion_as_hard_filter(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": [
+                    {
+                        "title": "Celebrity gossip scandal dominates social feeds",
+                        "summary": "Entertainment gossip draws huge traffic but is explicitly excluded by the operator.",
+                        "source_items": [
+                            {
+                                "source_name": "weibo",
+                                "source_type": "social",
+                                "url": "https://example.com/weibo-celebrity-gossip",
+                                "published_at": "2026-03-29T10:25:00+00:00",
+                                "summary": "Celebrity gossip chatter is trending across social feeds.",
+                                "heat_score": 120000,
+                            },
+                            {
+                                "source_name": "x",
+                                "source_type": "social",
+                                "url": "https://example.com/x-celebrity-gossip",
+                                "published_at": "2026-03-29T10:23:00+00:00",
+                                "summary": "Large social engagement continues around the entertainment story.",
+                                "heat_score": 90000,
+                            },
+                        ],
+                    },
+                    {
+                        "title": "AI agent hiring rebound becomes a business story",
+                        "summary": "Multiple sources debate whether hiring demand is really returning.",
+                        "source_items": [
+                            {
+                                "source_name": "36kr",
+                                "source_type": "major_news",
+                                "url": "https://example.com/36kr-agent-hiring",
+                                "published_at": "2026-03-29T10:15:00+00:00",
+                                "summary": "36kr reports hiring is returning at selected AI agent startups.",
+                                "heat_score": 2800,
+                            }
+                        ],
+                    },
+                ],
+                "excluded_topic_keywords": ["gossip"],
+                "top_n": 2,
+            }
+        )
+
+        self.assertEqual(len(result["ranked_topics"]), 1)
+        self.assertEqual(result["ranked_topics"][0]["title"], "AI agent hiring rebound becomes a business story")
+        self.assertEqual(result["filtered_out_topics"][0]["title"], "Celebrity gossip scandal dominates social feeds")
+        self.assertIn("excluded keywords: gossip", result["filtered_out_topics"][0]["filter_reason"])
+
     def test_hot_topic_discovery_filters_non_shanghai_zhejiang_local_topics(self) -> None:
         result = run_hot_topic_discovery(
             {

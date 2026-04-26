@@ -30,8 +30,14 @@ Preferred path:
 If the user gives no topic:
 
 1. run hot-topic discovery
-2. rank the candidates
+2. rank the candidates with heat first; sector/account fit is a ranking input,
+   not a hard gate
 3. pick the strongest one unless the user wants to choose manually
+
+High-heat public-affairs, political, geopolitical, or social events should stay
+eligible for the shortlist unless the user explicitly excludes that category or
+keyword. Explicit exclusions, such as entertainment or gossip, remain hard
+filters.
 
 If the user gives a topic:
 

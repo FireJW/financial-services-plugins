@@ -12,8 +12,16 @@ Default flow:
 
 1. fetch from configured hot-topic sources
 2. merge duplicates into topic clusters
-3. score by timeliness, discussion space, audience relevance, depth, and SEO
+3. score heat first, then source confirmation, depth, audience relevance, and freshness
 4. return a ranked topic list with reasons
+
+Default selection rule:
+
+- high-heat topics enter the candidate list even when they are outside the usual
+  finance, tech, or AI-infrastructure lane
+- account fit and sector fit affect ranking, but they should not be hard gates
+- explicit operator exclusions, such as entertainment or gossip keywords, remain
+  hard filters
 
 Local helper:
 

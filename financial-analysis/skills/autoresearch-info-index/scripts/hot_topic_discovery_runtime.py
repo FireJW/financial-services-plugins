@@ -134,12 +134,14 @@ LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS.update(
     }
 )
 DEFAULT_TOPIC_SCORE_WEIGHTS = {
-    "timeliness": 0.22,
-    "debate": 0.18,
-    "relevance": 0.23,
-    "depth": 0.14,
-    "seo": 0.13,
-    "information_gap": 0.10,
+    "heat": 0.45,
+    "source_confirmation": 0.20,
+    "depth": 0.20,
+    "relevance": 0.10,
+    "timeliness": 0.05,
+    "debate": 0.00,
+    "seo": 0.00,
+    "information_gap": 0.00,
 }
 POSITIVE_FEEDBACK_HARD_INDUSTRY_KEYWORDS = {
     "chip",
@@ -3420,6 +3422,80 @@ def depth_score(candidate: dict[str, Any]) -> int:
     return clamp(base)
 
 
+def global_heat_score(candidate: dict[str, Any], analysis_time: datetime) -> int:
+    heat_score = int(candidate.get("max_heat_score", 0) or 0)
+    velocity_score = int(candidate.get("max_velocity_score", 0) or 0)
+    source_count = int(candidate.get("source_count", 0) or 0)
+    subreddit_count = int(candidate.get("reddit_subreddit_count", 0) or 0)
+    top_comment_count = int(candidate.get("top_comment_count", 0) or 0)
+    freshness = freshness_bucket(candidate, analysis_time)
+
+    if heat_score >= 100000:
+        base = 100
+    elif heat_score >= 50000:
+        base = 95
+    elif heat_score >= 20000:
+        base = 88
+    elif heat_score >= 10000:
+        base = 80
+    elif heat_score >= 5000:
+        base = 70
+    elif heat_score >= 1000:
+        base = 55
+    elif heat_score >= 100:
+        base = 35
+    elif heat_score > 0:
+        base = 20
+    else:
+        base = 25
+
+    if velocity_score >= 85:
+        base += 10
+    elif velocity_score >= 60:
+        base += 7
+    elif velocity_score >= 35:
+        base += 4
+    if source_count >= 3:
+        base += 5
+    elif source_count <= 1:
+        base -= 8
+    if subreddit_count > 1:
+        base += min(6, (subreddit_count - 1) * 3)
+    if top_comment_count:
+        base += min(4, top_comment_count // 3 or 1)
+    if freshness == ">72h":
+        base -= 18
+    elif freshness == "24-72h":
+        base -= 6
+    return clamp(base)
+
+
+def source_confirmation_score(candidate: dict[str, Any]) -> int:
+    source_items = safe_list(candidate.get("source_items"))
+    source_count = int(candidate.get("source_count", 0) or 0)
+    domain_count = len(candidate.get("domains", []))
+    major_source_count = 0
+    social_source_count = 0
+    for item in source_items:
+        if not isinstance(item, dict):
+            continue
+        source_type = clean_text(item.get("source_type")).lower()
+        source_name = clean_text(item.get("source_name")).lower()
+        if source_type in {"major_news", "news", "rss"} or source_name in {"reuters", "ap", "associated press", "cbs", "bbc"}:
+            major_source_count += 1
+        if source_type == "social" or source_name in {"weibo", "zhihu", "x", "twitter"}:
+            social_source_count += 1
+
+    score = 20 + min(45, source_count * 15) + min(20, domain_count * 7) + min(15, major_source_count * 5)
+    if source_count <= 1:
+        score -= 12
+    if social_source_count and social_source_count == source_count:
+        score -= 10
+    if is_rumor_like_candidate(candidate):
+        score -= 12
+    return clamp(score)
+
+
 def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict[str, Any], index: int) -> dict[str, Any]:
     analysis_time = request["analysis_time"]
     audience_keywords = request["audience_keywords"]
@@ -3591,6 +3667,8 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         if comment_count_mismatch_count:
             spread_parts.append(f"partial comments {comment_count_mismatch_count}")
         candidate["community_spread_summary"] = " / ".join(spread_parts)
+    heat = global_heat_score(candidate, analysis_time)
+    source_confirmation = source_confirmation_score(candidate)
     timeliness = timeliness_score(candidate, analysis_time)
     debate = discussion_score(candidate["title"], candidate["source_count"])
     relevance = relevance_score(candidate, audience_keywords, preferred_topic_keywords)
@@ -3607,12 +3685,14 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
     candidate["is_continuing_story"] = is_continuing_story_candidate(candidate, analysis_time)
     candidate["fresh_catalyst_present"] = fresh_catalyst_present(candidate, analysis_time)
     total = clamp(
-        timeliness * weights["timeliness"]
-        + debate * weights["debate"]
-        + relevance * weights["relevance"]
-        + depth * weights["depth"]
-        + seo * weights["seo"]
-        + info_gap * weights.get("information_gap", 0.10)
+        heat * weights.get("heat", 0.0)
+        + source_confirmation * weights.get("source_confirmation", 0.0)
+        + depth * weights.get("depth", 0.0)
+        + relevance * weights.get("relevance", 0.0)
+        + timeliness * weights.get("timeliness", 0.0)
+        + debate * weights.get("debate", 0.0)
+        + seo * weights.get("seo", 0.0)
+        + info_gap * weights.get("information_gap", 0.0)
         + freshness_window
         + near_window_heat
         + stale_penalty
@@ -3649,6 +3729,8 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         f"信息差 {info_gap}",
     ]
     candidate["score_breakdown"] = {
+        "heat": heat,
+        "source_confirmation": source_confirmation,
         "timeliness": timeliness,
         "debate": debate,
         "relevance": relevance,
@@ -3664,6 +3746,8 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         "weights": weights,
     }
     candidate["positive_feedback_topic_signals"] = positive_feedback_signals
+    reasons.append(f"global heat {heat}")
+    reasons.append(f"source confirmation {source_confirmation}")
     if freshness_window:
         reasons.append(f"freshness window +{freshness_window}")
     if near_window_heat:
