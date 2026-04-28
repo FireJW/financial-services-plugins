@@ -1277,7 +1277,16 @@ def classify_eastmoney_cache_freshness(
     last_dt = parse_date(last_bar_date)
     if not target_dt or not last_dt:
         return {"mode": "missing_cache", "last_bar_date": last_bar_date}
-    gap_days = (target_dt - last_dt).days
+    effective_target_dt = target_dt
+    if effective_target_dt.weekday() >= 5:
+        effective_target_dt += timedelta(days=7 - effective_target_dt.weekday())
+    gap_days = 0
+    cursor = last_dt
+    # Count weekday steps against the next trading session boundary.
+    while cursor < effective_target_dt:
+        cursor += timedelta(days=1)
+        if cursor.weekday() < 5:
+            gap_days += 1
     if gap_days == 1:
         return {"mode": "stale_one_day", "last_bar_date": last_bar_date}
     return {"mode": "stale_too_old", "last_bar_date": last_bar_date}

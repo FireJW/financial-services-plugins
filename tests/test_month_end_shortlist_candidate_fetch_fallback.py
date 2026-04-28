@@ -162,6 +162,15 @@ class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
         self.assertEqual(outcome["mode"], "stale_one_day")
         self.assertEqual(outcome["last_bar_date"], "2026-04-17")
 
+    def test_classify_eastmoney_cache_freshness_treats_friday_cache_for_monday_as_stale_rescue(self) -> None:
+        rows = [
+            {"date": "2026-04-23"},
+            {"date": "2026-04-24"},
+        ]
+        outcome = module_under_test.classify_eastmoney_cache_freshness(rows, "2026-04-27")
+        self.assertEqual(outcome["mode"], "stale_one_day")
+        self.assertEqual(outcome["last_bar_date"], "2026-04-24")
+
     def test_classify_eastmoney_cache_freshness_marks_older_gap_as_stale_blocked(self) -> None:
         rows = [
             {"date": "2026-04-15"},
@@ -180,6 +189,15 @@ class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
         self.assertEqual(recovered["mode"], "fresh_cache")
         self.assertEqual(recovered["bars_source"], "eastmoney_cache")
         self.assertEqual(recovered["rows"][-1]["date"], "2026-04-18")
+
+    def test_choose_cache_recovery_mode_treats_friday_cache_for_monday_as_stale_rescue(self) -> None:
+        rows = [
+            {"date": "2026-04-23", "close": 5.5},
+            {"date": "2026-04-24", "close": 5.8},
+        ]
+        recovered = module_under_test.choose_eastmoney_cache_recovery_mode(rows, "2026-04-27")
+        self.assertEqual(recovered["mode"], "stale_one_day")
+        self.assertEqual(recovered["last_bar_date"], "2026-04-24")
 
     def test_wrap_assess_candidate_recovers_from_same_day_eastmoney_cache(self) -> None:
         rows = [
