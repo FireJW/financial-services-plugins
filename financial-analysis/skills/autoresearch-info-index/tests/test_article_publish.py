@@ -677,6 +677,92 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             },
         ]
 
+    def live_snapshot_global_headline_candidates(self) -> list[dict]:
+        return [
+            {
+                "title": "UAE says it will leave OPEC and OPEC+ next month",
+                "summary": "The UAE said it will leave OPEC and OPEC+ from May 1, raising questions about oil supply discipline, inflation, and cross-asset risk pricing.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/reuters-uae-opec-exit",
+                        "published_at": "2026-04-28T08:20:00+00:00",
+                        "summary": "The UAE said it will leave OPEC and OPEC+ from May 1, sending oil and macro desks scrambling to reassess supply discipline.",
+                        "heat_score": 98,
+                        "tags": ["macro", "oil", "opec", "geopolitics"],
+                    },
+                    {
+                        "source_name": "AP",
+                        "source_type": "major_news",
+                        "url": "https://example.com/ap-uae-opec-exit",
+                        "published_at": "2026-04-28T08:28:00+00:00",
+                        "summary": "AP confirmed the UAE exit decision and highlighted the implications for energy pricing and producer cohesion.",
+                        "heat_score": 94,
+                        "tags": ["macro", "energy", "opec"],
+                    },
+                ],
+            },
+            {
+                "title": "Anthropic cloud spending locks in another AI capex cycle",
+                "summary": "Google and Amazon are using Anthropic to tie model growth directly to long-duration cloud and compute budgets.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/reuters-anthropic-cloud-cycle",
+                        "published_at": "2026-04-28T07:40:00+00:00",
+                        "summary": "Anthropic is becoming a focal point for AI cloud spending and long-duration compute commitments.",
+                        "heat_score": 93,
+                        "tags": ["ai", "cloud", "anthropic", "capex"],
+                    },
+                    {
+                        "source_name": "Investing.com",
+                        "source_type": "major_news",
+                        "url": "https://example.com/investing-anthropic-cloud-cycle",
+                        "published_at": "2026-04-28T07:45:00+00:00",
+                        "summary": "Cloud vendors are tying Anthropic growth to infrastructure budgets, not just model hype.",
+                        "heat_score": 89,
+                        "tags": ["ai", "cloud", "anthropic"],
+                    },
+                ],
+            },
+        ]
+
+    def live_snapshot_weak_macro_noise_candidates(self) -> list[dict]:
+        return [
+            {
+                "title": "Commentary wonders if OPEC may discuss future coordination",
+                "summary": "A generic commentary thread speculates that energy ministers could revisit coordination at some point.",
+                "source_items": [
+                    {
+                        "source_name": "weibo",
+                        "source_type": "social",
+                        "url": "https://example.com/weibo-opec-speculation",
+                        "published_at": "2026-04-28T08:10:00+00:00",
+                        "summary": "A generic speculative post asks whether OPEC might coordinate again in the future.",
+                        "heat_score": 42,
+                        "tags": ["macro", "oil", "commentary"],
+                    }
+                ],
+            },
+            {
+                "title": "Intel says AI demand is spreading into CPU and system design",
+                "summary": "The AI infrastructure narrative is broadening beyond GPUs into CPUs and system-level architecture.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/reuters-intel-cpu-ai",
+                        "published_at": "2026-04-28T07:55:00+00:00",
+                        "summary": "Intel rallied as investors priced a wider AI compute stack that now includes CPU demand.",
+                        "heat_score": 86,
+                        "tags": ["ai", "cpu", "intel"],
+                    }
+                ],
+            },
+        ]
+
     def feature_filter_candidates(self) -> list[dict]:
         return [
             {
@@ -3016,6 +3102,75 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertIn("google-news-world", timing_by_source)
         self.assertEqual(timing_by_source["google-news-world"]["status"], "error")
         self.assertIn("duration_ms", timing_by_source["google-news-world"])
+
+    def test_hot_topic_discovery_live_snapshot_promotes_global_headline_even_when_sector_fit_is_low(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-28T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "preferred_topic_keywords": ["AI", "chip", "data center", "semiconductor"],
+                "manual_topic_candidates": self.live_snapshot_global_headline_candidates(),
+                "top_n": 5,
+            }
+        )
+
+        top_topic = result["ranked_topics"][0]
+        self.assertEqual(top_topic["title"], "UAE says it will leave OPEC and OPEC+ next month")
+        self.assertEqual(top_topic["headline_priority_class"], "global_headline")
+        self.assertEqual(top_topic["headline_priority_rank"], 1)
+
+    def test_hot_topic_discovery_live_snapshot_keeps_global_headline_out_of_low_fit_rejection(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-28T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "preferred_topic_keywords": ["AI", "chip", "data center", "semiconductor"],
+                "manual_topic_candidates": self.live_snapshot_global_headline_candidates(),
+                "top_n": 5,
+            }
+        )
+
+        filtered_titles = {item["title"] for item in result["filtered_out_topics"]}
+        self.assertNotIn("UAE says it will leave OPEC and OPEC+ next month", filtered_titles)
+
+    def test_hot_topic_discovery_live_snapshot_does_not_promote_weak_macro_noise_to_global_headline(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-28T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "preferred_topic_keywords": ["AI", "chip", "data center", "semiconductor"],
+                "manual_topic_candidates": self.live_snapshot_weak_macro_noise_candidates(),
+                "top_n": 5,
+            }
+        )
+
+        top_topic = result["ranked_topics"][0]
+        self.assertNotEqual(top_topic["title"], "Commentary wonders if OPEC may discuss future coordination")
+        self.assertEqual(top_topic["headline_priority_class"], "sector_follow_up")
+        weak_macro = next(
+            item
+            for item in result["filtered_out_topics"]
+            if item["title"] == "Commentary wonders if OPEC may discuss future coordination"
+        )
+        self.assertIn("low", weak_macro["filter_reason"])
+
+    def test_hot_topic_discovery_live_snapshot_report_splits_top_headline_from_sector_followups(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-28T10:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "preferred_topic_keywords": ["AI", "chip", "data center", "semiconductor"],
+                "manual_topic_candidates": self.live_snapshot_global_headline_candidates(),
+                "top_n": 5,
+            }
+        )
+
+        report = result["report_markdown"]
+        self.assertIn("## Top Headline Now", report)
+        self.assertIn("## Best Sector Follow-Ups", report)
+        self.assertLess(report.index("## Top Headline Now"), report.index("UAE says it will leave OPEC and OPEC+ next month"))
+        self.assertLess(report.index("UAE says it will leave OPEC and OPEC+ next month"), report.index("## Best Sector Follow-Ups"))
+        self.assertLess(report.index("## Best Sector Follow-Ups"), report.index("Anthropic cloud spending locks in another AI capex cycle"))
 
     def test_hot_topic_discovery_recency_hardening_breaks_score_ties_in_favor_of_fresh_story(self) -> None:
         with (
