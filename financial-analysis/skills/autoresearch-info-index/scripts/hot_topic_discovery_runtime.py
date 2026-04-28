@@ -30,6 +30,9 @@ LIVE_SNAPSHOT_DEFAULT_TOP_N = 5
 LIVE_SNAPSHOT_DEFAULT_MAX_PARALLEL_SOURCES = 2
 LIVE_SNAPSHOT_MEDIUM_FIT_LIMIT = 2
 LIVE_SNAPSHOT_MEDIUM_FIT_MIN_SCORE = 70
+GLOBAL_HEADLINE_MIN_TOTAL_SCORE = 72
+GLOBAL_HEADLINE_MIN_SOURCE_CONFIRMATION = 65
+GLOBAL_HEADLINE_PRIORITY_BONUS = 8
 LIVE_SNAPSHOT_SOURCE_ORDER = ["36kr", "google-news-world"]
 LIVE_SNAPSHOT_GOOGLE_WORLD_TIMEOUT_SECONDS = 15
 LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
@@ -38,6 +41,7 @@ LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
     "oil",
     "equities",
     "stocks",
+    "cpu",
     "guidance",
     "earnings",
     "capex",
@@ -53,6 +57,38 @@ LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
     "油价",
     "风险资产",
     "订单",
+}
+GLOBAL_HEADLINE_PRIORITY_KEYWORDS = {
+    "opec",
+    "opec+",
+    "oil",
+    "brent",
+    "crude",
+    "fed",
+    "fomc",
+    "treasury",
+    "tariff",
+    "sanction",
+    "sanctions",
+    "hormuz",
+    "strait of hormuz",
+    "war",
+    "ceasefire",
+    "sovereign",
+    "central bank",
+    "policy shock",
+}
+GLOBAL_HEADLINE_IMPACT_KEYWORDS = {
+    "inflation",
+    "equities",
+    "stocks",
+    "bonds",
+    "yield",
+    "risk assets",
+    "energy prices",
+    "global markets",
+    "macro desks",
+    "supply discipline",
 }
 LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS = {
     "official commentary",
@@ -3314,6 +3350,45 @@ def live_snapshot_reason(candidate: dict[str, Any]) -> str:
     return "Freshness alone is not enough here because the story still reads more like a narrow news flash than an analysis topic."
 
 
+def global_headline_signal_text(candidate: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            candidate_match_text(candidate),
+            clean_text(candidate.get("why_now")),
+            clean_text(candidate.get("selection_reason")),
+            clean_text(candidate.get("source_mix")),
+        ]
+    ).lower()
+
+
+def is_global_headline_candidate(candidate: dict[str, Any]) -> bool:
+    text = global_headline_signal_text(candidate)
+    source_confirmation = int(safe_dict(candidate.get("score_breakdown")).get("source_confirmation", 0) or 0)
+    total = int(safe_dict(candidate.get("score_breakdown")).get("total_score", 0) or 0)
+    freshness = clean_text(candidate.get("freshness_bucket"))
+    if freshness not in {"0-6h", "6-24h", "24-72h"}:
+        return False
+    if not contains_any_keyword(text, GLOBAL_HEADLINE_PRIORITY_KEYWORDS):
+        return False
+    if not contains_any_keyword(text, GLOBAL_HEADLINE_IMPACT_KEYWORDS):
+        return False
+    if source_confirmation < GLOBAL_HEADLINE_MIN_SOURCE_CONFIRMATION:
+        return False
+    if total < GLOBAL_HEADLINE_MIN_TOTAL_SCORE:
+        return False
+    return True
+
+
+def headline_priority_class(candidate: dict[str, Any]) -> str:
+    return "global_headline" if is_global_headline_candidate(candidate) else "sector_follow_up"
+
+
+def headline_priority_reason(candidate: dict[str, Any]) -> str:
+    if headline_priority_class(candidate) == "global_headline":
+        return "cross-market macro headline with direct asset-pricing impact"
+    return "best sector follow-up after the top cross-market headline slot"
+
+
 def live_snapshot_rank_reason(candidate: dict[str, Any]) -> str:
     fit = clean_text(candidate.get("live_snapshot_fit"))
     total = int(safe_dict(candidate.get("score_breakdown")).get("total_score", 0) or 0)
@@ -3357,9 +3432,15 @@ def enforce_live_snapshot_fit_gate(
     filtered_out_topics: list[dict[str, Any]],
     top_n: int,
 ) -> list[dict[str, Any]]:
-    high_fit = [topic for topic in kept_topics if clean_text(topic.get("live_snapshot_fit")) == "high_fit"]
-    medium_fit = [topic for topic in kept_topics if clean_text(topic.get("live_snapshot_fit")) == "medium_fit"]
-    low_fit = [topic for topic in kept_topics if clean_text(topic.get("live_snapshot_fit")) == "low_fit"]
+    global_headlines = [
+        topic for topic in kept_topics if clean_text(topic.get("headline_priority_class")) == "global_headline"
+    ]
+    sector_topics = [
+        topic for topic in kept_topics if clean_text(topic.get("headline_priority_class")) != "global_headline"
+    ]
+    high_fit = [topic for topic in sector_topics if clean_text(topic.get("live_snapshot_fit")) == "high_fit"]
+    medium_fit = [topic for topic in sector_topics if clean_text(topic.get("live_snapshot_fit")) == "medium_fit"]
+    low_fit = [topic for topic in sector_topics if clean_text(topic.get("live_snapshot_fit")) == "low_fit"]
     for topic in low_fit:
         filtered_out_topics.append(
             {
@@ -3368,7 +3449,18 @@ def enforce_live_snapshot_fit_gate(
                 "total_score": safe_dict(topic.get("score_breakdown")).get("total_score", 0),
             }
         )
-    return (high_fit + medium_fit[:LIVE_SNAPSHOT_MEDIUM_FIT_LIMIT])[:top_n]
+    ordered_global = sorted(
+        global_headlines,
+        key=lambda topic: int(safe_dict(topic.get("score_breakdown")).get("total_score", 0) or 0),
+        reverse=True,
+    )
+    final_topics: list[dict[str, Any]] = []
+    if ordered_global:
+        ordered_global[0]["headline_priority_rank"] = 1
+        final_topics.append(ordered_global[0])
+    final_topics.extend(high_fit)
+    final_topics.extend(medium_fit[:LIVE_SNAPSHOT_MEDIUM_FIT_LIMIT])
+    return final_topics[:top_n]
 
 
 def timeliness_score(candidate: dict[str, Any], analysis_time: datetime) -> int:
@@ -3742,6 +3834,7 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         "stale_story_penalty": stale_penalty,
         "positive_feedback_bonus": positive_feedback_bonus,
         "x_author_signal_bonus": x_author_bonus,
+        "global_headline_priority_bonus": 0,
         "total_score": total,
         "weights": weights,
     }
@@ -3812,7 +3905,16 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
     if request.get("discovery_profile") == "live_snapshot":
         candidate["live_snapshot_fit"] = live_snapshot_fit(candidate)
         candidate["live_snapshot_reason"] = live_snapshot_reason(candidate)
+        candidate["headline_priority_class"] = headline_priority_class(candidate)
+        candidate["headline_priority_reason"] = headline_priority_reason(candidate)
+        if candidate["headline_priority_class"] == "global_headline":
+            candidate["score_breakdown"]["global_headline_priority_bonus"] = GLOBAL_HEADLINE_PRIORITY_BONUS
+            candidate["score_breakdown"]["total_score"] = clamp(
+                int(candidate["score_breakdown"]["total_score"]) + GLOBAL_HEADLINE_PRIORITY_BONUS
+            )
+            reasons.append(f"global headline priority (+{GLOBAL_HEADLINE_PRIORITY_BONUS})")
         candidate["live_snapshot_rank_reason"] = live_snapshot_rank_reason(candidate)
+    candidate["score_reasons"] = reasons
     return candidate
 
 
@@ -3905,11 +4007,12 @@ def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> 
     if request.get("discovery_profile") == "live_snapshot":
         fit = clean_text(candidate.get("live_snapshot_fit"))
         total = int(safe_dict(candidate.get("score_breakdown")).get("total_score", 0) or 0)
-        if fit == "low_fit":
+        is_global_headline = clean_text(candidate.get("headline_priority_class")) == "global_headline"
+        if not is_global_headline and fit == "low_fit":
             return False, "filtered low_fit live snapshot topic"
-        if fit == "medium_fit" and total < LIVE_SNAPSHOT_MEDIUM_FIT_MIN_SCORE:
+        if not is_global_headline and fit == "medium_fit" and total < LIVE_SNAPSHOT_MEDIUM_FIT_MIN_SCORE:
             return False, "filtered medium_fit live snapshot topic below floor"
-        if is_live_snapshot_low_yield_candidate(candidate):
+        if not is_global_headline and is_live_snapshot_low_yield_candidate(candidate):
             return False, "filtered low-yield live snapshot topic"
     if excluded_matches:
         return False, f"excluded keywords: {', '.join(excluded_matches)}"
@@ -3922,6 +4025,18 @@ def apply_topic_controls(candidate: dict[str, Any], request: dict[str, Any]) -> 
 
 def build_markdown_report(result: dict[str, Any]) -> str:
     controls = safe_dict(result.get("topic_controls"))
+    ranked_topics = safe_list(result.get("ranked_topics"))
+    top_headline = next(
+        (
+            topic
+            for topic in ranked_topics
+            if isinstance(topic, dict) and clean_text(topic.get("headline_priority_class")) == "global_headline"
+        ),
+        None,
+    )
+    sector_follow_ups = [
+        topic for topic in ranked_topics if isinstance(topic, dict) and topic is not top_headline
+    ]
     lines = [
         "# Hot Topic Discovery",
         "",
@@ -3941,20 +4056,43 @@ def build_markdown_report(result: dict[str, Any]) -> str:
         f"- Minimum source count: {controls.get('min_source_count', 0)}",
         f"- Filtered out topics: {len(result.get('filtered_out_topics', []))}",
         "",
+    ]
+    if top_headline:
+        lines.extend(
+            [
+                "## Top Headline Now",
+                f"- Title: {clean_text(top_headline.get('title'))}",
+                f"- Why rank 1: {clean_text(top_headline.get('headline_priority_reason')) or 'cross-market macro headline'}",
+                f"- Market read-through: {clean_text(top_headline.get('why_now')) or clean_text(top_headline.get('selection_reason'))}",
+                "",
+            ]
+        )
+    lines.extend(["## Best Sector Follow-Ups"])
+    if sector_follow_ups:
+        for topic in sector_follow_ups:
+            lines.append(
+                f"- {clean_text(topic.get('title'))} | score {safe_dict(topic.get('score_breakdown')).get('total_score', 0)} | {' / '.join(safe_list(topic.get('score_reasons'))[:2])}"
+            )
+    else:
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
         "| Rank | Topic | Total | Review | Sources | Latest | Why |",
         "|---:|---|---:|---|---:|---|---|",
-    ]
-    for index, topic in enumerate(result.get("ranked_topics", []), start=1):
+        ]
+    )
+    for index, topic in enumerate(ranked_topics, start=1):
         operator_priority = safe_dict(topic.get("operator_review_priority"))
         priority_level = clean_text(operator_priority.get("priority_level")) or "none"
         lines.append(
             f"| {index} | {topic.get('title', '')} | {safe_dict(topic.get('score_breakdown')).get('total_score', 0)} | "
             f"{priority_level} | {topic.get('source_count', 0)} | {topic.get('latest_published_at', '')} | {' / '.join(topic.get('score_reasons', [])[:2])} |"
         )
-    if not result.get("ranked_topics"):
+    if not ranked_topics:
         lines.append("| 1 | none | 0 | none | 0 | n/a | no discoverable topics |")
     operator_review_lines: list[str] = []
-    for topic in result.get("ranked_topics", []):
+    for topic in ranked_topics:
         operator_priority = safe_dict(topic.get("operator_review_priority"))
         review_summary = format_comment_operator_review(safe_dict(topic.get("comment_operator_review")))
         if not review_summary:
@@ -4080,6 +4218,8 @@ def run_hot_topic_discovery(raw_payload: dict[str, Any]) -> dict[str, Any]:
         )
     if request.get("discovery_profile") == "international_first":
         kept_topics = enforce_international_primary_source_floor(kept_topics, filtered_out_topics, request["top_n"])
+    if request.get("discovery_profile") == "live_snapshot":
+        kept_topics = enforce_live_snapshot_fit_gate(kept_topics, filtered_out_topics, request["top_n"])
     operator_review_queue = []
     for topic in kept_topics:
         operator_priority = safe_dict(topic.get("operator_review_priority"))

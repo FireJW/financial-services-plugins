@@ -17,9 +17,8 @@ Default flow:
 
 Default selection rule:
 
-- high-heat topics enter the candidate list even when they are outside the usual
-  finance, tech, or AI-infrastructure lane
-- account fit and sector fit affect ranking, but they should not be hard gates
+- when a true cross-market global headline is present, it occupies rank 1
+- AI and technology relevance decide the sector follow-up layer behind the top headline
 - explicit operator exclusions, such as entertainment or gossip keywords, remain
   hard filters
 
