@@ -11,6 +11,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from article_publish_reuse_runtime import build_reuse_publish_result
+from publication_contract_runtime import validate_publication_contract
 
 
 class ArticlePublishReuseRuntimeTests(unittest.TestCase):
@@ -129,8 +130,35 @@ class ArticlePublishReuseRuntimeTests(unittest.TestCase):
         self.assertIn("## Workflow Publication Gate", result["automatic_acceptance"]["report_markdown"])
         self.assertIn("Publication readiness: blocked_by_reddit_operator_review", result["report_markdown"])
         self.assertIn("Workflow Reddit operator review: awaiting_reddit_operator_review", result["report_markdown"])
+        self.assertEqual(validate_publication_contract(result["publish_package"])["status"], "ok")
         self.assertTrue(Path(result["report_path"]).exists())
         self.assertTrue(Path(result["result_path"]).exists())
+
+    def test_build_reuse_publish_result_preserves_manual_revised_markdown(self) -> None:
+        revised_result = self.build_revised_article_result()
+        revised_result["article_package"]["manual_article_override"] = True
+        revised_result["article_package"]["manual_body_override"] = True
+        revised_result["article_package"]["article_markdown"] = (
+            "# 阿联酋退出 OPEC：油价之外，更大的裂缝出现了\n\n"
+            "MANUAL_MARKER_DO_NOT_REWRITE\n\n"
+            "这是一段人工修订后的正文，不能再被中文发布模板覆盖。"
+        )
+        revised_result["article_package"]["body_markdown"] = revised_result["article_package"]["article_markdown"]
+
+        result = build_reuse_publish_result(
+            {
+                "base_publish_result": self.build_base_publish_result(),
+                "revised_article_result": revised_result,
+                "output_dir": str(self.temp_dir / "manual-out"),
+            }
+        )
+
+        package = result["publish_package"]
+        self.assertEqual(validate_publication_contract(package)["status"], "ok")
+        self.assertEqual(package["title"], "阿联酋退出 OPEC：油价之外，更大的裂缝出现了")
+        self.assertIn("MANUAL_MARKER_DO_NOT_REWRITE", package["content_markdown"])
+        self.assertIn("MANUAL_MARKER_DO_NOT_REWRITE", package["content_html"])
+        self.assertNotIn("融资意愿", package["content_markdown"])
 
 
 if __name__ == "__main__":

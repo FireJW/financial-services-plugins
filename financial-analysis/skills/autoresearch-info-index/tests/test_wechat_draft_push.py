@@ -15,7 +15,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from article_publish_runtime import run_article_publish
-from wechat_draftbox_runtime import push_publish_package_to_wechat
+from wechat_draftbox_runtime import push_publish_package_to_wechat, resolve_binary_from_reference
 
 
 class WechatDraftPushTests(unittest.TestCase):
@@ -97,6 +97,21 @@ class WechatDraftPushTests(unittest.TestCase):
                     "human_review_approved": True,
                 }
             )
+
+    def test_resolve_binary_from_reference_infers_jpg_extension_for_local_img_asset(self) -> None:
+        disguised_path = self.temp_dir / "hero.img"
+        disguised_path.write_bytes(bytes.fromhex("FFD8FFE000104A4649460001"))
+
+        image_bytes, filename = resolve_binary_from_reference(
+            local_path=str(disguised_path),
+            remote_url="",
+            fallback_name="hero-01",
+            timeout_seconds=5,
+            download_fn=lambda _url, _timeout: b"",
+        )
+
+        self.assertEqual(image_bytes, disguised_path.read_bytes())
+        self.assertEqual(filename, "hero.jpg")
 
     def test_push_publish_package_can_build_wechat_payload_without_draftbox_template(self) -> None:
         package = self.build_publish_package()
@@ -658,7 +673,7 @@ class WechatDraftPushTests(unittest.TestCase):
             with patch("article_publish_runtime.push_fast_card_to_toutiao", return_value=fake_toutiao_push_result):
                 result = run_article_publish(
                     {
-                        "analysis_time": "2026-04-18T10:00:00+00:00",
+                        "analysis_time": "2026-03-29T10:30:00+00:00",
                         "manual_topic_candidates": self.manual_topic_candidates(),
                         "audience_keywords": ["AI", "business"],
                         "output_dir": str(self.temp_dir / "publish-toutiao"),

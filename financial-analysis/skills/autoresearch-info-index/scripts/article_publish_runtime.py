@@ -32,6 +32,12 @@ FORBIDDEN_PHRASES = [
     "浏览器控制、工作流编排与多步开发者执行",
 ]
 
+ALLOWED_MACRO_PRICING_PHRASES = [
+    "定价权",
+    "重新定价",
+    "重定价",
+]
+
 DEVELOPER_FOCUS_PHRASES = [
     "产品边界、权限设计",
     "浏览器控制、工作流编排",
@@ -77,6 +83,17 @@ def clean_string_list(value: Any) -> list[str]:
 
 def count_phrase_hits(text: str, phrases: list[str]) -> dict[str, int]:
     return {phrase: text.count(phrase) for phrase in phrases}
+
+
+def relax_macro_pricing_false_positives(text: str, forbidden_hits: dict[str, int], topic_text: str) -> dict[str, int]:
+    if not is_macro_conflict_topic(topic_text):
+        return forbidden_hits
+    adjusted_hits = dict(forbidden_hits)
+    adjusted_hits["定价"] = max(
+        0,
+        adjusted_hits.get("定价", 0) - sum(text.count(phrase) for phrase in ALLOWED_MACRO_PRICING_PHRASES),
+    )
+    return adjusted_hits
 
 
 def is_chinese_mode(request: dict[str, Any]) -> bool:
@@ -402,6 +419,17 @@ def markdown_to_html(markdown_text: str) -> str:
             html.append(f"<p>{content}</p>")
     html.append("</article>")
     return "\n".join(html) + "\n"
+
+
+def extract_leading_markdown_h1(markdown_text: str) -> str:
+    for line in str(markdown_text or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("# ") and not stripped.startswith("##"):
+            return clean_text(stripped[2:])
+        return ""
+    return ""
 
 
 def strip_plain_leading_title(markdown_text: str, *title_candidates: str) -> str:
@@ -1110,7 +1138,9 @@ def build_regression_checks(
     primary_text = body_markdown or body_text
     secondary_text = article_markdown if article_markdown != primary_text else ""
     combined = "\n".join(filter(None, [primary_text, secondary_text])).strip()
+    topic_text = title + " " + clean_text(topic.get("summary"))
     forbidden_hits = count_phrase_hits(combined, FORBIDDEN_PHRASES)
+    forbidden_hits = relax_macro_pricing_false_positives(combined, forbidden_hits, topic_text)
     developer_hits = count_phrase_hits(combined, DEVELOPER_FOCUS_PHRASES)
     transition_hits = count_phrase_hits(combined, WECHAT_TRANSITION_PHRASES)
     tail_hits = count_phrase_hits(combined, WECHAT_TAIL_PHRASES)
@@ -1376,6 +1406,10 @@ def build_publish_package(workflow_result: dict[str, Any], selected_topic: dict[
     article_markdown = str(article_package.get("article_markdown") or final_article.get("article_markdown") or final_article.get("body_markdown") or "")
     body_markdown = str(article_package.get("body_markdown") or final_article.get("body_markdown") or article_markdown or "")
     preserve_manual_revised_markdown = bool(request.get("preserve_manual_revised_markdown")) and bool(article_markdown or body_markdown)
+    manual_title = extract_leading_markdown_h1(article_markdown or body_markdown) if preserve_manual_revised_markdown else ""
+    if manual_title:
+        title = manual_title
+        article_package["title"] = manual_title
     title_candidates = [
         clean_text(article_package.get("title")),
         clean_text(final_article.get("title")),
@@ -1480,23 +1514,46 @@ def build_publish_package(workflow_result: dict[str, Any], selected_topic: dict[
     effective_framework = clean_text(article_package.get("article_framework")) or clean_text(safe_dict(draft_result.get("request")).get("article_framework"))
     if not effective_framework or effective_framework == "auto":
         effective_framework = "deep_analysis" if clean_text(request.get("article_framework")) in {"", "auto"} else clean_text(request.get("article_framework"))
+    section_headings = [
+        clean_text(item.get("heading"))
+        for item in safe_list(article_package.get("sections"))
+        if isinstance(item, dict) and clean_text(item.get("heading"))
+    ]
+    platform_hints = safe_dict(article_package.get("platform_hints"))
+    if not platform_hints:
+        platform_hints = {
+            "preferred_image_slots": ["after_lede"] if selected_images else [],
+            "section_emphasis": section_headings[:2],
+            "heading_density": "normal",
+        }
+    operator_notes = clean_string_list(article_package.get("operator_notes"))
+    if not operator_notes:
+        operator_notes = clean_string_list(article_package.get("editor_notes"))
+    draft_thesis = clean_text(article_package.get("draft_thesis") or final_article.get("draft_thesis") or title)
     return {
-        "contract_version": "wechat-draft-package/v1",
+        "contract_version": "publish-package/v1",
         "account_name": request["account_name"],
         "author": request["author"],
         "title": title,
         "subtitle": clean_text(article_package.get("subtitle")),
+        "lede": clean_text(article_package.get("lede")),
+        "sections": safe_list(article_package.get("sections")),
         "digest": digest,
+        "draft_thesis": draft_thesis,
         "keywords": clean_string_list(selected_topic.get("keywords")),
         "cover_image_path": request["cover_image_path"],
         "cover_image_url": request["cover_image_url"],
         "show_cover_pic": request["show_cover_pic"],
         "content_markdown": article_markdown,
         "content_html": content_html,
+        "selected_images": selected_images,
+        "platform_hints": platform_hints,
         "article_framework": effective_framework,
         "editor_anchor_mode": request["editor_anchor_mode"],
         "editor_anchor_visibility": "review_only" if request["editor_anchor_mode"] == "hidden" else "visible_inline",
         "editor_anchors": editor_anchors,
+        "operator_notes": operator_notes,
+        "citations": citations,
         "image_assets": image_assets,
         "style_profile_applied": style_profile_applied,
         "feedback_profile_status": safe_dict(article_package.get("feedback_profile_status") or draft_result.get("feedback_profile_status")),

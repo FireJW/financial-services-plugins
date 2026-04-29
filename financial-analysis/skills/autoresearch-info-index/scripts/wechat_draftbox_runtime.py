@@ -307,6 +307,30 @@ def sanitize_filename(filename: str, fallback: str) -> str:
     return cleaned or fallback
 
 
+def infer_image_extension(content_bytes: bytes) -> str:
+    if content_bytes.startswith(b"\xFF\xD8\xFF"):
+        return ".jpg"
+    if content_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if content_bytes.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif"
+    if content_bytes.startswith(b"RIFF") and content_bytes[8:12] == b"WEBP":
+        return ".webp"
+    return ""
+
+
+def normalize_upload_filename(filename: str, content_bytes: bytes, fallback_name: str) -> str:
+    sanitized = sanitize_filename(filename, fallback_name)
+    suffix = Path(sanitized).suffix.lower()
+    if suffix in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        return sanitized
+    inferred_extension = infer_image_extension(content_bytes)
+    if inferred_extension:
+        stem = Path(sanitized).stem or sanitize_filename(fallback_name, fallback_name)
+        return sanitize_filename(stem + inferred_extension, fallback_name + inferred_extension)
+    return sanitized
+
+
 def resolve_wechat_credentials(payload: dict[str, Any]) -> dict[str, str]:
     state = resolve_credential_state(payload)
     if not state["ready"]:
@@ -571,14 +595,15 @@ def resolve_binary_from_reference(
         file_path = Path(local_path).expanduser().resolve()
         if not file_path.exists():
             raise ValueError(f"Local image path does not exist: {file_path}")
-        return file_path.read_bytes(), sanitize_filename(file_path.name, fallback_name)
+        binary = file_path.read_bytes()
+        return binary, normalize_upload_filename(file_path.name, binary, fallback_name)
     if remote_url.startswith("http://") or remote_url.startswith("https://"):
         try:
             raw_bytes = download_fn(remote_url, timeout_seconds)
         except urllib.error.URLError as exc:
             raise ValueError(f"Failed to download remote image: {remote_url}") from exc
         suffix = Path(urllib.parse.urlparse(remote_url).path).suffix or ".bin"
-        return raw_bytes, sanitize_filename(fallback_name + suffix, fallback_name)
+        return raw_bytes, normalize_upload_filename(fallback_name + suffix, raw_bytes, fallback_name)
     raise ValueError("No usable local_path or remote_url was available for image upload")
 
 

@@ -32,6 +32,18 @@ def load_payload_dict(payload_or_path: Any, *, label: str) -> dict[str, Any]:
     return loaded
 
 
+def should_preserve_manual_revised_markdown(revised_result: dict[str, Any]) -> bool:
+    article_package = safe_dict(revised_result.get("article_package"))
+    if bool(article_package.get("manual_article_override") or article_package.get("manual_body_override")):
+        return True
+    revised_request = safe_dict(revised_result.get("request"))
+    has_manual_input = bool(clean_text(revised_request.get("edited_article_markdown") or revised_request.get("edited_body_markdown")))
+    if has_manual_input and not bool(revised_request.get("allow_auto_rewrite_after_manual")):
+        return True
+    review_rewrite_package = safe_dict(revised_result.get("review_rewrite_package"))
+    return clean_text(review_rewrite_package.get("rewrite_mode")) == "manual_preserved"
+
+
 def derive_publish_request(base_result: dict[str, Any], revised_result: dict[str, Any]) -> dict[str, Any]:
     base_package = safe_dict(base_result.get("publish_package"))
     if not base_package:
@@ -55,6 +67,7 @@ def derive_publish_request(base_result: dict[str, Any], revised_result: dict[str
         "draft_mode": clean_text(revised_request.get("draft_mode") or effective_request.get("draft_mode")),
         "image_strategy": clean_text(revised_request.get("image_strategy") or effective_request.get("image_strategy")),
         "language_mode": clean_text(revised_request.get("language_mode") or effective_request.get("language_mode")),
+        "preserve_manual_revised_markdown": should_preserve_manual_revised_markdown(revised_result),
         "human_review_approved": False,
     }
 

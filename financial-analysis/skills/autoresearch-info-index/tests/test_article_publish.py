@@ -31,6 +31,7 @@ from article_draft_flow_runtime import build_public_lede, build_subtitle, finali
 import article_draft_flow_runtime
 import hot_topic_discovery_runtime
 from hot_topic_discovery_runtime import run_hot_topic_discovery
+from publication_contract_runtime import validate_publication_contract
 
 
 class ArticlePublishRuntimeTests(unittest.TestCase):
@@ -3594,6 +3595,7 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertEqual(payload["title"], package["title"])
         self.assertEqual(payload["content"], package["content_html"])
         self.assertEqual(payload["thumb_media_id"], "{{WECHAT_THUMB_MEDIA_ID}}")
+        self.assertEqual(validate_publication_contract(package)["status"], "ok")
         self.assertNotIn(package["editor_anchors"][0]["text"], package["content_html"])
         self.assertIn("run_wechat_push_draft.cmd", result["next_push_command"])
         self.assertIn("Human Review Gate", result["report_markdown"])
@@ -5107,6 +5109,42 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertFalse(regression_checks["checks"]["generic_business_talk_clean"])
         self.assertEqual(regression_checks["forbidden_phrase_hits"]["预算"], 1)
         self.assertEqual(regression_checks["forbidden_phrase_hits"]["定价"], 1)
+
+    def test_build_regression_checks_allows_macro_pricing_power_language(self) -> None:
+        regression_checks = build_regression_checks(
+            {
+                "article_framework": "deep_analysis",
+                "lede": "先看 OPEC 的定价权是不是已经开始松动。",
+                "sections": [
+                    {
+                        "heading": "正文",
+                        "paragraph": "如果霍尔木兹风险继续抬升，原油和风险资产都会被重新定价。",
+                    }
+                ],
+                "selected_images": [],
+            },
+            {
+                "article_framework": "deep_analysis",
+                "target_length_chars": 2800,
+                "draft_mode": "balanced",
+                "image_strategy": "mixed",
+            },
+            {
+                "selected_cover_role": "post_media",
+                "selection_mode": "body_image_fallback",
+                "selection_reason": "body image fallback",
+            },
+            {"cover_source": "article_image"},
+            {
+                "title": "阿联酋退出 OPEC：油价之外，更大的裂缝出现了",
+                "summary": "真正值得看的是 OPEC 定价权、Hormuz 风险和全球资产重新定价。",
+                "keywords": ["OPEC", "UAE", "oil", "Hormuz"],
+            },
+        )
+
+        self.assertTrue(regression_checks["checks"]["generic_business_talk_expected"])
+        self.assertTrue(regression_checks["checks"]["generic_business_talk_clean"])
+        self.assertNotIn("Generic business talk is still bleeding into the draft.", regression_checks.get("failures", []))
 
     def test_build_regression_checks_flags_hanging_title_and_longhand_developer_copy(self) -> None:
         regression_checks = build_regression_checks(
