@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -14,6 +15,35 @@ SCRIPT_DIR = (
     / "month-end-shortlist"
     / "scripts"
 )
+COMPILED_ARTIFACT = (
+    Path(__file__).resolve().parents[1]
+    / "financial-analysis"
+    / "skills"
+    / "short-horizon-shortlist"
+    / "scripts"
+    / "__pycache__"
+    / "month_end_shortlist_runtime.cpython-312.pyc"
+)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SOURCE_REPO_ROOT = (
+    REPO_ROOT.parents[2] / REPO_ROOT.parent.name
+    if REPO_ROOT.parent.parent.name == ".worktrees"
+    else REPO_ROOT
+)
+SOURCE_ARTIFACT = (
+    SOURCE_REPO_ROOT
+    / "financial-analysis"
+    / "skills"
+    / "short-horizon-shortlist"
+    / "scripts"
+    / "__pycache__"
+    / "month_end_shortlist_runtime.cpython-312.pyc"
+)
+
+if not COMPILED_ARTIFACT.exists() and SOURCE_ARTIFACT.exists():
+    COMPILED_ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SOURCE_ARTIFACT, COMPILED_ARTIFACT)
+
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -148,6 +178,37 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
 
         self.assertIn("macro_geopolitics_candidate_input", normalized)
         self.assertNotIn("macro_geopolitics_overlay", normalized)
+
+    def test_normalize_request_preserves_emergent_theme_candidates(self) -> None:
+        normalized = module_under_test.normalize_request(
+            {
+                "template_name": "month_end_shortlist",
+                "target_date": "2026-04-21",
+                "emergent_theme_candidates": [
+                    {
+                        "theme_name": "optical_interconnect",
+                        "theme_label": "Optical Interconnect",
+                        "signal_strength": "high",
+                        "source_kind": "manual_seed",
+                        "priority_rank": 1,
+                        "supporting_signals": [
+                            {"source_kind": "manual_seed", "summary": "Manual seed stayed focused on optics."},
+                            {"source_kind": "reddit", "summary": "Reddit kept confirming the optics chain."},
+                        ],
+                        "ignored": "drop-me",
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("emergent_theme_candidates", normalized)
+        candidate = normalized["emergent_theme_candidates"][0]
+        self.assertEqual(candidate["theme_name"], "optical_interconnect")
+        self.assertEqual(candidate["theme_label"], "Optical Interconnect")
+        self.assertEqual(candidate["source_kind"], "manual_seed")
+        self.assertEqual(candidate["priority_rank"], 1)
+        self.assertEqual(candidate["supporting_signals"][1]["source_kind"], "reddit")
+        self.assertNotIn("ignored", candidate)
 
     def test_enrich_live_result_reporting_attaches_weekend_candidate_and_reference_map(self) -> None:
         enriched = module_under_test.enrich_live_result_reporting(
@@ -366,8 +427,20 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
 
         with (
             patch.object(module_under_test, "prepare_request_with_candidate_snapshots", side_effect=lambda payload, **__: payload),
-            patch.object(module_under_test, "enrich_live_result_reporting", side_effect=lambda result, *_: result),
             patch.object(module_under_test._compiled, "run_month_end_shortlist", side_effect=fake_compiled_run),
+            patch.object(
+                module_under_test,
+                "merge_track_results",
+                side_effect=lambda *args, base_request=None, **kwargs: {
+                    "status": "ok",
+                    "request": base_request or {},
+                    "filter_summary": {},
+                    "dropped": [],
+                    "top_picks": [],
+                    "report_markdown": "# Month-End Shortlist Report: 2026-04-17\n",
+                },
+            ),
+            patch.object(module_under_test, "attach_cache_baseline_metadata", side_effect=lambda merged, _: merged),
         ):
             result = module_under_test.run_month_end_shortlist(
                 {
@@ -375,7 +448,9 @@ class MonthEndShortlistProfilePassthroughTests(unittest.TestCase):
                     "target_date": "2026-04-17",
                     "analysis_time": "2026-04-16T15:25:00+08:00",
                     "filter_profile": "month_end_event_support_transition",
-                }
+                },
+                universe_fetcher=lambda request: [],
+                market_strength_universe_fetcher=lambda request: [],
             )
 
         self.assertEqual(result["request"]["filter_profile"], "month_end_event_support_transition")

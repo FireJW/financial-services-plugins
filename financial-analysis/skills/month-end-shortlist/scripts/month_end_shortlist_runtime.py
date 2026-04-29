@@ -1039,6 +1039,543 @@ def merge_setup_launch_candidate_inputs(
     return merged
 
 
+EMERGENT_THEME_PROMOTION_THRESHOLD = 6.0
+
+
+def _coerce_positive_int(value: Any) -> int:
+    try:
+        coerced = int(to_float(value))
+    except (TypeError, ValueError):
+        return 0
+    return coerced if coerced > 0 else 0
+
+
+def _best_emergent_signal_strength(current: Any, new: Any) -> str:
+    order = {
+        "strong": 3,
+        "high": 3,
+        "medium": 2,
+        "moderate": 2,
+        "low": 1,
+        "weak": 1,
+    }
+    current_text = clean_text(current)
+    new_text = clean_text(new)
+    if order.get(new_text.lower(), 0) > order.get(current_text.lower(), 0):
+        return new_text or current_text
+    return current_text or new_text
+
+
+def _normalize_emergent_supporting_signals(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    supporting_rows = raw.get("supporting_signals")
+    if not isinstance(supporting_rows, list):
+        supporting_rows = raw.get("sources")
+    if not isinstance(supporting_rows, list):
+        supporting_rows = raw.get("key_sources")
+    if not isinstance(supporting_rows, list):
+        supporting_rows = []
+
+    normalized: list[dict[str, Any]] = []
+    for item in supporting_rows:
+        if isinstance(item, dict):
+            row: dict[str, Any] = {}
+            source_kind = clean_text(item.get("source_kind") or item.get("source_type") or item.get("kind"))
+            if source_kind:
+                row["source_kind"] = source_kind
+            source_name = clean_text(item.get("source_name") or item.get("account") or item.get("name"))
+            if source_name:
+                row["source_name"] = source_name
+            summary = clean_text(item.get("summary") or item.get("why_it_matters") or item.get("ranking_reason"))
+            if summary:
+                row["summary"] = summary
+            url = clean_text(item.get("url") or item.get("post_url"))
+            if url:
+                row["url"] = url
+            signal_strength = clean_text(item.get("signal_strength") or item.get("strength"))
+            if signal_strength:
+                row["signal_strength"] = signal_strength
+            priority_rank = _coerce_positive_int(item.get("priority_rank") or item.get("rank"))
+            if priority_rank:
+                row["priority_rank"] = priority_rank
+            if row:
+                normalized.append(row)
+        else:
+            text = clean_text(item)
+            if text:
+                normalized.append({"summary": text})
+    return normalized
+
+
+def _normalize_emergent_supporting_names(raw: dict[str, Any]) -> list[str]:
+    values = raw.get("supporting_names")
+    if not isinstance(values, list):
+        values = raw.get("supporting_tickers")
+    if not isinstance(values, list):
+        values = raw.get("candidate_names")
+    return unique_strings(values if isinstance(values, list) else [])
+
+
+def classify_emergent_signal_strength(candidate: dict[str, Any]) -> str:
+    signal_strength = clean_text(candidate.get("signal_strength")).lower()
+    if signal_strength in {"high", "strong"}:
+        return "strong"
+    if signal_strength in {"medium", "moderate"}:
+        return "moderate"
+    return "weak"
+
+
+def classify_emergent_signal_breadth(candidate: dict[str, Any]) -> str:
+    source_count = _coerce_positive_int(candidate.get("source_count"))
+    if not source_count and isinstance(candidate.get("supporting_signals"), list):
+        source_count = len(candidate.get("supporting_signals", []))
+    if source_count >= 3:
+        return "broad"
+    if source_count >= 2:
+        return "focused"
+    return "thin"
+
+
+def classify_emergent_signal_consensus(candidate: dict[str, Any]) -> str:
+    supporting_signals = candidate.get("supporting_signals") if isinstance(candidate.get("supporting_signals"), list) else []
+    source_kinds = unique_strings([
+        clean_text(item.get("source_kind"))
+        for item in supporting_signals
+        if isinstance(item, dict) and clean_text(item.get("source_kind"))
+    ])
+    source_count = _coerce_positive_int(candidate.get("source_count"))
+    if len(source_kinds) >= 2 and source_count >= 3:
+        return "aligned"
+    if source_count >= 2:
+        return "mixed"
+    return "thin"
+
+
+def normalize_emergent_theme_candidate(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    theme_name = clean_text(raw.get("theme_name") or raw.get("topic_name") or raw.get("chain_name") or raw.get("theme"))
+    if not theme_name:
+        return None
+
+    theme_label = clean_text(raw.get("theme_label") or raw.get("topic_label") or raw.get("name") or theme_name)
+    signal_strength = clean_text(raw.get("signal_strength") or raw.get("strength") or raw.get("signal_level")) or "medium"
+    source_kind = clean_text(raw.get("source_kind") or raw.get("source_type") or raw.get("source") or "runtime_input")
+    priority_rank = _coerce_positive_int(raw.get("priority_rank") or raw.get("rank") or raw.get("priority"))
+    supporting_signals = _normalize_emergent_supporting_signals(raw)
+    source_count = _coerce_positive_int(raw.get("source_count") or raw.get("support_count") or raw.get("evidence_count"))
+    if not source_count:
+        source_count = len(supporting_signals)
+    if not source_count and source_kind:
+        source_count = 1
+
+    normalized: dict[str, Any] = {
+        "theme_name": theme_name,
+        "theme_label": theme_label,
+        "source_kind": source_kind,
+        "signal_strength": signal_strength,
+        "coarse_signal_strength": classify_emergent_signal_strength(
+            {
+                "signal_strength": signal_strength,
+                "source_count": source_count,
+                "supporting_signals": supporting_signals,
+            }
+        ),
+        "coarse_signal_breadth": classify_emergent_signal_breadth(
+            {
+                "source_count": source_count,
+                "supporting_signals": supporting_signals,
+            }
+        ),
+        "coarse_signal_consensus": classify_emergent_signal_consensus(
+            {
+                "source_count": source_count,
+                "supporting_signals": supporting_signals,
+            }
+        ),
+    }
+    if priority_rank:
+        normalized["priority_rank"] = priority_rank
+    if source_count:
+        normalized["source_count"] = source_count
+    if supporting_signals:
+        normalized["supporting_signals"] = supporting_signals
+    supporting_names = _normalize_emergent_supporting_names(raw)
+    if supporting_names:
+        normalized["supporting_names"] = supporting_names
+
+    for field in ("why_it_matters", "notes", "ranking_reason"):
+        value = clean_text(raw.get(field))
+        if value:
+            normalized[field] = value
+    return normalized
+
+
+def emergent_theme_promotion_score(candidate: dict[str, Any]) -> float:
+    strength_scores = {"strong": 4.0, "moderate": 2.0, "weak": 0.0}
+    breadth_scores = {"broad": 2.0, "focused": 1.0, "thin": 0.0}
+    consensus_scores = {"aligned": 1.5, "mixed": 1.0, "thin": 0.0}
+
+    score = strength_scores.get(classify_emergent_signal_strength(candidate), 0.0)
+    score += breadth_scores.get(classify_emergent_signal_breadth(candidate), 0.0)
+    score += consensus_scores.get(classify_emergent_signal_consensus(candidate), 0.0)
+
+    priority_rank = _coerce_positive_int(candidate.get("priority_rank"))
+    if priority_rank == 1:
+        score += 1.25
+    elif priority_rank == 2:
+        score += 0.75
+    elif priority_rank == 3:
+        score += 0.25
+
+    source_count = _coerce_positive_int(candidate.get("source_count"))
+    if source_count >= 4:
+        score += 1.0
+    elif source_count >= 2:
+        score += 0.5
+
+    if clean_text(candidate.get("source_kind")) in {"weekend_market_candidate", "macro_geopolitics_candidate"}:
+        score += 0.5
+    return round(score, 2)
+
+
+def should_promote_emergent_theme(candidate: dict[str, Any]) -> bool:
+    theme_name = clean_text(candidate.get("theme_name") or candidate.get("topic_name"))
+    if not theme_name:
+        return False
+    return emergent_theme_promotion_score(candidate) >= EMERGENT_THEME_PROMOTION_THRESHOLD
+
+
+def build_emergent_theme_candidates_from_runtime_inputs(
+    request_obj: dict[str, Any],
+    *,
+    weekend_market_candidate: dict[str, Any] | None = None,
+    market_strength_candidates: list[dict[str, Any]] | None = None,
+    setup_launch_candidates: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    source_rows: list[dict[str, Any]] = []
+
+    explicit_rows = request_obj.get("emergent_theme_candidates")
+    if isinstance(explicit_rows, list):
+        for raw in explicit_rows:
+            if not isinstance(raw, dict):
+                continue
+            normalized = normalize_emergent_theme_candidate(
+                {
+                    **raw,
+                    "source_kind": clean_text(raw.get("source_kind")) or "explicit_request",
+                }
+            )
+            if normalized:
+                source_rows.append(normalized)
+
+    if isinstance(weekend_market_candidate, dict):
+        for topic in weekend_market_candidate.get("candidate_topics", []):
+            if not isinstance(topic, dict):
+                continue
+            supporting_signals: list[dict[str, Any]] = []
+            for source in topic.get("key_sources", []):
+                if not isinstance(source, dict):
+                    continue
+                support_row: dict[str, Any] = {}
+                source_kind = clean_text(source.get("source_kind") or "weekend_market_candidate")
+                if source_kind:
+                    support_row["source_kind"] = source_kind
+                source_name = clean_text(source.get("source_name") or source.get("account"))
+                if source_name:
+                    support_row["source_name"] = source_name
+                summary = clean_text(source.get("summary") or topic.get("ranking_reason") or topic.get("why_it_matters"))
+                if summary:
+                    support_row["summary"] = summary
+                url = clean_text(source.get("url"))
+                if url:
+                    support_row["url"] = url
+                if support_row:
+                    supporting_signals.append(support_row)
+            normalized = normalize_emergent_theme_candidate(
+                {
+                    "theme_name": topic.get("topic_name"),
+                    "theme_label": topic.get("topic_label"),
+                    "source_kind": "weekend_market_candidate",
+                    "signal_strength": topic.get("signal_strength"),
+                    "priority_rank": topic.get("priority_rank"),
+                    "source_count": len(supporting_signals) or 1,
+                    "supporting_signals": supporting_signals or [
+                        {
+                            "source_kind": "weekend_market_candidate",
+                            "summary": clean_text(topic.get("ranking_reason")) or clean_text(topic.get("why_it_matters")),
+                        }
+                    ],
+                    "why_it_matters": clean_text(topic.get("why_it_matters")),
+                    "notes": clean_text(topic.get("monday_watch")),
+                    "ranking_reason": clean_text(topic.get("ranking_reason")),
+                }
+            )
+            if normalized:
+                source_rows.append(normalized)
+
+    for row in market_strength_candidates or []:
+        if not isinstance(row, dict):
+            continue
+        theme_guess = unique_strings(row.get("theme_guess") if isinstance(row.get("theme_guess"), list) else [])
+        if not theme_guess:
+            continue
+        signal_strength = "high" if clean_text(row.get("close_strength")) == "high" else "medium"
+        for theme_name in theme_guess:
+            normalized = normalize_emergent_theme_candidate(
+                {
+                    "theme_name": theme_name,
+                    "theme_label": theme_name,
+                    "source_kind": "market_strength_candidate",
+                    "signal_strength": signal_strength,
+                    "source_count": 1,
+                    "supporting_names": [clean_text(row.get("ticker")) or clean_text(row.get("name")) or theme_name],
+                    "supporting_signals": [
+                        {
+                            "source_kind": "market_strength_candidate",
+                            "summary": clean_text(row.get("strength_reason")) or clean_text(row.get("board_context")) or theme_name,
+                            "signal_strength": signal_strength,
+                        }
+                    ],
+                }
+            )
+            if normalized:
+                source_rows.append(normalized)
+
+    for row in setup_launch_candidates or []:
+        if not isinstance(row, dict):
+            continue
+        theme_guess = unique_strings(row.get("theme_guess") if isinstance(row.get("theme_guess"), list) else [])
+        if not theme_guess:
+            continue
+        setup_score = setup_launch_score(row)
+        signal_strength = "high" if setup_score >= 6.0 else "medium" if setup_score >= 4.0 else "low"
+        setup_reasons = row.get("setup_reasons") if isinstance(row.get("setup_reasons"), list) else []
+        for theme_name in theme_guess:
+            normalized = normalize_emergent_theme_candidate(
+                {
+                    "theme_name": theme_name,
+                    "theme_label": theme_name,
+                    "source_kind": "setup_launch_candidate",
+                    "signal_strength": signal_strength,
+                    "source_count": 1,
+                    "supporting_names": [clean_text(row.get("ticker")) or clean_text(row.get("name")) or theme_name],
+                    "supporting_signals": [
+                        {
+                            "source_kind": "setup_launch_candidate",
+                            "summary": clean_text(" ".join(clean_text(item) for item in setup_reasons if clean_text(item))) or clean_text(row.get("source")) or theme_name,
+                            "signal_strength": signal_strength,
+                        }
+                    ],
+                }
+            )
+            if normalized:
+                source_rows.append(normalized)
+
+    merged: dict[str, dict[str, Any]] = {}
+    for row in source_rows:
+        theme_name = clean_text(row.get("theme_name"))
+        if not theme_name:
+            continue
+        item = deepcopy(row)
+        supporting_signals = [dict(signal) for signal in item.get("supporting_signals", []) if isinstance(signal, dict)]
+        if not supporting_signals:
+            supporting_signals = [
+                {
+                    "source_kind": clean_text(item.get("source_kind")) or "runtime_input",
+                    "summary": clean_text(item.get("why_it_matters") or item.get("notes") or theme_name),
+                }
+            ]
+        item["supporting_signals"] = supporting_signals
+        item["source_kinds"] = unique_strings(
+            [clean_text(item.get("source_kind"))]
+            + [clean_text(signal.get("source_kind")) for signal in supporting_signals if clean_text(signal.get("source_kind"))]
+        )
+        item["supporting_names"] = unique_strings(item.get("supporting_names", []))
+        item["source_count"] = max(
+            _coerce_positive_int(item.get("source_count")),
+            len(supporting_signals),
+            1,
+        )
+        item["coarse_signal_strength"] = classify_emergent_signal_strength(item)
+        item["coarse_signal_breadth"] = classify_emergent_signal_breadth(item)
+        item["coarse_signal_consensus"] = classify_emergent_signal_consensus(item)
+        item["promotion_score"] = emergent_theme_promotion_score(item)
+        item["promoted"] = should_promote_emergent_theme(item)
+        existing = merged.get(theme_name)
+        if existing is None:
+            merged[theme_name] = item
+            continue
+        existing["theme_label"] = existing.get("theme_label") or item.get("theme_label") or theme_name
+        existing["signal_strength"] = _best_emergent_signal_strength(existing.get("signal_strength"), item.get("signal_strength"))
+        existing_supporting_signals = [dict(signal) for signal in existing.get("supporting_signals", []) if isinstance(signal, dict)]
+        existing_supporting_signals.extend(supporting_signals)
+        deduped_supporting_signals: list[dict[str, Any]] = []
+        seen_signals: set[tuple[str, str, str, str]] = set()
+        for signal in existing_supporting_signals:
+            key = (
+                clean_text(signal.get("source_kind")),
+                clean_text(signal.get("source_name")),
+                clean_text(signal.get("summary")),
+                clean_text(signal.get("url")),
+            )
+            if key in seen_signals:
+                continue
+            seen_signals.add(key)
+            deduped_supporting_signals.append(signal)
+        existing["supporting_signals"] = deduped_supporting_signals
+        existing["source_kinds"] = unique_strings(existing.get("source_kinds", []) + item.get("source_kinds", []))
+        existing["supporting_names"] = unique_strings(existing.get("supporting_names", []) + item.get("supporting_names", []))
+        existing["source_count"] = max(
+            _coerce_positive_int(existing.get("source_count")),
+            _coerce_positive_int(item.get("source_count")),
+            len(deduped_supporting_signals),
+        )
+        existing_priority = _coerce_positive_int(existing.get("priority_rank"))
+        item_priority = _coerce_positive_int(item.get("priority_rank"))
+        if existing_priority and item_priority:
+            existing["priority_rank"] = min(existing_priority, item_priority)
+        elif item_priority:
+            existing["priority_rank"] = item_priority
+        existing["coarse_signal_strength"] = classify_emergent_signal_strength(existing)
+        existing["coarse_signal_breadth"] = classify_emergent_signal_breadth(existing)
+        existing["coarse_signal_consensus"] = classify_emergent_signal_consensus(existing)
+        existing["promotion_score"] = emergent_theme_promotion_score(existing)
+        existing["promoted"] = should_promote_emergent_theme(existing)
+
+    ordered_candidates = sorted(
+        merged.values(),
+        key=lambda item: (
+            -float(item.get("promotion_score") or 0.0),
+            -float(item.get("source_count") or 0.0),
+            _coerce_positive_int(item.get("priority_rank")) or 999,
+            clean_text(item.get("theme_name")),
+        ),
+    )
+    return ordered_candidates
+
+
+def merge_promoted_emergent_themes_into_active_pool(
+    active_themes: list[str],
+    emergent_theme_candidates: list[dict[str, Any]] | None,
+) -> list[str]:
+    merged: list[str] = []
+    for theme_name in active_themes or []:
+        text = clean_text(theme_name)
+        if text and text not in merged:
+            merged.append(text)
+    for candidate in emergent_theme_candidates or []:
+        if not isinstance(candidate, dict) or not should_promote_emergent_theme(candidate):
+            continue
+        theme_name = clean_text(candidate.get("theme_name") or candidate.get("topic_name"))
+        if theme_name and theme_name not in merged:
+            merged.append(theme_name)
+    return merged
+
+
+def build_emergent_theme_result_surfaces(
+    request_obj: dict[str, Any],
+    *,
+    weekend_market_candidate: dict[str, Any] | None = None,
+    market_strength_candidates: list[dict[str, Any]] | None = None,
+    setup_launch_candidates: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    base_active_themes = resolve_setup_launch_theme_pool(request_obj, weekend_market_candidate)
+    emergent_theme_candidates = build_emergent_theme_candidates_from_runtime_inputs(
+        request_obj,
+        weekend_market_candidate=weekend_market_candidate,
+        market_strength_candidates=market_strength_candidates,
+        setup_launch_candidates=setup_launch_candidates,
+    )
+    promoted_active_themes = merge_promoted_emergent_themes_into_active_pool(
+        base_active_themes,
+        emergent_theme_candidates,
+    )
+    return emergent_theme_candidates, promoted_active_themes
+
+
+def build_data_blocked_theme_confirmed_candidates(
+    dropped: list[dict[str, Any]],
+    emergent_theme_candidates: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    theme_by_ticker: dict[str, dict[str, Any]] = {}
+    for row in emergent_theme_candidates or []:
+        if not isinstance(row, dict) or not should_promote_emergent_theme(row):
+            continue
+        for ticker in unique_strings(row.get("supporting_names", [])):
+            theme_by_ticker[ticker] = row
+
+    blocked_rows: list[dict[str, Any]] = []
+    for row in dropped:
+        if not isinstance(row, dict):
+            continue
+        ticker = clean_text(row.get("ticker"))
+        if not ticker:
+            continue
+        theme_row = theme_by_ticker.get(ticker)
+        if theme_row is None:
+            continue
+        if "bars_fetch_failed" not in split_drop_reasons(row.get("drop_reason")):
+            continue
+        blocked_rows.append(
+            {
+                "ticker": ticker,
+                "name": clean_text(row.get("name")) or ticker,
+                "theme_name": clean_text(theme_row.get("theme_name")),
+                "theme_label": clean_text(theme_row.get("theme_label")) or clean_text(theme_row.get("theme_name")),
+                "status": "data_blocked_theme_confirmed",
+                "drop_reason": clean_text(row.get("drop_reason")) or "bars_fetch_failed",
+                "bars_fetch_error": clean_text(row.get("bars_fetch_error")),
+            }
+        )
+    return blocked_rows
+
+
+def build_emergent_theme_markdown(rows: list[dict[str, Any]] | None) -> list[str]:
+    items = [item for item in (rows or []) if isinstance(item, dict) and should_promote_emergent_theme(item)]
+    if not items:
+        return []
+    lines = ["", "## 新兴共振主题", ""]
+    for item in items:
+        label = clean_text(item.get("theme_label")) or clean_text(item.get("theme_name"))
+        lines.append(f"- `{label}`")
+        lines.append(f"  - promotion_score: `{item.get('promotion_score')}`")
+        signals = [
+            clean_text(item.get("coarse_signal_strength")),
+            clean_text(item.get("coarse_signal_breadth")),
+            clean_text(item.get("coarse_signal_consensus")),
+        ]
+        lines.append(f"  - signals: `{', '.join(part for part in signals if part)}`")
+        supporting_names = unique_strings(item.get("supporting_names", []))
+        lines.append(f"  - supporting_names: `{', '.join(supporting_names) or 'none'}`")
+        supporting_signals = item.get("supporting_signals") if isinstance(item.get("supporting_signals"), list) else []
+        if supporting_signals:
+            first_signal = supporting_signals[0] if isinstance(supporting_signals[0], dict) else {}
+            summary = clean_text(first_signal.get("summary"))
+            if summary:
+                lines.append(f"  - why_now: {summary}")
+    return lines
+
+
+def build_data_blocked_theme_confirmed_markdown(rows: list[dict[str, Any]] | None) -> list[str]:
+    items = [item for item in (rows or []) if isinstance(item, dict)]
+    if not items:
+        return []
+    lines = ["", "## 数据受阻但主题已确认", ""]
+    for item in items:
+        ticker = clean_text(item.get("ticker")) or "unknown"
+        name = clean_text(item.get("name")) or ticker
+        theme_label = clean_text(item.get("theme_label")) or clean_text(item.get("theme_name")) or "unknown"
+        lines.append(f"- `{ticker}` {name}")
+        lines.append(f"  - theme: `{theme_label}`")
+        lines.append(f"  - status: `{clean_text(item.get('status')) or 'data_blocked_theme_confirmed'}`")
+        lines.append(f"  - drop_reason: `{clean_text(item.get('drop_reason')) or 'bars_fetch_failed'}`")
+        bars_fetch_error = clean_text(item.get("bars_fetch_error"))
+        if bars_fetch_error:
+            lines.append(f"  - bars_fetch_error: `{bars_fetch_error}`")
+    return lines
+
+
 def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normalize_request: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
     normalized = apply_wrapper_filter_profile_override(
         raw_payload,
@@ -1063,6 +1600,19 @@ def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normal
         normalized["weekend_market_candidate_input"] = weekend_market_candidate_input
     else:
         normalized.pop("weekend_market_candidate_input", None)
+    emergent_theme_rows = raw_payload.get("emergent_theme_candidates")
+    if isinstance(emergent_theme_rows, list):
+        normalized["emergent_theme_candidates"] = [
+            candidate
+            for candidate in (
+                normalize_emergent_theme_candidate(item)
+                for item in emergent_theme_rows
+                if isinstance(item, dict) and clean_text(item.get("theme_name") or item.get("topic_name") or item.get("chain_name") or item.get("theme"))
+            )
+            if candidate
+        ]
+    else:
+        normalized.pop("emergent_theme_candidates", None)
     market_strength_rows = raw_payload.get("market_strength_candidates")
     if isinstance(market_strength_rows, list):
         normalized["market_strength_candidates"] = [
@@ -4065,7 +4615,19 @@ def enrich_live_result_reporting(
     enriched["setup_launch_candidates"] = [
         item for item in (setup_launch_candidates or []) if isinstance(item, dict)
     ]
+    emergent_theme_candidates, promoted_active_themes = build_emergent_theme_result_surfaces(
+        request_obj,
+        weekend_market_candidate=weekend_market_candidate,
+        market_strength_candidates=market_strength_candidates,
+        setup_launch_candidates=setup_launch_candidates,
+    )
+    enriched["emergent_theme_candidates"] = emergent_theme_candidates
+    enriched["promoted_active_themes"] = promoted_active_themes
     dropped = [item for item in enriched.get("dropped", []) if isinstance(item, dict)]
+    enriched["data_blocked_theme_confirmed"] = build_data_blocked_theme_confirmed_candidates(
+        dropped,
+        emergent_theme_candidates,
+    )
 
     filter_summary = dict(enriched.get("filter_summary") or {})
     if dropped:
@@ -4376,6 +4938,21 @@ def enrich_live_result_reporting(
     )
     if setup_launch_lines and "## 筑底启动补充" not in "\n".join(lines):
         lines.extend(setup_launch_lines)
+
+    emergent_theme_lines = build_emergent_theme_markdown(
+        enriched.get("emergent_theme_candidates")
+        if isinstance(enriched.get("emergent_theme_candidates"), list)
+        else None
+    )
+    if emergent_theme_lines and "## 新兴共振主题" not in "\n".join(lines):
+        lines.extend(emergent_theme_lines)
+    data_blocked_theme_lines = build_data_blocked_theme_confirmed_markdown(
+        enriched.get("data_blocked_theme_confirmed")
+        if isinstance(enriched.get("data_blocked_theme_confirmed"), list)
+        else None
+    )
+    if data_blocked_theme_lines and "## 数据受阻但主题已确认" not in "\n".join(lines):
+        lines.extend(data_blocked_theme_lines)
 
     event_cards = enriched.get("event_cards", [])
     if decision_flow and "## 决策流" not in "\n".join(lines):
@@ -4775,6 +5352,14 @@ def merge_track_results(
     merged["setup_launch_candidates"] = [
         item for item in (setup_launch_candidates or []) if isinstance(item, dict)
     ]
+    emergent_theme_candidates, promoted_active_themes = build_emergent_theme_result_surfaces(
+        request_obj,
+        weekend_market_candidate=weekend_market_candidate,
+        market_strength_candidates=market_strength_candidates,
+        setup_launch_candidates=setup_launch_candidates,
+    )
+    merged["emergent_theme_candidates"] = emergent_theme_candidates
+    merged["promoted_active_themes"] = promoted_active_themes
 
     # Combine top_picks, dropped, diagnostic_scorecard, near_miss, midday_action
     all_top_picks: list[dict[str, Any]] = []
@@ -4828,6 +5413,10 @@ def merge_track_results(
 
     merged["top_picks"] = all_top_picks
     merged["dropped"] = all_dropped
+    merged["data_blocked_theme_confirmed"] = build_data_blocked_theme_confirmed_candidates(
+        all_dropped,
+        emergent_theme_candidates,
+    )
     merged["diagnostic_scorecard"] = all_diagnostic_scorecard
     merged["near_miss_candidates"] = all_near_miss
     merged["midday_action_summary"] = all_midday_action
@@ -4951,6 +5540,20 @@ def merge_track_results(
     )
     if setup_launch_lines:
         report_lines.extend(setup_launch_lines)
+    emergent_theme_lines = build_emergent_theme_markdown(
+        merged.get("emergent_theme_candidates")
+        if isinstance(merged.get("emergent_theme_candidates"), list)
+        else None
+    )
+    if emergent_theme_lines:
+        report_lines.extend(emergent_theme_lines)
+    data_blocked_theme_lines = build_data_blocked_theme_confirmed_markdown(
+        merged.get("data_blocked_theme_confirmed")
+        if isinstance(merged.get("data_blocked_theme_confirmed"), list)
+        else None
+    )
+    if data_blocked_theme_lines:
+        report_lines.extend(data_blocked_theme_lines)
 
     event_cards = merged.get("event_cards", [])
     if isinstance(event_cards, list) and event_cards:
@@ -5086,7 +5689,7 @@ def run_month_end_shortlist(
         prepared_weekend_market_candidate, prepared_direction_ref_map = build_weekend_market_candidate(
             weekend_market_candidate_input
         )
-        active_setup_themes = resolve_setup_launch_theme_pool(
+        base_active_setup_themes = resolve_setup_launch_theme_pool(
             prepared_payload,
             prepared_weekend_market_candidate,
         )
@@ -5122,6 +5725,16 @@ def run_month_end_shortlist(
         market_strength_candidates = merge_market_strength_candidate_inputs(
             request_market_strength,
             generated_market_strength,
+        )
+        preliminary_emergent_theme_candidates = build_emergent_theme_candidates_from_runtime_inputs(
+            prepared_payload,
+            weekend_market_candidate=prepared_weekend_market_candidate,
+            market_strength_candidates=market_strength_candidates,
+            setup_launch_candidates=request_setup_launch,
+        )
+        active_setup_themes = merge_promoted_emergent_themes_into_active_pool(
+            base_active_setup_themes,
+            preliminary_emergent_theme_candidates,
         )
         setup_launch_candidates = merge_setup_launch_candidate_inputs(
             request_setup_launch,
@@ -5289,6 +5902,16 @@ for _extra in (
     "setup_launch_score",
     "build_setup_launch_candidates_from_universe",
     "merge_setup_launch_candidate_inputs",
+    "EMERGENT_THEME_PROMOTION_THRESHOLD",
+    "normalize_emergent_theme_candidate",
+    "classify_emergent_signal_strength",
+    "classify_emergent_signal_breadth",
+    "classify_emergent_signal_consensus",
+    "emergent_theme_promotion_score",
+    "should_promote_emergent_theme",
+    "build_emergent_theme_candidates_from_runtime_inputs",
+    "merge_promoted_emergent_themes_into_active_pool",
+    "build_emergent_theme_result_surfaces",
     "build_setup_launch_markdown",
     "build_market_strength_discovery_candidates",
     "is_market_strength_excluded",
