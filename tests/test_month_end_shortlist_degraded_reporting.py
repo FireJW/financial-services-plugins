@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -14,6 +15,35 @@ SCRIPT_DIR = (
     / "month-end-shortlist"
     / "scripts"
 )
+COMPILED_ARTIFACT = (
+    Path(__file__).resolve().parents[1]
+    / "financial-analysis"
+    / "skills"
+    / "short-horizon-shortlist"
+    / "scripts"
+    / "__pycache__"
+    / "month_end_shortlist_runtime.cpython-312.pyc"
+)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SOURCE_REPO_ROOT = (
+    REPO_ROOT.parents[2] / REPO_ROOT.parent.name
+    if REPO_ROOT.parent.parent.name == ".worktrees"
+    else REPO_ROOT
+)
+SOURCE_ARTIFACT = (
+    SOURCE_REPO_ROOT
+    / "financial-analysis"
+    / "skills"
+    / "short-horizon-shortlist"
+    / "scripts"
+    / "__pycache__"
+    / "month_end_shortlist_runtime.cpython-312.pyc"
+)
+
+if not COMPILED_ARTIFACT.exists() and SOURCE_ARTIFACT.exists():
+    COMPILED_ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SOURCE_ARTIFACT, COMPILED_ARTIFACT)
+
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -1823,6 +1853,51 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("数据状态：低置信度 fallback", card["operation_reminder"])
         self.assertIn("数据路径：cache baseline only", card["operation_reminder"])
 
+
+    def test_enrich_live_result_reporting_adds_emergent_theme_sections_and_data_blocked_rows(self) -> None:
+        enriched = module_under_test.enrich_live_result_reporting(
+            {
+                "status": "ok",
+                "request": {
+                    "emergent_theme_candidates": [
+                        {
+                            "theme_name": "lithium_upstream",
+                            "theme_label": "Lithiun Upstream",
+                            "signal_strength": "high",
+                            "source_kind": "explicit_request",
+                            "priority_rank": 1,
+                            "source_count": 3,
+                            "supporting_names": ["002709.SZ", "002466.SZ"],
+                            "supporting_signals": [
+                                {"source_kind": "x_live_index", "summary": "X users kept reinforcing lithium upstream."},
+                                {"source_kind": "earnings_confirmation", "summary": "Earnings confirmed lithium upstream strength."},
+                                {"source_kind": "market_strength_candidate", "summary": "Market action aligned with the theme."},
+                            ],
+                        }
+                    ]
+                },
+                "filter_summary": {},
+                "top_picks": [],
+                "dropped": [
+                    {
+                        "ticker": "002709.SZ",
+                        "name": "天赐材料",
+                        "drop_reason": "bars_fetch_failed",
+                        "bars_fetch_error": "bars_fetch_failed for `002709.SZ`: boom",
+                    }
+                ],
+                "report_markdown": "# Month-End Shortlist Report: 2026-04-30\n",
+            },
+            failure_candidates=[],
+            assessed_candidates=[],
+        )
+
+        self.assertIn("emergent_theme_candidates", enriched)
+        self.assertIn("data_blocked_theme_confirmed", enriched)
+        self.assertEqual(enriched["data_blocked_theme_confirmed"][0]["ticker"], "002709.SZ")
+        self.assertIn("## 新兴共振主题", enriched["report_markdown"])
+        self.assertIn("## 数据受阻但主题已确认", enriched["report_markdown"])
+        self.assertIn("天赐材料", enriched["report_markdown"])
 
 if __name__ == "__main__":
     unittest.main()
