@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import re
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -30,11 +31,12 @@ LIVE_SNAPSHOT_DEFAULT_TOP_N = 5
 LIVE_SNAPSHOT_DEFAULT_MAX_PARALLEL_SOURCES = 2
 LIVE_SNAPSHOT_MEDIUM_FIT_LIMIT = 2
 LIVE_SNAPSHOT_MEDIUM_FIT_MIN_SCORE = 70
-GLOBAL_HEADLINE_MIN_TOTAL_SCORE = 72
+GLOBAL_HEADLINE_MIN_TOTAL_SCORE = 58
 GLOBAL_HEADLINE_MIN_SOURCE_CONFIRMATION = 65
 GLOBAL_HEADLINE_PRIORITY_BONUS = 8
 LIVE_SNAPSHOT_SOURCE_ORDER = ["36kr", "google-news-world"]
 LIVE_SNAPSHOT_GOOGLE_WORLD_TIMEOUT_SECONDS = 15
+GOOGLE_NEWS_GLOBAL_LOCALE = "hl=en-US&gl=US&ceid=US:en"
 LIVE_SNAPSHOT_ANALYSIS_KEYWORDS = {
     "market",
     "markets",
@@ -84,11 +86,22 @@ GLOBAL_HEADLINE_IMPACT_KEYWORDS = {
     "stocks",
     "bonds",
     "yield",
+    "oil price",
+    "oil prices",
     "risk assets",
     "energy prices",
     "global markets",
     "macro desks",
     "supply discipline",
+    "blockade",
+    "shipping lane",
+}
+GENERIC_LIVE_WRAP_TITLE_PHRASES = {
+    "live updates",
+    "futures are flat",
+    "futures edge higher",
+    "looks ahead to",
+    "markets live",
 }
 LIVE_SNAPSHOT_LOW_YIELD_KEYWORDS = {
     "official commentary",
@@ -1487,8 +1500,23 @@ def fetch_text(url: str, *, timeout_seconds: int = 10) -> str:
             "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         },
     )
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-        return response.read().decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            return response.read().decode("utf-8", errors="replace")
+    except (TimeoutError, OSError, urllib.error.URLError):
+        command = [
+            "curl",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--max-time",
+            str(max(1, int(timeout_seconds))),
+            "--user-agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            url,
+        ]
+        completed = subprocess.run(command, capture_output=True, check=True, timeout=max(1, int(timeout_seconds) + 2))
+        return completed.stdout.decode("utf-8", errors="replace")
 
 
 def is_google_news_rss_wrapper_url(url: Any) -> bool:
@@ -2696,13 +2724,13 @@ def parse_rss_items(xml_text: str, source_name: str, source_type: str, limit: in
 
 
 def fetch_google_news_world(limit: int, analysis_time: datetime) -> list[dict[str, Any]]:
-    xml_text = fetch_text("https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans")
+    xml_text = fetch_text(f"https://news.google.com/rss?{GOOGLE_NEWS_GLOBAL_LOCALE}")
     return parse_rss_items(xml_text, "google-news-world", "major_news", limit, analysis_time)
 
 
 def fetch_google_news_search(query: str, limit: int, analysis_time: datetime) -> list[dict[str, Any]]:
     encoded = urllib.parse.quote(query)
-    url = f"https://news.google.com/rss/search?q={encoded}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+    url = f"https://news.google.com/rss/search?q={encoded}&{GOOGLE_NEWS_GLOBAL_LOCALE}"
     xml_text = fetch_text(url)
     return parse_rss_items(xml_text, "google-news-search", "major_news", limit, analysis_time)
 
@@ -2958,7 +2986,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     ]
     query = clean_text(raw_payload.get("query") or raw_payload.get("topic"))
     if query and not manual_topic_candidates and not clean_string_list(raw_payload.get("sources")):
-        sources = ["google-news-search"]
+        sources = ["google-news-search", *[source for source in sources if source != "google-news-search"]]
     for source in agent_reach_sources:
         if source not in sources:
             sources.append(source)
@@ -3361,6 +3389,25 @@ def global_headline_signal_text(candidate: dict[str, Any]) -> str:
     ).lower()
 
 
+def canonical_cluster_item_priority(item: dict[str, Any]) -> tuple[int, int, str, int]:
+    title = clean_text(item.get("title")).lower()
+    summary = clean_text(item.get("summary")).lower()
+    text = f"{title} {summary}"
+    specificity = 0
+    if contains_any_keyword(text, GLOBAL_HEADLINE_PRIORITY_KEYWORDS):
+        specificity += 2
+    if contains_any_keyword(text, GLOBAL_HEADLINE_IMPACT_KEYWORDS):
+        specificity += 2
+    if any(phrase in title for phrase in GENERIC_LIVE_WRAP_TITLE_PHRASES):
+        specificity -= 3
+    return (
+        specificity,
+        int(item.get("heat_score", 0) or 0),
+        clean_text(item.get("published_at")),
+        len(clean_text(item.get("summary"))),
+    )
+
+
 def is_global_headline_candidate(candidate: dict[str, Any]) -> bool:
     text = global_headline_signal_text(candidate)
     source_confirmation = int(safe_dict(candidate.get("score_breakdown")).get("source_confirmation", 0) or 0)
@@ -3602,7 +3649,7 @@ def build_clustered_candidate(cluster_items: list[dict[str, Any]], request: dict
         ),
         reverse=True,
     )
-    canonical = sorted_items[0]
+    canonical = max(cluster_items, key=canonical_cluster_item_priority)
     latest_published_at = max((item.get("published_at", "") for item in sorted_items), default=isoformat_or_blank(analysis_time))
     source_names = []
     domains = []

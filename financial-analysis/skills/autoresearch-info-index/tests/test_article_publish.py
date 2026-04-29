@@ -730,6 +730,34 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             },
         ]
 
+    def live_snapshot_energy_shock_candidates(self) -> list[dict]:
+        return [
+            {
+                "title": "Oil price jumps to $115 after reports of extended Iran blockade",
+                "summary": "Oil prices surged after reports of an extended Iran blockade, forcing macro desks to reassess inflation, shipping risk, and cross-asset pricing.",
+                "source_items": [
+                    {
+                        "source_name": "Reuters",
+                        "source_type": "major_news",
+                        "url": "https://example.com/reuters-oil-blockade",
+                        "published_at": "2026-04-29T11:35:00+00:00",
+                        "summary": "Reuters reported oil prices at $115 as blockade fears around Hormuz escalated and traders repriced global markets.",
+                        "heat_score": 97,
+                        "tags": ["macro", "oil", "hormuz", "blockade"],
+                    },
+                    {
+                        "source_name": "Bloomberg",
+                        "source_type": "major_news",
+                        "url": "https://example.com/bloomberg-oil-blockade",
+                        "published_at": "2026-04-29T11:31:00+00:00",
+                        "summary": "Bloomberg said the extended blockade threat was rippling through energy prices, shipping insurance, and risk assets.",
+                        "heat_score": 95,
+                        "tags": ["macro", "energy", "blockade"],
+                    },
+                ],
+            }
+        ]
+
     def live_snapshot_weak_macro_noise_candidates(self) -> list[dict]:
         return [
             {
@@ -2926,6 +2954,56 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertEqual(request["top_n"], 5)
         self.assertEqual(request["max_parallel_sources"], 2)
 
+    def test_hot_topic_discovery_live_snapshot_query_keeps_default_pack_and_adds_search(self) -> None:
+        request = hot_topic_discovery_runtime.normalize_request(
+            {"discovery_profile": "live_snapshot", "query": "latest global markets OPEC UAE oil Hormuz"}
+        )
+        self.assertEqual(request["sources"], ["google-news-search", "google-news-world", "36kr"])
+
+    def test_hot_topic_discovery_fetch_text_falls_back_to_curl_after_urlopen_error(self) -> None:
+        with patch.object(
+            hot_topic_discovery_runtime.urllib.request,
+            "urlopen",
+            side_effect=hot_topic_discovery_runtime.urllib.error.URLError("ssl eof"),
+        ):
+            completed = hot_topic_discovery_runtime.subprocess.CompletedProcess(
+                args=["curl"],
+                returncode=0,
+                stdout=b"<rss>ok</rss>",
+                stderr=b"",
+            )
+            with patch.object(hot_topic_discovery_runtime.subprocess, "run", return_value=completed) as run_mock:
+                text = hot_topic_discovery_runtime.fetch_text("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
+
+        self.assertEqual(text, "<rss>ok</rss>")
+        curl_command = run_mock.call_args.args[0]
+        self.assertEqual(curl_command[0].lower(), "curl")
+        self.assertIn("--max-time", curl_command)
+
+    def test_fetch_google_news_world_uses_global_locale(self) -> None:
+        with patch.object(hot_topic_discovery_runtime, "fetch_text", return_value="<rss/>") as fetch_mock:
+            with patch.object(hot_topic_discovery_runtime, "parse_rss_items", return_value=[]) as parse_mock:
+                hot_topic_discovery_runtime.fetch_google_news_world(5, hot_topic_discovery_runtime.parse_datetime("2026-04-29T01:30:00+00:00"))
+
+        self.assertIn("hl=en-US", fetch_mock.call_args.args[0])
+        self.assertIn("gl=US", fetch_mock.call_args.args[0])
+        self.assertIn("ceid=US:en", fetch_mock.call_args.args[0])
+        parse_mock.assert_called_once()
+
+    def test_fetch_google_news_search_uses_global_locale(self) -> None:
+        with patch.object(hot_topic_discovery_runtime, "fetch_text", return_value="<rss/>") as fetch_mock:
+            with patch.object(hot_topic_discovery_runtime, "parse_rss_items", return_value=[]) as parse_mock:
+                hot_topic_discovery_runtime.fetch_google_news_search(
+                    "latest global markets OPEC UAE oil Hormuz",
+                    5,
+                    hot_topic_discovery_runtime.parse_datetime("2026-04-29T01:30:00+00:00"),
+                )
+
+        self.assertIn("hl=en-US", fetch_mock.call_args.args[0])
+        self.assertIn("gl=US", fetch_mock.call_args.args[0])
+        self.assertIn("ceid=US:en", fetch_mock.call_args.args[0])
+        parse_mock.assert_called_once()
+
     def test_hot_topic_discovery_live_snapshot_emits_fit_fields(self) -> None:
         result = run_hot_topic_discovery(
             {
@@ -3133,6 +3211,66 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
 
         filtered_titles = {item["title"] for item in result["filtered_out_topics"]}
         self.assertNotIn("UAE says it will leave OPEC and OPEC+ next month", filtered_titles)
+
+    def test_hot_topic_discovery_live_snapshot_treats_energy_shock_as_global_headline(self) -> None:
+        result = run_hot_topic_discovery(
+            {
+                "analysis_time": "2026-04-29T12:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "preferred_topic_keywords": ["AI", "chip", "data center", "semiconductor"],
+                "manual_topic_candidates": self.live_snapshot_energy_shock_candidates(),
+                "top_n": 5,
+            }
+        )
+
+        top_topic = result["ranked_topics"][0]
+        self.assertEqual(top_topic["title"], "Oil price jumps to $115 after reports of extended Iran blockade")
+        self.assertEqual(top_topic["headline_priority_class"], "global_headline")
+        self.assertEqual(top_topic["headline_priority_rank"], 1)
+
+    def test_build_clustered_candidate_prefers_direct_event_headline_over_live_updates_wrap(self) -> None:
+        analysis_time = hot_topic_discovery_runtime.parse_datetime("2026-04-29T12:30:00+00:00")
+        cluster_items = [
+            hot_topic_discovery_runtime.normalize_discovered_item(
+                {
+                    "title": "S&P 500 futures are flat as oil rises, traders brace for Fed decision and Big Tech earnings: Live updates",
+                    "summary": "A broad live updates wrap around futures, oil, and earnings.",
+                    "url": "https://example.com/live-wrap",
+                    "source_name": "CNBC",
+                    "source_type": "major_news",
+                    "published_at": "2026-04-29T12:25:00+00:00",
+                    "heat_score": 99,
+                    "tags": ["macro", "markets"],
+                },
+                analysis_time,
+                1,
+            ),
+            hot_topic_discovery_runtime.normalize_discovered_item(
+                {
+                    "title": "Oil price jumps to $115 after reports of extended Iran blockade",
+                    "summary": "Oil prices surged as blockade fears around Hormuz escalated.",
+                    "url": "https://example.com/oil-blockade",
+                    "source_name": "Reuters",
+                    "source_type": "major_news",
+                    "published_at": "2026-04-29T12:20:00+00:00",
+                    "heat_score": 97,
+                    "tags": ["macro", "oil", "hormuz", "blockade"],
+                },
+                analysis_time,
+                2,
+            ),
+        ]
+        request = hot_topic_discovery_runtime.normalize_request(
+            {
+                "analysis_time": "2026-04-29T12:30:00+00:00",
+                "discovery_profile": "live_snapshot",
+                "preferred_topic_keywords": ["OPEC", "oil", "Hormuz", "market"],
+            }
+        )
+
+        candidate = hot_topic_discovery_runtime.build_clustered_candidate(cluster_items, request, 1)
+
+        self.assertEqual(candidate["title"], "Oil price jumps to $115 after reports of extended Iran blockade")
 
     def test_hot_topic_discovery_live_snapshot_does_not_promote_weak_macro_noise_to_global_headline(self) -> None:
         result = run_hot_topic_discovery(
