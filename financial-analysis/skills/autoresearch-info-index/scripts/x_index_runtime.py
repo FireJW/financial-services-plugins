@@ -1845,17 +1845,117 @@ def build_retrieval_request(request: dict[str, Any], x_posts: list[dict[str, Any
     }
 
 
+def serialize_x_index_request(request: dict[str, Any]) -> dict[str, Any]:
+    serialized = {
+        key: deepcopy(value)
+        for key, value in request.items()
+        if not str(key).startswith("_")
+    }
+    serialized["analysis_time"] = isoformat_or_blank(request.get("analysis_time"))
+    serialized["output_dir"] = str(request.get("output_dir", ""))
+    return serialized
+
+
+def init_x_index_result(request: dict[str, Any], session_context: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "request": serialize_x_index_request(request),
+        "status": "error",
+        "partial_stage": "parse_request",
+        "fatal_error": "",
+        "session_bootstrap": {
+            "strategy": session_context.get("strategy", ""),
+            "status": session_context.get("status", ""),
+            "source": session_context.get("source", ""),
+            "cookie_file": session_context.get("cookie_file", ""),
+            "cdp_endpoint": session_context.get("cdp_endpoint", ""),
+            "required": bool(session_context.get("required")),
+            "notes": deepcopy(session_context.get("notes", [])),
+        },
+        "x_posts": [],
+        "discovery_summary": {},
+        "reuse_summary": {},
+        "window_capture_hints": {},
+        "evidence_pack": {
+            "x_posts": [],
+            "artifact_manifest": [],
+            "claim_candidates": [],
+            "best_images": [],
+        },
+        "retrieval_request": {},
+        "retrieval_result": {},
+        "run_completeness": {},
+    }
+
+
+def build_x_index_run_completeness(result: dict[str, Any]) -> dict[str, Any]:
+    x_posts = result.get("x_posts", [])
+    discovery_summary = result.get("discovery_summary", {})
+    retrieval_result = result.get("retrieval_result", {})
+    blocked_candidates = discovery_summary.get("blocked_candidates", [])
+    retrieval_status = (
+        "complete"
+        if retrieval_result
+        else ("failed" if result.get("partial_stage") == "retrieval_bridge" else "skipped")
+    )
+    report_status = "complete" if clean_text(result.get("report_markdown")) else "partial"
+    status = clean_text(result.get("status")) or "error"
+    return {
+        "status": status,
+        "candidates_collected": int(discovery_summary.get("attempted_candidates", 0)),
+        "x_posts_captured": len(x_posts) if isinstance(x_posts, list) else 0,
+        "blocked_candidates_count": len(blocked_candidates) if isinstance(blocked_candidates, list) else 0,
+        "retrieval_bridge_status": retrieval_status,
+        "report_status": report_status,
+    }
+
+
+def finalize_x_index_result(
+    result: dict[str, Any],
+    *,
+    status: str,
+    partial_stage: str,
+    fatal_error: str = "",
+) -> dict[str, Any]:
+    result["status"] = status
+    result["partial_stage"] = partial_stage
+    result["fatal_error"] = clean_text(fatal_error)
+    result["run_completeness"] = build_x_index_run_completeness(result)
+    result["report_markdown"] = build_markdown_report(result)
+    result["run_completeness"] = build_x_index_run_completeness(result)
+    return result
+
+
 def build_markdown_report(result: dict[str, Any]) -> str:
     request = result.get("request", {})
     x_posts = result.get("x_posts", [])
     session_bootstrap = result.get("session_bootstrap", {})
     reuse_summary = result.get("reuse_summary", {})
     window_capture_hints = result.get("window_capture_hints", {})
+    completeness = result.get("run_completeness", {})
+    status = clean_text(result.get("status")) or clean_text(completeness.get("status")) or "error"
+    partial_stage = clean_text(result.get("partial_stage"))
+    fatal_error = clean_text(result.get("fatal_error"))
     lines = [
         f"# X Index Report: {request.get('topic', 'x-index-topic')}",
         "",
         f"Analysis time: {request.get('analysis_time', '')}",
+        "",
+        "## Run Completeness",
+        f"- Run completeness: {status}",
+        f"- Partial stage: {partial_stage or 'none'}",
     ]
+    if fatal_error:
+        lines.append(f"- Fatal error: {fatal_error}")
+    if status != "full":
+        lines.append(
+            "- This is a degraded repo-native X run. Downstream layers must not treat it as a full formal X package."
+        )
+    lines.append(
+        f"- Candidates: {completeness.get('candidates_collected', 0)} | "
+        f"Kept posts: {completeness.get('x_posts_captured', len(x_posts) if isinstance(x_posts, list) else 0)} | "
+        f"Blocked: {completeness.get('blocked_candidates_count', 0)} | "
+        f"Retrieval bridge: {completeness.get('retrieval_bridge_status', 'skipped')}"
+    )
     if session_bootstrap:
         lines.extend(
             [
@@ -1941,61 +2041,87 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request = parse_request(raw_payload)
     session_context = prepare_session_context(request)
     request["_session_context"] = session_context
-    collected_candidates = collect_candidates(request)
+    result = init_x_index_result(request, session_context)
+    try:
+        collected_candidates = collect_candidates(request)
+    except Exception as exc:
+        request.pop("_session_context", None)
+        result["request"] = serialize_x_index_request(request)
+        result["window_capture_hints"] = build_window_capture_hints(request)
+        result = finalize_x_index_result(
+            result,
+            status="error",
+            partial_stage="collect_candidates",
+            fatal_error=str(exc),
+        )
+        result["workflow_artifacts"] = persist_x_index_outputs(result)
+        return result
+
     reuse_summary = deepcopy(request.pop("_reuse_summary", {}))
     request.pop("_session_context", None)
+    result["request"] = serialize_x_index_request(request)
+    result["reuse_summary"] = {
+        key: deepcopy(value)
+        for key, value in reuse_summary.items()
+        if key != "candidates"
+    }
+    result["window_capture_hints"] = build_window_capture_hints(request)
     x_posts = []
     blocked_candidates = []
-    for index, candidate in enumerate(collected_candidates, start=1):
-        if not clean_text(candidate.get("post_url")):
-            blocked_candidates.append(candidate)
-            continue
-        post = build_x_post_record(candidate, request, index, session_context)
-        post["social_rank"] = score_post(post, request)
-        x_posts.append(post)
+    try:
+        for index, candidate in enumerate(collected_candidates, start=1):
+            if not clean_text(candidate.get("post_url")):
+                blocked_candidates.append(candidate)
+                continue
+            try:
+                post = build_x_post_record(candidate, request, index, session_context)
+                post["social_rank"] = score_post(post, request)
+                x_posts.append(post)
+            except Exception as exc:
+                blocked_candidate = deepcopy(candidate)
+                blocked_candidate["block_reason"] = clean_text(str(exc)) or "post_build_failed"
+                blocked_candidates.append(blocked_candidate)
 
-    x_posts.sort(key=lambda item: item.get("social_rank", 0), reverse=True)
-    kept_posts = x_posts[: request.get("max_kept_posts", 10)]
-    retrieval_request = build_retrieval_request(request, kept_posts)
-    retrieval_result = run_news_index(retrieval_request)
-    evidence_pack = {
-        "x_posts": kept_posts,
-        "artifact_manifest": [artifact for post in kept_posts for artifact in post.get("artifact_manifest", [])],
-        "claim_candidates": build_claim_candidates(kept_posts),
-        "best_images": build_best_images(kept_posts),
-    }
-    result = {
-        "request": {
-            **request,
-            "analysis_time": isoformat_or_blank(request["analysis_time"]),
-            "output_dir": str(request["output_dir"]),
-        },
-        "session_bootstrap": {
-            "strategy": session_context.get("strategy", ""),
-            "status": session_context.get("status", ""),
-            "source": session_context.get("source", ""),
-            "cookie_file": session_context.get("cookie_file", ""),
-            "cdp_endpoint": session_context.get("cdp_endpoint", ""),
-            "required": bool(session_context.get("required")),
-            "notes": deepcopy(session_context.get("notes", [])),
-        },
-        "x_posts": kept_posts,
-        "discovery_summary": {
+        x_posts.sort(key=lambda item: item.get("social_rank", 0), reverse=True)
+        kept_posts = x_posts[: request.get("max_kept_posts", 10)]
+        result["x_posts"] = kept_posts
+        result["discovery_summary"] = {
             "attempted_candidates": len(collected_candidates),
             "kept_posts": len(kept_posts),
             "search_queries": build_search_queries(request),
             "blocked_candidates": blocked_candidates,
-        },
-        "reuse_summary": {
-            key: deepcopy(value)
-            for key, value in reuse_summary.items()
-            if key != "candidates"
-        },
-        "window_capture_hints": build_window_capture_hints(request),
-        "evidence_pack": evidence_pack,
-        "retrieval_request": retrieval_request,
-        "retrieval_result": retrieval_result,
-    }
+        }
+        result["evidence_pack"] = {
+            "x_posts": kept_posts,
+            "artifact_manifest": [artifact for post in kept_posts for artifact in post.get("artifact_manifest", [])],
+            "claim_candidates": build_claim_candidates(kept_posts),
+            "best_images": build_best_images(kept_posts),
+        }
+    except Exception as exc:
+        result = finalize_x_index_result(
+            result,
+            status="partial" if result.get("x_posts") else "error",
+            partial_stage="build_x_posts",
+            fatal_error=str(exc),
+        )
+        result["workflow_artifacts"] = persist_x_index_outputs(result)
+        return result
+
+    kept_posts = result["x_posts"]
+    try:
+        retrieval_request = build_retrieval_request(request, kept_posts)
+        result["retrieval_request"] = retrieval_request
+        result["retrieval_result"] = run_news_index(retrieval_request)
+    except Exception as exc:
+        result = finalize_x_index_result(
+            result,
+            status="partial" if kept_posts else "error",
+            partial_stage="retrieval_bridge",
+            fatal_error=str(exc),
+        )
+        result["workflow_artifacts"] = persist_x_index_outputs(result)
+        return result
+
     if session_context.get("requested"):
         health_values = [clean_text(item.get("session_health")) for item in kept_posts if clean_text(item.get("session_health"))]
         result["session_bootstrap"]["health"] = (
@@ -2003,7 +2129,7 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
             if "effective" in health_values
             else ("degraded" if "degraded" in health_values else ("attached" if health_values else "unverified"))
         )
-    result["report_markdown"] = build_markdown_report(result)
+    result = finalize_x_index_result(result, status="full", partial_stage="persist_outputs")
     result["workflow_artifacts"] = persist_x_index_outputs(result)
     return result
 

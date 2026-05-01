@@ -17,6 +17,10 @@ if str(SCRIPT_DIR) not in sys.path:
 from x_index_runtime import load_json, run_x_index, write_json
 
 
+def clean_text(text: object) -> str:
+    return str(text or "").strip()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run an X indexing request and emit a structured evidence pack."
@@ -46,7 +50,7 @@ def main() -> None:
             output_path = Path(args.markdown_output).resolve()
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(result.get("report_markdown", ""), encoding="utf-8")
-        sys.exit(0)
+        sys.exit(0 if clean_text(result.get("status")) == "full" else 1)
     except Exception as exc:
         print(
             json.dumps({"status": "ERROR", "message": str(exc)}, indent=2, ensure_ascii=False),
