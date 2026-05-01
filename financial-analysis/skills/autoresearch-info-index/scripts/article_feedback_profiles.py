@@ -31,6 +31,7 @@ LIST_PROFILE_REQUEST_KEYS = {"must_include", "must_avoid", "personal_phrase_bank
 STYLE_MEMORY_TEXT_KEYS = {"target_band", "voice_summary"}
 STYLE_MEMORY_LIST_KEYS = {"preferred_transitions", "must_land", "avoid_patterns", "corpus_notes"}
 STYLE_MEMORY_SLOT_KEYS = ("title", "subtitle", "lede", "facts", "spread", "impact", "watch")
+REFERENCE_SAMPLE_DIR = Path(__file__).resolve().parents[1] / "references" / "article-quality-samples"
 
 
 def clean_text(value: Any) -> str:
@@ -187,6 +188,14 @@ def apply_style_memory_defaults(request: dict[str, Any], style_memory: dict[str,
     return merged
 
 
+def sample_source_entry(name: str, filename: str, note: str) -> dict[str, str]:
+    return {
+        "name": clean_text(name),
+        "path": str(REFERENCE_SAMPLE_DIR / filename),
+        "note": clean_text(note),
+    }
+
+
 GENERAL_COMMENTARY_STYLE_MEMORY = {
     "target_band": "commentary_variable_first",
     "voice_summary": (
@@ -210,6 +219,35 @@ GENERAL_COMMENTARY_STYLE_MEMORY = {
 }
 
 
+MACRO_CONFLICT_SAMPLE_SOURCES = [
+    sample_source_entry(
+        "HFI Research",
+        "macro-oil-hfi-research.md",
+        "Use for physical market framing, inventory stress, and oil-market-specific voice.",
+    ),
+    sample_source_entry(
+        "Bloomberg Opinion / Javier Blas",
+        "macro-oil-javier-blas-real-oil-price.md",
+        "Use for separating quoted oil price from actual market stress and pricing mechanics.",
+    ),
+    sample_source_entry(
+        "Bloomberg Opinion / Javier Blas",
+        "macro-oil-javier-blas-hormuz-blueprints.md",
+        "Use for writing geopolitics as market structure rather than headline chronology.",
+    ),
+    sample_source_entry(
+        "Citi Private Bank",
+        "macro-oil-citi-energy-shock.md",
+        "Use for oil to inflation to Fed to cross-asset transmission.",
+    ),
+    sample_source_entry(
+        "JKempEnergy.com / John Kemp",
+        "macro-oil-jkempenergy-archive.md",
+        "Use for evidence density, balances, infrastructure, and market plumbing discipline.",
+    ),
+]
+
+
 TECH_INFRA_STYLE_MEMORY = {
     "target_band": "tech_supply_chain_commentary",
     "voice_summary": (
@@ -231,6 +269,9 @@ TECH_INFRA_STYLE_MEMORY = {
         "只写模型热度，不落到部署、产能、资本开支或供应链",
         "把融资或合作新闻直接等同于长期产业胜负",
     ],
+    "corpus_notes": [
+        "Approved benchmark set emphasizes capital intensity, supply-chain consequences, and valuation tension instead of generic AI enthusiasm.",
+    ],
     "slot_guidance": {
         "lede": [
             "用一句判断说明这不是普通公司新闻，而是一条会传导到上游变量的信号",
@@ -245,6 +286,78 @@ TECH_INFRA_STYLE_MEMORY = {
             "把后续跟踪点落到 GPU、TPU、封装、服务器、云厂商或数据中心约束",
         ],
     },
+    "sample_sources": [
+        sample_source_entry(
+            "Stratechery / Ben Thompson",
+            "tech-ai-stratechery-google-cloud-llms.md",
+            "Use for turning earnings into strategy and capex consequences rather than recap.",
+        ),
+        sample_source_entry(
+            "Stratechery / Ben Thompson",
+            "tech-ai-stratechery-amazon-capex.md",
+            "Use for handling capex anxiety, investor debate, and strategic nuance in one piece.",
+        ),
+        sample_source_entry(
+            "SemiAnalysis",
+            "tech-ai-semianalysis-silicon-shortage.md",
+            "Use for bottleneck analysis, silicon constraints, and hyperscaler capex reset logic.",
+        ),
+        sample_source_entry(
+            "SemiAnalysis",
+            "tech-ai-semianalysis-memory-mania.md",
+            "Use for writing second-order supply-chain consequences instead of surface hype.",
+        ),
+        sample_source_entry(
+            "Citi Private Bank",
+            "tech-ai-citi-capex-returns.md",
+            "Use for linking AI capex to returns, beneficiaries, and macro constraints.",
+        ),
+    ],
+}
+
+
+MACRO_CONFLICT_STYLE_MEMORY = {
+    "target_band": "macro_conflict_transmission",
+    "voice_summary": (
+        "Treat macro conflict topics as pricing-chain stories. Start with one hard judgment, "
+        "anchor on the variable that moved first, then walk through oil, inflation expectations, "
+        "Fed path, discount rates, and the equity or cross-asset consequence."
+    ),
+    "preferred_transitions": [
+        "先看结论",
+        "真正要重估的",
+        "顺着这条传导链往下看",
+    ],
+    "must_land": [
+        "把事件翻译成油价、通胀预期、Fed 路径和权益贴现率的传导链",
+        "区分物理供应扰动、风险溢价和二级市场叙事，不要只写 headline",
+        "结尾必须落到接下来该盯什么的市场观察项，而不是停在事件总结",
+    ],
+    "avoid_patterns": [
+        "只复述地缘冲突经过，不解释它如何改写市场定价框架",
+        "把 OPEC、制裁或航运当作并列信息堆砌，不建立主次和传导顺序",
+    ],
+    "corpus_notes": [
+        "Approved benchmark set emphasizes market transmission, physical-vs-financial pricing, and policy-to-asset linkage.",
+    ],
+    "slot_guidance": {
+        "lede": [
+            "开头先说这不是普通 headline，而是一条会重写市场定价顺序的变量。",
+        ],
+        "facts": [
+            "先钉住最强锚点变量，比如 Brent、运价、库存、保险或供应中断线索。",
+        ],
+        "spread": [
+            "把背景因素降级成结构解释，不要让背景抢走主线。",
+        ],
+        "impact": [
+            "从油价到通胀预期，再到 Fed 路径、长端利率、贴现率和权益估值，按顺序写清。",
+        ],
+        "watch": [
+            "最后给出 3 个后续观察点，优先价格曲线、政策路径和资产内部结构。",
+        ],
+    },
+    "sample_sources": MACRO_CONFLICT_SAMPLE_SOURCES,
 }
 
 
@@ -287,6 +400,40 @@ TECH_TOPIC_TOKENS = (
 )
 
 
+MACRO_CONFLICT_TOPIC_TOKENS = (
+    "hormuz",
+    "strait of hormuz",
+    "brent",
+    "wti",
+    "oil",
+    "crude",
+    "opec",
+    "opec+",
+    "iran",
+    "inflation expectations",
+    "fed",
+    "discount rate",
+    "equities",
+    "risk premium",
+    "tanker",
+    "shipping",
+    "lng",
+    "霍尔木兹",
+    "布伦特",
+    "油价",
+    "原油",
+    "伊朗",
+    "通胀预期",
+    "美联储",
+    "贴现率",
+    "折现率",
+    "风险溢价",
+    "航运",
+    "油运",
+    "股市",
+)
+
+
 def topic_lane_text(request: dict[str, Any], extra_text: Any = None) -> str:
     parts = [
         clean_text(request.get("topic")),
@@ -314,11 +461,25 @@ def is_technology_topic(text: str) -> bool:
     return any(token in lowered for token in TECH_TOPIC_TOKENS)
 
 
+def is_macro_conflict_topic(text: str) -> bool:
+    lowered = clean_text(text).lower()
+    if not lowered:
+        return False
+    return any(token in lowered for token in MACRO_CONFLICT_TOPIC_TOKENS)
+
+
 def apply_topic_lane_defaults(request: dict[str, Any], *, extra_text: Any = None) -> dict[str, Any]:
     merged = deepcopy(request)
-    if is_technology_topic(topic_lane_text(merged, extra_text)):
+    lane_text = topic_lane_text(merged, extra_text)
+    if is_technology_topic(lane_text):
         style_memory = merge_style_memory(GENERAL_COMMENTARY_STYLE_MEMORY, safe_dict(merged.get("style_memory")))
         style_memory = merge_style_memory(style_memory, TECH_INFRA_STYLE_MEMORY)
+        if clean_text(merged.get("article_framework")) in {"", "auto"}:
+            merged["article_framework"] = "deep_analysis"
+        return apply_style_memory_defaults(merged, style_memory)
+    if is_macro_conflict_topic(lane_text):
+        style_memory = merge_style_memory(GENERAL_COMMENTARY_STYLE_MEMORY, safe_dict(merged.get("style_memory")))
+        style_memory = merge_style_memory(style_memory, MACRO_CONFLICT_STYLE_MEMORY)
         if clean_text(merged.get("article_framework")) in {"", "auto"}:
             merged["article_framework"] = "deep_analysis"
         return apply_style_memory_defaults(merged, style_memory)

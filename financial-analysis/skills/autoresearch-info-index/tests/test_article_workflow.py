@@ -171,6 +171,8 @@ class ArticleWorkflowTests(unittest.TestCase):
             "把公司新闻翻译成资金流向、订单流向、产能流向或部署变量",
             request["must_include"],
         )
+        self.assertTrue(request["style_memory"].get("sample_sources"))
+        self.assertIn("SemiAnalysis", [item.get("name", "") for item in request["style_memory"]["sample_sources"]])
 
     def test_article_draft_normalize_request_keeps_non_tech_topics_out_of_tech_lane(self) -> None:
         source_result = run_news_index(
@@ -209,6 +211,52 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertEqual(request["article_framework"], "auto")
         self.assertNotEqual(request.get("style_memory", {}).get("target_band"), "tech_supply_chain_commentary")
         self.assertNotIn("顺着钱的流向看下去", request["personal_phrase_bank"])
+
+    def test_article_draft_normalize_request_applies_macro_conflict_lane_defaults(self) -> None:
+        source_result = run_news_index(
+            {
+                "topic": "Hormuz oil shock reprices inflation expectations and Fed path",
+                "analysis_time": "2026-04-25T12:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-1",
+                        "claim_text": "A Hormuz disruption is feeding through oil, inflation expectations, and equity discount rates.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "macro-1",
+                        "source_name": "Bloomberg Opinion",
+                        "source_type": "major_news",
+                        "published_at": "2026-04-25T11:00:00+00:00",
+                        "observed_at": "2026-04-25T11:05:00+00:00",
+                        "url": "https://example.com/macro-1",
+                        "text_excerpt": (
+                            "A Hormuz shock is pushing Brent higher and forcing investors to revisit inflation, "
+                            "Fed timing, and equity multiple compression."
+                        ),
+                        "claim_ids": ["claim-1"],
+                        "claim_states": {"claim-1": "support"},
+                    }
+                ],
+            }
+        )
+
+        request = normalize_article_draft_request(
+            {
+                "source_result": source_result,
+                "language_mode": "chinese",
+            }
+        )
+
+        self.assertEqual(request["article_framework"], "deep_analysis")
+        self.assertEqual(request["style_memory"]["target_band"], "macro_conflict_transmission")
+        self.assertIn("先看结论", request["personal_phrase_bank"])
+        self.assertIn("把事件翻译成油价、通胀预期、Fed 路径和权益贴现率的传导链", request["must_include"])
+        self.assertTrue(request["style_memory"].get("sample_sources"))
+        sample_names = [item.get("name", "") for item in request["style_memory"]["sample_sources"]]
+        self.assertIn("HFI Research", sample_names)
+        self.assertIn("Bloomberg Opinion / Javier Blas", sample_names)
 
     def build_seed_x_request(self, tmpdir: Path) -> dict:
         tmpdir.mkdir(parents=True, exist_ok=True)

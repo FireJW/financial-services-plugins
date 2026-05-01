@@ -5340,6 +5340,186 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertTrue(regression_checks["checks"]["generic_business_talk_clean"])
         self.assertNotIn("Generic business talk is still bleeding into the draft.", regression_checks.get("failures", []))
 
+    def test_build_regression_checks_flags_missing_macro_transmission_chain(self) -> None:
+        regression_checks = build_regression_checks(
+            {
+                "title": "OPEC rupture sends Brent and Hormuz risk back into focus",
+                "article_framework": "deep_analysis",
+                "lede": "OPEC surprise exit talk pushed Brent and crude back into the market headline.",
+                "sections": [
+                    {
+                        "heading": "What happened",
+                        "paragraph": "The draft only recaps the oil headline, Hormuz shipping risk, and OPEC supply discipline without following the macro chain.",
+                    }
+                ],
+                "selected_images": [],
+            },
+            {
+                "article_framework": "deep_analysis",
+                "target_length_chars": 1200,
+                "draft_mode": "balanced",
+                "image_strategy": "mixed",
+            },
+            {
+                "selected_cover_role": "post_media",
+                "selection_mode": "body_image_fallback",
+                "selection_reason": "body image fallback",
+            },
+            {"cover_source": "article_image"},
+            {
+                "title": "OPEC rupture sends Brent and Hormuz risk back into focus",
+                "summary": "A macro oil shock topic that needs a full transmission chain rather than an event recap.",
+                "keywords": ["OPEC", "oil", "Brent", "Hormuz", "macro"],
+            },
+        )
+
+        self.assertTrue(regression_checks["checks"]["macro_transmission_chain_expected"])
+        self.assertFalse(regression_checks["checks"]["macro_transmission_chain_clean"])
+        self.assertIn("inflation", regression_checks["macro_transmission_chain"]["missing_layers"])
+        self.assertIn("fed_policy", regression_checks["macro_transmission_chain"]["missing_layers"])
+        self.assertIn("discount_valuation_equities", regression_checks["macro_transmission_chain"]["missing_layers"])
+
+    def test_article_publish_regression_check_recommends_changes_when_macro_chain_missing(self) -> None:
+        output_dir = self.temp_dir / "publish-regression-missing-macro-chain"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        cover_plan = {
+            "selected_cover_role": "post_media",
+            "selection_mode": "body_image_fallback",
+            "selection_reason": "body image fallback",
+        }
+        regression_checks = build_regression_checks(
+            {
+                "title": "Hormuz blockade risk jolts oil again",
+                "article_framework": "deep_analysis",
+                "lede": "Oil jumps after Hormuz blockade fears return.",
+                "sections": [
+                    {
+                        "heading": "Event recap",
+                        "paragraph": "Brent crude and OPEC discipline are back in focus, but the draft stops at the headline and does not explain how the shock moves through markets.",
+                    }
+                ],
+                "selected_images": [],
+            },
+            {
+                "article_framework": "deep_analysis",
+                "target_length_chars": 1200,
+                "draft_mode": "balanced",
+                "image_strategy": "mixed",
+            },
+            cover_plan,
+            {"cover_source": "article_image"},
+            {
+                "title": "Hormuz blockade risk jolts oil again",
+                "summary": "A conflict and oil topic in the macro lane.",
+                "keywords": ["oil", "Brent", "Hormuz", "OPEC", "conflict"],
+            },
+        )
+        package = {
+            "cover_plan": cover_plan,
+            "push_readiness": {"cover_source": "article_image"},
+            "regression_checks": regression_checks,
+        }
+        (output_dir / "publish-package.json").write_text(json.dumps(package, ensure_ascii=False), encoding="utf-8-sig")
+
+        result = run_publish_regression_check({"target": str(output_dir)})
+
+        self.assertEqual(result["status"], "changes_recommended")
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["decision_required"])
+        self.assertIn("Macro/oil draft is missing the required transmission chain.", result["failures"])
+        option_areas = {item["area"] for item in result["optimization_options"]}
+        self.assertIn("macro_transmission_chain", option_areas)
+
+    def test_article_publish_regression_check_accepts_macro_chain_with_pricing_language(self) -> None:
+        output_dir = self.temp_dir / "publish-regression-complete-macro-chain"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        cover_plan = {
+            "selected_cover_role": "post_media",
+            "selection_mode": "body_image_fallback",
+            "selection_reason": "body image fallback",
+        }
+        regression_checks = build_regression_checks(
+            {
+                "title": "OPEC rupture sends Brent and Hormuz risk back into focus",
+                "article_framework": "deep_analysis",
+                "lede": "OPEC discipline and Hormuz shipping risk are forcing Brent crude into a fresh repricing window.",
+                "sections": [
+                    {
+                        "heading": "Transmission chain",
+                        "paragraph": (
+                            "The oil shock first lifts inflation expectations, then pressures the Fed policy path and rate-cut timing. "
+                            "A higher policy-rate path raises the discount rate used for equities, compresses valuation multiples, and pushes stocks to reprice risk."
+                        ),
+                    }
+                ],
+                "selected_images": [],
+            },
+            {
+                "article_framework": "deep_analysis",
+                "target_length_chars": 1200,
+                "draft_mode": "balanced",
+                "image_strategy": "mixed",
+            },
+            cover_plan,
+            {"cover_source": "article_image"},
+            {
+                "title": "OPEC rupture sends Brent and Hormuz risk back into focus",
+                "summary": "A macro oil shock topic with inflation, Fed, rates, valuation, and equities read-through.",
+                "keywords": ["OPEC", "oil", "Brent", "Hormuz", "inflation", "Fed", "rates", "equities"],
+            },
+        )
+        package = {
+            "cover_plan": cover_plan,
+            "push_readiness": {"cover_source": "article_image"},
+            "regression_checks": regression_checks,
+        }
+        (output_dir / "publish-package.json").write_text(json.dumps(package, ensure_ascii=False), encoding="utf-8-sig")
+
+        result = run_publish_regression_check({"target": str(output_dir)})
+
+        self.assertTrue(result["regression_checks"]["checks"]["generic_business_talk_expected"])
+        self.assertTrue(result["regression_checks"]["checks"]["generic_business_talk_clean"])
+        self.assertTrue(result["regression_checks"]["checks"]["macro_transmission_chain_expected"])
+        self.assertTrue(result["regression_checks"]["checks"]["macro_transmission_chain_clean"])
+        self.assertEqual(result["status"], "accepted")
+        self.assertTrue(result["accepted"])
+
+    def test_build_regression_checks_does_not_treat_software_as_macro_conflict(self) -> None:
+        regression_checks = build_regression_checks(
+            {
+                "title": "Software workflow update becomes a developer tooling story",
+                "article_framework": "deep_analysis",
+                "lede": "The software release changes the browser workflow for developers.",
+                "sections": [
+                    {
+                        "heading": "What changed",
+                        "paragraph": "This is about tools, permissions, and developer workflow for shipping code.",
+                    }
+                ],
+                "selected_images": [],
+            },
+            {
+                "article_framework": "deep_analysis",
+                "target_length_chars": 1200,
+                "draft_mode": "balanced",
+                "image_strategy": "mixed",
+            },
+            {
+                "selected_cover_role": "post_media",
+                "selection_mode": "body_image_fallback",
+                "selection_reason": "body image fallback",
+            },
+            {"cover_source": "article_image"},
+            {
+                "title": "Software workflow update becomes a developer tooling story",
+                "summary": "A developer tooling story about software workflow changes.",
+                "keywords": ["software", "workflow", "developer tooling"],
+            },
+        )
+
+        self.assertFalse(regression_checks["checks"]["generic_business_talk_expected"])
+        self.assertFalse(regression_checks["checks"]["macro_transmission_chain_expected"])
+
     def test_localized_market_relevance_keeps_macro_topic_out_of_ai_infra_bucket(self) -> None:
         relevance = article_publish_runtime.localized_market_relevance(
             {

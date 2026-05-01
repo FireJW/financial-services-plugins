@@ -40,6 +40,58 @@ ALLOWED_MACRO_PRICING_PHRASES = [
     "定价中心",
 ]
 
+MACRO_TRANSMISSION_CHAIN_LAYERS = {
+    "oil": [
+        "oil",
+        "brent",
+        "crude",
+        "hormuz",
+        "opec",
+        "原油",
+        "布伦特",
+        "油价",
+        "石油",
+        "霍尔木兹",
+    ],
+    "inflation": [
+        "inflation",
+        "inflation expectations",
+        "cpi",
+        "通胀",
+        "通胀预期",
+        "物价",
+    ],
+    "fed_policy": [
+        "fed",
+        "federal reserve",
+        "rates",
+        "rate-cut",
+        "policy path",
+        "美联储",
+        "联储",
+        "利率",
+        "政策路径",
+        "降息",
+        "加息",
+    ],
+    "discount_valuation_equities": [
+        "discount rate",
+        "valuation",
+        "valuations",
+        "equities",
+        "equity",
+        "stocks",
+        "multiples",
+        "risk assets",
+        "折现率",
+        "估值",
+        "权益",
+        "股票",
+        "股市",
+        "风险资产",
+    ],
+}
+
 DEVELOPER_FOCUS_PHRASES = [
     "产品边界、权限设计",
     "浏览器控制、工作流编排",
@@ -112,7 +164,35 @@ def is_developer_tooling_topic(text: str) -> bool:
 
 
 def is_macro_conflict_topic(text: str) -> bool:
-    return any(token in text for token in ("特朗普", "伊朗", "战争", "布油", "霍尔木兹", "Hormuz", "oil", "conflict"))
+    lowered = text.lower()
+    english_patterns = (
+        r"\boil\b",
+        r"\bbrent\b",
+        r"\bcrude\b",
+        r"\bhormuz\b",
+        r"\bopec\b",
+        r"\bconflicts?\b",
+        r"\bwars?\b",
+        r"\biran\b",
+        r"\bsanctions?\b",
+    )
+    chinese_tokens = ("特朗普", "伊朗", "战争", "布油", "原油", "油价", "霍尔木兹", "石油", "制裁")
+    return any(re.search(pattern, lowered) for pattern in english_patterns) or any(token in text for token in chinese_tokens)
+
+
+def build_macro_transmission_chain_check(text: str) -> dict[str, Any]:
+    normalized = clean_text(text).lower()
+    layer_hits: dict[str, list[str]] = {}
+    for layer, tokens in MACRO_TRANSMISSION_CHAIN_LAYERS.items():
+        hits = [token for token in tokens if token.lower() in normalized]
+        layer_hits[layer] = hits
+    missing_layers = [layer for layer, hits in layer_hits.items() if not hits]
+    return {
+        "required_layers": list(MACRO_TRANSMISSION_CHAIN_LAYERS.keys()),
+        "layer_hits": layer_hits,
+        "missing_layers": missing_layers,
+        "complete": not missing_layers,
+    }
 
 
 def clean_public_topic_title(title: str) -> str:
@@ -1215,7 +1295,19 @@ def build_regression_checks(
     primary_text = body_markdown or body_text
     secondary_text = article_markdown if article_markdown != primary_text else ""
     combined = "\n".join(filter(None, [primary_text, secondary_text])).strip()
-    topic_text = title + " " + clean_text(topic.get("summary"))
+    topic_text = " ".join(
+        filter(
+            None,
+            [
+                title,
+                clean_text(topic.get("title")),
+                clean_text(topic.get("summary")),
+                " ".join(clean_string_list(topic.get("keywords"))),
+            ],
+        )
+    )
+    macro_conflict_topic = is_macro_conflict_topic(topic_text)
+    macro_transmission_chain = build_macro_transmission_chain_check("\n".join(filter(None, [title, combined])))
     forbidden_hits = count_phrase_hits(combined, FORBIDDEN_PHRASES)
     forbidden_hits = relax_macro_pricing_false_positives(combined, forbidden_hits, topic_text)
     developer_hits = count_phrase_hits(combined, DEVELOPER_FOCUS_PHRASES)
@@ -1266,16 +1358,19 @@ def build_regression_checks(
             "citation_count": len(safe_list(article_package.get("citations"))),
             "bilingual_source_title_count": 0,
         },
+        "macro_transmission_chain": macro_transmission_chain,
         "topic_shape": {
             "developer_tooling_topic": is_developer_tooling_topic(title + " " + clean_text(topic.get("summary"))),
-            "macro_conflict_topic": is_macro_conflict_topic(title + " " + clean_text(topic.get("summary"))),
+            "macro_conflict_topic": macro_conflict_topic,
         },
         "checks": {
             "expanded_sections_expected": int(request.get("target_length_chars", 0) or 0) >= 2400,
             "expanded_sections_ok": len(section_headings) >= (4 if int(request.get("target_length_chars", 0) or 0) >= 2000 else 1),
             "ui_capture_noise_clean": forbidden_hits["登录"] == 0 and forbidden_hits["/url:"] == 0,
-            "generic_business_talk_expected": is_macro_conflict_topic(title + " " + clean_text(topic.get("summary"))),
+            "generic_business_talk_expected": macro_conflict_topic,
             "generic_business_talk_clean": all(forbidden_hits[item] == 0 for item in ["预算", "订单", "定价", "经营变量", "经营层", "经营和投资判断题"]),
+            "macro_transmission_chain_expected": macro_conflict_topic,
+            "macro_transmission_chain_clean": (not macro_conflict_topic) or bool(macro_transmission_chain.get("complete")),
             "developer_focus_copy_expected": is_developer_tooling_topic(title + " " + clean_text(topic.get("summary"))),
             "developer_focus_copy_clean": forbidden_hits["产品能力表面、工具调用边界和权限设计"] == 0 and forbidden_hits["浏览器控制、工作流编排与多步开发者执行"] == 0,
             "developer_focus_phrase_varied": max(developer_hits.values(), default=0) <= 1,
@@ -1312,6 +1407,8 @@ def build_automatic_acceptance_result(
         failures.append("UI capture noise leaked into the article or image captions.")
     if checks.get("generic_business_talk_expected", False) and not checks.get("generic_business_talk_clean", True):
         failures.append("Generic business talk is still bleeding into the draft.")
+    if checks.get("macro_transmission_chain_expected", False) and not checks.get("macro_transmission_chain_clean", True):
+        failures.append("Macro/oil draft is missing the required transmission chain.")
     if checks.get("developer_focus_copy_expected", False) and not checks.get("developer_focus_copy_clean", True):
         failures.append("Developer-tooling copy still includes longhand repeated phrasing.")
     if safe_dict(regression_checks.get("cover")).get("screenshot_upload_source_missing"):
@@ -1326,6 +1423,8 @@ def build_automatic_acceptance_result(
             optimization_options.append({"area": "screenshot_caption", "reason": "Clean screenshot captions and remove UI leakage."})
         if not checks.get("cover_reason_present", True):
             optimization_options.append({"area": "observability", "reason": "Explain why the selected cover is publication-safe."})
+        if checks.get("macro_transmission_chain_expected", False) and not checks.get("macro_transmission_chain_clean", True):
+            optimization_options.append({"area": "macro_transmission_chain", "reason": "Show the chain from oil shock to inflation, Fed/rates, discount rate, valuation, and equities."})
         if safe_dict(regression_checks.get("cover")).get("screenshot_upload_source_missing"):
             optimization_options.append({"area": "cover_upload_source", "reason": "Restore a usable upload source for the screenshot cover."})
         status = "changes_recommended"
@@ -1417,6 +1516,8 @@ def build_automatic_acceptance_markdown(result: dict[str, Any]) -> str:
         f"- UI capture noise clean: {'yes' if checks.get('ui_capture_noise_clean', True) else 'no'}",
         f"- Generic business talk expected: {'yes' if checks.get('generic_business_talk_expected', False) else 'no'}",
         f"- Generic business talk clean: {'yes' if checks.get('generic_business_talk_clean', True) else 'no'}",
+        f"- Macro transmission chain expected: {'yes' if checks.get('macro_transmission_chain_expected', False) else 'no'}",
+        f"- Macro transmission chain clean: {'yes' if checks.get('macro_transmission_chain_clean', True) else 'no'}",
         f"- Developer focus copy expected: {'yes' if checks.get('developer_focus_copy_expected', False) else 'no'}",
         f"- Developer focus copy clean: {'yes' if checks.get('developer_focus_copy_clean', True) else 'no'}",
         f"- Developer focus phrasing varied: {'yes' if checks.get('developer_focus_phrase_varied', True) else 'no'}",
