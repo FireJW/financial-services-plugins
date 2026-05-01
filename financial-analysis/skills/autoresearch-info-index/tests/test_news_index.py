@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -21,6 +22,7 @@ from x_index_runtime import (
     build_search_queries,
     build_window_capture_hints,
     extract_post_text,
+    fetch_page_via_remote_debugging,
     fetch_thread_posts,
     parse_request,
     prepare_session_context,
@@ -537,6 +539,33 @@ class NewsIndexTests(unittest.TestCase):
         self.assertEqual(context["status"], "unavailable")
         self.assertFalse(context["active"])
         self.assertTrue(any("new Edge window" in note for note in context["notes"]))
+
+    @patch("x_index_runtime.resolve_node_command", return_value="node")
+    @patch("x_index_runtime.resolve_cdp_fetch_script", return_value=Path("browser_session_fetch.js"))
+    @patch(
+        "x_index_runtime.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd=["node", "browser_session_fetch.js"], timeout=23),
+    )
+    def test_remote_debugging_fetch_timeout_returns_failed_artifact(
+        self,
+        _mock_run,
+        _mock_script,
+        _mock_node,
+    ) -> None:
+        artifact = fetch_page_via_remote_debugging(
+            "https://x.com/search?q=AI&src=typed_query&f=live",
+            self.examples / "tmp-timeout-root.png",
+            {
+                "cdp_endpoint": "http://127.0.0.1:9222",
+                "wait_ms": 3000,
+                "notes": ["will attach to http://127.0.0.1:9222"],
+            },
+        )
+
+        self.assertFalse(artifact.session_used)
+        self.assertEqual(artifact.session_status, "failed")
+        self.assertIn("remote debugging fetch timed out", artifact.error)
+        self.assertTrue(any("remote debugging fetch timed out" in note for note in artifact.session_notes))
 
     def test_prepare_session_context_codex_iab_records_operator_capture_route(self) -> None:
         request = parse_request(

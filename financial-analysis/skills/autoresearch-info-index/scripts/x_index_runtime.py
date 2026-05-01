@@ -702,25 +702,46 @@ def fetch_page_via_remote_debugging(url: str, screenshot_path: Path, session_con
             session_notes=unique_notes(session_context.get("notes", [])),
         )
 
-    process = subprocess.run(
-        [
-            node_cmd,
-            str(script_path),
-            "--endpoint",
-            str(session_context.get("cdp_endpoint", "")),
-            "--url",
-            url,
-            "--screenshot",
-            str(screenshot_path),
-            "--wait-ms",
-            str(session_context.get("wait_ms", 8000)),
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="ignore",
-        timeout=180,
-    )
+    wait_ms = int(session_context.get("wait_ms", 8000) or 8000)
+    helper_timeout_seconds = max(15, min(60, int((wait_ms / 1000.0) * 3 + 15)))
+    command = [
+        node_cmd,
+        str(script_path),
+        "--endpoint",
+        str(session_context.get("cdp_endpoint", "")),
+        "--url",
+        url,
+        "--screenshot",
+        str(screenshot_path),
+        "--wait-ms",
+        str(wait_ms),
+    ]
+    try:
+        process = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            timeout=helper_timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        error = f"remote debugging fetch timed out after {helper_timeout_seconds}s"
+        return FetchArtifact(
+            url=url,
+            final_url=url,
+            html="",
+            visible_text="",
+            accessibility_text="",
+            links_text="",
+            screenshot_path="",
+            error=error,
+            media_items=[],
+            session_used=False,
+            session_source="remote_debugging",
+            session_status="failed",
+            session_notes=unique_notes([*session_context.get("notes", []), error]),
+        )
     stdout = clean_text(process.stdout)
     stderr = clean_text(process.stderr)
     if process.returncode != 0:

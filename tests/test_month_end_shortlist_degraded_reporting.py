@@ -908,6 +908,64 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("## Decision Factors", enriched["report_markdown"])
         self.assertIn("### 不执行", enriched["report_markdown"])
 
+    def test_price_snapshot_preserves_execution_levels_for_blocked_candidate(self) -> None:
+        result = {
+            "request": {"min_price": 20},
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "dropped": [
+                {
+                    "ticker": "002384.SZ",
+                    "name": "东山精密",
+                    "drop_reason": "price_below_floor,no_structured_catalyst_within_window",
+                },
+            ],
+            "top_picks": [],
+            "scorecard": [],
+            "report_markdown": "# Month-End Shortlist Report: 2026-04-30\n",
+        }
+        assessed_candidates = [
+            {
+                "ticker": "002384.SZ",
+                "name": "东山精密",
+                "price": 0,
+                "keep": False,
+                "scores": {"adjusted_total_score": 46.0},
+                "score_components": {
+                    "trend_template_score": 25.0,
+                    "rs_and_leadership_score": 15.0,
+                    "structured_catalyst_score": 0.0,
+                    "liquidity_and_participation_score": 6.0,
+                },
+                "price_snapshot": {
+                    "close": 186.73,
+                    "ma20": 155.02,
+                    "ma50": 121.35,
+                    "high52": 196.0,
+                    "low52": 22.8,
+                },
+                "trend_template": {"passed_count": 8, "trend_pass": True},
+                "structured_catalyst_snapshot": {
+                    "structured_catalyst_within_window": False,
+                    "earnings_events": [],
+                },
+                "hard_filter_failures": [
+                    "price_below_floor",
+                    "no_structured_catalyst_within_window",
+                ],
+            },
+        ]
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], assessed_candidates)
+
+        diagnostic = enriched["diagnostic_scorecard"][0]
+        self.assertEqual(diagnostic["price"], 186.73)
+        self.assertNotIn("price_below_floor", diagnostic["hard_filter_failures"])
+        factor = enriched["decision_factors"]["blocked"][0]
+        self.assertIn("关键价位", factor["trade_layer_summary"])
+        self.assertIn("收盘 186.73", factor["trade_layer_summary"])
+        self.assertIn("压力 196.0", factor["trade_layer_summary"])
+        self.assertIn("放弃线 155.02", factor["trade_layer_summary"])
+
     def test_enrich_live_result_reporting_adds_qualified_decision_factors(self) -> None:
         result = {
             "filter_summary": {"kept_count": 1, "keep_threshold": 70.0},

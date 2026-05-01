@@ -2340,8 +2340,52 @@ def build_candidate_snapshot_from_rows(ticker: str, rows: list[dict[str, Any]]) 
     }
 
 
-def build_diagnostic_scorecard_entry(candidate: dict[str, Any], keep_threshold: float | int | None = None) -> dict[str, Any]:
+def hydrate_price_fields_from_snapshot(candidate: dict[str, Any]) -> dict[str, Any]:
     entry = deepcopy(candidate)
+    snapshot = entry.get("price_snapshot") if isinstance(entry.get("price_snapshot"), dict) else {}
+    if not snapshot:
+        return entry
+
+    field_map = {
+        "price": "close",
+        "open": "open",
+        "high": "high",
+        "low": "low",
+        "pre_close": "pre_close",
+        "day_pct": "day_pct",
+        "day_turnover_cny": "avg_turnover_20d",
+    }
+    for field, snapshot_key in field_map.items():
+        if to_float(entry.get(field)) > 0:
+            continue
+        snapshot_value = to_float(snapshot.get(snapshot_key))
+        if snapshot_value > 0:
+            entry[field] = snapshot_value
+    return entry
+
+
+def remove_false_price_below_floor(candidate: dict[str, Any], min_price: float | int | None) -> dict[str, Any]:
+    if min_price in (None, ""):
+        return candidate
+    failures = candidate.get("hard_filter_failures")
+    if not isinstance(failures, list) or "price_below_floor" not in failures:
+        return candidate
+    effective_price = to_float(candidate.get("price"))
+    if effective_price <= 0:
+        snapshot = candidate.get("price_snapshot") if isinstance(candidate.get("price_snapshot"), dict) else {}
+        effective_price = to_float(snapshot.get("close"))
+    if effective_price < float(min_price):
+        return candidate
+    candidate["hard_filter_failures"] = [failure for failure in failures if failure != "price_below_floor"]
+    return candidate
+
+
+def build_diagnostic_scorecard_entry(
+    candidate: dict[str, Any],
+    keep_threshold: float | int | None = None,
+    min_price: float | int | None = None,
+) -> dict[str, Any]:
+    entry = remove_false_price_below_floor(hydrate_price_fields_from_snapshot(candidate), min_price)
     scores = entry.get("scores") if isinstance(entry.get("scores"), dict) else {}
     score_components = entry.get("score_components") if isinstance(entry.get("score_components"), dict) else {}
     score = scores.get("adjusted_total_score")
@@ -3779,6 +3823,40 @@ def build_logic_factor_summary(candidate: dict[str, Any], action: str) -> str:
     return "当前不执行，复核证据不足以支持出手。"
 
 
+def _format_level(value: Any) -> str:
+    number = to_float(value)
+    if number <= 0:
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value)
+    return f"{number:g}"
+
+
+def build_price_level_summary(candidate: dict[str, Any]) -> str:
+    snapshot = candidate.get("price_snapshot") if isinstance(candidate.get("price_snapshot"), dict) else {}
+    close = to_float(snapshot.get("close") if snapshot else candidate.get("price"))
+    if close <= 0:
+        return ""
+    ma20 = to_float(snapshot.get("ma20"))
+    ma50 = to_float(snapshot.get("ma50"))
+    high52 = to_float(snapshot.get("high52"))
+
+    parts = [f"关键价位：收盘 {_format_level(close)}"]
+    supports = []
+    if ma20 > 0:
+        supports.append(f"MA20 {_format_level(ma20)}")
+    if ma50 > 0 and (not ma20 or abs(ma50 - ma20) / max(ma20, ma50) >= 0.03):
+        supports.append(f"MA50 {_format_level(ma50)}")
+    if supports:
+        parts.append(f"支撑 {' / '.join(supports)}")
+    if high52 > 0 and high52 >= close:
+        parts.append(f"压力 {_format_level(high52)}")
+    invalidation = ma20 if ma20 > 0 else ma50
+    if invalidation > 0:
+        parts.append(f"放弃线 {_format_level(invalidation)}")
+    return "，".join(parts)
+
+
 def build_trade_layer_summary(candidate: dict[str, Any], action: str) -> str:
     trade_card = candidate.get("trade_card") if isinstance(candidate.get("trade_card"), dict) else {}
     price_paths = candidate.get("price_paths") if isinstance(candidate.get("price_paths"), dict) else {}
@@ -3787,6 +3865,9 @@ def build_trade_layer_summary(candidate: dict[str, Any], action: str) -> str:
     risk_pct = candidate.get("risk_pct")
 
     parts: list[str] = []
+    price_level_summary = build_price_level_summary(candidate)
+    if price_level_summary:
+        parts.append(price_level_summary)
     if action in {"可执行", "继续观察"}:
         if clean_text(trade_card.get("watch_action")):
             parts.append(f"观察/执行参考：{clean_text(trade_card.get('watch_action'))}")
@@ -3800,6 +3881,8 @@ def build_trade_layer_summary(candidate: dict[str, Any], action: str) -> str:
             parts.append(f"基础上行空间 `{base_upside_pct}%`")
         if risk_pct not in (None, ""):
             parts.append(f"预估风险 `{risk_pct}%`")
+    if action == "不执行" and price_level_summary:
+        parts.append("当前仍不执行，先等结构或事件硬伤修复。")
     if not parts and action == "不执行":
         return "当前不进入交易层细化，先解决结构或事件上的硬伤再谈执行。"
     return "；".join(parts) if parts else "交易层证据不足。"
@@ -4736,8 +4819,10 @@ def enrich_live_result_reporting(
     )
     enriched["run_completeness"] = run_completeness
 
+    profile_settings = request_obj.get("profile_settings") if isinstance(request_obj.get("profile_settings"), dict) else {}
+    min_price = request_obj.get("min_price") if request_obj.get("min_price") not in (None, "") else profile_settings.get("min_price")
     diagnostic_scorecard = [
-        build_diagnostic_scorecard_entry(item, filter_summary.get("keep_threshold"))
+        build_diagnostic_scorecard_entry(item, filter_summary.get("keep_threshold"), min_price)
         for item in (assessed_candidates or [])
         if isinstance(item, dict)
     ]
