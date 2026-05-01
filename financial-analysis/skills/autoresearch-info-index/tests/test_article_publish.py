@@ -4780,6 +4780,61 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertIn("<h1>Agent hiring reset</h1>", package["content_html"])
         self.assertNotIn("<p>Agent hiring reset</p>", package["content_html"])
 
+    def test_build_publish_package_preserve_mode_hydrates_top_level_fields_from_manual_markdown(self) -> None:
+        manual_markdown = (
+            "# 油价冲向120美元之后，真正裂开的不只是霍尔木兹\n\n"
+            "封锁、退群和通胀预期叠在一起，市场开始重定价一整套旧秩序\n\n"
+            "今天市场最容易被拿来写的，还是 Fed 决议和 Mag 7 财报。它们当然重要，但已经不是今天最需要先抓住的主线。\n\n"
+            "## 这不是普通的油价新闻\n\n"
+            "只要霍尔木兹这条海上命脉还被卡住，风险溢价就会先把价格顶上去。\n\n"
+            "## 为什么这次会连到 OPEC 裂缝\n\n"
+            "阿联酋退出之后，市场迟早会把组织裂缝单独计价。\n"
+        )
+        workflow_result = {
+            "review_result": {
+                "article_package": {
+                    "title": "旧标题",
+                    "subtitle": "旧副标题",
+                    "lede": "旧导语",
+                    "sections": [{"heading": "旧段落", "paragraph": "旧正文"}],
+                    "draft_thesis": "旧 thesis",
+                    "body_markdown": manual_markdown,
+                    "article_markdown": manual_markdown,
+                    "selected_images": [],
+                    "citations": [],
+                    "manual_article_override": True,
+                    "manual_body_override": True,
+                }
+            },
+            "draft_result": {"draft_context": {"image_candidates": []}},
+        }
+        request = self.build_publish_request()
+        request["preserve_manual_revised_markdown"] = True
+
+        package = build_publish_package(
+            workflow_result,
+            {"title": "旧标题", "keywords": ["oil", "Hormuz", "OPEC"]},
+            request,
+        )
+
+        self.assertEqual(package["title"], "油价冲向120美元之后，真正裂开的不只是霍尔木兹")
+        self.assertEqual(package["subtitle"], "封锁、退群和通胀预期叠在一起，市场开始重定价一整套旧秩序")
+        self.assertEqual(package["lede"], "今天市场最容易被拿来写的，还是 Fed 决议和 Mag 7 财报。它们当然重要，但已经不是今天最需要先抓住的主线。")
+        self.assertEqual(
+            package["sections"],
+            [
+                {
+                    "heading": "这不是普通的油价新闻",
+                    "paragraph": "只要霍尔木兹这条海上命脉还被卡住，风险溢价就会先把价格顶上去。",
+                },
+                {
+                    "heading": "为什么这次会连到 OPEC 裂缝",
+                    "paragraph": "阿联酋退出之后，市场迟早会把组织裂缝单独计价。",
+                },
+            ],
+        )
+        self.assertIn("霍尔木兹", package["draft_thesis"])
+
     def test_build_publish_package_uses_source_titles_and_exposes_style_profile(self) -> None:
         workflow_result = self.build_publish_workflow_result(
             selected_images=[],
@@ -5256,7 +5311,7 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
                 "sections": [
                     {
                         "heading": "正文",
-                        "paragraph": "如果霍尔木兹风险继续抬升，原油和风险资产都会被重新定价。",
+                        "paragraph": "如果霍尔木兹风险继续抬升，原油和风险资产都会被重新定价，组织裂缝也会被市场单独计价。",
                     }
                 ],
                 "selected_images": [],

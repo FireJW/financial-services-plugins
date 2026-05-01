@@ -36,6 +36,8 @@ ALLOWED_MACRO_PRICING_PHRASES = [
     "定价权",
     "重新定价",
     "重定价",
+    "单独计价",
+    "定价中心",
 ]
 
 DEVELOPER_FOCUS_PHRASES = [
@@ -464,6 +466,79 @@ def promote_plain_leading_title(markdown_text: str, *title_candidates: str) -> s
         return markdown_text
     lines[first_content_index] = f"# {first_line}"
     return "\n".join(lines)
+
+
+def extract_manual_markdown_structure(markdown_text: str) -> dict[str, Any]:
+    lines = str(markdown_text or "").splitlines()
+    title = extract_leading_markdown_h1(markdown_text)
+    blocks: list[tuple[str, str]] = []
+    current_lines: list[str] = []
+    current_kind = "paragraph"
+
+    def flush_block() -> None:
+        nonlocal current_lines, current_kind
+        text = "\n".join(current_lines).strip()
+        if text:
+            blocks.append((current_kind, text))
+        current_lines = []
+        current_kind = "paragraph"
+
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped:
+            flush_block()
+            continue
+        if stripped.startswith("# ") and not stripped.startswith("##"):
+            flush_block()
+            continue
+        if stripped.startswith("## "):
+            flush_block()
+            blocks.append(("heading", clean_text(stripped[3:])))
+            continue
+        if stripped.startswith("!["):
+            flush_block()
+            continue
+        current_lines.append(stripped)
+    flush_block()
+
+    intro_blocks: list[str] = []
+    sections: list[dict[str, str]] = []
+    current_heading = ""
+    current_section_paragraphs: list[str] = []
+
+    def flush_section() -> None:
+        nonlocal current_heading, current_section_paragraphs
+        if current_heading:
+            sections.append(
+                {
+                    "heading": current_heading,
+                    "paragraph": "\n\n".join(current_section_paragraphs).strip(),
+                }
+            )
+        current_heading = ""
+        current_section_paragraphs = []
+
+    for kind, text in blocks:
+        if kind == "heading":
+            flush_section()
+            current_heading = text
+            continue
+        if current_heading:
+            current_section_paragraphs.append(text)
+        else:
+            intro_blocks.append(text)
+    flush_section()
+
+    subtitle = intro_blocks[0] if intro_blocks else ""
+    lede = intro_blocks[1] if len(intro_blocks) > 1 else ""
+    draft_thesis = clean_text(title or lede or subtitle)
+    return {
+        "title": title,
+        "subtitle": subtitle,
+        "lede": lede,
+        "sections": [section for section in sections if clean_text(section.get("heading")) or clean_text(section.get("paragraph"))],
+        "draft_thesis": draft_thesis,
+    }
 
 
 DEFAULT_EDITOR_ANCHORS = [
@@ -1410,6 +1485,16 @@ def build_publish_package(workflow_result: dict[str, Any], selected_topic: dict[
     if manual_title:
         title = manual_title
         article_package["title"] = manual_title
+    if preserve_manual_revised_markdown:
+        hydrated_structure = extract_manual_markdown_structure(article_markdown or body_markdown)
+        if clean_text(hydrated_structure.get("subtitle")):
+            article_package["subtitle"] = hydrated_structure["subtitle"]
+        if clean_text(hydrated_structure.get("lede")):
+            article_package["lede"] = hydrated_structure["lede"]
+        if safe_list(hydrated_structure.get("sections")):
+            article_package["sections"] = hydrated_structure["sections"]
+        if clean_text(hydrated_structure.get("draft_thesis")):
+            article_package["draft_thesis"] = hydrated_structure["draft_thesis"]
     title_candidates = [
         clean_text(article_package.get("title")),
         clean_text(final_article.get("title")),
