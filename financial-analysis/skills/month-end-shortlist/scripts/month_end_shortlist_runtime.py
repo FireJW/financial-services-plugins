@@ -1576,6 +1576,97 @@ def build_data_blocked_theme_confirmed_markdown(rows: list[dict[str, Any]] | Non
     return lines
 
 
+def build_run_completeness_summary(
+    request_obj: dict[str, Any],
+    *,
+    weekend_market_candidate: dict[str, Any] | None = None,
+    filter_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    weekend_input = (
+        request_obj.get("weekend_market_candidate_input")
+        if isinstance(request_obj.get("weekend_market_candidate_input"), dict)
+        else {}
+    )
+    x_results = weekend_input.get("x_live_index_results") if isinstance(weekend_input.get("x_live_index_results"), list) else []
+    x_paths = weekend_input.get("x_live_index_result_paths") if isinstance(weekend_input.get("x_live_index_result_paths"), list) else []
+    x_posts_count = 0
+    for payload in x_results:
+        if isinstance(payload, dict) and isinstance(payload.get("x_posts"), list):
+            x_posts_count += len([item for item in payload.get("x_posts", []) if isinstance(item, dict)])
+
+    if x_posts_count > 0:
+        x_index_status = "complete"
+    elif x_results or x_paths:
+        x_index_status = "partial"
+    else:
+        x_index_status = "missing"
+
+    candidate_topics = (
+        weekend_market_candidate.get("candidate_topics", [])
+        if isinstance(weekend_market_candidate, dict) and isinstance(weekend_market_candidate.get("candidate_topics"), list)
+        else []
+    )
+    weekend_status_raw = clean_text((weekend_market_candidate or {}).get("status"))
+    if candidate_topics and weekend_status_raw == "candidate_only":
+        weekend_status = "complete"
+    elif candidate_topics or weekend_status_raw not in {"", "insufficient_signal"}:
+        weekend_status = "partial"
+    else:
+        weekend_status = "missing"
+
+    fs = filter_summary if isinstance(filter_summary, dict) else {}
+    blocked_count = int(fs.get("blocked_candidate_count") or 0)
+    live_supplement_status = clean_text(fs.get("live_supplement_status"))
+    cache_baseline_only = bool(fs.get("cache_baseline_only"))
+    if not cache_baseline_only and live_supplement_status in {"updated", "complete"} and blocked_count == 0:
+        shortlist_status = "complete"
+    else:
+        shortlist_status = "degraded"
+
+    reasons: list[str] = []
+    if x_index_status == "missing":
+        reasons.append("missing_x_index_results")
+    elif x_index_status == "partial":
+        reasons.append("partial_x_index_results")
+    if weekend_status == "missing":
+        reasons.append("missing_weekend_candidate")
+    elif weekend_status == "partial":
+        reasons.append("partial_weekend_candidate")
+    if cache_baseline_only:
+        reasons.append("cache_baseline_only")
+    if live_supplement_status and live_supplement_status != "updated":
+        reasons.append(f"live_supplement_{live_supplement_status}")
+    if blocked_count > 0:
+        reasons.append("blocked_candidates_present")
+
+    status = "full" if x_index_status == "complete" and weekend_status == "complete" and shortlist_status == "complete" else "degraded"
+    return {
+        "status": status,
+        "x_index_status": x_index_status,
+        "weekend_status": weekend_status,
+        "shortlist_status": shortlist_status,
+        "reasons": reasons,
+    }
+
+
+def build_run_completeness_report_lines(summary: dict[str, Any] | None) -> list[str]:
+    if not isinstance(summary, dict):
+        return []
+    lines = [f"- Run completeness: `{clean_text(summary.get('status')) or 'degraded'}`"]
+    detail = (
+        f"x_index=`{clean_text(summary.get('x_index_status')) or 'missing'}` | "
+        f"weekend=`{clean_text(summary.get('weekend_status')) or 'missing'}` | "
+        f"shortlist=`{clean_text(summary.get('shortlist_status')) or 'degraded'}`"
+    )
+    lines.append(f"- Completeness detail: {detail}")
+    reasons = summary.get("reasons") if isinstance(summary.get("reasons"), list) else []
+    if clean_text(summary.get("status")) == "degraded":
+        lines.append("- This is a degraded repo-native run. Do not treat it as a full formal plan.")
+        if reasons:
+            lines.append(f"- Degraded reasons: `{', '.join(clean_text(item) for item in reasons if clean_text(item))}`")
+    return lines
+
+
 def normalize_request_with_compiled(raw_payload: dict[str, Any], compiled_normalize_request: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
     normalized = apply_wrapper_filter_profile_override(
         raw_payload,
@@ -4638,6 +4729,12 @@ def enrich_live_result_reporting(
         if drop_reason_counts:
             filter_summary["drop_reason_counts"] = drop_reason_counts
             enriched["filter_summary"] = filter_summary
+    run_completeness = build_run_completeness_summary(
+        request_obj,
+        weekend_market_candidate=weekend_market_candidate,
+        filter_summary=filter_summary,
+    )
+    enriched["run_completeness"] = run_completeness
 
     diagnostic_scorecard = [
         build_diagnostic_scorecard_entry(item, filter_summary.get("keep_threshold"))
@@ -4990,7 +5087,10 @@ def enrich_live_result_reporting(
                 lines.append("  - key_evidence:")
                 for bullet in key_evidence[:MAX_REPORTED_WATCH_ITEMS]:
                     lines.append(f"    - {bullet}")
-    enriched["report_markdown"] = "\n".join(lines).strip() + "\n"
+    enriched["report_markdown"] = prepend_report_metadata_lines(
+        "\n".join(lines).strip(),
+        build_run_completeness_report_lines(run_completeness),
+    )
     return enriched
 
 
@@ -5430,6 +5530,12 @@ def merge_track_results(
         "total_rendered_cap": TOTAL_RENDERED_CAP,
         "merged_overflow_count": len(merged_overflow),
     }
+    run_completeness = build_run_completeness_summary(
+        request_obj,
+        weekend_market_candidate=weekend_market_candidate,
+        filter_summary=merged["filter_summary"],
+    )
+    merged["run_completeness"] = run_completeness
 
     # --- Discovery / event-card enrichment (shared across tracks) ---
     all_assessed_combined = list(all_assessed or [])
@@ -5571,7 +5677,10 @@ def merge_track_results(
             report_lines.append(f"  - event_state: `{item.get('event_state', {}).get('label')}`")
             report_lines.append(f"  - trading_usability: `{item.get('trading_usability', {}).get('label')}`")
 
-    merged["report_markdown"] = "\n".join(report_lines).strip() + "\n"
+    merged["report_markdown"] = prepend_report_metadata_lines(
+        "\n".join(report_lines).strip(),
+        build_run_completeness_report_lines(run_completeness),
+    )
     return merged
 
 
@@ -5910,6 +6019,8 @@ for _extra in (
     "emergent_theme_promotion_score",
     "should_promote_emergent_theme",
     "build_emergent_theme_candidates_from_runtime_inputs",
+    "build_run_completeness_summary",
+    "build_run_completeness_report_lines",
     "merge_promoted_emergent_themes_into_active_pool",
     "build_emergent_theme_result_surfaces",
     "build_setup_launch_markdown",
