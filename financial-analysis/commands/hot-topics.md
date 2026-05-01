@@ -33,6 +33,11 @@ Useful source names:
 - `36kr`
 - `google-news-world`
 - `google-news-search`
+- `trendradar`
+  - opt-in only; include `sources=["trendradar"]`
+  - requires `trendradar.result` or `trendradar.result_path`
+  - imported items stay upstream heat signals, then compete inside the normal
+    hot-topic ranking flow
 
 Use this command when the real question is:
 

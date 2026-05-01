@@ -9,6 +9,12 @@ Use this command when TrendRadar has already collected hot-list, RSS, or MCP
 query results and you want those items to enter the repo-native `news-index`
 flow as source-traceable candidates.
 
+The same payload can also be passed directly to:
+
+- `news-index`, using `trendradar.result` or `trendradar.result_path`
+- `hot-topics`, using `sources=["trendradar"]` plus `trendradar.result` or
+  `trendradar.result_path`
+
 This command is an upstream discovery adapter. It does not replace:
 
 - `news-index` claim ledger, freshness windows, or confirmation logic

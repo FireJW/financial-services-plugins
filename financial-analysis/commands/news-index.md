@@ -61,6 +61,16 @@ Local helper:
 - `financial-analysis\skills\autoresearch-info-index\scripts\run_news_index.cmd "<request.json>" [--output <result.json>] [--markdown-output <report.md>]`
 - `financial-analysis\skills\autoresearch-info-index\scripts\run_news_index_demo.cmd`
 
+TrendRadar direct input:
+
+- include `trendradar.result` or `trendradar.result_path` in the `news-index`
+  request to import TrendRadar MCP/API items as `origin=trendradar`,
+  `channel=shadow`, `access_mode=local_mcp` candidates
+- this is not a default fetch; the request must explicitly provide the
+  TrendRadar payload or result path
+- use `trendradar-bridge` when you want a standalone adapter report before
+  entering the normal `news-index` result builder
+
 For the local helper path, pass a `retrieval_request` JSON file. The helper
 prints JSON to stdout by default and writes the human-readable Markdown report
 only when `--markdown-output` is provided.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import importlib
 import json
 import os
 import re
@@ -12,6 +13,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from functools import lru_cache
@@ -2728,6 +2730,53 @@ def fetch_google_news_world(limit: int, analysis_time: datetime) -> list[dict[st
     return parse_rss_items(xml_text, "google-news-world", "major_news", limit, analysis_time)
 
 
+def fetch_trendradar(limit: int, analysis_time: datetime, request: dict[str, Any]) -> list[dict[str, Any]]:
+    trendradar_bridge_runtime = importlib.import_module("trendradar_bridge_runtime")
+    bridge_result = trendradar_bridge_runtime.prepare_trendradar_bridge(request)
+    discovered: list[dict[str, Any]] = []
+    candidates = safe_list(safe_dict(bridge_result.get("retrieval_request")).get("candidates"))
+    for index, candidate in enumerate(candidates[:limit], start=1):
+        if not isinstance(candidate, dict):
+            continue
+        raw_metadata = safe_dict(candidate.get("raw_metadata"))
+        trendradar = safe_dict(raw_metadata.get("trendradar"))
+        source_item = safe_dict(raw_metadata.get("source_item"))
+        title = clean_text(
+            source_item.get("title")
+            or source_item.get("name")
+            or candidate.get("text_excerpt")
+            or candidate.get("source_name")
+            or trendradar.get("keyword")
+            or trendradar.get("mcp_summary")
+        )
+        url = clean_text(candidate.get("url") or source_item.get("url") or source_item.get("link"))
+        if not title or not url:
+            continue
+        discovered.append(
+            normalize_discovered_item(
+                {
+                    "title": title,
+                    "summary": clean_text(
+                        source_item.get("summary") or source_item.get("description") or candidate.get("text_excerpt") or title
+                    ),
+                    "url": url,
+                    "source_name": clean_text(candidate.get("source_name"))
+                    or f"trendradar:{clean_text(trendradar.get('platform') or 'unknown')}",
+                    "source_type": clean_text(candidate.get("source_type") or "major_news"),
+                    "published_at": candidate.get("published_at") or analysis_time.isoformat(),
+                    "observed_at": candidate.get("observed_at") or analysis_time.isoformat(),
+                    "heat_score": trendradar.get("heat") or trendradar.get("score") or trendradar.get("rank"),
+                    "tags": clean_string_list([trendradar.get("platform"), trendradar.get("keyword"), trendradar.get("mcp_tool")]),
+                    "provider": "TrendRadar",
+                    "raw_metadata": deepcopy(raw_metadata),
+                },
+                analysis_time,
+                index,
+            )
+        )
+    return discovered
+
+
 def fetch_google_news_search(query: str, limit: int, analysis_time: datetime) -> list[dict[str, Any]]:
     encoded = urllib.parse.quote(query)
     url = f"https://news.google.com/rss/search?q={encoded}&{GOOGLE_NEWS_GLOBAL_LOCALE}"
@@ -2946,6 +2995,8 @@ def fetch_source_items(source_name: str, request: dict[str, Any]) -> list[dict[s
         return fetch_36kr(limit, analysis_time)
     if source_name == "google-news-world":
         return fetch_google_news_world(limit, analysis_time)
+    if source_name == "trendradar":
+        return fetch_trendradar(limit, analysis_time, request)
     if source_name == "google-news-search":
         query = clean_text(request.get("query") or request.get("topic"))
         if not query:
@@ -3036,6 +3087,9 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "agent_reach_channel_commands": safe_dict(raw_payload.get("agent_reach_channel_commands")),
         "agent_reach_rss_feeds": safe_list(raw_payload.get("agent_reach_rss_feeds")),
         "agent_reach_dedupe_store_path": raw_payload.get("agent_reach_dedupe_store_path"),
+        "trendradar": safe_dict(raw_payload.get("trendradar")),
+        "trendradar_result": raw_payload.get("trendradar_result"),
+        "trendradar_result_path": raw_payload.get("trendradar_result_path"),
     }
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import importlib
 import re
 import urllib.error
 import urllib.parse
@@ -482,6 +483,21 @@ def upgrade_legacy_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def trendradar_candidates_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    trendradar = safe_dict(payload.get("trendradar"))
+    if not trendradar and not any(
+        key in payload for key in ("trendradar_result", "trendradar_result_path", "trendradar_result_file")
+    ):
+        return []
+    trendradar_bridge_runtime = importlib.import_module("trendradar_bridge_runtime")
+    bridge_result = trendradar_bridge_runtime.prepare_trendradar_bridge(payload)
+    return [
+        item
+        for item in safe_list(safe_dict(bridge_result.get("retrieval_request")).get("candidates"))
+        if isinstance(item, dict)
+    ]
+
+
 def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     payload = upgrade_legacy_payload(raw_payload)
     analysis_time = parse_datetime(payload.get("analysis_time"), fallback=now_utc()) or now_utc()
@@ -505,6 +521,13 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         if not preset_watch_items:
             preset_watch_items = list(ENERGY_WAR_NEXT_WATCH_ITEMS)
 
+    candidates = [
+        item
+        for item in safe_list(payload.get("candidates") or payload.get("source_candidates"))
+        if isinstance(item, dict)
+    ]
+    candidates.extend(trendradar_candidates_from_payload(payload))
+
     return {
         "topic": str(payload.get("topic", "")).strip() or "news-index-topic",
         "analysis_time": analysis_time,
@@ -514,11 +537,7 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "mode": mode,
         "windows": clean_string_list(payload.get("windows")) or list(DEFAULT_WINDOWS),
         "claims": [item for item in safe_list(payload.get("claims")) if isinstance(item, dict)],
-        "candidates": [
-            item
-            for item in safe_list(payload.get("candidates") or payload.get("source_candidates"))
-            if isinstance(item, dict)
-        ],
+        "candidates": candidates,
         "market_relevance": market_relevance,
         "market_relevance_zh": market_relevance_zh,
         "expected_source_families": expected_source_families,
