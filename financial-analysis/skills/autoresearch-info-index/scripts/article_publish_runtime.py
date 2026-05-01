@@ -205,6 +205,8 @@ def localized_market_relevance(selected_topic: dict[str, Any], clean_title: str,
             " ".join(clean_text(item.get("summary")).lower() for item in safe_list(selected_topic.get("source_items")) if isinstance(item, dict)),
         ]
     )
+    _macro_conflict_tokens = ("oil", "crude", "inflation", "cpi", "retail", "tariff", "war", "conflict", "sanctions", "闇嶅皵鏈ㄥ吂", "娌逛环", "閫氳儉", "闆跺敭", "鍏崇◣", "鍒惰")
+    _is_macro = any(tok in combined for tok in _macro_conflict_tokens)
     if any(
         token in combined
         for token in (
@@ -225,7 +227,7 @@ def localized_market_relevance(selected_topic: dict[str, Any], clean_title: str,
             "产能扩张",
             "资本开支",
         )
-    ):
+    ) and not _is_macro:
         return ["先进制程产能和设备订单", "资本开支、产能扩张和先进封装"]
     # Guard: only classify as AI/agent topic when the combined text clearly centres
     # on AI/agent subject matter AND the topic is not a macro/conflict/commodity topic.

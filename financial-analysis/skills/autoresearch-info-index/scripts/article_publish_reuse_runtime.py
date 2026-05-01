@@ -67,6 +67,9 @@ def derive_publish_request(base_result: dict[str, Any], revised_result: dict[str
         "draft_mode": clean_text(revised_request.get("draft_mode") or effective_request.get("draft_mode")),
         "image_strategy": clean_text(revised_request.get("image_strategy") or effective_request.get("image_strategy")),
         "language_mode": clean_text(revised_request.get("language_mode") or effective_request.get("language_mode")),
+        "target_length_chars": int(revised_request.get("target_length_chars") or effective_request.get("target_length_chars") or 1600),
+        "tone": clean_text(revised_request.get("tone") or effective_request.get("tone")),
+        "human_signal_ratio": int(revised_request.get("human_signal_ratio") or effective_request.get("human_signal_ratio") or 35),
         "preserve_manual_revised_markdown": should_preserve_manual_revised_markdown(revised_result),
         "human_review_approved": False,
     }

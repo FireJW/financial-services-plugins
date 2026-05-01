@@ -29,6 +29,7 @@ from article_publish_regression_check import parse_args as parse_regression_chec
 from article_publish_regression_check_runtime import run_publish_regression_check
 from article_draft_flow_runtime import build_public_lede, build_subtitle, finalize_article_title
 import article_draft_flow_runtime
+import article_publish_runtime
 import hot_topic_discovery_runtime
 from hot_topic_discovery_runtime import run_hot_topic_discovery
 from publication_contract_runtime import validate_publication_contract
@@ -5338,6 +5339,24 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertTrue(regression_checks["checks"]["generic_business_talk_expected"])
         self.assertTrue(regression_checks["checks"]["generic_business_talk_clean"])
         self.assertNotIn("Generic business talk is still bleeding into the draft.", regression_checks.get("failures", []))
+
+    def test_localized_market_relevance_keeps_macro_topic_out_of_ai_infra_bucket(self) -> None:
+        relevance = article_publish_runtime.localized_market_relevance(
+            {
+                "title": "霍尔木兹封锁升级：油价冲高背后，OPEC 的裂缝正在放大",
+                "summary": "Wall Street was mixed ahead of Big Tech earnings and the Fed, but the dominant macro shock was oil and Hormuz.",
+                "keywords": ["oil", "OPEC", "Hormuz", "market"],
+                "source_items": [
+                    {
+                        "summary": "Reuters reported Wall Street was mixed ahead of Big Tech earnings and the Fed, showing that the usual AI-capex script was still in view but no longer dominant."
+                    }
+                ],
+            },
+            "霍尔木兹封锁升级：油价冲高背后，OPEC 的裂缝正在放大",
+            developer_tooling=False,
+        )
+
+        self.assertEqual(relevance, ["谁会真正受影响，变化会传到哪里", "这件事什么时候会从热度变成判断题"])
 
     def test_build_regression_checks_flags_hanging_title_and_longhand_developer_copy(self) -> None:
         regression_checks = build_regression_checks(

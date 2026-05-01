@@ -53,6 +53,9 @@ class ArticlePublishReuseRuntimeTests(unittest.TestCase):
                         "draft_mode": "balanced",
                         "image_strategy": "mixed",
                         "language_mode": "chinese",
+                        "target_length_chars": 3400,
+                        "tone": "professional-calm",
+                        "human_signal_ratio": 62,
                     }
                 },
                 "draftbox_payload_template": {
@@ -159,6 +162,19 @@ class ArticlePublishReuseRuntimeTests(unittest.TestCase):
         self.assertIn("MANUAL_MARKER_DO_NOT_REWRITE", package["content_markdown"])
         self.assertIn("MANUAL_MARKER_DO_NOT_REWRITE", package["content_html"])
         self.assertNotIn("融资意愿", package["content_markdown"])
+
+    def test_build_reuse_publish_result_preserves_depth_and_tone_request_fields(self) -> None:
+        result = build_reuse_publish_result(
+            {
+                "base_publish_result": self.build_base_publish_result(),
+                "revised_article_result": self.build_revised_article_result(),
+                "output_dir": str(self.temp_dir / "request-out"),
+            }
+        )
+
+        self.assertEqual(result["request"]["target_length_chars"], 3400)
+        self.assertEqual(result["request"]["tone"], "professional-calm")
+        self.assertEqual(result["request"]["human_signal_ratio"], 62)
 
 
 if __name__ == "__main__":
