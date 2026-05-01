@@ -1,0 +1,33 @@
+{
+  "topic": "TrendRadar bridge sample",
+  "analysis_time": "2026-05-01T08:00:00+08:00",
+  "questions": [
+    "Which TrendRadar items are usable as news-index shadow signals?"
+  ],
+  "use_case": "trendradar-bridge",
+  "claims": [
+    {
+      "claim_id": "trendradar-signal-usable",
+      "claim_text": "TrendRadar produced at least one source-traceable signal that can enter news-index as shadow evidence."
+    }
+  ],
+  "trendradar": {
+    "result": {
+      "success": true,
+      "summary": "Example TrendRadar MCP result",
+      "data": {
+        "items": [
+          {
+            "title": "Example hot-list item",
+            "summary": "This sample item demonstrates the bridge contract.",
+            "url": "https://example.com/trendradar-item",
+            "platform": "weibo",
+            "rank": 1,
+            "heat": 100000,
+            "published_at": "2026-05-01T07:30:00+08:00"
+          }
+        ]
+      }
+    }
+  }
+}
