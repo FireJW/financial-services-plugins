@@ -97,6 +97,11 @@ Use `image_generation.mode=openai` only after the package plan is acceptable
 and `OPENAI_API_KEY` is configured. The model is configurable; do not hard-code
 third-party defaults when official OpenAI docs or account availability differ.
 
+When `mode=openai` and local `reference_images` are present, the runtime uses
+the OpenAI image edit endpoint with multipart `image[]` files. Remote image URLs
+are not passed directly to the API in this version; download or provide local
+files first.
+
 ## Outputs
 
 The workflow writes one package directory containing:

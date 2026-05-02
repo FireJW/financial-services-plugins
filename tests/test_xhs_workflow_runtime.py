@@ -209,6 +209,27 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertTrue(qc["checks"]["source_ledger"]["passed"])
         self.assertFalse(qc["checks"]["publish_approval"]["passed"])
 
+    def test_build_multipart_form_data_supports_openai_image_edit_reference_images(self) -> None:
+        body, content_type = module_under_test.build_multipart_form_data(
+            fields={"model": "gpt-image-2", "prompt": "Create an XHS card"},
+            files=[
+                {
+                    "field": "image[]",
+                    "filename": "product-shot.png",
+                    "content_type": "image/png",
+                    "content": b"fake-png",
+                }
+            ],
+            boundary="TESTBOUNDARY",
+        )
+
+        self.assertEqual(content_type, "multipart/form-data; boundary=TESTBOUNDARY")
+        self.assertIn(b'name="model"', body)
+        self.assertIn(b"gpt-image-2", body)
+        self.assertIn(b'name="image[]"', body)
+        self.assertIn(b'filename="product-shot.png"', body)
+        self.assertTrue(body.endswith(b"--TESTBOUNDARY--\r\n"))
+
     def test_xhs_workflow_cli_writes_output(self) -> None:
         cli_path = SCRIPT_DIR / "xhs_workflow.py"
         cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_under_test", cli_path)

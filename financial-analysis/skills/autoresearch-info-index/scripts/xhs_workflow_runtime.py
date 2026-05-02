@@ -4,9 +4,11 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import json
+import mimetypes
 import os
 import re
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -330,13 +332,100 @@ def generate_openai_image(prompt: str, config: dict[str, Any], output_path: Path
     return {"status": "generated", "path": str(output_path), "model": payload["model"]}
 
 
+def build_multipart_form_data(
+    fields: dict[str, Any],
+    files: list[dict[str, Any]],
+    boundary: str | None = None,
+) -> tuple[bytes, str]:
+    boundary = boundary or f"----xhsworkflow{uuid.uuid4().hex}"
+    body = bytearray()
+    for name, value in fields.items():
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
+        body.extend(str(value).encode("utf-8"))
+        body.extend(b"\r\n")
+    for file_item in files:
+        field = str(file_item["field"])
+        filename = str(file_item["filename"])
+        content_type = str(file_item.get("content_type") or "application/octet-stream")
+        content = bytes(file_item["content"])
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(
+            f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'.encode("utf-8")
+        )
+        body.extend(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
+        body.extend(content)
+        body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+    return bytes(body), f"multipart/form-data; boundary={boundary}"
+
+
+def build_reference_image_files(reference_images: list[dict[str, str]]) -> list[dict[str, Any]]:
+    files = []
+    for reference in reference_images:
+        path_text = reference.get("path", "")
+        if path_text.startswith("http://") or path_text.startswith("https://"):
+            raise ValueError("OpenAI image edit currently requires local reference image paths, not URLs")
+        path = Path(path_text).resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"Reference image not found: {path}")
+        files.append(
+            {
+                "field": "image[]",
+                "filename": path.name,
+                "content_type": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                "content": path.read_bytes(),
+            }
+        )
+    return files
+
+
+def generate_openai_image_edit(
+    prompt: str,
+    reference_images: list[dict[str, str]],
+    config: dict[str, Any],
+    output_path: Path,
+) -> dict[str, Any]:
+    api_key = config.get("api_key") or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is required when image_generation.mode=openai")
+    fields = {
+        "model": config.get("model") or DEFAULT_IMAGE_MODEL,
+        "prompt": prompt,
+        "size": config.get("size") or DEFAULT_IMAGE_SIZE,
+        "quality": config.get("quality") or "medium",
+        "n": 1,
+    }
+    body, content_type = build_multipart_form_data(fields, build_reference_image_files(reference_images))
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/images/edits",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": content_type,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=int(config.get("timeout_seconds") or 180)) as response:
+        response_body = json.loads(response.read().decode("utf-8"))
+    b64 = response_body["data"][0].get("b64_json")
+    if not b64:
+        raise ValueError("OpenAI image edit response did not include b64_json")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(base64.b64decode(b64))
+    return {"status": "edited", "path": str(output_path), "model": fields["model"]}
+
+
 def maybe_generate_images(package_dir: Path, generation: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     if generation["mode"] != "openai":
         return generation
     results = []
     for prompt in generation.get("prompts", []):
         output_path = package_dir / "images" / f"card-{int(prompt['card_index']):02d}.png"
-        results.append(generate_openai_image(prompt["prompt"], config, output_path))
+        if prompt.get("reference_images"):
+            results.append(generate_openai_image_edit(prompt["prompt"], prompt["reference_images"], config, output_path))
+        else:
+            results.append(generate_openai_image(prompt["prompt"], config, output_path))
     generation["results"] = results
     return generation
 
