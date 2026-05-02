@@ -167,6 +167,30 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(len(generation["prompts"]), 2)
         self.assertIn("vertical 9:16", generation["prompts"][0]["prompt"])
 
+    def test_prepare_image_generation_keeps_reference_images_for_image_to_image(self) -> None:
+        card_plan = {
+            "cards": [
+                {"index": 1, "type": "cover", "title": "AI capex", "message": "Watch the ROI question."},
+            ]
+        }
+
+        generation = module_under_test.prepare_image_generation(
+            card_plan,
+            {
+                "mode": "dry_run",
+                "reference_images": [
+                    "D:/source/product-shot.png",
+                    {"path": "D:/source/chart.png", "role": "chart"},
+                ],
+            },
+        )
+
+        prompt = generation["prompts"][0]
+        self.assertEqual(len(prompt["reference_images"]), 2)
+        self.assertEqual(prompt["reference_images"][0]["role"], "source_material")
+        self.assertEqual(prompt["reference_images"][1]["role"], "chart")
+        self.assertIn("Use the provided reference images", prompt["prompt"])
+
     def test_qc_report_requires_manual_publish_approval_and_source_ledger(self) -> None:
         card_plan = {
             "cards": [

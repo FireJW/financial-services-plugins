@@ -237,14 +237,43 @@ def build_card_plan(request: dict[str, Any], patterns: dict[str, Any]) -> dict[s
     }
 
 
-def build_image_prompt(card: dict[str, Any], style_profile: dict[str, Any] | None = None) -> str:
+def normalize_reference_images(items: list[Any]) -> list[dict[str, str]]:
+    normalized = []
+    for item in items:
+        if isinstance(item, str):
+            normalized.append({"path": item, "role": "source_material"})
+            continue
+        if isinstance(item, dict):
+            path = str(item.get("path") or item.get("url") or "").strip()
+            if not path:
+                continue
+            normalized.append(
+                {
+                    "path": path,
+                    "role": str(item.get("role") or "source_material"),
+                }
+            )
+    return normalized
+
+
+def build_image_prompt(
+    card: dict[str, Any],
+    style_profile: dict[str, Any] | None = None,
+    reference_images: list[dict[str, str]] | None = None,
+) -> str:
     style = style_profile or {}
     visual_style = style.get("visual_style", "premium Xiaohongshu editorial image post")
     material_policy = style.get("material_policy", "use user-owned material when provided")
+    reference_line = (
+        "Use the provided reference images as the primary visual material; preserve their concrete details while improving composition. "
+        if reference_images
+        else ""
+    )
     return (
         f"{visual_style}. vertical 9:16 Xiaohongshu card. "
         f"Card type: {card.get('type')}. Title intent: {card.get('title')}. "
         f"Main message: {card.get('message')}. "
+        f"{reference_line}"
         "Use clear Chinese typography, strong hierarchy, clean composition, realistic material texture, "
         f"and no copied competitor assets. Material policy: {material_policy}."
     )
@@ -256,13 +285,15 @@ def prepare_image_generation(card_plan: dict[str, Any], config: dict[str, Any] |
     model = str(config.get("model") or DEFAULT_IMAGE_MODEL)
     size = str(config.get("size") or DEFAULT_IMAGE_SIZE)
     style_profile = dict(config.get("style_profile") or {})
+    reference_images = normalize_reference_images(list(config.get("reference_images") or []))
     prompts = [
         {
             "card_index": card.get("index"),
             "card_type": card.get("type"),
             "model": model,
             "size": size,
-            "prompt": build_image_prompt(card, style_profile),
+            "reference_images": reference_images,
+            "prompt": build_image_prompt(card, style_profile, reference_images),
         }
         for card in card_plan.get("cards", [])
     ]

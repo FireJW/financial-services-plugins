@@ -56,7 +56,14 @@ Related capability references:
   "image_generation": {
     "mode": "dry_run",
     "model": "gpt-image-2",
-    "size": "1024x1536"
+    "size": "1024x1536",
+    "reference_images": [
+      "D:/path/to/product-or-source-image.png",
+      {
+        "path": "D:/path/to/chart.png",
+        "role": "chart"
+      }
+    ]
   }
 }
 ```
@@ -69,6 +76,11 @@ python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py
 
 Use `image_generation.mode=dry_run` first. It writes prompts and package
 metadata without making network calls.
+
+`reference_images` is the bridge to the `xhs-writer-skill` style image-to-image
+flow. In dry-run mode the workflow records those images in
+`generation/prompts.json` and adds prompt instructions to preserve concrete
+source details while improving XHS card composition.
 
 To import benchmark output from `xiaohongshu-skills` or another collector:
 
