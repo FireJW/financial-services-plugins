@@ -523,6 +523,46 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertTrue(report["checks"]["benchmark_input"]["passed"])
         self.assertTrue(report["checks"]["openai_api_key"]["passed"])
 
+    def test_build_readiness_report_accepts_ready_collector_as_benchmark_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            skills_dir = temp_path / "xiaohongshu-skills"
+            skills_dir.mkdir()
+            request = {
+                "topic": "AI capex",
+                "output_dir": str(temp_path / "out"),
+                "collector": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "auto_run": True,
+                },
+                "image_generation": {"mode": "dry_run"},
+            }
+
+            report = module_under_test.build_readiness_report(request, env={})
+
+        self.assertEqual(report["status"], "ready")
+        self.assertTrue(report["checks"]["benchmark_input"]["passed"])
+        self.assertTrue(report["checks"]["collector_plan"]["passed"])
+        self.assertEqual(report["collector_plan"]["status"], "ready")
+
+    def test_build_readiness_report_blocks_auto_collector_without_collector_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = {
+                "topic": "AI capex",
+                "output_dir": str(pathlib.Path(temp_dir) / "out"),
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "collector": {"auto_run": True},
+                "image_generation": {"mode": "dry_run"},
+            }
+
+            report = module_under_test.build_readiness_report(request, env={})
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn("collector_plan", report["blockers"])
+        self.assertFalse(report["checks"]["collector_plan"]["passed"])
+        self.assertEqual(report["collector_plan"]["status"], "not_configured")
+
     def test_xhs_workflow_cli_writes_output(self) -> None:
         cli_path = SCRIPT_DIR / "xhs_workflow.py"
         cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_under_test", cli_path)
@@ -645,6 +685,51 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             self.assertTrue(output_path.exists())
             self.assertEqual(json.loads(output_path.read_text(encoding="utf-8"))["status"], "ready")
             self.assertFalse((temp_path / "out").exists())
+
+    def test_xhs_workflow_cli_doctor_blocks_run_collector_without_collector_config(self) -> None:
+        cli_path = SCRIPT_DIR / "xhs_workflow.py"
+        cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_doctor_collector_under_test", cli_path)
+        cli_module = importlib.util.module_from_spec(cli_spec)
+        assert cli_spec and cli_spec.loader
+        cli_spec.loader.exec_module(cli_module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "request.json"
+            output_path = temp_path / "doctor.json"
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "topic": "AI capex",
+                        "output_dir": str(temp_path / "out"),
+                        "benchmarks": [{"title": "3 signals", "likes": 10}],
+                        "image_generation": {"mode": "dry_run"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "xhs_workflow.py",
+                    str(input_path),
+                    "--run-collector",
+                    "--doctor",
+                    "--output",
+                    str(output_path),
+                    "--quiet",
+                ],
+            ):
+                with self.assertRaises(SystemExit) as exit_context:
+                    cli_module.main()
+
+            result = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_context.exception.code, 1)
+        self.assertEqual(result["status"], "blocked")
+        self.assertIn("collector_plan", result["blockers"])
 
     def test_xhs_workflow_cli_run_collector_flag_sets_explicit_auto_run(self) -> None:
         cli_path = SCRIPT_DIR / "xhs_workflow.py"

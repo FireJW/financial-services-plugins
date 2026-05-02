@@ -117,12 +117,20 @@ def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None =
     env = env if env is not None else os.environ
     image_config = dict(request.get("image_generation") or {})
     mode = str(image_config.get("mode") or "dry_run")
+    collector = dict(request.get("collector") or {})
+    collector_plan = build_collector_plan(request)
+    collector_requested = bool(collector.get("auto_run") or collector.get("type"))
+    collector_ready = collector_plan.get("status") == "ready"
     benchmark_file = request.get("benchmark_file")
     inline_benchmarks = extract_benchmark_items(request.get("benchmarks") or [])
     benchmark_file_exists = True
     if benchmark_file:
         benchmark_file_exists = Path(str(benchmark_file)).resolve().exists()
-    benchmark_input_ok = (bool(benchmark_file) and benchmark_file_exists) or bool(inline_benchmarks)
+    benchmark_input_ok = (
+        (bool(benchmark_file) and benchmark_file_exists)
+        or bool(inline_benchmarks)
+        or (bool(collector.get("auto_run")) and collector_ready)
+    )
 
     api_key_ok = True
     if mode == "openai":
@@ -152,14 +160,25 @@ def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None =
         "reference_images": {"passed": reference_images_ok, "value": len(reference_images), "missing": missing_references},
         "output_dir": {"passed": output_dir_ok, "value": str(output_dir)},
     }
+    if collector_requested:
+        checks["collector_plan"] = {
+            "passed": collector_ready,
+            "value": collector_plan.get("status", ""),
+            "source": collector_plan.get("source", ""),
+            "cwd": collector_plan.get("cwd", ""),
+            "message": collector_plan.get("message", ""),
+        }
     blockers = [name for name, check in checks.items() if not check["passed"]]
-    return {
+    report = {
         "status": "blocked" if blockers else "ready",
         "mode": mode,
         "checks": checks,
         "blockers": blockers,
         "next_action": "fix blockers before generation" if blockers else "safe to run dry-run package generation",
     }
+    if collector_requested:
+        report["collector_plan"] = collector_plan
+    return report
 
 
 def rank_benchmarks(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

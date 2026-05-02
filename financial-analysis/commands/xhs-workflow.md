@@ -129,6 +129,7 @@ python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py
 Doctor mode does not generate a package. It checks:
 
 - benchmark input or benchmark file availability
+- collector readiness when `--run-collector` is used or `collector.type` is set
 - OpenAI API key requirement when `image_generation.mode=openai`
 - local reference image paths for OpenAI image edits
 - output directory parent availability
