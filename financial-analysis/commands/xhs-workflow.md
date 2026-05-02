@@ -92,6 +92,16 @@ command to run from the referenced `xiaohongshu-skills` checkout. This workflow
 does not run that command automatically because it may depend on browser login
 state and platform risk controls.
 
+To run the collector explicitly before building the package:
+
+```powershell
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --run-collector --output "<result.json>"
+```
+
+This writes the collector stdout to `collector_result.json`, then imports that
+file as the benchmark source for the same run. Use this only when the referenced
+`xiaohongshu-skills` checkout is installed, logged in if needed, and safe to run.
+
 ## Local Helper
 
 ```powershell

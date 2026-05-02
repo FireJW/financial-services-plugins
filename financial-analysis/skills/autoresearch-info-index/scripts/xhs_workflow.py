@@ -19,6 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--benchmark-file", help="Optional imported benchmark JSON file")
     parser.add_argument("--benchmark-source", help="Optional benchmark source label")
     parser.add_argument("--doctor", action="store_true", help="Check request readiness without generating a package")
+    parser.add_argument("--run-collector", action="store_true", help="Run the configured collector before building the package")
     parser.add_argument("--output", help="Optional path to save summary JSON")
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON")
     return parser.parse_args()
@@ -30,6 +31,10 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["benchmark_file"] = args.benchmark_file
     if args.benchmark_source:
         payload["benchmark_source"] = args.benchmark_source
+    if args.run_collector:
+        collector = dict(payload.get("collector") or {})
+        collector["auto_run"] = True
+        payload["collector"] = collector
     return payload
 
 

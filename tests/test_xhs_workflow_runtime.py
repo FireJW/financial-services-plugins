@@ -6,6 +6,7 @@ import json
 import pathlib
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import patch
 
@@ -175,6 +176,68 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertIn("图文", plan["command"])
         self.assertIn("--limit", plan["command"])
         self.assertIn("20", plan["command"])
+
+    def test_run_collector_plan_writes_stdout_json_for_benchmark_import(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = pathlib.Path(temp_dir) / "benchmarks.json"
+            plan = {
+                "status": "ready",
+                "source": "xiaohongshu-skills.search-feeds",
+                "cwd": temp_dir,
+                "command": ["python", "scripts/cli.py", "search-feeds", "--keyword", "AI capex"],
+            }
+
+            def fake_runner(command, cwd, timeout, capture_output, text, check):
+                self.assertEqual(command, plan["command"])
+                self.assertEqual(cwd, temp_dir)
+                self.assertEqual(timeout, 120)
+                self.assertTrue(capture_output)
+                self.assertTrue(text)
+                self.assertFalse(check)
+                return types.SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({"feeds": [{"title": "3 signals", "like_count": 10}]}),
+                    stderr="",
+                )
+
+            result = module_under_test.run_collector_plan(plan, output_path, runner=fake_runner, timeout_seconds=120)
+
+            self.assertEqual(result["status"], "collected")
+            self.assertEqual(result["source"], "xiaohongshu-skills.search-feeds")
+            self.assertEqual(result["count"], 1)
+            self.assertEqual(json.loads(output_path.read_text(encoding="utf-8"))["feeds"][0]["title"], "3 signals")
+
+    def test_run_xhs_workflow_auto_runs_collector_when_explicitly_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            skills_dir = pathlib.Path(temp_dir) / "xiaohongshu-skills"
+            skills_dir.mkdir()
+            request = {
+                "topic": "AI capex",
+                "run_id": "20260502130000",
+                "output_dir": temp_dir,
+                "collector": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "keyword": "AI capex",
+                    "auto_run": True,
+                },
+                "image_generation": {"mode": "dry_run"},
+            }
+
+            def fake_runner(command, cwd, timeout, capture_output, text, check):
+                return types.SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({"feeds": [{"title": "3 signals", "like_count": 10}]}),
+                    stderr="",
+                )
+
+            result = module_under_test.run_xhs_workflow(request, collector_runner=fake_runner)
+
+            package_dir = pathlib.Path(result["package_dir"])
+
+            self.assertEqual(result["collector_run"]["status"], "collected")
+            self.assertEqual(result["benchmark_count"], 1)
+            self.assertTrue((package_dir / "collector_result.json").exists())
 
     def test_deconstructs_benchmarks_into_reusable_patterns_without_copying_source_text(self) -> None:
         benchmarks = module_under_test.rank_benchmarks(
@@ -494,6 +557,44 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             self.assertTrue(output_path.exists())
             self.assertEqual(json.loads(output_path.read_text(encoding="utf-8"))["status"], "ready")
             self.assertFalse((temp_path / "out").exists())
+
+    def test_xhs_workflow_cli_run_collector_flag_sets_explicit_auto_run(self) -> None:
+        cli_path = SCRIPT_DIR / "xhs_workflow.py"
+        cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_collector_under_test", cli_path)
+        cli_module = importlib.util.module_from_spec(cli_spec)
+        assert cli_spec and cli_spec.loader
+        cli_spec.loader.exec_module(cli_module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "request.json"
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "topic": "AI capex",
+                        "output_dir": str(temp_path / "out"),
+                        "collector": {"type": "xiaohongshu-skills", "skills_dir": str(temp_path)},
+                        "image_generation": {"mode": "dry_run"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                ["xhs_workflow.py", str(input_path), "--run-collector", "--quiet"],
+            ), patch.object(
+                cli_module,
+                "run_xhs_workflow",
+                return_value={"status": "ready_for_review"},
+            ) as run_mock:
+                with self.assertRaises(SystemExit) as exit_context:
+                    cli_module.main()
+
+        self.assertEqual(exit_context.exception.code, 0)
+        payload = run_mock.call_args.args[0]
+        self.assertTrue(payload["collector"]["auto_run"])
 
 
 if __name__ == "__main__":

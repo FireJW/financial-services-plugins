@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import re
+import subprocess
 import urllib.request
 import uuid
 from pathlib import Path
@@ -224,6 +225,64 @@ def build_collector_plan(request: dict[str, Any]) -> dict[str, Any]:
         "cwd": str(skills_dir),
         "command": command,
         "output_next_step": "Save the JSON result and pass it back with --benchmark-file.",
+    }
+
+
+def run_collector_plan(
+    plan: dict[str, Any],
+    output_path: Path,
+    runner: Any = subprocess.run,
+    timeout_seconds: int = 180,
+) -> dict[str, Any]:
+    if plan.get("status") != "ready":
+        return {
+            "status": "skipped",
+            "reason": f"collector plan is {plan.get('status')}",
+            "source": plan.get("source", ""),
+            "output_path": str(output_path),
+        }
+    completed = runner(
+        list(plan.get("command") or []),
+        cwd=str(plan.get("cwd") or "."),
+        timeout=timeout_seconds,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(
+                {
+                    "status": "collector_failed",
+                    "stdout": completed.stdout,
+                    "stderr": completed.stderr,
+                    "returncode": completed.returncode,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "status": "failed",
+            "source": plan.get("source", ""),
+            "returncode": completed.returncode,
+            "stderr": completed.stderr,
+            "output_path": str(output_path),
+        }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(completed.stdout, encoding="utf-8")
+    try:
+        payload = json.loads(completed.stdout or "{}")
+        count = len(extract_benchmark_items(payload))
+    except json.JSONDecodeError:
+        count = 0
+    return {
+        "status": "collected",
+        "source": plan.get("source", ""),
+        "count": count,
+        "output_path": str(output_path),
     }
 
 
@@ -638,16 +697,30 @@ def render_performance_review_markdown(review: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
+def run_xhs_workflow(request: dict[str, Any], collector_runner: Any = subprocess.run) -> dict[str, Any]:
     package_dir = resolve_package_dir(request)
     package_dir.mkdir(parents=True, exist_ok=True)
     for child in ["raw", "generation", "preview", "images"]:
         (package_dir / child).mkdir(parents=True, exist_ok=True)
 
+    collector_plan = build_collector_plan(request)
+    collector_run = {"status": "not_requested", "source": collector_plan.get("source", "")}
+    if dict(request.get("collector") or {}).get("auto_run"):
+        collector_output = package_dir / "collector_result.json"
+        collector_run = run_collector_plan(
+            collector_plan,
+            collector_output,
+            runner=collector_runner,
+            timeout_seconds=int(dict(request.get("collector") or {}).get("timeout_seconds") or 180),
+        )
+        if collector_run.get("status") == "collected":
+            request = dict(request)
+            request["benchmark_file"] = collector_run["output_path"]
+            request["benchmark_source"] = collector_plan.get("source", "xiaohongshu-skills.search-feeds")
+
     benchmarks, benchmark_import = load_benchmark_inputs(request)
     source_ledger = build_source_ledger(benchmarks)
     patterns = deconstruct_benchmarks(benchmarks)
-    collector_plan = build_collector_plan(request)
     content_brief = build_content_brief(request)
     card_plan = build_card_plan(request, patterns)
     image_config = dict(request.get("image_generation") or {})
@@ -660,6 +733,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
     write_json(package_dir / "source_ledger.json", {"sources": source_ledger})
     write_json(package_dir / "benchmarks.json", {"benchmarks": benchmarks, "import": benchmark_import})
     write_json(package_dir / "collector_plan.json", collector_plan)
+    write_json(package_dir / "collector_run.json", collector_run)
     write_json(package_dir / "patterns.json", patterns)
     write_json(package_dir / "content_brief.json", content_brief)
     write_json(package_dir / "card_plan.json", card_plan)
@@ -680,6 +754,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
         "benchmark_count": len(benchmarks),
         "benchmark_import": benchmark_import,
         "collector_plan": collector_plan,
+        "collector_run": collector_run,
         "card_count": len(card_plan["cards"]),
         "image_generation_mode": generation["mode"],
         "qc_status": qc["status"],
