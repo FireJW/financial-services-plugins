@@ -228,6 +228,70 @@ def build_collector_plan(request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_publish_preview_plan(
+    request: dict[str, Any],
+    package_dir: Path,
+    card_plan: dict[str, Any],
+) -> dict[str, Any]:
+    publish = dict(request.get("publish") or {})
+    publish_type = str(publish.get("type") or "").strip()
+    if not publish_type:
+        return {"status": "not_configured", "source": "", "command": [], "cwd": "", "click_publish": False}
+    if publish_type != "xiaohongshu-skills":
+        return {
+            "status": "unsupported",
+            "source": publish_type,
+            "command": [],
+            "cwd": "",
+            "click_publish": False,
+            "message": "Only xiaohongshu-skills publish preview plans are supported.",
+        }
+
+    image_paths = sorted((package_dir / "images").glob("*.png"))
+    if not image_paths:
+        return {
+            "status": "images_missing",
+            "source": "xiaohongshu-skills.fill-publish",
+            "command": [],
+            "cwd": str(Path(str(publish.get("skills_dir") or ".")).resolve()),
+            "click_publish": False,
+            "message": "Generate or provide XHS card images before creating a publish preview.",
+        }
+
+    title_file = package_dir / "publish" / "title.txt"
+    content_file = package_dir / "publish" / "content.txt"
+    title_file.parent.mkdir(parents=True, exist_ok=True)
+    title_file.write_text(str(publish.get("title") or card_plan.get("topic") or "XHS note"), encoding="utf-8")
+    caption_path = package_dir / "caption.md"
+    hashtags_path = package_dir / "hashtags.txt"
+    caption = caption_path.read_text(encoding="utf-8") if caption_path.exists() else ""
+    hashtags = hashtags_path.read_text(encoding="utf-8") if hashtags_path.exists() else ""
+    content_file.write_text((caption + "\n" + hashtags).strip() + "\n", encoding="utf-8")
+
+    skills_dir = Path(str(publish.get("skills_dir") or ".")).resolve()
+    command = [
+        "python",
+        "scripts/cli.py",
+        "fill-publish",
+        "--title-file",
+        str(title_file),
+        "--content-file",
+        str(content_file),
+        "--images",
+        *[str(path) for path in image_paths],
+    ]
+    return {
+        "status": "ready_preview",
+        "source": "xiaohongshu-skills.fill-publish",
+        "cwd": str(skills_dir),
+        "command": command,
+        "click_publish": False,
+        "image_count": len(image_paths),
+        "title_file": str(title_file),
+        "content_file": str(content_file),
+    }
+
+
 def run_collector_plan(
     plan: dict[str, Any],
     output_path: Path,
@@ -745,6 +809,8 @@ def run_xhs_workflow(request: dict[str, Any], collector_runner: Any = subprocess
     (package_dir / "draft.md").write_text(render_draft(card_plan), encoding="utf-8")
     (package_dir / "caption.md").write_text(render_caption(request, card_plan), encoding="utf-8")
     (package_dir / "hashtags.txt").write_text(render_hashtags(request), encoding="utf-8")
+    publish_plan = build_publish_preview_plan(request, package_dir, card_plan)
+    write_json(package_dir / "publish_plan.json", publish_plan)
     (package_dir / "qc_report.md").write_text(render_qc_markdown(qc), encoding="utf-8")
     (package_dir / "review.md").write_text(render_performance_review_markdown(performance_review), encoding="utf-8")
 
@@ -759,6 +825,7 @@ def run_xhs_workflow(request: dict[str, Any], collector_runner: Any = subprocess
         "image_generation_mode": generation["mode"],
         "qc_status": qc["status"],
         "performance_review": {"status": performance_review["status"]},
+        "publish_plan": publish_plan,
         "publish_gate": {"status": "manual approval required before XHS publishing"},
     }
     write_json(package_dir / "meta.json", result)

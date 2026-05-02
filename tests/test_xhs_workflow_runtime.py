@@ -177,6 +177,50 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertIn("--limit", plan["command"])
         self.assertIn("20", plan["command"])
 
+    def test_build_publish_preview_plan_uses_fill_publish_and_blocks_click_publish(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            package_dir = pathlib.Path(temp_dir) / "package"
+            package_dir.mkdir()
+            skills_dir = pathlib.Path(temp_dir) / "xiaohongshu-skills"
+            skills_dir.mkdir()
+            images_dir = package_dir / "images"
+            images_dir.mkdir()
+            image_path = images_dir / "card-01.png"
+            image_path.write_bytes(b"fake")
+            card_plan = {"topic": "AI capex"}
+            request = {
+                "publish": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "mode": "preview",
+                }
+            }
+
+            plan = module_under_test.build_publish_preview_plan(request, package_dir, card_plan)
+
+        self.assertEqual(plan["status"], "ready_preview")
+        self.assertEqual(plan["source"], "xiaohongshu-skills.fill-publish")
+        self.assertEqual(plan["cwd"], str(skills_dir.resolve()))
+        self.assertEqual(plan["command"][:3], ["python", "scripts/cli.py", "fill-publish"])
+        self.assertIn("--title-file", plan["command"])
+        self.assertIn("--content-file", plan["command"])
+        self.assertIn("--images", plan["command"])
+        self.assertIn(str(image_path), plan["command"])
+        self.assertFalse(plan["click_publish"])
+
+    def test_build_publish_preview_plan_reports_missing_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            package_dir = pathlib.Path(temp_dir) / "package"
+            package_dir.mkdir()
+            plan = module_under_test.build_publish_preview_plan(
+                {"publish": {"type": "xiaohongshu-skills", "skills_dir": temp_dir}},
+                package_dir,
+                {"topic": "AI capex"},
+            )
+
+        self.assertEqual(plan["status"], "images_missing")
+        self.assertEqual(plan["command"], [])
+
     def test_run_collector_plan_writes_stdout_json_for_benchmark_import(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = pathlib.Path(temp_dir) / "benchmarks.json"

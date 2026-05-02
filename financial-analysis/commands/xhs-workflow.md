@@ -82,6 +82,11 @@ Related capability references:
       "shares": 5
     },
     "notes": ["collect rate is strong"]
+  },
+  "publish": {
+    "type": "xiaohongshu-skills",
+    "skills_dir": "D:/path/to/xiaohongshu-skills",
+    "mode": "preview"
   }
 }
 ```
@@ -182,11 +187,17 @@ The workflow writes one package directory containing:
 - `qc_report.md`
 - `performance_review.json`
 - `review.md`
+- `publish_plan.json`
 - `meta.json`
 
 `performance_metrics` is optional. When present, the workflow records a local
 post-performance review so the same benchmark pattern can be compared against
 future runs. It does not fetch metrics from XHS automatically in this version.
+
+`publish.type=xiaohongshu-skills` creates a preview-only `publish_plan.json`.
+When card images exist, it writes `publish/title.txt` and `publish/content.txt`
+and prepares a `python scripts/cli.py fill-publish ...` command. It never adds a
+click-publish step; the final publish action stays manual.
 
 ## Publish Gate
 
