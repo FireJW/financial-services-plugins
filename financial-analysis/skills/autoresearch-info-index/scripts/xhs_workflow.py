@@ -20,6 +20,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--benchmark-source", help="Optional benchmark source label")
     parser.add_argument("--doctor", action="store_true", help="Check request readiness without generating a package")
     parser.add_argument("--run-collector", action="store_true", help="Run the configured collector before building the package")
+    parser.add_argument("--image-mode", choices=["dry_run", "openai"], help="Override image_generation.mode")
+    parser.add_argument("--image-model", help="Override image_generation.model")
+    parser.add_argument("--image-size", help="Override image_generation.size")
+    parser.add_argument("--reference-image", action="append", default=[], help="Add a local reference image path for GPT Image edits")
     parser.add_argument("--output", help="Optional path to save summary JSON")
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON")
     return parser.parse_args()
@@ -35,6 +39,17 @@ def build_payload(args: argparse.Namespace) -> dict:
         collector = dict(payload.get("collector") or {})
         collector["auto_run"] = True
         payload["collector"] = collector
+    if args.image_mode or args.image_model or args.image_size or args.reference_image:
+        image_generation = dict(payload.get("image_generation") or {})
+        if args.image_mode:
+            image_generation["mode"] = args.image_mode
+        if args.image_model:
+            image_generation["model"] = args.image_model
+        if args.image_size:
+            image_generation["size"] = args.image_size
+        if args.reference_image:
+            image_generation["reference_images"] = list(args.reference_image)
+        payload["image_generation"] = image_generation
     return payload
 
 

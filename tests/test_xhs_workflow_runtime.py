@@ -596,6 +596,61 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         payload = run_mock.call_args.args[0]
         self.assertTrue(payload["collector"]["auto_run"])
 
+    def test_xhs_workflow_cli_image_flags_override_generation_config(self) -> None:
+        cli_path = SCRIPT_DIR / "xhs_workflow.py"
+        cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_image_flags_under_test", cli_path)
+        cli_module = importlib.util.module_from_spec(cli_spec)
+        assert cli_spec and cli_spec.loader
+        cli_spec.loader.exec_module(cli_module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "request.json"
+            reference_path = temp_path / "reference.png"
+            reference_path.write_bytes(b"fake")
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "topic": "AI capex",
+                        "output_dir": str(temp_path / "out"),
+                        "benchmarks": [{"title": "3 signals", "likes": 10}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "xhs_workflow.py",
+                    str(input_path),
+                    "--image-mode",
+                    "openai",
+                    "--image-model",
+                    "gpt-image-2",
+                    "--image-size",
+                    "1024x1536",
+                    "--reference-image",
+                    str(reference_path),
+                    "--quiet",
+                ],
+            ), patch.object(
+                cli_module,
+                "run_xhs_workflow",
+                return_value={"status": "ready_for_review"},
+            ) as run_mock:
+                with self.assertRaises(SystemExit) as exit_context:
+                    cli_module.main()
+
+        self.assertEqual(exit_context.exception.code, 0)
+        payload = run_mock.call_args.args[0]
+        image_config = payload["image_generation"]
+        self.assertEqual(image_config["mode"], "openai")
+        self.assertEqual(image_config["model"], "gpt-image-2")
+        self.assertEqual(image_config["size"], "1024x1536")
+        self.assertEqual(image_config["reference_images"][0], str(reference_path))
+
 
 if __name__ == "__main__":
     unittest.main()

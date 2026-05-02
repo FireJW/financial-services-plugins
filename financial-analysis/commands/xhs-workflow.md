@@ -150,6 +150,18 @@ the OpenAI image edit endpoint with multipart `image[]` files. Remote image URLs
 are not passed directly to the API in this version; download or provide local
 files first.
 
+For a real GPT Image run from the CLI, first run doctor:
+
+```powershell
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --doctor --image-mode openai --image-model gpt-image-2 --reference-image "D:/path/to/source.png" --output "<doctor.json>"
+```
+
+If doctor reports `ready`, run generation:
+
+```powershell
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --image-mode openai --image-model gpt-image-2 --image-size 1024x1536 --reference-image "D:/path/to/source.png" --output "<result.json>"
+```
+
 ## Outputs
 
 The workflow writes one package directory containing:
