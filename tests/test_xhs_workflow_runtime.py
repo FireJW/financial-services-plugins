@@ -184,6 +184,49 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertNotIn("--limit", plan["command"])
         self.assertEqual(plan["requested_limit"], 20)
 
+    def test_build_collector_plan_omits_filter_clicks_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            skills_dir = make_xiaohongshu_skills_dir(pathlib.Path(temp_dir))
+            request = {
+                "topic": "AI capex",
+                "collector": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "keyword": "AI capex",
+                    "limit": 20,
+                },
+            }
+
+            plan = module_under_test.build_collector_plan(request)
+
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual(plan["command"], ["python", "scripts/cli.py", "search-feeds", "--keyword", "AI capex"])
+        self.assertNotIn("--sort-by", plan["command"])
+        self.assertNotIn("--note-type", plan["command"])
+        self.assertEqual(plan["filter_mode"], "keyword_only")
+        self.assertEqual(plan["requested_limit"], 20)
+
+    def test_build_collector_plan_can_disable_requested_filter_clicks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            skills_dir = make_xiaohongshu_skills_dir(pathlib.Path(temp_dir))
+            request = {
+                "topic": "AI capex",
+                "collector": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "keyword": "AI capex",
+                    "sort_by": "最多点赞",
+                    "note_type": "图文",
+                    "apply_filters": False,
+                },
+            }
+
+            plan = module_under_test.build_collector_plan(request)
+
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual(plan["command"], ["python", "scripts/cli.py", "search-feeds", "--keyword", "AI capex"])
+        self.assertEqual(plan["filter_mode"], "disabled")
+
     def test_build_collector_plan_uses_env_skills_dir_when_request_omits_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             skills_dir = make_xiaohongshu_skills_dir(pathlib.Path(temp_dir))

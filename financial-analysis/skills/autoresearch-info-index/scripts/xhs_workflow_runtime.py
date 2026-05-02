@@ -250,6 +250,27 @@ def build_bridge_preflight_command(bridge_url: str) -> list[str]:
     return ["python", "-c", code]
 
 
+def bool_config(value: Any, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in ("0", "false", "no", "off"):
+        return False
+    if text in ("1", "true", "yes", "on"):
+        return True
+    return default
+
+
+def optional_cli_value(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = None) -> dict[str, Any]:
     collector = dict(request.get("collector") or {})
     collector_type = str(collector.get("type") or "").strip()
@@ -267,8 +288,9 @@ def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = N
     skills_dir, skills_dir_source = resolve_xiaohongshu_skills_dir(collector, env=env)
     cli_check = check_xiaohongshu_skills_cli(skills_dir)
     keyword = str(collector.get("keyword") or request.get("topic") or "").strip()
-    sort_by = str(collector.get("sort_by") or "最多点赞")
-    note_type = str(collector.get("note_type") or "图文")
+    apply_filters = bool_config(collector.get("apply_filters"), default=True)
+    sort_by = optional_cli_value(collector.get("sort_by")) if apply_filters else ""
+    note_type = optional_cli_value(collector.get("note_type")) if apply_filters else ""
     limit = int(collector.get("limit") or 20)
     bridge_url = str(collector.get("bridge_url") or "ws://localhost:9333")
     if cli_check["status"] != "ready":
@@ -297,11 +319,12 @@ def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = N
         "search-feeds",
         "--keyword",
         keyword,
-        "--sort-by",
-        sort_by,
-        "--note-type",
-        note_type,
     ]
+    if sort_by:
+        command.extend(["--sort-by", sort_by])
+    if note_type:
+        command.extend(["--note-type", note_type])
+    filter_mode = "disabled" if not apply_filters else ("requested" if sort_by or note_type else "keyword_only")
     return {
         "status": "ready",
         "source": "xiaohongshu-skills.search-feeds",
@@ -311,6 +334,8 @@ def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = N
         "cli_path": cli_check["cli_path"],
         "requested_limit": limit,
         "bridge_url": bridge_url,
+        "filter_mode": filter_mode,
+        "filters": {"apply_filters": apply_filters, "sort_by": sort_by, "note_type": note_type},
         "bridge_preflight_command": build_bridge_preflight_command(bridge_url),
         "output_next_step": "Save the JSON result and pass it back with --benchmark-file.",
     }

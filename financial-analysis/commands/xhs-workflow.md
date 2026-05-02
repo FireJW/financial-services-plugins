@@ -57,8 +57,7 @@ Related capability references:
     "type": "xiaohongshu-skills",
     "skills_dir": "D:/path/to/xiaohongshu-skills",
     "keyword": "AI capex",
-    "sort_by": "最多点赞",
-    "note_type": "图文",
+    "apply_filters": false,
     "limit": 20
   },
   "image_generation": {
@@ -113,6 +112,11 @@ When `collector.type=xiaohongshu-skills`, the generated package includes
 command to run from the referenced `xiaohongshu-skills` checkout. This workflow
 does not run that command automatically because it may depend on browser login
 state and platform risk controls.
+
+Collector runs default to keyword-only search so they do not click fragile XHS
+filter controls. To request upstream filtering explicitly, set `sort_by` and/or
+`note_type`; set `apply_filters=false` to force keyword-only collection even
+when filter fields are present.
 
 To run the collector explicitly before building the package:
 
