@@ -181,8 +181,8 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertIn("最多点赞", plan["command"])
         self.assertIn("--note-type", plan["command"])
         self.assertIn("图文", plan["command"])
-        self.assertIn("--limit", plan["command"])
-        self.assertIn("20", plan["command"])
+        self.assertNotIn("--limit", plan["command"])
+        self.assertEqual(plan["requested_limit"], 20)
 
     def test_build_collector_plan_uses_env_skills_dir_when_request_omits_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -319,13 +319,15 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
                 "command": ["python", "scripts/cli.py", "search-feeds", "--keyword", "AI capex"],
             }
 
-            def fake_runner(command, cwd, timeout, capture_output, text, check):
+            def fake_runner(command, cwd, timeout, capture_output, text, check, encoding, errors):
                 self.assertEqual(command, plan["command"])
                 self.assertEqual(cwd, temp_dir)
                 self.assertEqual(timeout, 120)
                 self.assertTrue(capture_output)
                 self.assertTrue(text)
                 self.assertFalse(check)
+                self.assertEqual(encoding, "utf-8")
+                self.assertEqual(errors, "replace")
                 return types.SimpleNamespace(
                     returncode=0,
                     stdout=json.dumps({"feeds": [{"title": "3 signals", "like_count": 10}]}),
@@ -349,7 +351,7 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
                 "click_publish": False,
             }
 
-            def fake_runner(command, cwd, timeout, capture_output, text, check):
+            def fake_runner(command, cwd, timeout, capture_output, text, check, encoding, errors):
                 self.assertEqual(command, plan["command"])
                 self.assertNotIn("click-publish", command)
                 self.assertEqual(cwd, temp_dir)
@@ -357,6 +359,8 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
                 self.assertTrue(capture_output)
                 self.assertTrue(text)
                 self.assertFalse(check)
+                self.assertEqual(encoding, "utf-8")
+                self.assertEqual(errors, "replace")
                 return types.SimpleNamespace(returncode=0, stdout='{"status":"filled"}', stderr="")
 
             result = module_under_test.run_publish_preview_plan(plan, runner=fake_runner, timeout_seconds=90)
@@ -395,7 +399,9 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
                 "image_generation": {"mode": "dry_run"},
             }
 
-            def fake_runner(command, cwd, timeout, capture_output, text, check):
+            def fake_runner(command, cwd, timeout, capture_output, text, check, encoding, errors):
+                self.assertEqual(encoding, "utf-8")
+                self.assertEqual(errors, "replace")
                 return types.SimpleNamespace(
                     returncode=0,
                     stdout=json.dumps({"feeds": [{"title": "3 signals", "like_count": 10}]}),
@@ -434,10 +440,12 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
                 generation["results"] = [{"status": "generated", "path": str(image_path)}]
                 return generation
 
-            def fake_runner(command, cwd, timeout, capture_output, text, check):
+            def fake_runner(command, cwd, timeout, capture_output, text, check, encoding, errors):
                 self.assertEqual(cwd, str(skills_dir.resolve()))
                 self.assertIn("fill-publish", command)
                 self.assertNotIn("click-publish", command)
+                self.assertEqual(encoding, "utf-8")
+                self.assertEqual(errors, "replace")
                 return types.SimpleNamespace(returncode=0, stdout='{"status":"filled"}', stderr="")
 
             with patch.object(module_under_test, "maybe_generate_images", side_effect=fake_generate):

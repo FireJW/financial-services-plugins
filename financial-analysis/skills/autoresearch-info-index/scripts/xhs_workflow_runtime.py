@@ -286,8 +286,6 @@ def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = N
         sort_by,
         "--note-type",
         note_type,
-        "--limit",
-        str(limit),
     ]
     return {
         "status": "ready",
@@ -296,6 +294,7 @@ def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = N
         "command": command,
         "skills_dir_source": skills_dir_source,
         "cli_path": cli_check["cli_path"],
+        "requested_limit": limit,
         "output_next_step": "Save the JSON result and pass it back with --benchmark-file.",
     }
 
@@ -465,6 +464,8 @@ def run_collector_plan(
         capture_output=True,
         text=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     if completed.returncode != 0:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -537,6 +538,8 @@ def run_publish_preview_plan(
         capture_output=True,
         text=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     if completed.returncode != 0:
         return {
