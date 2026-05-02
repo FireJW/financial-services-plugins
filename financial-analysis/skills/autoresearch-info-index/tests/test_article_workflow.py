@@ -174,6 +174,60 @@ class ArticleWorkflowTests(unittest.TestCase):
         self.assertTrue(request["style_memory"].get("sample_sources"))
         self.assertIn("SemiAnalysis", [item.get("name", "") for item in request["style_memory"]["sample_sources"]])
 
+    def test_article_draft_normalize_request_applies_model_governance_lane_defaults(self) -> None:
+        source_result = run_news_index(
+            {
+                "topic": "Musk xAI used OpenAI models to train Grok",
+                "analysis_time": "2026-05-02T12:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-1",
+                        "claim_text": "xAI and Grok are being scrutinized over whether OpenAI model outputs were used during training.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "model-1",
+                        "source_name": "TechCrunch",
+                        "source_type": "major_news",
+                        "published_at": "2026-05-02T11:00:00+00:00",
+                        "observed_at": "2026-05-02T11:05:00+00:00",
+                        "url": "https://example.com/model-1",
+                        "text_excerpt": (
+                            "Elon Musk, xAI, OpenAI, Grok, distillation, model training, "
+                            "API terms, and enterprise trust are all part of the dispute."
+                        ),
+                        "claim_ids": ["claim-1"],
+                        "claim_states": {"claim-1": "support"},
+                    }
+                ],
+            }
+        )
+
+        request = normalize_article_draft_request(
+            {
+                "source_result": source_result,
+                "language_mode": "chinese",
+            }
+        )
+
+        self.assertEqual(request["article_framework"], "deep_analysis")
+        self.assertEqual(request["style_memory"]["target_band"], "tech_model_governance_commentary")
+        self.assertIn("???????????", request["personal_phrase_bank"])
+        self.assertIn(
+            "?????????????????????????????",
+            request["must_include"],
+        )
+        self.assertIn(
+            "????????????????????????",
+            request["must_avoid"],
+        )
+        self.assertIn(
+            "????????????????????????????????",
+            request["style_memory"]["slot_guidance"]["facts"],
+        )
+        self.assertNotEqual(request["style_memory"]["target_band"], "tech_supply_chain_commentary")
+
     def test_article_draft_normalize_request_keeps_non_tech_topics_out_of_tech_lane(self) -> None:
         source_result = run_news_index(
             {

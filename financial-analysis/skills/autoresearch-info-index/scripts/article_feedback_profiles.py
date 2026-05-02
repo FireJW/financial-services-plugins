@@ -316,6 +316,61 @@ TECH_INFRA_STYLE_MEMORY = {
 }
 
 
+MODEL_GOVERNANCE_STYLE_MEMORY = {
+    "target_band": "tech_model_governance_commentary",
+    "voice_summary": (
+        "Treat model-training and AI-competition disputes as boundary-exposure stories. "
+        "Open with the human or company-role tension, then translate the dispute into model provenance, "
+        "distillation boundaries, service terms, and enterprise trust."
+    ),
+    "preferred_transitions": [
+        "先简单描述下发生了什么",
+        "真正尴尬的是",
+        "我更在意的是后一个问题",
+    ],
+    "must_land": [
+        "开头先抓人物或公司身份冲突，再把事实收束成一个行业边界问题",
+        "把模型训练争议写成模型来源、输出使用、蒸馏边界和企业信任问题",
+        "事实段先收住结论，不替法院或监管下判断",
+    ],
+    "avoid_patterns": [
+        "不要在开头堆媒体名单、英文标题差异或完整出处列表",
+        "不要把事件只写成创始人翻车、口水仗或道德审判",
+        "不要把灰色过程直接写成侵权结论",
+        "不要套用供应链、订单、产能或资本开支叙事，除非证据真的指向这些变量",
+    ],
+    "corpus_notes": [
+        "Approved user edit favors short-breath WeChat pacing: identity tension first, concise fact setup second, exact source roll call later.",
+    ],
+    "slot_guidance": {
+        "lede": [
+            "用短句拆开冲突：先写“不是 A，也不是 B”，再单独落到“真正尴尬的是”。",
+            "开头可以把同一个人物或公司放在两种身份里对照，制造读者继续读下去的张力。",
+        ],
+        "facts": [
+            "事实段用一句“多个可靠信息来源”先收住，详细来源放到后文或文末。",
+            "把小标题写得口语化，比如“先简单描述下发生了什么”，不要一上来就抽象成方法论。",
+        ],
+        "spread": [
+            "把争议描述为一次“边界曝光”，解释为什么平时藏在 API、服务条款和内部合规里的问题被推到台前。",
+        ],
+        "impact": [
+            "从模型输出能否被竞争对手提炼能力，写到服务条款、能力来源披露和企业采购信任。",
+        ],
+        "watch": [
+            "后续观察点优先放在庭审材料、公司回应、服务条款、输出监控、训练披露和企业尽调问题上。",
+        ],
+    },
+    "sample_sources": [
+        sample_source_entry(
+            "User edit / Musk xAI OpenAI Grok boundary",
+            "tech-ai-model-governance-musk-xai-openai.md",
+            "Use for short-breath Chinese ledes, source-list compression, and model-provenance boundary framing.",
+        ),
+    ],
+}
+
+
 MACRO_CONFLICT_STYLE_MEMORY = {
     "target_band": "macro_conflict_transmission",
     "voice_summary": (
@@ -400,6 +455,49 @@ TECH_TOPIC_TOKENS = (
 )
 
 
+MODEL_GOVERNANCE_ANCHOR_TOKENS = (
+    "xai",
+    "grok",
+    "distill",
+    "distillation",
+    "distilled",
+    "model output",
+    "model outputs",
+    "openai models",
+    "third-party model",
+    "third party model",
+    "蒸馏",
+    "模型输出",
+    "模型来源",
+    "训练来源",
+    "第三方模型",
+    "第三方闭源模型",
+)
+
+
+MODEL_GOVERNANCE_CONTEXT_TOKENS = (
+    "openai",
+    "anthropic",
+    "google",
+    "api terms",
+    "service terms",
+    "training data",
+    "model training",
+    "enterprise trust",
+    "compliance",
+    "provenance",
+    "lawsuit",
+    "terms of service",
+    "服务条款",
+    "企业信任",
+    "合规",
+    "来源",
+    "边界",
+    "训练",
+    "诉讼",
+)
+
+
 MACRO_CONFLICT_TOPIC_TOKENS = (
     "hormuz",
     "strait of hormuz",
@@ -461,6 +559,16 @@ def is_technology_topic(text: str) -> bool:
     return any(token in lowered for token in TECH_TOPIC_TOKENS)
 
 
+def is_model_governance_topic(text: str) -> bool:
+    lowered = clean_text(text).lower()
+    if not lowered:
+        return False
+    has_anchor = any(token in lowered for token in MODEL_GOVERNANCE_ANCHOR_TOKENS)
+    if not has_anchor:
+        return False
+    return any(token in lowered for token in MODEL_GOVERNANCE_CONTEXT_TOKENS)
+
+
 def is_macro_conflict_topic(text: str) -> bool:
     lowered = clean_text(text).lower()
     if not lowered:
@@ -471,6 +579,12 @@ def is_macro_conflict_topic(text: str) -> bool:
 def apply_topic_lane_defaults(request: dict[str, Any], *, extra_text: Any = None) -> dict[str, Any]:
     merged = deepcopy(request)
     lane_text = topic_lane_text(merged, extra_text)
+    if is_model_governance_topic(lane_text):
+        style_memory = merge_style_memory(GENERAL_COMMENTARY_STYLE_MEMORY, safe_dict(merged.get("style_memory")))
+        style_memory = merge_style_memory(style_memory, MODEL_GOVERNANCE_STYLE_MEMORY)
+        if clean_text(merged.get("article_framework")) in {"", "auto"}:
+            merged["article_framework"] = "deep_analysis"
+        return apply_style_memory_defaults(merged, style_memory)
     if is_technology_topic(lane_text):
         style_memory = merge_style_memory(GENERAL_COMMENTARY_STYLE_MEMORY, safe_dict(merged.get("style_memory")))
         style_memory = merge_style_memory(style_memory, TECH_INFRA_STYLE_MEMORY)
