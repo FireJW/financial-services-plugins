@@ -97,6 +97,11 @@ Related capability references:
 }
 ```
 
+`skills_dir` can be omitted when `XIAOHONGSHU_SKILLS_DIR` points to the local
+`xiaohongshu-skills` checkout. Readiness checks require both the directory and
+`scripts/cli.py` to exist before collector, publish-preview, or performance
+collection plans are treated as runnable.
+
 When `collector.type=xiaohongshu-skills`, the generated package includes
 `collector_plan.json`. It contains the `python scripts/cli.py search-feeds ...`
 command to run from the referenced `xiaohongshu-skills` checkout. This workflow
@@ -130,6 +135,7 @@ Doctor mode does not generate a package. It checks:
 
 - benchmark input or benchmark file availability
 - collector readiness when `--run-collector` is used or `collector.type` is set
+- local `xiaohongshu-skills` CLI availability when that adapter is configured
 - OpenAI API key requirement when `image_generation.mode=openai`
 - local reference image paths for OpenAI image edits
 - output directory parent availability
@@ -196,6 +202,7 @@ The workflow writes one package directory containing:
 - `performance_collection_plan.json`
 - `review.md`
 - `publish_plan.json`
+- `publish_preview_run.json`
 - `meta.json`
 
 `performance_metrics` is optional. When present, the workflow records a local
@@ -214,6 +221,17 @@ python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py
 When card images exist, it writes `publish/title.txt` and `publish/content.txt`
 and prepares a `python scripts/cli.py fill-publish ...` command. It never adds a
 click-publish step; the final publish action stays manual.
+
+To explicitly run the preview fill step after package generation:
+
+```powershell
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --run-publish-preview --output "<result.json>"
+```
+
+This only executes `fill-publish`. The workflow blocks `click-publish` even when
+a malformed plan or request attempts to include it. Use this only after card
+images exist and the referenced `xiaohongshu-skills` checkout is installed and
+logged in as needed.
 
 ## Publish Gate
 

@@ -20,6 +20,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--benchmark-source", help="Optional benchmark source label")
     parser.add_argument("--doctor", action="store_true", help="Check request readiness without generating a package")
     parser.add_argument("--run-collector", action="store_true", help="Run the configured collector before building the package")
+    parser.add_argument(
+        "--run-publish-preview",
+        action="store_true",
+        help="Run the configured fill-publish preview after package generation; never clicks publish",
+    )
     parser.add_argument("--image-mode", choices=["dry_run", "openai"], help="Override image_generation.mode")
     parser.add_argument("--image-model", help="Override image_generation.model")
     parser.add_argument("--image-size", help="Override image_generation.size")
@@ -40,6 +45,11 @@ def build_payload(args: argparse.Namespace) -> dict:
         collector = dict(payload.get("collector") or {})
         collector["auto_run"] = True
         payload["collector"] = collector
+    if args.run_publish_preview:
+        publish = dict(payload.get("publish") or {})
+        publish["auto_run_preview"] = True
+        publish["click_publish"] = False
+        payload["publish"] = publish
     if args.image_mode or args.image_model or args.image_size or args.reference_image:
         image_generation = dict(payload.get("image_generation") or {})
         if args.image_mode:

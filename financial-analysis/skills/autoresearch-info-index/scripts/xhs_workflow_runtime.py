@@ -118,7 +118,7 @@ def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None =
     image_config = dict(request.get("image_generation") or {})
     mode = str(image_config.get("mode") or "dry_run")
     collector = dict(request.get("collector") or {})
-    collector_plan = build_collector_plan(request)
+    collector_plan = build_collector_plan(request, env=env)
     collector_requested = bool(collector.get("auto_run") or collector.get("type"))
     collector_ready = collector_plan.get("status") == "ready"
     benchmark_file = request.get("benchmark_file")
@@ -205,7 +205,38 @@ def build_source_ledger(benchmarks: list[dict[str, Any]]) -> list[dict[str, Any]
     ]
 
 
-def build_collector_plan(request: dict[str, Any]) -> dict[str, Any]:
+def resolve_xiaohongshu_skills_dir(
+    config: dict[str, Any],
+    env: dict[str, str] | None = None,
+) -> tuple[Path, str]:
+    env = env if env is not None else os.environ
+    skills_dir_text = str(config.get("skills_dir") or "").strip()
+    if skills_dir_text:
+        return Path(skills_dir_text).resolve(), "request.skills_dir"
+    env_key = "XIAOHONGSHU_SKILLS_DIR"
+    if env.get(env_key):
+        return Path(str(env[env_key])).resolve(), f"env:{env_key}"
+    return Path(".").resolve(), "default:cwd"
+
+
+def check_xiaohongshu_skills_cli(skills_dir: Path) -> dict[str, Any]:
+    cli_path = skills_dir / "scripts" / "cli.py"
+    if not skills_dir.exists():
+        return {
+            "status": "missing_skills_dir",
+            "cli_path": str(cli_path),
+            "message": f"xiaohongshu-skills directory not found: {skills_dir}",
+        }
+    if not cli_path.exists():
+        return {
+            "status": "missing_cli",
+            "cli_path": str(cli_path),
+            "message": f"xiaohongshu-skills CLI not found at {cli_path}",
+        }
+    return {"status": "ready", "cli_path": str(cli_path), "message": ""}
+
+
+def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = None) -> dict[str, Any]:
     collector = dict(request.get("collector") or {})
     collector_type = str(collector.get("type") or "").strip()
     if not collector_type:
@@ -219,12 +250,32 @@ def build_collector_plan(request: dict[str, Any]) -> dict[str, Any]:
             "message": "Only xiaohongshu-skills collector plans are supported in this workflow.",
         }
 
-    skills_dir_text = str(collector.get("skills_dir") or "").strip()
-    skills_dir = Path(skills_dir_text).resolve() if skills_dir_text else Path(".").resolve()
+    skills_dir, skills_dir_source = resolve_xiaohongshu_skills_dir(collector, env=env)
+    cli_check = check_xiaohongshu_skills_cli(skills_dir)
     keyword = str(collector.get("keyword") or request.get("topic") or "").strip()
     sort_by = str(collector.get("sort_by") or "最多点赞")
     note_type = str(collector.get("note_type") or "图文")
     limit = int(collector.get("limit") or 20)
+    if cli_check["status"] != "ready":
+        return {
+            "status": cli_check["status"],
+            "source": "xiaohongshu-skills.search-feeds",
+            "cwd": str(skills_dir),
+            "command": [],
+            "skills_dir_source": skills_dir_source,
+            "cli_path": cli_check["cli_path"],
+            "message": cli_check["message"],
+        }
+    if not keyword:
+        return {
+            "status": "needs_configuration",
+            "source": "xiaohongshu-skills.search-feeds",
+            "cwd": str(skills_dir),
+            "command": [],
+            "skills_dir_source": skills_dir_source,
+            "cli_path": cli_check["cli_path"],
+            "message": "collector keyword is required",
+        }
     command = [
         "python",
         "scripts/cli.py",
@@ -239,10 +290,12 @@ def build_collector_plan(request: dict[str, Any]) -> dict[str, Any]:
         str(limit),
     ]
     return {
-        "status": "ready" if skills_dir.exists() and keyword else "needs_configuration",
+        "status": "ready",
         "source": "xiaohongshu-skills.search-feeds",
         "cwd": str(skills_dir),
         "command": command,
+        "skills_dir_source": skills_dir_source,
+        "cli_path": cli_check["cli_path"],
         "output_next_step": "Save the JSON result and pass it back with --benchmark-file.",
     }
 
@@ -251,6 +304,7 @@ def build_publish_preview_plan(
     request: dict[str, Any],
     package_dir: Path,
     card_plan: dict[str, Any],
+    env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     publish = dict(request.get("publish") or {})
     publish_type = str(publish.get("type") or "").strip()
@@ -287,7 +341,19 @@ def build_publish_preview_plan(
     hashtags = hashtags_path.read_text(encoding="utf-8") if hashtags_path.exists() else ""
     content_file.write_text((caption + "\n" + hashtags).strip() + "\n", encoding="utf-8")
 
-    skills_dir = Path(str(publish.get("skills_dir") or ".")).resolve()
+    skills_dir, skills_dir_source = resolve_xiaohongshu_skills_dir(publish, env=env)
+    cli_check = check_xiaohongshu_skills_cli(skills_dir)
+    if cli_check["status"] != "ready":
+        return {
+            "status": cli_check["status"],
+            "source": "xiaohongshu-skills.fill-publish",
+            "command": [],
+            "cwd": str(skills_dir),
+            "click_publish": False,
+            "skills_dir_source": skills_dir_source,
+            "cli_path": cli_check["cli_path"],
+            "message": cli_check["message"],
+        }
     command = [
         "python",
         "scripts/cli.py",
@@ -305,13 +371,15 @@ def build_publish_preview_plan(
         "cwd": str(skills_dir),
         "command": command,
         "click_publish": False,
+        "skills_dir_source": skills_dir_source,
+        "cli_path": cli_check["cli_path"],
         "image_count": len(image_paths),
         "title_file": str(title_file),
         "content_file": str(content_file),
     }
 
 
-def build_performance_collection_plan(request: dict[str, Any]) -> dict[str, Any]:
+def build_performance_collection_plan(request: dict[str, Any], env: dict[str, str] | None = None) -> dict[str, Any]:
     collection = dict(request.get("performance_collection") or {})
     collection_type = str(collection.get("type") or "").strip()
     if not collection_type:
@@ -324,9 +392,20 @@ def build_performance_collection_plan(request: dict[str, Any]) -> dict[str, Any]
             "cwd": "",
             "message": "Only xiaohongshu-skills performance collection plans are supported.",
         }
-    skills_dir = Path(str(collection.get("skills_dir") or ".")).resolve()
+    skills_dir, skills_dir_source = resolve_xiaohongshu_skills_dir(collection, env=env)
+    cli_check = check_xiaohongshu_skills_cli(skills_dir)
     feed_id = str(collection.get("feed_id") or "").strip()
     xsec_token = str(collection.get("xsec_token") or "").strip()
+    if cli_check["status"] != "ready":
+        return {
+            "status": cli_check["status"],
+            "source": "xiaohongshu-skills.get-feed-detail",
+            "cwd": str(skills_dir),
+            "command": [],
+            "skills_dir_source": skills_dir_source,
+            "cli_path": cli_check["cli_path"],
+            "message": cli_check["message"],
+        }
     command = [
         "python",
         "scripts/cli.py",
@@ -337,10 +416,12 @@ def build_performance_collection_plan(request: dict[str, Any]) -> dict[str, Any]
         xsec_token,
     ]
     return {
-        "status": "ready" if skills_dir.exists() and feed_id and xsec_token else "needs_configuration",
+        "status": "ready" if feed_id and xsec_token else "needs_configuration",
         "source": "xiaohongshu-skills.get-feed-detail",
         "cwd": str(skills_dir),
         "command": command,
+        "skills_dir_source": skills_dir_source,
+        "cli_path": cli_check["cli_path"],
         "output_next_step": "Save the JSON result and pass it back as performance_file.",
     }
 
@@ -419,6 +500,60 @@ def run_collector_plan(
         "source": plan.get("source", ""),
         "count": count,
         "output_path": str(output_path),
+    }
+
+
+def run_publish_preview_plan(
+    plan: dict[str, Any],
+    runner: Any = subprocess.run,
+    timeout_seconds: int = 180,
+) -> dict[str, Any]:
+    command = [str(item) for item in plan.get("command") or []]
+    if plan.get("status") != "ready_preview":
+        return {
+            "status": "skipped",
+            "reason": f"publish preview plan is {plan.get('status')}",
+            "source": plan.get("source", ""),
+            "click_publish": False,
+        }
+    if plan.get("click_publish") or any("click-publish" in item for item in command):
+        return {
+            "status": "blocked",
+            "reason": "click-publish is not allowed from xhs_workflow",
+            "source": plan.get("source", ""),
+            "click_publish": False,
+        }
+    if "fill-publish" not in command:
+        return {
+            "status": "blocked",
+            "reason": "publish preview may only run fill-publish",
+            "source": plan.get("source", ""),
+            "click_publish": False,
+        }
+    completed = runner(
+        command,
+        cwd=str(plan.get("cwd") or "."),
+        timeout=timeout_seconds,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return {
+            "status": "failed",
+            "source": plan.get("source", ""),
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "click_publish": False,
+        }
+    return {
+        "status": "filled_preview",
+        "source": plan.get("source", ""),
+        "returncode": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+        "click_publish": False,
     }
 
 
@@ -833,7 +968,11 @@ def render_performance_review_markdown(review: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def run_xhs_workflow(request: dict[str, Any], collector_runner: Any = subprocess.run) -> dict[str, Any]:
+def run_xhs_workflow(
+    request: dict[str, Any],
+    collector_runner: Any = subprocess.run,
+    publish_preview_runner: Any = subprocess.run,
+) -> dict[str, Any]:
     package_dir = resolve_package_dir(request)
     package_dir.mkdir(parents=True, exist_ok=True)
     for child in ["raw", "generation", "preview", "images"]:
@@ -883,7 +1022,16 @@ def run_xhs_workflow(request: dict[str, Any], collector_runner: Any = subprocess
     (package_dir / "caption.md").write_text(render_caption(request, card_plan), encoding="utf-8")
     (package_dir / "hashtags.txt").write_text(render_hashtags(request), encoding="utf-8")
     publish_plan = build_publish_preview_plan(request, package_dir, card_plan)
+    publish_preview_run = {"status": "not_requested", "source": publish_plan.get("source", ""), "click_publish": False}
+    publish = dict(request.get("publish") or {})
+    if publish.get("auto_run_preview"):
+        publish_preview_run = run_publish_preview_plan(
+            publish_plan,
+            runner=publish_preview_runner,
+            timeout_seconds=int(publish.get("timeout_seconds") or 180),
+        )
     write_json(package_dir / "publish_plan.json", publish_plan)
+    write_json(package_dir / "publish_preview_run.json", publish_preview_run)
     write_json(package_dir / "performance_collection_plan.json", performance_collection_plan)
     (package_dir / "qc_report.md").write_text(render_qc_markdown(qc), encoding="utf-8")
     (package_dir / "review.md").write_text(render_performance_review_markdown(performance_review), encoding="utf-8")
@@ -901,6 +1049,7 @@ def run_xhs_workflow(request: dict[str, Any], collector_runner: Any = subprocess
         "performance_review": {"status": performance_review["status"]},
         "performance_collection_plan": performance_collection_plan,
         "publish_plan": publish_plan,
+        "publish_preview_run": publish_preview_run,
         "publish_gate": {"status": "manual approval required before XHS publishing"},
     }
     write_json(package_dir / "meta.json", result)

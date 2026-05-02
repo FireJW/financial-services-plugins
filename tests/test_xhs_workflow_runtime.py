@@ -30,6 +30,14 @@ sys.modules["xhs_workflow_runtime"] = module_under_test
 SPEC.loader.exec_module(module_under_test)
 
 
+def make_xiaohongshu_skills_dir(root: pathlib.Path) -> pathlib.Path:
+    skills_dir = root / "xiaohongshu-skills"
+    scripts_dir = skills_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "cli.py").write_text("# fake xiaohongshu-skills cli\n", encoding="utf-8")
+    return skills_dir
+
+
 class XhsWorkflowRuntimeTests(unittest.TestCase):
     def test_run_xhs_workflow_writes_reviewable_package_without_external_calls(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -148,8 +156,7 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
 
     def test_build_collector_plan_creates_xiaohongshu_skills_search_command(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            skills_dir = pathlib.Path(temp_dir) / "xiaohongshu-skills"
-            skills_dir.mkdir()
+            skills_dir = make_xiaohongshu_skills_dir(pathlib.Path(temp_dir))
             request = {
                 "topic": "AI capex",
                 "collector": {
@@ -177,12 +184,50 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertIn("--limit", plan["command"])
         self.assertIn("20", plan["command"])
 
+    def test_build_collector_plan_uses_env_skills_dir_when_request_omits_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            skills_dir = make_xiaohongshu_skills_dir(pathlib.Path(temp_dir))
+            request = {
+                "topic": "AI capex",
+                "collector": {
+                    "type": "xiaohongshu-skills",
+                    "keyword": "AI capex",
+                },
+            }
+
+            plan = module_under_test.build_collector_plan(
+                request,
+                env={"XIAOHONGSHU_SKILLS_DIR": str(skills_dir)},
+            )
+
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual(plan["cwd"], str(skills_dir.resolve()))
+        self.assertEqual(plan["skills_dir_source"], "env:XIAOHONGSHU_SKILLS_DIR")
+
+    def test_build_collector_plan_reports_missing_cli_script(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            skills_dir = pathlib.Path(temp_dir) / "xiaohongshu-skills"
+            skills_dir.mkdir()
+            request = {
+                "topic": "AI capex",
+                "collector": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "keyword": "AI capex",
+                },
+            }
+
+            plan = module_under_test.build_collector_plan(request)
+
+        self.assertEqual(plan["status"], "missing_cli")
+        self.assertEqual(plan["command"], [])
+        self.assertIn("scripts", plan["message"])
+
     def test_build_publish_preview_plan_uses_fill_publish_and_blocks_click_publish(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             package_dir = pathlib.Path(temp_dir) / "package"
             package_dir.mkdir()
-            skills_dir = pathlib.Path(temp_dir) / "xiaohongshu-skills"
-            skills_dir.mkdir()
+            skills_dir = make_xiaohongshu_skills_dir(pathlib.Path(temp_dir))
             images_dir = package_dir / "images"
             images_dir.mkdir()
             image_path = images_dir / "card-01.png"
@@ -223,8 +268,7 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
 
     def test_build_performance_collection_plan_creates_feed_detail_command(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            skills_dir = pathlib.Path(temp_dir) / "xiaohongshu-skills"
-            skills_dir.mkdir()
+            skills_dir = make_xiaohongshu_skills_dir(pathlib.Path(temp_dir))
             request = {
                 "performance_collection": {
                     "type": "xiaohongshu-skills",
@@ -295,10 +339,49 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             self.assertEqual(result["count"], 1)
             self.assertEqual(json.loads(output_path.read_text(encoding="utf-8"))["feeds"][0]["title"], "3 signals")
 
+    def test_run_publish_preview_plan_executes_fill_publish_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan = {
+                "status": "ready_preview",
+                "source": "xiaohongshu-skills.fill-publish",
+                "cwd": temp_dir,
+                "command": ["python", "scripts/cli.py", "fill-publish", "--title-file", "title.txt"],
+                "click_publish": False,
+            }
+
+            def fake_runner(command, cwd, timeout, capture_output, text, check):
+                self.assertEqual(command, plan["command"])
+                self.assertNotIn("click-publish", command)
+                self.assertEqual(cwd, temp_dir)
+                self.assertEqual(timeout, 90)
+                self.assertTrue(capture_output)
+                self.assertTrue(text)
+                self.assertFalse(check)
+                return types.SimpleNamespace(returncode=0, stdout='{"status":"filled"}', stderr="")
+
+            result = module_under_test.run_publish_preview_plan(plan, runner=fake_runner, timeout_seconds=90)
+
+        self.assertEqual(result["status"], "filled_preview")
+        self.assertEqual(result["source"], "xiaohongshu-skills.fill-publish")
+        self.assertFalse(result["click_publish"])
+
+    def test_run_publish_preview_plan_refuses_click_publish_command(self) -> None:
+        plan = {
+            "status": "ready_preview",
+            "source": "xiaohongshu-skills.fill-publish",
+            "cwd": ".",
+            "command": ["python", "scripts/cli.py", "click-publish"],
+            "click_publish": False,
+        }
+
+        result = module_under_test.run_publish_preview_plan(plan)
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertIn("click-publish", result["reason"])
+
     def test_run_xhs_workflow_auto_runs_collector_when_explicitly_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            skills_dir = pathlib.Path(temp_dir) / "xiaohongshu-skills"
-            skills_dir.mkdir()
+            skills_dir = make_xiaohongshu_skills_dir(pathlib.Path(temp_dir))
             request = {
                 "topic": "AI capex",
                 "run_id": "20260502130000",
@@ -326,6 +409,45 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             self.assertEqual(result["collector_run"]["status"], "collected")
             self.assertEqual(result["benchmark_count"], 1)
             self.assertTrue((package_dir / "collector_result.json").exists())
+
+    def test_run_xhs_workflow_auto_runs_publish_preview_when_explicitly_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            skills_dir = make_xiaohongshu_skills_dir(temp_path)
+            request = {
+                "topic": "AI capex",
+                "run_id": "20260502133000",
+                "output_dir": temp_dir,
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "image_generation": {"mode": "dry_run"},
+                "publish": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "mode": "preview",
+                    "auto_run_preview": True,
+                },
+            }
+
+            def fake_generate(package_dir, generation, config):
+                image_path = package_dir / "images" / "card-01.png"
+                image_path.write_bytes(b"fake")
+                generation["results"] = [{"status": "generated", "path": str(image_path)}]
+                return generation
+
+            def fake_runner(command, cwd, timeout, capture_output, text, check):
+                self.assertEqual(cwd, str(skills_dir.resolve()))
+                self.assertIn("fill-publish", command)
+                self.assertNotIn("click-publish", command)
+                return types.SimpleNamespace(returncode=0, stdout='{"status":"filled"}', stderr="")
+
+            with patch.object(module_under_test, "maybe_generate_images", side_effect=fake_generate):
+                result = module_under_test.run_xhs_workflow(request, publish_preview_runner=fake_runner)
+
+            package_dir = pathlib.Path(result["package_dir"])
+            self.assertTrue((package_dir / "publish_preview_run.json").exists())
+
+        self.assertEqual(result["publish_preview_run"]["status"], "filled_preview")
+        self.assertFalse(result["publish_plan"]["click_publish"])
 
     def test_deconstructs_benchmarks_into_reusable_patterns_without_copying_source_text(self) -> None:
         benchmarks = module_under_test.rank_benchmarks(
@@ -526,8 +648,7 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
     def test_build_readiness_report_accepts_ready_collector_as_benchmark_input(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = pathlib.Path(temp_dir)
-            skills_dir = temp_path / "xiaohongshu-skills"
-            skills_dir.mkdir()
+            skills_dir = make_xiaohongshu_skills_dir(temp_path)
             request = {
                 "topic": "AI capex",
                 "output_dir": str(temp_path / "out"),
@@ -768,6 +889,46 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(exit_context.exception.code, 0)
         payload = run_mock.call_args.args[0]
         self.assertTrue(payload["collector"]["auto_run"])
+
+    def test_xhs_workflow_cli_run_publish_preview_flag_sets_preview_only_auto_run(self) -> None:
+        cli_path = SCRIPT_DIR / "xhs_workflow.py"
+        cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_publish_preview_under_test", cli_path)
+        cli_module = importlib.util.module_from_spec(cli_spec)
+        assert cli_spec and cli_spec.loader
+        cli_spec.loader.exec_module(cli_module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "request.json"
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "topic": "AI capex",
+                        "output_dir": str(temp_path / "out"),
+                        "benchmarks": [{"title": "3 signals", "likes": 10}],
+                        "publish": {"type": "xiaohongshu-skills", "skills_dir": str(temp_path)},
+                        "image_generation": {"mode": "dry_run"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                ["xhs_workflow.py", str(input_path), "--run-publish-preview", "--quiet"],
+            ), patch.object(
+                cli_module,
+                "run_xhs_workflow",
+                return_value={"status": "ready_for_review"},
+            ) as run_mock:
+                with self.assertRaises(SystemExit) as exit_context:
+                    cli_module.main()
+
+        self.assertEqual(exit_context.exception.code, 0)
+        payload = run_mock.call_args.args[0]
+        self.assertTrue(payload["publish"]["auto_run_preview"])
+        self.assertFalse(payload["publish"].get("click_publish", False))
 
     def test_xhs_workflow_cli_image_flags_override_generation_config(self) -> None:
         cli_path = SCRIPT_DIR / "xhs_workflow.py"
