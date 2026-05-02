@@ -715,6 +715,18 @@ Expected: all XHS workflow tests pass.
 Create a temp request manually or use the test fixture shape, then run:
 
 ```powershell
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py <request.json> --doctor --output <doctor.json> --quiet
+```
+
+Expected:
+
+- `doctor.json` status is `ready` for dry-run requests with benchmark input
+- status is `blocked` when OpenAI mode is selected without an API key or local
+  reference images are missing
+
+Then run:
+
+```powershell
 python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py <request.json> --output <result.json> --quiet
 ```
 

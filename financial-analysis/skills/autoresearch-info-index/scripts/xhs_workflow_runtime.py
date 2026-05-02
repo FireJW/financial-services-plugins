@@ -112,6 +112,55 @@ def load_benchmark_inputs(request: dict[str, Any]) -> tuple[list[dict[str, Any]]
     }
 
 
+def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None = None) -> dict[str, Any]:
+    env = env if env is not None else os.environ
+    image_config = dict(request.get("image_generation") or {})
+    mode = str(image_config.get("mode") or "dry_run")
+    benchmark_file = request.get("benchmark_file")
+    inline_benchmarks = extract_benchmark_items(request.get("benchmarks") or [])
+    benchmark_file_exists = True
+    if benchmark_file:
+        benchmark_file_exists = Path(str(benchmark_file)).resolve().exists()
+    benchmark_input_ok = (bool(benchmark_file) and benchmark_file_exists) or bool(inline_benchmarks)
+
+    api_key_ok = True
+    if mode == "openai":
+        api_key_ok = bool(image_config.get("api_key") or env.get("OPENAI_API_KEY"))
+
+    reference_images = normalize_reference_images(list(image_config.get("reference_images") or []))
+    reference_images_ok = True
+    missing_references = []
+    if mode == "openai":
+        for reference in reference_images:
+            path_text = reference.get("path", "")
+            if path_text.startswith("http://") or path_text.startswith("https://"):
+                missing_references.append(f"remote URL not supported for openai edits: {path_text}")
+                continue
+            if not Path(path_text).resolve().exists():
+                missing_references.append(path_text)
+        reference_images_ok = not missing_references
+
+    output_dir = Path(str(request.get("output_dir") or "output/xhs-workflow")).resolve()
+    output_parent = output_dir if output_dir.exists() else output_dir.parent
+    output_dir_ok = output_parent.exists()
+
+    checks = {
+        "benchmark_input": {"passed": benchmark_input_ok, "value": len(inline_benchmarks) if not benchmark_file else str(benchmark_file)},
+        "benchmark_file": {"passed": benchmark_file_exists, "value": str(benchmark_file or "")},
+        "openai_api_key": {"passed": api_key_ok, "value": "required" if mode == "openai" else "not_required"},
+        "reference_images": {"passed": reference_images_ok, "value": len(reference_images), "missing": missing_references},
+        "output_dir": {"passed": output_dir_ok, "value": str(output_dir)},
+    }
+    blockers = [name for name, check in checks.items() if not check["passed"]]
+    return {
+        "status": "blocked" if blockers else "ready",
+        "mode": mode,
+        "checks": checks,
+        "blockers": blockers,
+        "next_action": "fix blockers before generation" if blockers else "safe to run dry-run package generation",
+    }
+
+
 def rank_benchmarks(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized = [normalize_benchmark(item, index) for index, item in enumerate(items)]
     ranked = sorted(normalized, key=lambda item: item["engagement_score"], reverse=True)

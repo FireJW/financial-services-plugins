@@ -10,7 +10,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from xhs_workflow_runtime import load_json, run_xhs_workflow, write_json
+from xhs_workflow_runtime import build_readiness_report, load_json, run_xhs_workflow, write_json
 
 
 def parse_args() -> argparse.Namespace:
@@ -18,6 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", help="Path to xhs workflow request JSON")
     parser.add_argument("--benchmark-file", help="Optional imported benchmark JSON file")
     parser.add_argument("--benchmark-source", help="Optional benchmark source label")
+    parser.add_argument("--doctor", action="store_true", help="Check request readiness without generating a package")
     parser.add_argument("--output", help="Optional path to save summary JSON")
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON")
     return parser.parse_args()
@@ -35,12 +36,13 @@ def build_payload(args: argparse.Namespace) -> dict:
 def main() -> None:
     args = parse_args()
     try:
-        result = run_xhs_workflow(build_payload(args))
+        payload = build_payload(args)
+        result = build_readiness_report(payload) if args.doctor else run_xhs_workflow(payload)
         if args.output:
             write_json(Path(args.output).resolve(), result)
         if not args.quiet:
             print(json.dumps(result, ensure_ascii=False, indent=2))
-        sys.exit(0)
+        sys.exit(1 if args.doctor and result.get("status") == "blocked" else 0)
     except Exception as exc:
         print(json.dumps({"status": "ERROR", "message": str(exc)}, ensure_ascii=False, indent=2), file=sys.stderr)
         sys.exit(1)

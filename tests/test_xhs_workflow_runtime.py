@@ -230,6 +230,42 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertIn(b'filename="product-shot.png"', body)
         self.assertTrue(body.endswith(b"--TESTBOUNDARY--\r\n"))
 
+    def test_build_readiness_report_blocks_openai_without_api_key_and_missing_reference_image(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing_image = pathlib.Path(temp_dir) / "missing.png"
+            request = {
+                "topic": "AI capex",
+                "output_dir": temp_dir,
+                "benchmark_file": str(pathlib.Path(temp_dir) / "missing-benchmarks.json"),
+                "image_generation": {
+                    "mode": "openai",
+                    "reference_images": [str(missing_image)],
+                },
+            }
+
+            report = module_under_test.build_readiness_report(request, env={})
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["checks"]["benchmark_file"]["passed"])
+        self.assertFalse(report["checks"]["openai_api_key"]["passed"])
+        self.assertFalse(report["checks"]["reference_images"]["passed"])
+        self.assertGreaterEqual(len(report["blockers"]), 3)
+
+    def test_build_readiness_report_passes_for_dry_run_with_inline_benchmarks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = {
+                "topic": "AI capex",
+                "output_dir": temp_dir,
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "image_generation": {"mode": "dry_run"},
+            }
+
+            report = module_under_test.build_readiness_report(request, env={})
+
+        self.assertEqual(report["status"], "ready")
+        self.assertTrue(report["checks"]["benchmark_input"]["passed"])
+        self.assertTrue(report["checks"]["openai_api_key"]["passed"])
+
     def test_xhs_workflow_cli_writes_output(self) -> None:
         cli_path = SCRIPT_DIR / "xhs_workflow.py"
         cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_under_test", cli_path)
@@ -316,6 +352,42 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             self.assertEqual(exit_context.exception.code, 0)
             self.assertEqual(result["benchmark_count"], 1)
             self.assertEqual(result["benchmark_import"]["source"], "xiaohongshu-skills.search-feeds")
+
+    def test_xhs_workflow_cli_doctor_writes_readiness_without_generating_package(self) -> None:
+        cli_path = SCRIPT_DIR / "xhs_workflow.py"
+        cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_doctor_under_test", cli_path)
+        cli_module = importlib.util.module_from_spec(cli_spec)
+        assert cli_spec and cli_spec.loader
+        cli_spec.loader.exec_module(cli_module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "request.json"
+            output_path = temp_path / "doctor.json"
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "topic": "AI capex",
+                        "output_dir": str(temp_path / "out"),
+                        "benchmarks": [{"title": "3 signals", "likes": 10}],
+                        "image_generation": {"mode": "dry_run"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                ["xhs_workflow.py", str(input_path), "--doctor", "--output", str(output_path), "--quiet"],
+            ):
+                with self.assertRaises(SystemExit) as exit_context:
+                    cli_module.main()
+
+            self.assertEqual(exit_context.exception.code, 0)
+            self.assertTrue(output_path.exists())
+            self.assertEqual(json.loads(output_path.read_text(encoding="utf-8"))["status"], "ready")
+            self.assertFalse((temp_path / "out").exists())
 
 
 if __name__ == "__main__":
