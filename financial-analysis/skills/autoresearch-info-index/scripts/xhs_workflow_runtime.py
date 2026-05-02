@@ -292,6 +292,59 @@ def build_publish_preview_plan(
     }
 
 
+def build_performance_collection_plan(request: dict[str, Any]) -> dict[str, Any]:
+    collection = dict(request.get("performance_collection") or {})
+    collection_type = str(collection.get("type") or "").strip()
+    if not collection_type:
+        return {"status": "not_configured", "source": "", "command": [], "cwd": ""}
+    if collection_type != "xiaohongshu-skills":
+        return {
+            "status": "unsupported",
+            "source": collection_type,
+            "command": [],
+            "cwd": "",
+            "message": "Only xiaohongshu-skills performance collection plans are supported.",
+        }
+    skills_dir = Path(str(collection.get("skills_dir") or ".")).resolve()
+    feed_id = str(collection.get("feed_id") or "").strip()
+    xsec_token = str(collection.get("xsec_token") or "").strip()
+    command = [
+        "python",
+        "scripts/cli.py",
+        "get-feed-detail",
+        "--feed-id",
+        feed_id,
+        "--xsec-token",
+        xsec_token,
+    ]
+    return {
+        "status": "ready" if skills_dir.exists() and feed_id and xsec_token else "needs_configuration",
+        "source": "xiaohongshu-skills.get-feed-detail",
+        "cwd": str(skills_dir),
+        "command": command,
+        "output_next_step": "Save the JSON result and pass it back as performance_file.",
+    }
+
+
+def load_performance_metrics(request: dict[str, Any]) -> dict[str, Any]:
+    if request.get("performance_file"):
+        path = Path(str(request["performance_file"])).resolve()
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        note = dict(payload.get("note") or payload.get("data") or {})
+        interactions = dict(payload.get("interactions") or note.get("interactions") or payload.get("stats") or {})
+        return {
+            "post_url": str(note.get("url") or payload.get("post_url") or ""),
+            "after_24h": {
+                "likes": _int_metric(interactions, "liked_count", "likes", "like_count"),
+                "collects": _int_metric(interactions, "collected_count", "collects", "collect_count"),
+                "comments": _int_metric(interactions, "comment_count", "comments"),
+                "shares": _int_metric(interactions, "share_count", "shares"),
+            },
+            "notes": [f"imported from {path}"],
+        }
+    return dict(request.get("performance_metrics") or {})
+
+
 def run_collector_plan(
     plan: dict[str, Any],
     output_path: Path,
@@ -711,7 +764,7 @@ def _metric(payload: dict[str, Any], key: str) -> int:
 
 
 def build_performance_review(request: dict[str, Any]) -> dict[str, Any]:
-    metrics = dict(request.get("performance_metrics") or {})
+    metrics = load_performance_metrics(request)
     if not metrics:
         return {"status": "not_provided", "metrics": {}, "scores": {}, "notes": []}
     after_24h = dict(metrics.get("after_24h") or metrics.get("latest") or {})
@@ -792,6 +845,7 @@ def run_xhs_workflow(request: dict[str, Any], collector_runner: Any = subprocess
     generation = maybe_generate_images(package_dir, generation, image_config)
     qc = build_qc_report(card_plan, generation, source_ledger)
     performance_review = build_performance_review(request)
+    performance_collection_plan = build_performance_collection_plan(request)
 
     write_json(package_dir / "request.json", request)
     write_json(package_dir / "source_ledger.json", {"sources": source_ledger})
@@ -811,6 +865,7 @@ def run_xhs_workflow(request: dict[str, Any], collector_runner: Any = subprocess
     (package_dir / "hashtags.txt").write_text(render_hashtags(request), encoding="utf-8")
     publish_plan = build_publish_preview_plan(request, package_dir, card_plan)
     write_json(package_dir / "publish_plan.json", publish_plan)
+    write_json(package_dir / "performance_collection_plan.json", performance_collection_plan)
     (package_dir / "qc_report.md").write_text(render_qc_markdown(qc), encoding="utf-8")
     (package_dir / "review.md").write_text(render_performance_review_markdown(performance_review), encoding="utf-8")
 
@@ -825,6 +880,7 @@ def run_xhs_workflow(request: dict[str, Any], collector_runner: Any = subprocess
         "image_generation_mode": generation["mode"],
         "qc_status": qc["status"],
         "performance_review": {"status": performance_review["status"]},
+        "performance_collection_plan": performance_collection_plan,
         "publish_plan": publish_plan,
         "publish_gate": {"status": "manual approval required before XHS publishing"},
     }

@@ -221,6 +221,50 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(plan["status"], "images_missing")
         self.assertEqual(plan["command"], [])
 
+    def test_build_performance_collection_plan_creates_feed_detail_command(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            skills_dir = pathlib.Path(temp_dir) / "xiaohongshu-skills"
+            skills_dir.mkdir()
+            request = {
+                "performance_collection": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "feed_id": "abc",
+                    "xsec_token": "token",
+                }
+            }
+
+            plan = module_under_test.build_performance_collection_plan(request)
+
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual(plan["source"], "xiaohongshu-skills.get-feed-detail")
+        self.assertEqual(plan["cwd"], str(skills_dir.resolve()))
+        self.assertEqual(plan["command"][:3], ["python", "scripts/cli.py", "get-feed-detail"])
+        self.assertIn("--feed-id", plan["command"])
+        self.assertIn("abc", plan["command"])
+        self.assertIn("--xsec-token", plan["command"])
+        self.assertIn("token", plan["command"])
+
+    def test_load_performance_metrics_accepts_detail_file_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            metrics_path = pathlib.Path(temp_dir) / "detail.json"
+            metrics_path.write_text(
+                json.dumps(
+                    {
+                        "note": {"url": "https://www.xiaohongshu.com/explore/abc"},
+                        "interactions": {"liked_count": 120, "collected_count": 60, "comment_count": 12},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            metrics = module_under_test.load_performance_metrics({"performance_file": str(metrics_path)})
+
+        self.assertEqual(metrics["post_url"], "https://www.xiaohongshu.com/explore/abc")
+        self.assertEqual(metrics["after_24h"]["likes"], 120)
+        self.assertEqual(metrics["after_24h"]["collects"], 60)
+        self.assertEqual(metrics["after_24h"]["comments"], 12)
+
     def test_run_collector_plan_writes_stdout_json_for_benchmark_import(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = pathlib.Path(temp_dir) / "benchmarks.json"
@@ -694,6 +738,45 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(image_config["model"], "gpt-image-2")
         self.assertEqual(image_config["size"], "1024x1536")
         self.assertEqual(image_config["reference_images"][0], str(reference_path))
+
+    def test_xhs_workflow_cli_performance_file_override(self) -> None:
+        cli_path = SCRIPT_DIR / "xhs_workflow.py"
+        cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_performance_file_under_test", cli_path)
+        cli_module = importlib.util.module_from_spec(cli_spec)
+        assert cli_spec and cli_spec.loader
+        cli_spec.loader.exec_module(cli_module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "request.json"
+            performance_path = temp_path / "detail.json"
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "topic": "AI capex",
+                        "output_dir": str(temp_path / "out"),
+                        "benchmarks": [{"title": "3 signals", "likes": 10}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            performance_path.write_text(json.dumps({"interactions": {"liked_count": 1}}), encoding="utf-8")
+
+            with patch.object(
+                sys,
+                "argv",
+                ["xhs_workflow.py", str(input_path), "--performance-file", str(performance_path), "--quiet"],
+            ), patch.object(
+                cli_module,
+                "run_xhs_workflow",
+                return_value={"status": "ready_for_review"},
+            ) as run_mock:
+                with self.assertRaises(SystemExit) as exit_context:
+                    cli_module.main()
+
+        self.assertEqual(exit_context.exception.code, 0)
+        payload = run_mock.call_args.args[0]
+        self.assertEqual(payload["performance_file"], str(performance_path))
 
 
 if __name__ == "__main__":

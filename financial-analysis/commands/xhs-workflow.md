@@ -83,6 +83,12 @@ Related capability references:
     },
     "notes": ["collect rate is strong"]
   },
+  "performance_collection": {
+    "type": "xiaohongshu-skills",
+    "skills_dir": "D:/path/to/xiaohongshu-skills",
+    "feed_id": "abc",
+    "xsec_token": "token"
+  },
   "publish": {
     "type": "xiaohongshu-skills",
     "skills_dir": "D:/path/to/xiaohongshu-skills",
@@ -186,6 +192,7 @@ The workflow writes one package directory containing:
 - `qc_report.json`
 - `qc_report.md`
 - `performance_review.json`
+- `performance_collection_plan.json`
 - `review.md`
 - `publish_plan.json`
 - `meta.json`
@@ -193,6 +200,14 @@ The workflow writes one package directory containing:
 `performance_metrics` is optional. When present, the workflow records a local
 post-performance review so the same benchmark pattern can be compared against
 future runs. It does not fetch metrics from XHS automatically in this version.
+
+`performance_collection.type=xiaohongshu-skills` creates a
+`performance_collection_plan.json` with a `get-feed-detail` command. Run that
+command outside the package flow, save the JSON, then import it:
+
+```powershell
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --performance-file "<xhs-detail-result.json>" --output "<result.json>"
+```
 
 `publish.type=xiaohongshu-skills` creates a preview-only `publish_plan.json`.
 When card images exist, it writes `publish/title.txt` and `publish/content.txt`

@@ -24,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-model", help="Override image_generation.model")
     parser.add_argument("--image-size", help="Override image_generation.size")
     parser.add_argument("--reference-image", action="append", default=[], help="Add a local reference image path for GPT Image edits")
+    parser.add_argument("--performance-file", help="Optional XHS detail JSON to import into performance review")
     parser.add_argument("--output", help="Optional path to save summary JSON")
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON")
     return parser.parse_args()
@@ -50,6 +51,8 @@ def build_payload(args: argparse.Namespace) -> dict:
         if args.reference_image:
             image_generation["reference_images"] = list(args.reference_image)
         payload["image_generation"] = image_generation
+    if args.performance_file:
+        payload["performance_file"] = args.performance_file
     return payload
 
 
