@@ -472,9 +472,13 @@ def maybe_generate_images(package_dir: Path, generation: dict[str, Any], config:
     for prompt in generation.get("prompts", []):
         output_path = package_dir / "images" / f"card-{int(prompt['card_index']):02d}.png"
         if prompt.get("reference_images"):
-            results.append(generate_openai_image_edit(prompt["prompt"], prompt["reference_images"], config, output_path))
+            result = generate_openai_image_edit(prompt["prompt"], prompt["reference_images"], config, output_path)
+            result["route"] = result.get("route") or "openai_images_edits"
         else:
-            results.append(generate_openai_image(prompt["prompt"], config, output_path))
+            result = generate_openai_image(prompt["prompt"], config, output_path)
+            result["route"] = result.get("route") or "openai_images_generations"
+        result["card_index"] = prompt.get("card_index")
+        results.append(result)
     generation["results"] = results
     return generation
 

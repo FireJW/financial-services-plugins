@@ -230,6 +230,56 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertIn(b'filename="product-shot.png"', body)
         self.assertTrue(body.endswith(b"--TESTBOUNDARY--\r\n"))
 
+    def test_maybe_generate_images_routes_reference_images_to_edit_api(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            generation = {
+                "mode": "openai",
+                "prompts": [
+                    {
+                        "card_index": 1,
+                        "prompt": "Create card",
+                        "reference_images": [{"path": "D:/source/product.png", "role": "source_material"}],
+                    }
+                ],
+            }
+
+            with patch.object(
+                module_under_test,
+                "generate_openai_image_edit",
+                return_value={"status": "edited", "path": "card-01.png"},
+            ) as edit_mock, patch.object(module_under_test, "generate_openai_image") as generate_mock:
+                result = module_under_test.maybe_generate_images(pathlib.Path(temp_dir), generation, {"mode": "openai"})
+
+        self.assertEqual(result["results"][0]["status"], "edited")
+        self.assertEqual(result["results"][0]["route"], "openai_images_edits")
+        edit_mock.assert_called_once()
+        generate_mock.assert_not_called()
+
+    def test_maybe_generate_images_routes_text_only_cards_to_generation_api(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            generation = {
+                "mode": "openai",
+                "prompts": [
+                    {
+                        "card_index": 1,
+                        "prompt": "Create card",
+                        "reference_images": [],
+                    }
+                ],
+            }
+
+            with patch.object(
+                module_under_test,
+                "generate_openai_image",
+                return_value={"status": "generated", "path": "card-01.png"},
+            ) as generate_mock, patch.object(module_under_test, "generate_openai_image_edit") as edit_mock:
+                result = module_under_test.maybe_generate_images(pathlib.Path(temp_dir), generation, {"mode": "openai"})
+
+        self.assertEqual(result["results"][0]["status"], "generated")
+        self.assertEqual(result["results"][0]["route"], "openai_images_generations")
+        generate_mock.assert_called_once()
+        edit_mock.assert_not_called()
+
     def test_build_readiness_report_blocks_openai_without_api_key_and_missing_reference_image(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             missing_image = pathlib.Path(temp_dir) / "missing.png"
