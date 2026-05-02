@@ -236,6 +236,20 @@ def check_xiaohongshu_skills_cli(skills_dir: Path) -> dict[str, Any]:
     return {"status": "ready", "cli_path": str(cli_path), "message": ""}
 
 
+def build_bridge_preflight_command(bridge_url: str) -> list[str]:
+    code = (
+        "import json,sys;"
+        "sys.path.insert(0,'scripts');"
+        "from xhs.bridge import BridgePage;"
+        f"page=BridgePage({json.dumps(bridge_url)});"
+        "print(json.dumps({"
+        "'server_running': page.is_server_running(), "
+        "'extension_connected': page.is_extension_connected()"
+        "}))"
+    )
+    return ["python", "-c", code]
+
+
 def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = None) -> dict[str, Any]:
     collector = dict(request.get("collector") or {})
     collector_type = str(collector.get("type") or "").strip()
@@ -256,6 +270,7 @@ def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = N
     sort_by = str(collector.get("sort_by") or "最多点赞")
     note_type = str(collector.get("note_type") or "图文")
     limit = int(collector.get("limit") or 20)
+    bridge_url = str(collector.get("bridge_url") or "ws://localhost:9333")
     if cli_check["status"] != "ready":
         return {
             "status": cli_check["status"],
@@ -295,6 +310,8 @@ def build_collector_plan(request: dict[str, Any], env: dict[str, str] | None = N
         "skills_dir_source": skills_dir_source,
         "cli_path": cli_check["cli_path"],
         "requested_limit": limit,
+        "bridge_url": bridge_url,
+        "bridge_preflight_command": build_bridge_preflight_command(bridge_url),
         "output_next_step": "Save the JSON result and pass it back with --benchmark-file.",
     }
 
@@ -341,6 +358,7 @@ def build_publish_preview_plan(
     content_file.write_text((caption + "\n" + hashtags).strip() + "\n", encoding="utf-8")
 
     skills_dir, skills_dir_source = resolve_xiaohongshu_skills_dir(publish, env=env)
+    bridge_url = str(publish.get("bridge_url") or "ws://localhost:9333")
     cli_check = check_xiaohongshu_skills_cli(skills_dir)
     if cli_check["status"] != "ready":
         return {
@@ -372,6 +390,8 @@ def build_publish_preview_plan(
         "click_publish": False,
         "skills_dir_source": skills_dir_source,
         "cli_path": cli_check["cli_path"],
+        "bridge_url": bridge_url,
+        "bridge_preflight_command": build_bridge_preflight_command(bridge_url),
         "image_count": len(image_paths),
         "title_file": str(title_file),
         "content_file": str(content_file),
@@ -392,6 +412,7 @@ def build_performance_collection_plan(request: dict[str, Any], env: dict[str, st
             "message": "Only xiaohongshu-skills performance collection plans are supported.",
         }
     skills_dir, skills_dir_source = resolve_xiaohongshu_skills_dir(collection, env=env)
+    bridge_url = str(collection.get("bridge_url") or "ws://localhost:9333")
     cli_check = check_xiaohongshu_skills_cli(skills_dir)
     feed_id = str(collection.get("feed_id") or "").strip()
     xsec_token = str(collection.get("xsec_token") or "").strip()
@@ -421,6 +442,8 @@ def build_performance_collection_plan(request: dict[str, Any], env: dict[str, st
         "command": command,
         "skills_dir_source": skills_dir_source,
         "cli_path": cli_check["cli_path"],
+        "bridge_url": bridge_url,
+        "bridge_preflight_command": build_bridge_preflight_command(bridge_url),
         "output_next_step": "Save the JSON result and pass it back as performance_file.",
     }
 
@@ -455,6 +478,15 @@ def run_collector_plan(
             "status": "skipped",
             "reason": f"collector plan is {plan.get('status')}",
             "source": plan.get("source", ""),
+            "output_path": str(output_path),
+        }
+    bridge_preflight = run_bridge_preflight_plan(plan, runner=runner)
+    if bridge_preflight.get("status") not in ("not_configured", "ready"):
+        return {
+            "status": bridge_preflight["status"],
+            "source": plan.get("source", ""),
+            "reason": bridge_preflight.get("message", ""),
+            "bridge_preflight": bridge_preflight,
             "output_path": str(output_path),
         }
     completed = runner(
@@ -501,6 +533,66 @@ def run_collector_plan(
         "source": plan.get("source", ""),
         "count": count,
         "output_path": str(output_path),
+        "bridge_preflight": bridge_preflight,
+    }
+
+
+def run_bridge_preflight_plan(
+    plan: dict[str, Any],
+    runner: Any = subprocess.run,
+    timeout_seconds: int = 20,
+) -> dict[str, Any]:
+    command = [str(item) for item in plan.get("bridge_preflight_command") or []]
+    if not command:
+        return {"status": "not_configured"}
+    completed = runner(
+        command,
+        cwd=str(plan.get("cwd") or "."),
+        timeout=timeout_seconds,
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if completed.returncode != 0:
+        return {
+            "status": "bridge_preflight_failed",
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "message": "bridge preflight command failed",
+        }
+    try:
+        payload = json.loads(completed.stdout or "{}")
+    except json.JSONDecodeError:
+        return {
+            "status": "bridge_preflight_failed",
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "message": "bridge preflight did not return JSON",
+        }
+    server_running = bool(payload.get("server_running"))
+    extension_connected = bool(payload.get("extension_connected"))
+    if not server_running:
+        return {
+            "status": "bridge_server_not_running",
+            "server_running": False,
+            "extension_connected": False,
+            "message": "XHS Bridge server is not running; start bridge_server.py before running the collector.",
+        }
+    if not extension_connected:
+        return {
+            "status": "bridge_not_connected",
+            "server_running": True,
+            "extension_connected": False,
+            "message": "XHS Bridge extension is not connected; reload the Edge extension and retry.",
+        }
+    return {
+        "status": "ready",
+        "server_running": True,
+        "extension_connected": True,
+        "message": "",
     }
 
 
@@ -531,6 +623,15 @@ def run_publish_preview_plan(
             "source": plan.get("source", ""),
             "click_publish": False,
         }
+    bridge_preflight = run_bridge_preflight_plan(plan, runner=runner)
+    if bridge_preflight.get("status") not in ("not_configured", "ready"):
+        return {
+            "status": bridge_preflight["status"],
+            "reason": bridge_preflight.get("message", ""),
+            "source": plan.get("source", ""),
+            "bridge_preflight": bridge_preflight,
+            "click_publish": False,
+        }
     completed = runner(
         command,
         cwd=str(plan.get("cwd") or "."),
@@ -556,6 +657,7 @@ def run_publish_preview_plan(
         "returncode": completed.returncode,
         "stdout": completed.stdout,
         "stderr": completed.stderr,
+        "bridge_preflight": bridge_preflight,
         "click_publish": False,
     }
 

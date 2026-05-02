@@ -341,6 +341,32 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             self.assertEqual(result["count"], 1)
             self.assertEqual(json.loads(output_path.read_text(encoding="utf-8"))["feeds"][0]["title"], "3 signals")
 
+    def test_run_collector_plan_blocks_when_bridge_preflight_is_not_connected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = pathlib.Path(temp_dir) / "benchmarks.json"
+            plan = {
+                "status": "ready",
+                "source": "xiaohongshu-skills.search-feeds",
+                "cwd": temp_dir,
+                "command": ["python", "scripts/cli.py", "search-feeds", "--keyword", "AI capex"],
+                "bridge_preflight_command": ["python", "-c", "print('bridge')"],
+            }
+            calls = []
+
+            def fake_runner(command, cwd, timeout, capture_output, text, check, encoding, errors):
+                calls.append(command)
+                return types.SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({"server_running": True, "extension_connected": False}),
+                    stderr="",
+                )
+
+            result = module_under_test.run_collector_plan(plan, output_path, runner=fake_runner, timeout_seconds=120)
+
+        self.assertEqual(result["status"], "bridge_not_connected")
+        self.assertEqual(calls, [plan["bridge_preflight_command"]])
+        self.assertFalse(output_path.exists())
+
     def test_run_publish_preview_plan_executes_fill_publish_only(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             plan = {
@@ -367,6 +393,32 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "filled_preview")
         self.assertEqual(result["source"], "xiaohongshu-skills.fill-publish")
+        self.assertFalse(result["click_publish"])
+
+    def test_run_publish_preview_plan_blocks_when_bridge_preflight_is_not_connected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan = {
+                "status": "ready_preview",
+                "source": "xiaohongshu-skills.fill-publish",
+                "cwd": temp_dir,
+                "command": ["python", "scripts/cli.py", "fill-publish", "--title-file", "title.txt"],
+                "bridge_preflight_command": ["python", "-c", "print('bridge')"],
+                "click_publish": False,
+            }
+            calls = []
+
+            def fake_runner(command, cwd, timeout, capture_output, text, check, encoding, errors):
+                calls.append(command)
+                return types.SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({"server_running": True, "extension_connected": False}),
+                    stderr="",
+                )
+
+            result = module_under_test.run_publish_preview_plan(plan, runner=fake_runner, timeout_seconds=90)
+
+        self.assertEqual(result["status"], "bridge_not_connected")
+        self.assertEqual(calls, [plan["bridge_preflight_command"]])
         self.assertFalse(result["click_publish"])
 
     def test_run_publish_preview_plan_refuses_click_publish_command(self) -> None:
@@ -402,6 +454,12 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             def fake_runner(command, cwd, timeout, capture_output, text, check, encoding, errors):
                 self.assertEqual(encoding, "utf-8")
                 self.assertEqual(errors, "replace")
+                if command == module_under_test.build_collector_plan(request)["bridge_preflight_command"]:
+                    return types.SimpleNamespace(
+                        returncode=0,
+                        stdout=json.dumps({"server_running": True, "extension_connected": True}),
+                        stderr="",
+                    )
                 return types.SimpleNamespace(
                     returncode=0,
                     stdout=json.dumps({"feeds": [{"title": "3 signals", "like_count": 10}]}),
@@ -442,10 +500,16 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
 
             def fake_runner(command, cwd, timeout, capture_output, text, check, encoding, errors):
                 self.assertEqual(cwd, str(skills_dir.resolve()))
-                self.assertIn("fill-publish", command)
-                self.assertNotIn("click-publish", command)
                 self.assertEqual(encoding, "utf-8")
                 self.assertEqual(errors, "replace")
+                if "-c" in command:
+                    return types.SimpleNamespace(
+                        returncode=0,
+                        stdout=json.dumps({"server_running": True, "extension_connected": True}),
+                        stderr="",
+                    )
+                self.assertIn("fill-publish", command)
+                self.assertNotIn("click-publish", command)
                 return types.SimpleNamespace(returncode=0, stdout='{"status":"filled"}', stderr="")
 
             with patch.object(module_under_test, "maybe_generate_images", side_effect=fake_generate):

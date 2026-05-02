@@ -102,6 +102,12 @@ Related capability references:
 `scripts/cli.py` to exist before collector, publish-preview, or performance
 collection plans are treated as runnable.
 
+Before auto-running collector or publish-preview commands, this workflow sends a
+no-browser bridge preflight ping. If the bridge server or browser extension is
+not connected, it records `bridge_server_not_running` or `bridge_not_connected`
+and does not call the `xiaohongshu-skills` CLI. This prevents the upstream CLI
+from opening Chrome when the intended browser is Edge.
+
 When `collector.type=xiaohongshu-skills`, the generated package includes
 `collector_plan.json`. It contains the `python scripts/cli.py search-feeds ...`
 command to run from the referenced `xiaohongshu-skills` checkout. This workflow
