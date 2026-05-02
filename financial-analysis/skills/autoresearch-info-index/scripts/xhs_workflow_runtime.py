@@ -75,6 +75,41 @@ def normalize_benchmark(raw: dict[str, Any], index: int) -> dict[str, Any]:
     }
 
 
+def extract_benchmark_items(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ("benchmarks", "feeds", "items", "notes", "results"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    data = payload.get("data")
+    if isinstance(data, (dict, list)):
+        return extract_benchmark_items(data)
+    return []
+
+
+def load_benchmark_inputs(request: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    source = str(request.get("benchmark_source") or "inline")
+    benchmark_file = request.get("benchmark_file")
+    if benchmark_file:
+        path = Path(str(benchmark_file)).resolve()
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        items = extract_benchmark_items(payload)
+        return rank_benchmarks(items), {
+            "source": source,
+            "count": len(items),
+            "path": str(path),
+        }
+    items = extract_benchmark_items(request.get("benchmarks") or [])
+    return rank_benchmarks(items), {
+        "source": source,
+        "count": len(items),
+        "path": "",
+    }
+
+
 def rank_benchmarks(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized = [normalize_benchmark(item, index) for index, item in enumerate(items)]
     ranked = sorted(normalized, key=lambda item: item["engagement_score"], reverse=True)
@@ -336,7 +371,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
     for child in ["raw", "generation", "preview", "images"]:
         (package_dir / child).mkdir(parents=True, exist_ok=True)
 
-    benchmarks = rank_benchmarks(list(request.get("benchmarks") or []))
+    benchmarks, benchmark_import = load_benchmark_inputs(request)
     source_ledger = build_source_ledger(benchmarks)
     patterns = deconstruct_benchmarks(benchmarks)
     content_brief = build_content_brief(request)
@@ -348,7 +383,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
 
     write_json(package_dir / "request.json", request)
     write_json(package_dir / "source_ledger.json", {"sources": source_ledger})
-    write_json(package_dir / "benchmarks.json", {"benchmarks": benchmarks})
+    write_json(package_dir / "benchmarks.json", {"benchmarks": benchmarks, "import": benchmark_import})
     write_json(package_dir / "patterns.json", patterns)
     write_json(package_dir / "content_brief.json", content_brief)
     write_json(package_dir / "card_plan.json", card_plan)
@@ -365,6 +400,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
         "status": "ready_for_review",
         "package_dir": str(package_dir),
         "benchmark_count": len(benchmarks),
+        "benchmark_import": benchmark_import,
         "card_count": len(card_plan["cards"]),
         "image_generation_mode": generation["mode"],
         "qc_status": qc["status"],

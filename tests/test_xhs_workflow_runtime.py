@@ -84,6 +84,42 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(ranked[0]["title"], "High intent")
         self.assertGreater(ranked[0]["engagement_score"], ranked[1]["engagement_score"])
 
+    def test_load_benchmark_inputs_accepts_xiaohongshu_skills_search_output_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            benchmark_path = pathlib.Path(temp_dir) / "xhs-search.json"
+            benchmark_path.write_text(
+                json.dumps(
+                    {
+                        "feeds": [
+                            {
+                                "feed_id": "abc",
+                                "xsec_token": "token",
+                                "title": "3 signals from AI capex",
+                                "note_url": "https://www.xiaohongshu.com/explore/abc",
+                                "like_count": 200,
+                                "collect_count": 150,
+                                "comment_count": 20,
+                                "nickname": "operator",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            benchmarks, import_meta = module_under_test.load_benchmark_inputs(
+                {
+                    "benchmark_file": str(benchmark_path),
+                    "benchmark_source": "xiaohongshu-skills.search-feeds",
+                }
+            )
+
+        self.assertEqual(import_meta["source"], "xiaohongshu-skills.search-feeds")
+        self.assertEqual(import_meta["count"], 1)
+        self.assertEqual(benchmarks[0]["title"], "3 signals from AI capex")
+        self.assertEqual(benchmarks[0]["source"]["feed_id"], "abc")
+        self.assertEqual(benchmarks[0]["source"]["xsec_token"], "token")
+
     def test_deconstructs_benchmarks_into_reusable_patterns_without_copying_source_text(self) -> None:
         benchmarks = module_under_test.rank_benchmarks(
             [{"title": "3 signals to understand AI investment", "likes": 100, "collects": 50, "comments": 20}]
@@ -184,6 +220,57 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             self.assertEqual(exit_context.exception.code, 0)
             self.assertTrue(output_path.exists())
             self.assertEqual(json.loads(output_path.read_text(encoding="utf-8"))["status"], "ready_for_review")
+
+    def test_xhs_workflow_cli_accepts_benchmark_file_override(self) -> None:
+        cli_path = SCRIPT_DIR / "xhs_workflow.py"
+        cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_override_under_test", cli_path)
+        cli_module = importlib.util.module_from_spec(cli_spec)
+        assert cli_spec and cli_spec.loader
+        cli_spec.loader.exec_module(cli_module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "request.json"
+            output_path = temp_path / "result.json"
+            benchmark_path = temp_path / "benchmarks.json"
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "topic": "AI capex",
+                        "run_id": "20260502124000",
+                        "output_dir": str(temp_path / "out"),
+                        "image_generation": {"mode": "dry_run"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            benchmark_path.write_text(
+                json.dumps({"items": [{"title": "3 signals", "likes": 10, "collects": 3}]}),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "xhs_workflow.py",
+                    str(input_path),
+                    "--benchmark-file",
+                    str(benchmark_path),
+                    "--benchmark-source",
+                    "xiaohongshu-skills.search-feeds",
+                    "--output",
+                    str(output_path),
+                    "--quiet",
+                ],
+            ):
+                with self.assertRaises(SystemExit) as exit_context:
+                    cli_module.main()
+
+            result = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(exit_context.exception.code, 0)
+            self.assertEqual(result["benchmark_count"], 1)
+            self.assertEqual(result["benchmark_import"]["source"], "xiaohongshu-skills.search-feeds")
 
 
 if __name__ == "__main__":

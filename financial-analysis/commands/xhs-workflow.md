@@ -70,6 +70,17 @@ python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py
 Use `image_generation.mode=dry_run` first. It writes prompts and package
 metadata without making network calls.
 
+To import benchmark output from `xiaohongshu-skills` or another collector:
+
+```powershell
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --benchmark-file "<xhs-search-result.json>" --benchmark-source "xiaohongshu-skills.search-feeds" --output "<result.json>"
+```
+
+Accepted benchmark JSON shapes include arrays, `benchmarks`, `feeds`, `items`,
+`notes`, `results`, and nested `data` objects. The runtime normalizes common
+XHS metric fields such as `likes`, `like_count`, `collect_count`, and
+`comment_count`.
+
 Use `image_generation.mode=openai` only after the package plan is acceptable
 and `OPENAI_API_KEY` is configured. The model is configurable; do not hard-code
 third-party defaults when official OpenAI docs or account availability differ.

@@ -16,15 +16,26 @@ from xhs_workflow_runtime import load_json, run_xhs_workflow, write_json
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a local Xiaohongshu GPT Image workflow package.")
     parser.add_argument("input", help="Path to xhs workflow request JSON")
+    parser.add_argument("--benchmark-file", help="Optional imported benchmark JSON file")
+    parser.add_argument("--benchmark-source", help="Optional benchmark source label")
     parser.add_argument("--output", help="Optional path to save summary JSON")
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON")
     return parser.parse_args()
 
 
+def build_payload(args: argparse.Namespace) -> dict:
+    payload = load_json(Path(args.input).resolve())
+    if args.benchmark_file:
+        payload["benchmark_file"] = args.benchmark_file
+    if args.benchmark_source:
+        payload["benchmark_source"] = args.benchmark_source
+    return payload
+
+
 def main() -> None:
     args = parse_args()
     try:
-        result = run_xhs_workflow(load_json(Path(args.input).resolve()))
+        result = run_xhs_workflow(build_payload(args))
         if args.output:
             write_json(Path(args.output).resolve(), result)
         if not args.quiet:
