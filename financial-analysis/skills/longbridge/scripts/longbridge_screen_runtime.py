@@ -355,6 +355,11 @@ def compact_generic_payload(payload: Any, *, limit: int = 3) -> dict[str, Any]:
 
 def compact_detail_payload(payload: Any, *, item_id: str, title: str = "") -> dict[str, Any]:
     data = first_payload_dict(payload)
+    for nested_key in ("data", "detail", "item", "result", "payload"):
+        nested = data.get(nested_key) if isinstance(data, dict) else None
+        if isinstance(nested, dict):
+            data = nested
+            break
     if not data and clean_text(payload):
         text = clean_text(payload)
         return {
@@ -369,6 +374,11 @@ def compact_detail_payload(payload: Any, *, item_id: str, title: str = "") -> di
         or data.get("text")
         or data.get("body")
         or data.get("html")
+        or data.get("pdf_text")
+        or data.get("plain_text")
+        or data.get("raw_text")
+        or data.get("description")
+        or data.get("summary")
     )
     return {
         "id": clean_text(data.get("id")) or item_id,
@@ -525,8 +535,9 @@ def fetch_financial_event_analysis(
         filing_items=filing_items,
     )
     coverage = raw_event_depth.get("data_coverage") if isinstance(raw_event_depth.get("data_coverage"), dict) else {}
+    financial_reports = raw_event_depth.get("financial_report") if isinstance(raw_event_depth.get("financial_report"), dict) else {}
     return {
-        "financial_reports": raw_event_depth.get("financial_report") if isinstance(raw_event_depth.get("financial_report"), dict) else {},
+        "financial_reports": enrich_financial_reports(financial_reports) if financial_reports else {},
         "finance_calendar": raw_event_depth.get("finance_calendar") if isinstance(raw_event_depth.get("finance_calendar"), list) else [],
         "dividends": {
             "history": raw_event_depth.get("dividends") if isinstance(raw_event_depth.get("dividends"), list) else [],
@@ -1773,6 +1784,16 @@ def summarize_text_items(items: list[dict[str, Any]], *, fallback: str, limit: i
     return "; ".join(fragments) if fragments else fallback
 
 
+def markdown_summary(value: Any, *, limit: int = 320) -> str:
+    text = clean_text(value)
+    if len(text) <= limit:
+        return text
+    clipped = text[:limit].rstrip()
+    if " " in clipped:
+        clipped = clipped.rsplit(" ", 1)[0].rstrip()
+    return clipped.rstrip(" ,;:") + "..."
+
+
 def candidate_catalyst_items(candidate: dict[str, Any], key: str) -> list[dict[str, Any]]:
     analysis = candidate.get("longbridge_analysis") if isinstance(candidate.get("longbridge_analysis"), dict) else {}
     catalysts = analysis.get("catalysts") if isinstance(analysis.get("catalysts"), dict) else {}
@@ -1799,18 +1820,60 @@ def first_report(candidate: dict[str, Any]) -> dict[str, Any]:
     return rows[0] if rows else reports
 
 
+def comparable_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", clean_text(value).lower())
+
+
 def numeric_field(payload: dict[str, Any], *keys: str) -> float:
+    comparable_payload = {
+        comparable_key(key): value
+        for key, value in payload.items()
+        if isinstance(key, str)
+    }
     for key in keys:
-        if key in payload:
-            value = first_number(payload.get(key))
+        value = payload.get(key)
+        if value is None:
+            value = comparable_payload.get(comparable_key(key))
+        if value is not None:
+            value = first_number(value)
             if not math.isnan(value):
                 return value
     return float("nan")
 
 
+def normalized_financial_metrics(report: dict[str, Any]) -> dict[str, Any]:
+    aliases = {
+        "revenue": ("revenue", "total_revenue", "operating_revenue", "totalRevenue", "operatingRevenue"),
+        "net_income": ("net_income", "profit", "net_profit", "netProfit"),
+        "net_income_yoy": ("net_income_yoy", "profit_yoy", "net_profit_yoy", "netProfitYoy"),
+        "operating_cash_flow": (
+            "operating_cash_flow",
+            "net_operating_cash_flow",
+            "cash_flow_from_operations",
+            "operating_net_cash_flow",
+            "net_cash_flow_from_operating_activities",
+            "netCashFlowFromOperatingActivities",
+        ),
+        "eps": ("eps", "basic_eps", "diluted_eps", "basicEPS", "dilutedEPS"),
+    }
+    metrics: dict[str, Any] = {}
+    for metric_name, metric_aliases in aliases.items():
+        value = numeric_field(report, *metric_aliases)
+        metrics[metric_name] = None if math.isnan(value) else value
+    return metrics
+
+
+def enrich_financial_reports(payload: dict[str, Any]) -> dict[str, Any]:
+    enriched = deepcopy(payload)
+    rows = list_payload(enriched, "reports")
+    source = rows[0] if rows else enriched
+    enriched["normalized_metrics"] = normalized_financial_metrics(source)
+    return enriched
+
+
 def has_profit_cashflow_divergence(candidate: dict[str, Any]) -> bool:
     report = first_report(candidate)
-    net_income = numeric_field(report, "net_income", "profit", "net_profit")
+    net_income = numeric_field(report, "net_income", "profit", "net_profit", "netProfit")
     net_income_yoy = numeric_field(report, "net_income_yoy", "profit_yoy", "net_profit_yoy")
     operating_cash_flow = numeric_field(
         report,
@@ -1818,6 +1881,7 @@ def has_profit_cashflow_divergence(candidate: dict[str, Any]) -> bool:
         "net_operating_cash_flow",
         "cash_flow_from_operations",
         "operating_net_cash_flow",
+        "net_cash_flow_from_operating_activities",
     )
     profit_positive = (not math.isnan(net_income) and net_income > 0) or (not math.isnan(net_income_yoy) and net_income_yoy > 0)
     return profit_positive and not math.isnan(operating_cash_flow) and operating_cash_flow <= 0
@@ -1833,6 +1897,7 @@ def needs_profit_cashflow_followup(candidate: dict[str, Any]) -> bool:
         "net_operating_cash_flow",
         "cash_flow_from_operations",
         "operating_net_cash_flow",
+        "net_cash_flow_from_operating_activities",
     )
     if not math.isnan(operating_cash_flow):
         return False
@@ -1932,16 +1997,17 @@ def build_qualitative_evaluation(candidate: dict[str, Any]) -> dict[str, Any]:
     forecast = valuation_layer.get("forecast_eps") if isinstance(valuation_layer.get("forecast_eps"), dict) else {}
     consensus = valuation_layer.get("consensus") if isinstance(valuation_layer.get("consensus"), dict) else {}
 
-    net_income = numeric_field(report, "net_income", "profit", "net_profit")
+    net_income = numeric_field(report, "net_income", "profit", "net_profit", "netProfit")
     operating_cash_flow = numeric_field(
         report,
         "operating_cash_flow",
         "net_operating_cash_flow",
         "cash_flow_from_operations",
         "operating_net_cash_flow",
+        "net_cash_flow_from_operating_activities",
     )
-    eps = numeric_field(report, "eps", "basic_eps", "diluted_eps")
-    revenue = numeric_field(report, "revenue", "total_revenue", "operating_revenue")
+    eps = numeric_field(report, "eps", "basic_eps", "diluted_eps", "basicEPS", "dilutedEPS")
+    revenue = numeric_field(report, "revenue", "total_revenue", "operating_revenue", "totalRevenue", "operatingRevenue")
     pe = to_float(valuation.get("pe"))
     industry_median = to_float(valuation.get("industry_median"))
     target_price = to_float(rating.get("target_price"))
@@ -2301,14 +2367,14 @@ def build_markdown_report(result: dict[str, Any]) -> str:
                 f"- watchlist_bucket: `{clean_text((item.get('tracking_plan') or {}).get('suggested_watchlist_bucket'))}`",
                 f"- longbridge_coverage: `{json.dumps((item.get('longbridge_analysis') or {}).get('data_coverage') or {}, ensure_ascii=False, sort_keys=True)}`",
                 "### Qualitative Evaluation",
-                f"- verdict: {clean_text(qualitative.get('qualitative_verdict'))}",
-                f"- catalyst: {clean_text(qualitative.get('catalyst_summary'))}",
-                f"- financial_report: {clean_text(qualitative.get('financial_report_summary'))}",
-                f"- cashflow_quality: {clean_text(qualitative.get('cashflow_quality'))}",
-                f"- valuation: {clean_text(qualitative.get('valuation_assessment'))}",
-                f"- rating_target_price: {clean_text(qualitative.get('rating_target_price_assessment'))}",
-                f"- filing_event: {clean_text(qualitative.get('filing_event_summary'))}",
-                f"- research_or_topic: {clean_text(qualitative.get('research_or_topic_quality'))}",
+                f"- verdict: {markdown_summary(qualitative.get('qualitative_verdict'))}",
+                f"- catalyst: {markdown_summary(qualitative.get('catalyst_summary'))}",
+                f"- financial_report: {markdown_summary(qualitative.get('financial_report_summary'))}",
+                f"- cashflow_quality: {markdown_summary(qualitative.get('cashflow_quality'))}",
+                f"- valuation: {markdown_summary(qualitative.get('valuation_assessment'))}",
+                f"- rating_target_price: {markdown_summary(qualitative.get('rating_target_price_assessment'))}",
+                f"- filing_event: {markdown_summary(qualitative.get('filing_event_summary'))}",
+                f"- research_or_topic: {markdown_summary(qualitative.get('research_or_topic_quality'))}",
                 f"- key_risks: `{json.dumps(qualitative.get('key_risks') or [], ensure_ascii=False)}`",
                 "",
             ]

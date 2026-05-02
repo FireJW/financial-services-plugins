@@ -19,6 +19,8 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from longbridge_screen_runtime import build_markdown_report, load_json, normalize_analysis_layers, run_longbridge_screen
+from longbridge_screen_runtime import build_missed_attention_priorities, build_qualitative_evaluation, compact_detail_payload
+from longbridge_screen_runtime import has_valuation_target_conflict
 from longbridge_screen_runtime import score_catalysts
 
 
@@ -655,6 +657,138 @@ class LongbridgeScreenRuntimeTests(unittest.TestCase):
         self.assertIn("Missed Attention Priorities", report)
         self.assertIn("Dry-run Action Plan", report)
 
+    def test_detail_payload_preserves_nested_plain_text_content(self) -> None:
+        detail = compact_detail_payload(
+            {
+                "data": {
+                    "title": "Annual report PDF",
+                    "pdf_text": "Net profit rose but operating cash flow weakened in the filing detail.",
+                    "url": "https://example.test/filing.pdf",
+                }
+            },
+            item_id="f-pdf",
+            title="Fallback title",
+        )
+
+        self.assertEqual(detail["id"], "f-pdf")
+        self.assertEqual(detail["title"], "Annual report PDF")
+        self.assertIn("operating cash flow weakened", detail["content_preview"])
+        self.assertGreater(detail["content_length"], 20)
+        self.assertEqual(detail["url"], "https://example.test/filing.pdf")
+
+    def test_markdown_report_clips_long_qualitative_fields(self) -> None:
+        long_topic = "community topic evidence " * 80
+        report = build_markdown_report(
+            {
+                "analysis_date": "2026-05-02",
+                "summary": {"winner": "000988.SZ"},
+                "ranked_candidates": [
+                    {
+                        "symbol": "000988.SZ",
+                        "screen_score": 52.4,
+                        "technical_score": 32.8,
+                        "catalyst_score": 8.6,
+                        "valuation_score": 11.0,
+                        "signal": "watch_reclaim",
+                        "last_close": 119.53,
+                        "trigger_price": 125.21,
+                        "stop_loss": 112.56,
+                        "abandon_below": 112.55,
+                        "ret5": 1.6,
+                        "ret20": 14.12,
+                        "volume_ratio_20": 1.01,
+                        "tracking_plan": {"suggested_watchlist_bucket": "reclaim_watch"},
+                        "longbridge_analysis": {"data_coverage": {}},
+                        "qualitative_evaluation": {
+                            "qualitative_verdict": "constructive",
+                            "catalyst_summary": "news catalyst",
+                            "financial_report_summary": "report snapshot",
+                            "cashflow_quality": "cash-flow unverified",
+                            "valuation_assessment": "PE above industry median",
+                            "rating_target_price_assessment": "target below spot",
+                            "filing_event_summary": "abnormal-volatility filing",
+                            "research_or_topic_quality": long_topic,
+                            "key_risks": ["valuation/target-price conflict"],
+                        },
+                    }
+                ],
+            }
+        )
+
+        research_line = next(line for line in report.splitlines() if line.startswith("- research_or_topic:"))
+        self.assertLess(len(research_line), 380)
+        self.assertTrue(research_line.endswith("..."))
+
+    def test_financial_report_normalized_metrics_drive_cashflow_priority(self) -> None:
+        candidate = {
+            "symbol": "002565.SZ",
+            "screen_score": 34.0,
+            "longbridge_analysis": {
+                "catalysts": {
+                    "news": [
+                        {"title": "Net profit increased 49.94% year over year"},
+                    ],
+                    "topics": [],
+                    "filings": [],
+                },
+                "valuation": {},
+            },
+            "financial_event_analysis": {
+                "financial_reports": {
+                    "reports": [
+                        {
+                            "period": "2026Q1",
+                            "netProfit": "19983300",
+                            "netProfitYoy": "49.94",
+                            "netCashFlowFromOperatingActivities": "-12000000",
+                            "basicEPS": "0.04",
+                        }
+                    ]
+                },
+                "data_coverage": {},
+                "should_apply": False,
+                "side_effects": "none",
+            },
+        }
+
+        qualitative = build_qualitative_evaluation(candidate)
+        priorities = build_missed_attention_priorities([candidate], analysis_date="2026-05-02")
+
+        self.assertIn("net_income=19983300.0", qualitative["financial_report_summary"])
+        self.assertIn("not cash-flow confirmed", qualitative["cashflow_quality"])
+        self.assertIn("profit/cash-flow divergence", qualitative["key_risks"])
+        self.assertEqual(priorities[0]["issue"], "profit_cashflow_divergence")
+
+    def test_valuation_target_conflict_only_flags_target_below_or_expensive_optimism(self) -> None:
+        below_spot = {
+            "longbridge_analysis": {
+                "valuation": {
+                    "valuation": {"pe": 20.0, "industry_median": 30.0, "valuation_percentile": 0.3},
+                    "rating": {"target_upside_pct": -5.0},
+                }
+            }
+        }
+        expensive_optimism = {
+            "longbridge_analysis": {
+                "valuation": {
+                    "valuation": {"pe": 75.0, "industry_median": 30.0, "valuation_percentile": 0.9},
+                    "rating": {"target_upside_pct": 35.0},
+                }
+            }
+        }
+        fair_positive = {
+            "longbridge_analysis": {
+                "valuation": {
+                    "valuation": {"pe": 22.0, "industry_median": 30.0, "valuation_percentile": 0.4},
+                    "rating": {"target_upside_pct": 18.0},
+                }
+            }
+        }
+
+        self.assertTrue(has_valuation_target_conflict(below_spot))
+        self.assertTrue(has_valuation_target_conflict(expensive_optimism))
+        self.assertFalse(has_valuation_target_conflict(fair_positive))
+
     def test_run_longbridge_screen_emits_read_only_watchlist_and_alert_suggestions(self) -> None:
         result = run_longbridge_screen(
             {
@@ -802,6 +936,8 @@ class LongbridgeScreenRuntimeTests(unittest.TestCase):
         self.assertTrue(financial_event["data_coverage"]["news_details_available"])
         self.assertTrue(financial_event["data_coverage"]["filing_details_available"])
         self.assertEqual(financial_event["financial_reports"]["symbol"], "600111.SH")
+        self.assertEqual(financial_event["financial_reports"]["normalized_metrics"]["net_income"], 180000000.0)
+        self.assertEqual(financial_event["financial_reports"]["normalized_metrics"]["operating_cash_flow"], -42000000.0)
         self.assertEqual(financial_event["news_details"][0]["id"], "n1")
         self.assertEqual(financial_event["filing_details"][0]["id"], "f1")
 
