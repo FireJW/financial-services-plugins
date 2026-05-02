@@ -53,6 +53,14 @@ Related capability references:
       "posted_at": "2026-05-01"
     }
   ],
+  "collector": {
+    "type": "xiaohongshu-skills",
+    "skills_dir": "D:/path/to/xiaohongshu-skills",
+    "keyword": "AI capex",
+    "sort_by": "最多点赞",
+    "note_type": "图文",
+    "limit": 20
+  },
   "image_generation": {
     "mode": "dry_run",
     "model": "gpt-image-2",
@@ -67,6 +75,12 @@ Related capability references:
   }
 }
 ```
+
+When `collector.type=xiaohongshu-skills`, the generated package includes
+`collector_plan.json`. It contains the `python scripts/cli.py search-feeds ...`
+command to run from the referenced `xiaohongshu-skills` checkout. This workflow
+does not run that command automatically because it may depend on browser login
+state and platform risk controls.
 
 ## Local Helper
 

@@ -185,6 +185,48 @@ def build_source_ledger(benchmarks: list[dict[str, Any]]) -> list[dict[str, Any]
     ]
 
 
+def build_collector_plan(request: dict[str, Any]) -> dict[str, Any]:
+    collector = dict(request.get("collector") or {})
+    collector_type = str(collector.get("type") or "").strip()
+    if not collector_type:
+        return {"status": "not_configured", "source": "", "command": [], "cwd": ""}
+    if collector_type != "xiaohongshu-skills":
+        return {
+            "status": "unsupported",
+            "source": collector_type,
+            "command": [],
+            "cwd": "",
+            "message": "Only xiaohongshu-skills collector plans are supported in this workflow.",
+        }
+
+    skills_dir_text = str(collector.get("skills_dir") or "").strip()
+    skills_dir = Path(skills_dir_text).resolve() if skills_dir_text else Path(".").resolve()
+    keyword = str(collector.get("keyword") or request.get("topic") or "").strip()
+    sort_by = str(collector.get("sort_by") or "最多点赞")
+    note_type = str(collector.get("note_type") or "图文")
+    limit = int(collector.get("limit") or 20)
+    command = [
+        "python",
+        "scripts/cli.py",
+        "search-feeds",
+        "--keyword",
+        keyword,
+        "--sort-by",
+        sort_by,
+        "--note-type",
+        note_type,
+        "--limit",
+        str(limit),
+    ]
+    return {
+        "status": "ready" if skills_dir.exists() and keyword else "needs_configuration",
+        "source": "xiaohongshu-skills.search-feeds",
+        "cwd": str(skills_dir),
+        "command": command,
+        "output_next_step": "Save the JSON result and pass it back with --benchmark-file.",
+    }
+
+
 def classify_title_formula(title: str) -> str:
     if re.search(r"\d+\s*(signals?|points?|steps?|things?|rules?)", title, flags=re.IGNORECASE):
         return "numbered_signal"
@@ -547,6 +589,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
     benchmarks, benchmark_import = load_benchmark_inputs(request)
     source_ledger = build_source_ledger(benchmarks)
     patterns = deconstruct_benchmarks(benchmarks)
+    collector_plan = build_collector_plan(request)
     content_brief = build_content_brief(request)
     card_plan = build_card_plan(request, patterns)
     image_config = dict(request.get("image_generation") or {})
@@ -557,6 +600,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
     write_json(package_dir / "request.json", request)
     write_json(package_dir / "source_ledger.json", {"sources": source_ledger})
     write_json(package_dir / "benchmarks.json", {"benchmarks": benchmarks, "import": benchmark_import})
+    write_json(package_dir / "collector_plan.json", collector_plan)
     write_json(package_dir / "patterns.json", patterns)
     write_json(package_dir / "content_brief.json", content_brief)
     write_json(package_dir / "card_plan.json", card_plan)
@@ -574,6 +618,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
         "package_dir": str(package_dir),
         "benchmark_count": len(benchmarks),
         "benchmark_import": benchmark_import,
+        "collector_plan": collector_plan,
         "card_count": len(card_plan["cards"]),
         "image_generation_mode": generation["mode"],
         "qc_status": qc["status"],

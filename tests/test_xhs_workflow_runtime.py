@@ -120,6 +120,37 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(benchmarks[0]["source"]["feed_id"], "abc")
         self.assertEqual(benchmarks[0]["source"]["xsec_token"], "token")
 
+    def test_build_collector_plan_creates_xiaohongshu_skills_search_command(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            skills_dir = pathlib.Path(temp_dir) / "xiaohongshu-skills"
+            skills_dir.mkdir()
+            request = {
+                "topic": "AI capex",
+                "collector": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "keyword": "AI capex",
+                    "sort_by": "最多点赞",
+                    "note_type": "图文",
+                    "limit": 20,
+                },
+            }
+
+            plan = module_under_test.build_collector_plan(request)
+
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual(plan["source"], "xiaohongshu-skills.search-feeds")
+        self.assertEqual(plan["cwd"], str(skills_dir.resolve()))
+        self.assertEqual(plan["command"][:3], ["python", "scripts/cli.py", "search-feeds"])
+        self.assertIn("--keyword", plan["command"])
+        self.assertIn("AI capex", plan["command"])
+        self.assertIn("--sort-by", plan["command"])
+        self.assertIn("最多点赞", plan["command"])
+        self.assertIn("--note-type", plan["command"])
+        self.assertIn("图文", plan["command"])
+        self.assertIn("--limit", plan["command"])
+        self.assertIn("20", plan["command"])
+
     def test_deconstructs_benchmarks_into_reusable_patterns_without_copying_source_text(self) -> None:
         benchmarks = module_under_test.rank_benchmarks(
             [{"title": "3 signals to understand AI investment", "likes": 100, "collects": 50, "comments": 20}]
