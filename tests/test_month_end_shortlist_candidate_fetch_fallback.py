@@ -18,6 +18,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import month_end_shortlist_runtime as module_under_test
+import tradingagents_decision_bridge_runtime as bridge_runtime
 
 
 class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
@@ -234,6 +235,25 @@ class MonthEndShortlistCandidateFetchFallbackTests(unittest.TestCase):
         self.assertEqual(result["bars_source"], "eastmoney_cache")
         self.assertEqual(result["bars_row_count"], 2)
         self.assertEqual(result["execution_state"], "fresh_cache")
+
+    def test_local_market_snapshot_accepts_longbridge_profile(self) -> None:
+        with patch.object(bridge_runtime, "smart_free_profile_name", return_value="longbridge_market"):
+            with patch.object(
+                bridge_runtime,
+                "summarize_local_market_snapshot",
+                return_value={
+                    "latest_close": 284.9,
+                    "latest_pct_chg": 4.99,
+                    "sma20": 270.0,
+                    "sma50": 255.0,
+                    "rsi14": 62.0,
+                    "volume_ratio": 1.35,
+                },
+            ):
+                snapshot = module_under_test.local_market_snapshot_for_candidate("AAPL.US", "2026-05-01")
+
+        self.assertEqual(snapshot["profile_name"], "longbridge_market")
+        self.assertEqual(snapshot["close"], 284.9)
 
 
 if __name__ == "__main__":

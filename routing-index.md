@@ -16,6 +16,34 @@ following native routes fits the task.
   - Primary path: `financial-analysis/commands/news-index.md`
   - Fallback rule: use web search only if native retrieval cannot cover the
     required source set
+- Live market quotes, portfolio/account data, or Longbridge-backed stock analysis
+  - Primary path: `financial-analysis/commands/longbridge.md`
+  - Skill path: `financial-analysis/skills/longbridge/SKILL.md`
+  - Fallback rule: if Longbridge historical bars are blocked, keep Longbridge
+    quote/intraday evidence and fall back to Eastmoney or Tushare for longer
+    history
+- Watchlist re-ranking, trigger/stop generation, or second-pass screening with
+  Longbridge
+  - Primary path: `financial-analysis/commands/longbridge-screen.md`
+  - Fallback rule: keep Longbridge for quote/intraday confirmation and only use
+    Eastmoney or Tushare to backfill longer history when needed
+- Intraday plan trigger, invalidation, market-open, capital-flow, anomaly, or
+  trade-stat monitoring after levels already exist
+  - Primary path: `financial-analysis/commands/longbridge-intraday-monitor.md`
+  - Fallback rule: do not place trades; if an endpoint is unavailable, report
+    it under `unavailable` and preserve the remaining read-only evidence
+- US insider-trade, institutional-investor, short-position, or quant-indicator
+  enrichment for a supplied Longbridge watchlist
+  - Primary path: `financial-analysis/commands/longbridge-screen.md`
+  - Layer hints: `analysis_layers=["ownership_risk"]`,
+    `analysis_layers=["quant"]`, or `analysis_layers=["all"]`
+- Convert Longbridge screen watchlist or alert suggestions into audited
+  account-side dry-run plans
+  - Primary path: `financial-analysis/commands/longbridge-action-gateway.md`
+  - Bridge helper:
+    `financial-analysis/skills/longbridge/scripts/longbridge_action_plan_bridge.py`
+  - Fallback rule: keep `longbridge-screen` read-only; never execute account
+    mutations from the screen command itself
 - X / Twitter threads, timestamps, screenshots, or reusable evidence packs
   - Primary path: `financial-analysis/commands/x-index.md`
   - Fallback rule: use public X scraping only after native signed-session paths

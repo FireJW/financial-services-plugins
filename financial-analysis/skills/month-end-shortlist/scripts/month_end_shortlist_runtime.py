@@ -2821,7 +2821,7 @@ def local_market_snapshot_for_candidate(ticker: str, analysis_date: str) -> dict
     if not normalized_ticker or not normalized_date:
         return None
     profile_name = smart_free_profile_name(normalized_ticker)
-    if profile_name not in {"free_eastmoney_market", "free_tushare_market"}:
+    if profile_name not in {"free_eastmoney_market", "free_tushare_market", "longbridge_market"}:
         return None
     try:
         snapshot = summarize_local_market_snapshot(

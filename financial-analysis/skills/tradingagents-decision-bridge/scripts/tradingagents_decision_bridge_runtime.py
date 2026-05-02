@@ -38,6 +38,12 @@ from tradingagents_eastmoney_market import (
     get_indicator as get_eastmoney_indicator,
     get_stock_data as get_eastmoney_stock_data,
 )
+from tradingagents_longbridge_market import (
+    fetch_daily_bars as fetch_longbridge_daily_bars,
+    get_indicator as get_longbridge_indicator,
+    get_stock_data as get_longbridge_stock_data,
+    longbridge_available,
+)
 from tradingagents_package_support import resolve_package_version
 from tradingagents_provider_config import resolve_provider_runtime, temporary_environment_overrides
 from tradingagents_sec_fundamentals import (
@@ -124,6 +130,21 @@ ANALYSIS_PROFILE_PRESETS = {
         "tool_vendors": {
             "get_stock_data": "eastmoney_market",
             "get_indicators": "eastmoney_market",
+        },
+        "max_debate_rounds": 0,
+        "max_risk_discuss_rounds": 0,
+        "alpha_vantage_min_interval_seconds": 0,
+    },
+    "longbridge_market": {
+        "selected_analysts": ["market"],
+        "deep_think_llm": "gpt-5.4-mini",
+        "data_vendors": {
+            "core_stock_apis": "longbridge_market",
+            "technical_indicators": "longbridge_market",
+        },
+        "tool_vendors": {
+            "get_stock_data": "longbridge_market",
+            "get_indicators": "longbridge_market",
         },
         "max_debate_rounds": 0,
         "max_risk_discuss_rounds": 0,
@@ -922,6 +943,8 @@ def fallback_profile_name(config: dict[str, Any], normalized_ticker: str) -> str
         return ""
     if normalize_string_mapping(config.get("data_vendors")) or normalize_string_mapping(config.get("tool_vendors")):
         return ""
+    if longbridge_available(env=os.environ):
+        return "longbridge_market"
     market = detect_market(normalized_ticker)
     if market == "US":
         return "free_sec_fundamentals"
@@ -933,6 +956,8 @@ def fallback_profile_name(config: dict[str, Any], normalized_ticker: str) -> str
 
 
 def smart_free_profile_name(normalized_ticker: str) -> str:
+    if longbridge_available(env=os.environ):
+        return "longbridge_market"
     market = detect_market(normalized_ticker)
     if market == "US":
         return "free_sec_fundamentals"
@@ -987,10 +1012,10 @@ def format_snapshot_number(value: float, digits: int = 2) -> str:
 
 def market_snapshot_profile_name(config: dict[str, Any], normalized_ticker: str) -> str:
     profile_name = clean_text(config.get("analysis_profile"))
-    if profile_name in {"free_eastmoney_market", "free_tushare_market"}:
+    if profile_name in {"free_eastmoney_market", "free_tushare_market", "longbridge_market"}:
         return profile_name
     candidate = fallback_profile_name(config, normalized_ticker)
-    if candidate in {"free_eastmoney_market", "free_tushare_market"}:
+    if candidate in {"free_eastmoney_market", "free_tushare_market", "longbridge_market"}:
         return candidate
     return ""
 
@@ -1178,6 +1203,8 @@ def market_snapshot_rows(profile_name: str, normalized_ticker: str, trade_date: 
         return fetch_eastmoney_daily_bars(normalized_ticker, start_date, trade_date, env=os.environ)
     if profile_name == "free_tushare_market":
         return fetch_tushare_daily_bars(normalized_ticker, start_date, trade_date, env=os.environ)
+    if profile_name == "longbridge_market":
+        return fetch_longbridge_daily_bars(normalized_ticker, start_date, trade_date, env=os.environ)
     raise ValueError(f"Profile `{profile_name}` does not support local market snapshot fallback.")
 
 
@@ -1584,6 +1611,50 @@ def temporary_eastmoney_vendor_registration(required: bool) -> Iterator[None]:
 
 
 @contextmanager
+def temporary_longbridge_vendor_registration(required: bool) -> Iterator[None]:
+    if not required:
+        yield
+        return
+
+    try:
+        interface_module = import_module("tradingagents.dataflows.interface")
+    except Exception:
+        yield
+        return
+
+    vendor_name = "longbridge_market"
+    method_overrides = {
+        "get_stock_data": get_longbridge_stock_data,
+        "get_indicators": get_longbridge_indicator,
+    }
+    original_vendor_list = list(safe_list(getattr(interface_module, "VENDOR_LIST", [])))
+    original_method_maps = {
+        method: dict(safe_dict(safe_dict(getattr(interface_module, "VENDOR_METHODS", {})).get(method)))
+        for method in method_overrides
+    }
+
+    try:
+        vendor_list = list(original_vendor_list)
+        if vendor_name not in vendor_list:
+            vendor_list.append(vendor_name)
+        interface_module.VENDOR_LIST = vendor_list
+
+        vendor_methods = safe_dict(getattr(interface_module, "VENDOR_METHODS", {}))
+        for method_name, implementation in method_overrides.items():
+            patched = dict(original_method_maps[method_name])
+            patched[vendor_name] = implementation
+            vendor_methods[method_name] = patched
+        interface_module.VENDOR_METHODS = vendor_methods
+        yield
+    finally:
+        interface_module.VENDOR_LIST = original_vendor_list
+        vendor_methods = safe_dict(getattr(interface_module, "VENDOR_METHODS", {}))
+        for method_name, original_mapping in original_method_maps.items():
+            vendor_methods[method_name] = original_mapping
+        interface_module.VENDOR_METHODS = vendor_methods
+
+
+@contextmanager
 def temporary_alpha_vantage_throttle(min_interval_seconds: float) -> Iterator[None]:
     if min_interval_seconds <= 0:
         yield
@@ -1685,23 +1756,27 @@ def default_upstream_runner(context: dict[str, Any]) -> dict[str, Any]:
         needs_eastmoney_vendor = "eastmoney_market" in set(data_vendors.values()) or "eastmoney_market" in set(
             tool_vendors.values()
         )
+        needs_longbridge_vendor = "longbridge_market" in set(data_vendors.values()) or "longbridge_market" in set(
+            tool_vendors.values()
+        )
         with temporary_sec_vendor_registration(needs_sec_vendor):
             with temporary_tushare_vendor_registration(needs_tushare_vendor):
                 with temporary_eastmoney_vendor_registration(needs_eastmoney_vendor):
-                    graph = TradingAgentsGraph(
-                        selected_analysts=selected_analysts,
-                        debug=to_bool(bridge_config.get("debug"), False),
-                        config=config,
-                    )
-                    analysis_date = clean_text(context.get("analysis_date"))[:10]
-                    with temporary_alpha_vantage_throttle(to_float(bridge_config.get("alpha_vantage_min_interval_seconds"), 0.0)):
-                        try:
-                            raw_result = graph.propagate(clean_text(context.get("upstream_ticker")), analysis_date)
-                        except Exception as exc:
-                            backend_label = resolved_backend_url or "provider default backend"
-                            raise RuntimeError(
-                                f"TradingAgents propagate failed for provider `{resolved_provider}` via `{backend_label}`: {format_exception_message(exc)}"
-                            ) from exc
+                    with temporary_longbridge_vendor_registration(needs_longbridge_vendor):
+                        graph = TradingAgentsGraph(
+                            selected_analysts=selected_analysts,
+                            debug=to_bool(bridge_config.get("debug"), False),
+                            config=config,
+                        )
+                        analysis_date = clean_text(context.get("analysis_date"))[:10]
+                        with temporary_alpha_vantage_throttle(to_float(bridge_config.get("alpha_vantage_min_interval_seconds"), 0.0)):
+                            try:
+                                raw_result = graph.propagate(clean_text(context.get("upstream_ticker")), analysis_date)
+                            except Exception as exc:
+                                backend_label = resolved_backend_url or "provider default backend"
+                                raise RuntimeError(
+                                    f"TradingAgents propagate failed for provider `{resolved_provider}` via `{backend_label}`: {format_exception_message(exc)}"
+                                ) from exc
 
         if isinstance(raw_result, tuple):
             state = raw_result[0] if len(raw_result) > 0 else {}
