@@ -72,6 +72,16 @@ Related capability references:
         "role": "chart"
       }
     ]
+  },
+  "performance_metrics": {
+    "post_url": "https://www.xiaohongshu.com/explore/published",
+    "after_24h": {
+      "likes": 120,
+      "collects": 60,
+      "comments": 12,
+      "shares": 5
+    },
+    "notes": ["collect rate is strong"]
   }
 }
 ```
@@ -148,7 +158,13 @@ The workflow writes one package directory containing:
 - `generation/model_run.json`
 - `qc_report.json`
 - `qc_report.md`
+- `performance_review.json`
+- `review.md`
 - `meta.json`
+
+`performance_metrics` is optional. When present, the workflow records a local
+post-performance review so the same benchmark pattern can be compared against
+future runs. It does not fetch metrics from XHS automatically in this version.
 
 ## Publish Gate
 

@@ -580,6 +580,64 @@ def render_qc_markdown(qc: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _metric(payload: dict[str, Any], key: str) -> int:
+    try:
+        return int(float(payload.get(key) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def build_performance_review(request: dict[str, Any]) -> dict[str, Any]:
+    metrics = dict(request.get("performance_metrics") or {})
+    if not metrics:
+        return {"status": "not_provided", "metrics": {}, "scores": {}, "notes": []}
+    after_24h = dict(metrics.get("after_24h") or metrics.get("latest") or {})
+    likes = _metric(after_24h, "likes")
+    collects = _metric(after_24h, "collects")
+    comments = _metric(after_24h, "comments")
+    shares = _metric(after_24h, "shares")
+    total_engagement = likes + collects + comments + shares
+    save_intent_score = round((collects * 1.5 + comments * 0.8 + shares) / max(likes, 1), 3)
+    return {
+        "status": "recorded",
+        "metrics": metrics,
+        "scores": {
+            "total_engagement": total_engagement,
+            "save_intent_score": save_intent_score,
+        },
+        "notes": [str(item) for item in metrics.get("notes", [])],
+        "next_action": "compare this pattern with the next XHS workflow run",
+    }
+
+
+def render_performance_review_markdown(review: dict[str, Any]) -> str:
+    lines = ["# XHS Performance Review", "", f"Status: `{review.get('status')}`", ""]
+    if review.get("status") != "recorded":
+        lines.append("No published-post metrics were provided for this run.")
+        lines.append("")
+        return "\n".join(lines)
+    metrics = dict(review.get("metrics") or {})
+    scores = dict(review.get("scores") or {})
+    lines.extend(
+        [
+            f"- Post URL: {metrics.get('post_url', '')}",
+            f"- Total engagement: {scores.get('total_engagement', 0)}",
+            f"- Save-intent score: {scores.get('save_intent_score', 0)}",
+            "",
+            "## Notes",
+            "",
+        ]
+    )
+    notes = review.get("notes") or []
+    if notes:
+        for note in notes:
+            lines.append(f"- {note}")
+    else:
+        lines.append("- No manual notes provided.")
+    lines.extend(["", f"Next action: {review.get('next_action', '')}", ""])
+    return "\n".join(lines)
+
+
 def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
     package_dir = resolve_package_dir(request)
     package_dir.mkdir(parents=True, exist_ok=True)
@@ -596,6 +654,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
     generation = prepare_image_generation(card_plan, image_config)
     generation = maybe_generate_images(package_dir, generation, image_config)
     qc = build_qc_report(card_plan, generation, source_ledger)
+    performance_review = build_performance_review(request)
 
     write_json(package_dir / "request.json", request)
     write_json(package_dir / "source_ledger.json", {"sources": source_ledger})
@@ -607,11 +666,13 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
     write_json(package_dir / "generation" / "prompts.json", {"prompts": generation["prompts"]})
     write_json(package_dir / "generation" / "model_run.json", generation)
     write_json(package_dir / "qc_report.json", qc)
+    write_json(package_dir / "performance_review.json", performance_review)
     (package_dir / "deconstruction.md").write_text(render_deconstruction_markdown(patterns), encoding="utf-8")
     (package_dir / "draft.md").write_text(render_draft(card_plan), encoding="utf-8")
     (package_dir / "caption.md").write_text(render_caption(request, card_plan), encoding="utf-8")
     (package_dir / "hashtags.txt").write_text(render_hashtags(request), encoding="utf-8")
     (package_dir / "qc_report.md").write_text(render_qc_markdown(qc), encoding="utf-8")
+    (package_dir / "review.md").write_text(render_performance_review_markdown(performance_review), encoding="utf-8")
 
     result = {
         "status": "ready_for_review",
@@ -622,6 +683,7 @@ def run_xhs_workflow(request: dict[str, Any]) -> dict[str, Any]:
         "card_count": len(card_plan["cards"]),
         "image_generation_mode": generation["mode"],
         "qc_status": qc["status"],
+        "performance_review": {"status": performance_review["status"]},
         "publish_gate": {"status": "manual approval required before XHS publishing"},
     }
     write_json(package_dir / "meta.json", result)

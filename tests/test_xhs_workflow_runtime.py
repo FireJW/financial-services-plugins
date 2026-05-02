@@ -73,6 +73,31 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             self.assertTrue((package_dir / "qc_report.md").exists())
             self.assertIn("manual approval required", result["publish_gate"]["status"])
 
+    def test_run_xhs_workflow_writes_performance_review_when_metrics_are_provided(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = {
+                "topic": "AI capex earnings",
+                "run_id": "20260502124500",
+                "output_dir": temp_dir,
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "image_generation": {"mode": "dry_run"},
+                "performance_metrics": {
+                    "post_url": "https://www.xiaohongshu.com/explore/published",
+                    "after_24h": {"likes": 120, "collects": 60, "comments": 12, "shares": 5},
+                    "notes": ["collect rate is strong"],
+                },
+            }
+
+            result = module_under_test.run_xhs_workflow(request)
+
+            package_dir = pathlib.Path(result["package_dir"])
+            self.assertEqual(result["performance_review"]["status"], "recorded")
+            self.assertTrue((package_dir / "performance_review.json").exists())
+            self.assertTrue((package_dir / "review.md").exists())
+            review = json.loads((package_dir / "performance_review.json").read_text(encoding="utf-8"))
+            self.assertEqual(review["metrics"]["post_url"], "https://www.xiaohongshu.com/explore/published")
+            self.assertGreater(review["scores"]["save_intent_score"], 0)
+
     def test_rank_benchmarks_prioritizes_collects_and_comments(self) -> None:
         ranked = module_under_test.rank_benchmarks(
             [
