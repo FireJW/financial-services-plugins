@@ -21,6 +21,7 @@ if str(TRADINGAGENTS_SCRIPT_DIR) not in sys.path:
 from tradingagents_longbridge_market import fetch_daily_bars, fetch_quote_snapshot
 from longbridge_ownership_runtime import run_longbridge_ownership_analysis
 from longbridge_quant_runtime import run_longbridge_quant_analysis
+from longbridge_trading_plan_runtime import build_trading_plan_report
 
 
 CommandRunner = Callable[[list[str], dict[str, str] | None, int], Any]
@@ -2337,6 +2338,7 @@ def run_longbridge_screen(
     result["key_omissions"] = deepcopy(result["missed_attention_priorities"])
     result["dry_run_action_plan"] = build_dry_run_action_plan(ranked)
     result["summary"] = summarize_winner(ranked)
+    result["trading_plan_report"] = build_trading_plan_report(result, session_type="premarket")
     return result
 
 

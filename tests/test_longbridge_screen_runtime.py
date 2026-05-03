@@ -657,6 +657,26 @@ class LongbridgeScreenRuntimeTests(unittest.TestCase):
         self.assertIn("Missed Attention Priorities", report)
         self.assertIn("Dry-run Action Plan", report)
 
+    def test_screen_result_embeds_standard_trading_plan_report(self) -> None:
+        result = run_longbridge_screen(
+            {
+                "tickers": ["600111.SH", "000969.SZ"],
+                "analysis_date": "2026-05-02",
+                "analysis_layers": ["catalyst", "valuation", "financial_event"],
+            },
+            runner=fake_quote_runner,
+        )
+
+        plan = result["trading_plan_report"]
+        self.assertEqual(plan["schema_version"], "longbridge_trading_plan/v1")
+        self.assertEqual(plan["session_type"], "premarket")
+        self.assertEqual(plan["plan_date"], "2026-05-02")
+        self.assertEqual(len(plan["candidates"]), 2)
+        self.assertIn("trigger_plan", plan)
+        self.assertIn("invalidation_plan", plan)
+        self.assertFalse(plan["dry_run_action_plan"]["should_apply"])
+        self.assertEqual(plan["dry_run_action_plan"]["side_effects"], "none")
+
     def test_detail_payload_preserves_nested_plain_text_content(self) -> None:
         detail = compact_detail_payload(
             {
