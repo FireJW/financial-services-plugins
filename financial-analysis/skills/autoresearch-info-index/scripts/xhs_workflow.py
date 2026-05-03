@@ -28,6 +28,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-mode", choices=["dry_run", "openai", "compose"], help="Override image_generation.mode")
     parser.add_argument("--image-model", help="Override image_generation.model")
     parser.add_argument("--image-size", help="Override image_generation.size")
+    parser.add_argument(
+        "--text-strategy",
+        choices=["local_overlay", "model_text_with_qc", "hybrid_overlay"],
+        help="Override image_generation.text_strategy",
+    )
     parser.add_argument("--reference-image", action="append", default=[], help="Add a local reference image path for GPT Image edits")
     parser.add_argument(
         "--background-image",
@@ -56,7 +61,7 @@ def build_payload(args: argparse.Namespace) -> dict:
         publish["auto_run_preview"] = True
         publish["click_publish"] = False
         payload["publish"] = publish
-    if args.image_mode or args.image_model or args.image_size or args.reference_image or args.background_image:
+    if args.image_mode or args.image_model or args.image_size or args.text_strategy or args.reference_image or args.background_image:
         image_generation = dict(payload.get("image_generation") or {})
         if args.image_mode:
             image_generation["mode"] = args.image_mode
@@ -66,6 +71,8 @@ def build_payload(args: argparse.Namespace) -> dict:
             image_generation["model"] = args.image_model
         if args.image_size:
             image_generation["size"] = args.image_size
+        if args.text_strategy:
+            image_generation["text_strategy"] = args.text_strategy
         if args.reference_image:
             image_generation["reference_images"] = list(args.reference_image)
         if args.background_image:

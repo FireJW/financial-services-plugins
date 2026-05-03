@@ -64,6 +64,7 @@ Related capability references:
     "mode": "dry_run",
     "model": "gpt-image-2",
     "size": "1024x1536",
+    "text_strategy": "local_overlay",
     "reference_images": [
       "D:/path/to/product-or-source-image.png",
       {
@@ -153,6 +154,7 @@ Doctor mode does not generate a package. It checks:
 - local `xiaohongshu-skills` CLI availability when that adapter is configured
 - OpenAI API key requirement when `image_generation.mode=openai`
 - local reference image paths for OpenAI image edits
+- OCR availability and whether model-text QC can run locally
 - output directory parent availability
 
 Use `image_generation.mode=dry_run` first. It writes prompts and package
@@ -163,11 +165,39 @@ flow. In dry-run mode the workflow records those images in
 `generation/prompts.json` and adds prompt instructions to preserve concrete
 source details while improving XHS card composition.
 
-Image prompts are background-only. The model must not render text, numbers,
-dates, labels, chart axes, or watermarks. Exact card titles and body copy come
-from `card_plan.json` and are composited locally into final PNGs. This keeps
-finance facts, dates, and checklist language out of the image model's freeform
-generation path.
+## Text Strategy
+
+`image_generation.text_strategy` controls where visible card text is created.
+If omitted, the workflow uses `local_overlay`.
+
+- `local_overlay`: safest default. The image model creates a textless
+  background only; exact `card_plan.json` title and message text is rendered
+  locally into the final PNGs.
+- `model_text_with_qc`: higher expression. The image model may render text, but
+  prompts are locked to each card's `title` and `message` only. The package
+  records `allowed_text`, `forbidden_text_policy`, and `qc_required=true` in
+  `generation/prompts.json`. Final cards must pass OCR/QC or receive manual
+  text review before publish preview.
+- `hybrid_overlay`: recommended middle path when backgrounds need stronger
+  layout. The image model creates layout-rich panels and visual hierarchy but
+  still avoids readable factual text; exact facts are overlaid locally.
+
+For `model_text_with_qc`, the prompt forbids any unprovided dates, years,
+times, numbers, company names, tickers, logos, labels, watermarks, hashtags,
+chart axes, timestamps, or metadata. If `tesseract` is available, the workflow
+OCRs final cards and blocks text QC on obvious forbidden patterns such as
+`2024-01`, `2024/01`, `2024.01`, `09:30`, unallowed years, and unallowed
+number/date strings. If OCR is not available, QC status becomes
+`needs_manual_text_qc`; do not treat the package as publish-ready.
+
+Recommended production loop for stronger expression:
+
+1. Run `model_text_with_qc` generation.
+2. Check `qc_report.json` and `qc_report.md` for OCR/text QC results.
+3. Manually review every generated card against `allowed_text`.
+4. Run `--run-publish-preview` only after text is accepted.
+5. Publish manually in XHS. This workflow must not run automatic
+   `click-publish`.
 
 To import benchmark output from `xiaohongshu-skills` or another collector:
 
@@ -205,7 +235,13 @@ python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py
 If doctor reports `ready`, run generation:
 
 ```powershell
-python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --image-mode openai --image-model gpt-image-2 --image-size 1024x1536 --reference-image "D:/path/to/source.png" --output "<result.json>"
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --image-mode openai --image-model gpt-image-2 --image-size 1024x1536 --text-strategy hybrid_overlay --reference-image "D:/path/to/source.png" --output "<result.json>"
+```
+
+To allow model-rendered text under OCR/manual QC:
+
+```powershell
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --image-mode openai --image-model gpt-image-2 --image-size 1024x1536 --text-strategy model_text_with_qc --output "<result.json>"
 ```
 
 ## Outputs
@@ -250,7 +286,8 @@ python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py
 `publish.type=xiaohongshu-skills` creates a preview-only `publish_plan.json`.
 When card images exist, it writes `publish/title.txt` and `publish/content.txt`
 and prepares a `python scripts/cli.py fill-publish ...` command. It never adds a
-click-publish step; the final publish action stays manual.
+click-publish step; the final publish action stays manual. Do not add or run
+automatic `click-publish` from this workflow.
 
 To explicitly run the preview fill step after package generation:
 

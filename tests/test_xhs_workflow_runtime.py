@@ -628,6 +628,155 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(generation["text_rendering"]["mode"], "local_overlay")
         self.assertEqual(generation["text_rendering"]["allowed_text"][0], ["AI capex", "Watch the ROI question."])
 
+    def test_prepare_image_generation_model_text_with_qc_locks_prompt_to_allowed_text(self) -> None:
+        card_plan = {
+            "cards": [
+                {"index": 1, "type": "cover", "title": "AI capex", "message": "Watch the ROI question."},
+            ]
+        }
+
+        generation = module_under_test.prepare_image_generation(
+            card_plan,
+            {"mode": "openai", "text_strategy": "model_text_with_qc"},
+        )
+
+        prompt = generation["prompts"][0]["prompt"]
+        prompt_meta = generation["prompts"][0]
+        self.assertEqual(generation["text_rendering"]["mode"], "model_text_with_qc")
+        self.assertTrue(generation["text_rendering"]["qc_required"])
+        self.assertEqual(prompt_meta["allowed_text"], ["AI capex", "Watch the ROI question."])
+        self.assertTrue(prompt_meta["qc_required"])
+        self.assertIn("Only render the exact allowed text strings", prompt)
+        self.assertIn("AI capex", prompt)
+        self.assertIn("Watch the ROI question.", prompt)
+        self.assertIn("Do not invent or add dates, years, times, numbers, company names, tickers, logos, watermarks", prompt)
+        self.assertNotIn("background only", prompt)
+
+    def test_prepare_image_generation_hybrid_overlay_keeps_local_fact_overlay(self) -> None:
+        card_plan = {
+            "cards": [
+                {"index": 1, "type": "cover", "title": "AI capex", "message": "Watch the ROI question."},
+            ]
+        }
+
+        generation = module_under_test.prepare_image_generation(
+            card_plan,
+            {"mode": "openai", "text_strategy": "hybrid_overlay"},
+        )
+
+        prompt = generation["prompts"][0]["prompt"]
+        self.assertEqual(generation["text_rendering"]["mode"], "hybrid_overlay")
+        self.assertFalse(generation["text_rendering"]["qc_required"])
+        self.assertIn("layout-rich", prompt)
+        self.assertIn("Do not render readable factual text", prompt)
+        self.assertIn("local overlay", prompt)
+
+    def test_run_xhs_workflow_records_model_text_policy_in_prompts_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = {
+                "topic": "AI capex earnings",
+                "run_id": "20260503120000",
+                "output_dir": temp_dir,
+                "local_material": {
+                    "title": "Big Tech capex signal",
+                    "summary": "Watch the ROI question.",
+                    "key_points": ["capex acceleration", "power demand", "investor scrutiny"],
+                },
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "image_generation": {"mode": "dry_run", "text_strategy": "model_text_with_qc"},
+            }
+
+            result = module_under_test.run_xhs_workflow(request)
+
+            package_dir = pathlib.Path(result["package_dir"])
+            prompts_payload = json.loads((package_dir / "generation" / "prompts.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(prompts_payload["text_strategy"], "model_text_with_qc")
+        self.assertTrue(prompts_payload["qc_required"])
+        self.assertEqual(prompts_payload["allowed_text"][0], ["AI capex earnings", "Watch the ROI question."])
+        self.assertIn("forbidden_text_policy", prompts_payload)
+
+    def test_ocr_text_qc_rejects_unallowed_date_string(self) -> None:
+        result = module_under_test.evaluate_ocr_text_against_allowed(
+            "AI capex Watch the ROI question 2024-01",
+            ["AI capex", "Watch the ROI question"],
+        )
+
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["violations"][0]["type"], "forbidden_pattern")
+        self.assertIn("2024-01", result["violations"][0]["text"])
+
+    def test_qc_report_marks_model_text_as_manual_text_qc_when_ocr_unavailable(self) -> None:
+        card_plan = {
+            "cards": [
+                {"index": 1, "type": "cover", "title": "AI capex", "message": "Watch the ROI question."},
+            ]
+        }
+        generation = {
+            "mode": "openai",
+            "prompts": [{"card_index": 1, "prompt": "model text", "allowed_text": ["AI capex", "Watch the ROI question."]}],
+            "results": [
+                {
+                    "status": "generated",
+                    "path": "card-01.png",
+                    "card_index": 1,
+                    "text_source": "model_text_with_qc",
+                    "allowed_text": ["AI capex", "Watch the ROI question."],
+                }
+            ],
+            "text_rendering": {
+                "mode": "model_text_with_qc",
+                "qc_required": True,
+                "allowed_text": [["AI capex", "Watch the ROI question."]],
+            },
+        }
+
+        with patch.object(module_under_test, "is_tesseract_available", return_value=False):
+            qc = module_under_test.build_qc_report(card_plan, generation, [{"url": "https://example.com"}])
+
+        self.assertEqual(qc["status"], "needs_manual_text_qc")
+        self.assertFalse(qc["checks"]["text_qc"]["passed"])
+        self.assertEqual(qc["text_qc"]["status"], "needs_manual_text_qc")
+
+    def test_qc_report_blocks_model_text_when_ocr_finds_forbidden_text(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = pathlib.Path(temp_dir) / "card-01.png"
+            image_path.write_bytes(b"fake")
+            card_plan = {
+                "cards": [
+                    {"index": 1, "type": "cover", "title": "AI capex", "message": "Watch the ROI question."},
+                ]
+            }
+            generation = {
+                "mode": "openai",
+                "prompts": [{"card_index": 1, "prompt": "model text", "allowed_text": ["AI capex", "Watch the ROI question."]}],
+                "results": [
+                    {
+                        "status": "generated",
+                        "path": str(image_path),
+                        "card_index": 1,
+                        "text_source": "model_text_with_qc",
+                        "allowed_text": ["AI capex", "Watch the ROI question."],
+                    }
+                ],
+                "text_rendering": {
+                    "mode": "model_text_with_qc",
+                    "qc_required": True,
+                    "allowed_text": [["AI capex", "Watch the ROI question."]],
+                },
+            }
+
+            with patch.object(module_under_test, "is_tesseract_available", return_value=True), patch.object(
+                module_under_test,
+                "run_tesseract_ocr",
+                return_value="AI capex Watch the ROI question 2024-01",
+            ):
+                qc = module_under_test.build_qc_report(card_plan, generation, [{"url": "https://example.com"}])
+
+        self.assertEqual(qc["status"], "blocked_text_qc")
+        self.assertFalse(qc["checks"]["text_qc"]["passed"])
+        self.assertIn("2024-01", qc["text_qc"]["results"][0]["violations"][0]["text"])
+
     def test_prepare_image_generation_keeps_reference_images_for_image_to_image(self) -> None:
         card_plan = {
             "cards": [
@@ -915,6 +1064,23 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(report["status"], "ready")
         self.assertTrue(report["checks"]["benchmark_input"]["passed"])
         self.assertTrue(report["checks"]["openai_api_key"]["passed"])
+
+    def test_build_readiness_report_displays_ocr_text_qc_capability_without_blocking_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = {
+                "topic": "AI capex",
+                "output_dir": temp_dir,
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "image_generation": {"mode": "dry_run", "text_strategy": "model_text_with_qc"},
+            }
+
+            with patch.object(module_under_test, "is_tesseract_available", return_value=False):
+                report = module_under_test.build_readiness_report(request, env={})
+
+        self.assertEqual(report["status"], "ready")
+        self.assertFalse(report["checks"]["ocr_available"]["passed"])
+        self.assertEqual(report["checks"]["text_qc_executable"]["value"], "needs_manual_text_qc_without_ocr")
+        self.assertIn("ocr_available", report["warnings"])
 
     def test_build_readiness_report_accepts_ready_collector_as_benchmark_input(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1296,6 +1462,43 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         image_config = payload["image_generation"]
         self.assertEqual(image_config["mode"], "compose")
         self.assertEqual(image_config["background_images"], [str(background_path)])
+
+    def test_xhs_workflow_cli_text_strategy_flag_sets_generation_config(self) -> None:
+        cli_path = SCRIPT_DIR / "xhs_workflow.py"
+        cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_text_strategy_under_test", cli_path)
+        cli_module = importlib.util.module_from_spec(cli_spec)
+        assert cli_spec and cli_spec.loader
+        cli_spec.loader.exec_module(cli_module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "request.json"
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "topic": "AI capex",
+                        "output_dir": str(temp_path / "out"),
+                        "benchmarks": [{"title": "3 signals", "likes": 10}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                ["xhs_workflow.py", str(input_path), "--text-strategy", "model_text_with_qc", "--quiet"],
+            ), patch.object(
+                cli_module,
+                "run_xhs_workflow",
+                return_value={"status": "ready_for_review"},
+            ) as run_mock:
+                with self.assertRaises(SystemExit) as exit_context:
+                    cli_module.main()
+
+        self.assertEqual(exit_context.exception.code, 0)
+        payload = run_mock.call_args.args[0]
+        self.assertEqual(payload["image_generation"]["text_strategy"], "model_text_with_qc")
 
     def test_xhs_workflow_cli_performance_file_override(self) -> None:
         cli_path = SCRIPT_DIR / "xhs_workflow.py"

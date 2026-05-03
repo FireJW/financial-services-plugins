@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import base64
 import datetime as dt
+import difflib
 import json
 import mimetypes
 import os
 import re
+import shutil
 import subprocess
 import urllib.request
 import uuid
@@ -21,6 +23,22 @@ DEFAULT_OPENAI_BASE_URL = "https://api.openai.com"
 DEFAULT_OVERLAY_TEXT_COLOR = (248, 250, 252, 255)
 DEFAULT_OVERLAY_MUTED_COLOR = (203, 213, 225, 255)
 DEFAULT_OVERLAY_ACCENT_COLOR = (56, 189, 248, 255)
+TEXT_STRATEGIES = {"local_overlay", "model_text_with_qc", "hybrid_overlay"}
+TEXT_STRATEGY_ALIASES = {
+    "hybrid": "hybrid_overlay",
+    "recommended": "hybrid_overlay",
+}
+FORBIDDEN_TEXT_POLICY = (
+    "Only allowed_text may appear in model-rendered text. Do not invent or add dates, years, times, numbers, "
+    "company names, tickers, logos, watermarks, labels, hashtags, chart axes, timestamps, or metadata unless they "
+    "are explicitly present in allowed_text. OCR/QC is required before publish preview for model text."
+)
+FORBIDDEN_OCR_PATTERNS = [
+    ("yyyy_month", re.compile(r"\b20[2-9]\d[-/.](?:0?[1-9]|1[0-2])\b")),
+    ("year", re.compile(r"\b20[2-9]\d\b")),
+    ("time", re.compile(r"\b(?:[01]?\d|2[0-3]):[0-5]\d\b")),
+    ("date_or_number", re.compile(r"\b\d{1,2}[-/.]\d{1,2}\b|\b\d{2,}\b|[+-]?\d+(?:\.\d+)?%")),
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -121,6 +139,7 @@ def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None =
     env = env if env is not None else os.environ
     image_config = dict(request.get("image_generation") or {})
     mode = str(image_config.get("mode") or "dry_run")
+    text_strategy = normalize_text_strategy(image_config.get("text_strategy"))
     collector = dict(request.get("collector") or {})
     collector_plan = build_collector_plan(request, env=env)
     collector_requested = bool(collector.get("auto_run") or collector.get("type"))
@@ -139,6 +158,8 @@ def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None =
     api_key_ok = True
     if mode == "openai":
         api_key_ok = bool(image_config.get("api_key") or env.get("OPENAI_API_KEY"))
+    ocr_available = is_tesseract_available()
+    text_qc_required = text_strategy == "model_text_with_qc"
 
     reference_images = normalize_reference_images(list(image_config.get("reference_images") or []))
     reference_images_ok = True
@@ -178,6 +199,20 @@ def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None =
         "reference_images": {"passed": reference_images_ok, "value": len(reference_images), "missing": missing_references},
         "background_images": {"passed": background_images_ok, "value": len(background_images), "missing": missing_backgrounds},
         "output_dir": {"passed": output_dir_ok, "value": str(output_dir)},
+        "ocr_available": {
+            "passed": ocr_available,
+            "value": "available" if ocr_available else "not_found",
+            "blocking": False,
+        },
+        "text_qc_executable": {
+            "passed": (not text_qc_required) or ocr_available,
+            "value": (
+                "not_required"
+                if not text_qc_required
+                else ("ocr_qc_ready" if ocr_available else "needs_manual_text_qc_without_ocr")
+            ),
+            "blocking": False,
+        },
     }
     if collector_requested:
         checks["collector_plan"] = {
@@ -187,12 +222,15 @@ def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None =
             "cwd": collector_plan.get("cwd", ""),
             "message": collector_plan.get("message", ""),
         }
-    blockers = [name for name, check in checks.items() if not check["passed"]]
+    blockers = [name for name, check in checks.items() if not check["passed"] and check.get("blocking") is not False]
+    warnings = [name for name, check in checks.items() if not check["passed"] and check.get("blocking") is False]
     report = {
         "status": "blocked" if blockers else "ready",
         "mode": mode,
+        "text_strategy": text_strategy,
         "checks": checks,
         "blockers": blockers,
+        "warnings": warnings,
         "next_action": "fix blockers before generation" if blockers else "safe to run dry-run package generation",
     }
     if collector_requested:
@@ -282,6 +320,17 @@ def bool_config(value: Any, default: bool = True) -> bool:
     if text in ("1", "true", "yes", "on"):
         return True
     return default
+
+
+def normalize_text_strategy(value: Any) -> str:
+    text = str(value or "local_overlay").strip().lower()
+    text = TEXT_STRATEGY_ALIASES.get(text, text)
+    if text not in TEXT_STRATEGIES:
+        raise ValueError(
+            "image_generation.text_strategy must be one of: "
+            + ", ".join(sorted(TEXT_STRATEGIES))
+        )
+    return text
 
 
 def optional_cli_value(value: Any) -> str:
@@ -846,18 +895,47 @@ def build_image_prompt(
     card: dict[str, Any],
     style_profile: dict[str, Any] | None = None,
     reference_images: list[dict[str, str]] | None = None,
+    text_strategy: str = "local_overlay",
 ) -> str:
     style = style_profile or {}
     visual_style = style.get("visual_style", "premium Xiaohongshu editorial image post")
     material_policy = style.get("material_policy", "use user-owned material when provided")
+    text_strategy = normalize_text_strategy(text_strategy)
+    title = str(card.get("title") or "")
+    message = str(card.get("message") or "")
     reference_line = (
         "Use the provided reference images as the primary visual material; preserve their concrete details while improving composition. "
         if reference_images
         else ""
     )
+    if text_strategy == "model_text_with_qc":
+        return (
+            f"{visual_style}. vertical 9:16 Xiaohongshu editorial card with controlled typography. "
+            f"Card type: {card.get('type')}. Visual concept: {title} / {message}. "
+            f"{reference_line}"
+            "Only render the exact allowed text strings below, with no paraphrase and no extra text. "
+            f"Allowed title text: {json.dumps(title, ensure_ascii=False)}. "
+            f"Allowed message text: {json.dumps(message, ensure_ascii=False)}. "
+            "Do not invent or add dates, years, times, numbers, company names, tickers, logos, watermarks, "
+            "labels, hashtags, chart axis values, timestamps, or metadata. "
+            "If a character or fact is not present in the allowed text strings, leave it out. "
+            "Make the allowed text legible and unchanged. No copied competitor assets. "
+            f"Material policy: {material_policy}."
+        )
+    if text_strategy == "hybrid_overlay":
+        return (
+            f"{visual_style}. vertical 9:16 Xiaohongshu layout-rich editorial background only for local overlay. "
+            f"Card type: {card.get('type')}. Visual concept: {title} / {message}. "
+            f"{reference_line}"
+            "Create a strong composition with realistic finance/technology material, structured panels, empty headline "
+            "zones, and visual hierarchy that leaves clear space for local overlay. Do not render readable factual text, "
+            "letters, numbers, dates, time stamps, calendar UI, logos, watermarks, labels, tickers, chart axis values, "
+            "or metadata. Critical facts will be added by local overlay. No copied competitor assets. "
+            f"Material policy: {material_policy}."
+        )
     return (
         f"{visual_style}. vertical 9:16 Xiaohongshu editorial background only. "
-        f"Card type: {card.get('type')}. Visual concept: {card.get('title')} / {card.get('message')}. "
+        f"Card type: {card.get('type')}. Visual concept: {title} / {message}. "
         f"{reference_line}"
         "Create a clean finance/technology visual background with realistic material texture, data-center, chip, "
         "earnings-dashboard, or infrastructure motifs where appropriate. Leave generous negative space for later "
@@ -872,6 +950,7 @@ def prepare_image_generation(card_plan: dict[str, Any], config: dict[str, Any] |
     mode = str(config.get("mode") or "dry_run")
     model = str(config.get("model") or DEFAULT_IMAGE_MODEL)
     size = str(config.get("size") or DEFAULT_IMAGE_SIZE)
+    text_strategy = normalize_text_strategy(config.get("text_strategy"))
     style_profile = dict(config.get("style_profile") or {})
     reference_images = normalize_reference_images(list(config.get("reference_images") or []))
     background_images = normalize_background_images(list(config.get("background_images") or []))
@@ -885,20 +964,28 @@ def prepare_image_generation(card_plan: dict[str, Any], config: dict[str, Any] |
             "size": size,
             "reference_images": reference_images,
             "background_image": background_images[index] if index < len(background_images) else "",
-            "prompt": build_image_prompt(card, style_profile, reference_images),
+            "allowed_text": [str(card.get("title") or ""), str(card.get("message") or "")],
+            "forbidden_text_policy": FORBIDDEN_TEXT_POLICY,
+            "qc_required": text_strategy == "model_text_with_qc",
+            "text_strategy": text_strategy,
+            "prompt": build_image_prompt(card, style_profile, reference_images, text_strategy=text_strategy),
         }
         for index, card in enumerate(card_plan.get("cards", []))
     ]
+    allowed_text = [[prompt["card_title"], prompt["card_message"]] for prompt in prompts]
     return {
         "mode": mode,
         "model": model,
         "size": size,
+        "text_strategy": text_strategy,
         "prompts": prompts,
         "results": [],
         "text_rendering": {
-            "mode": "local_overlay",
-            "allowed_text": [[prompt["card_title"], prompt["card_message"]] for prompt in prompts],
-            "forbidden_model_text": True,
+            "mode": text_strategy,
+            "allowed_text": allowed_text,
+            "forbidden_text_policy": FORBIDDEN_TEXT_POLICY,
+            "forbidden_model_text": text_strategy != "model_text_with_qc",
+            "qc_required": text_strategy == "model_text_with_qc",
         },
     }
 
@@ -1180,6 +1267,9 @@ def generate_openai_image_edit(
 def maybe_generate_images(package_dir: Path, generation: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     if generation["mode"] not in ("openai", "compose"):
         return generation
+    text_strategy = normalize_text_strategy(
+        generation.get("text_strategy") or dict(generation.get("text_rendering") or {}).get("mode")
+    )
     results = []
     for prompt in generation.get("prompts", []):
         card_index = int(prompt["card_index"])
@@ -1190,15 +1280,44 @@ def maybe_generate_images(package_dir: Path, generation: dict[str, Any], config:
             manual_background = Path(str(prompt.get("background_image") or "")).resolve()
             if not manual_background.exists():
                 raise FileNotFoundError(f"Background image not found for card {card_index}: {manual_background}")
+            if text_strategy == "model_text_with_qc":
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(manual_background.read_bytes())
+                results.append(
+                    {
+                        "status": "generated",
+                        "path": str(output_path),
+                        "source_path": str(manual_background),
+                        "text_source": "model_text_with_qc",
+                        "allowed_text": list(prompt.get("allowed_text") or []),
+                        "route": "manual_model_text_compose",
+                        "card_index": card_index,
+                    }
+                )
+                continue
             background_path.parent.mkdir(parents=True, exist_ok=True)
             background_path.write_bytes(manual_background.read_bytes())
         else:
             if prompt.get("reference_images"):
-                generated = generate_openai_image_edit(prompt["prompt"], prompt["reference_images"], config, background_path)
+                generated_path = output_path if text_strategy == "model_text_with_qc" else background_path
+                generated = generate_openai_image_edit(prompt["prompt"], prompt["reference_images"], config, generated_path)
                 route = generated.get("route") or "openai_images_edits"
             else:
-                generated = generate_openai_image(prompt["prompt"], config, background_path)
+                generated_path = output_path if text_strategy == "model_text_with_qc" else background_path
+                generated = generate_openai_image(prompt["prompt"], config, generated_path)
                 route = generated.get("route") or "openai_images_generations"
+            if text_strategy == "model_text_with_qc":
+                generated.update(
+                    {
+                        "path": str(output_path),
+                        "text_source": "model_text_with_qc",
+                        "allowed_text": list(prompt.get("allowed_text") or []),
+                        "route": route,
+                        "card_index": card_index,
+                    }
+                )
+                results.append(generated)
+                continue
         card = {
             "index": card_index,
             "type": prompt.get("card_type"),
@@ -1239,6 +1358,181 @@ def render_hashtags(request: dict[str, Any]) -> str:
     return "\n".join(base) + "\n"
 
 
+def is_tesseract_available() -> bool:
+    return shutil.which("tesseract") is not None
+
+
+def run_tesseract_ocr(
+    image_path: str | Path,
+    runner: Any = subprocess.run,
+    timeout_seconds: int = 60,
+) -> str:
+    command = ["tesseract", str(image_path), "stdout", "-l", "chi_sim+eng"]
+    completed = runner(
+        command,
+        timeout=timeout_seconds,
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if completed.returncode != 0 and ("Failed loading language" in completed.stderr or "Error opening data file" in completed.stderr):
+        completed = runner(
+            ["tesseract", str(image_path), "stdout"],
+            timeout=timeout_seconds,
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr or "tesseract OCR failed")
+    return str(completed.stdout or "")
+
+
+def flatten_allowed_text(allowed_text: Any) -> list[str]:
+    flattened: list[str] = []
+    if isinstance(allowed_text, str):
+        return [allowed_text] if allowed_text.strip() else []
+    if isinstance(allowed_text, list):
+        for item in allowed_text:
+            flattened.extend(flatten_allowed_text(item))
+    elif isinstance(allowed_text, tuple):
+        for item in allowed_text:
+            flattened.extend(flatten_allowed_text(item))
+    return [item for item in (str(value).strip() for value in flattened) if item]
+
+
+def normalize_ocr_compare_text(value: str) -> str:
+    return re.sub(r"[^0-9a-zA-Z\u4e00-\u9fff]+", "", str(value or "")).casefold()
+
+
+def allowed_fragment(fragment: str, allowed_text: list[str]) -> bool:
+    raw = str(fragment or "").strip()
+    if not raw:
+        return True
+    if any(raw in allowed for allowed in allowed_text):
+        return True
+    normalized = normalize_ocr_compare_text(raw)
+    if not normalized:
+        return True
+    allowed_normalized = [normalize_ocr_compare_text(item) for item in allowed_text]
+    if any(normalized in item for item in allowed_normalized):
+        return True
+    for allowed in allowed_normalized:
+        if len(normalized) >= 4 and difflib.SequenceMatcher(None, normalized, allowed).ratio() >= 0.82:
+            return True
+    return False
+
+
+def evaluate_ocr_text_against_allowed(ocr_text: str, allowed_text: list[str]) -> dict[str, Any]:
+    allowed = flatten_allowed_text(allowed_text)
+    text = str(ocr_text or "")
+    violations: list[dict[str, str]] = []
+    for pattern_name, pattern in FORBIDDEN_OCR_PATTERNS:
+        for match in pattern.finditer(text):
+            fragment = match.group(0)
+            if not allowed_fragment(fragment, allowed):
+                violations.append(
+                    {
+                        "type": "forbidden_pattern",
+                        "pattern": pattern_name,
+                        "text": fragment,
+                    }
+                )
+    if not violations:
+        tokens = re.findall(r"[A-Za-z][A-Za-z0-9$._-]{2,}|[\u4e00-\u9fff]{2,}|\d+(?:[.,:/-]\d+)*%?", text)
+        for token in tokens:
+            if not allowed_fragment(token, allowed):
+                violations.append({"type": "unallowed_text", "pattern": "token", "text": token})
+                break
+    return {
+        "passed": not violations,
+        "ocr_text": text,
+        "allowed_text": allowed,
+        "violations": violations,
+    }
+
+
+def build_text_qc_report(generation: dict[str, Any]) -> dict[str, Any]:
+    text_rendering = dict(generation.get("text_rendering") or {})
+    text_strategy = normalize_text_strategy(text_rendering.get("mode") or generation.get("text_strategy"))
+    required = bool(text_rendering.get("qc_required")) or text_strategy == "model_text_with_qc"
+    if not required:
+        return {"status": "not_required", "required": False, "passed": True, "results": []}
+
+    results = [dict(result) for result in generation.get("results") or []]
+    if not results:
+        return {
+            "status": "needs_manual_text_qc",
+            "required": True,
+            "passed": False,
+            "ocr_available": is_tesseract_available(),
+            "results": [],
+            "message": "No final model-text images were available for OCR.",
+        }
+    if not is_tesseract_available():
+        return {
+            "status": "needs_manual_text_qc",
+            "required": True,
+            "passed": False,
+            "ocr_available": False,
+            "results": [],
+            "message": "tesseract OCR is not available; manual text QC is required before publish preview.",
+        }
+
+    qc_results = []
+    for result in results:
+        path_text = str(result.get("path") or "")
+        allowed = flatten_allowed_text(result.get("allowed_text") or text_rendering.get("allowed_text") or [])
+        if not path_text or not Path(path_text).exists():
+            qc_results.append(
+                {
+                    "path": path_text,
+                    "passed": False,
+                    "ocr_text": "",
+                    "allowed_text": allowed,
+                    "violations": [{"type": "missing_image", "pattern": "path", "text": path_text}],
+                }
+            )
+            continue
+        try:
+            ocr_text = run_tesseract_ocr(path_text)
+            evaluated = evaluate_ocr_text_against_allowed(ocr_text, allowed)
+            evaluated["path"] = path_text
+            qc_results.append(evaluated)
+        except Exception as exc:
+            qc_results.append(
+                {
+                    "path": path_text,
+                    "passed": False,
+                    "ocr_text": "",
+                    "allowed_text": allowed,
+                    "violations": [{"type": "ocr_error", "pattern": "tesseract", "text": str(exc)}],
+                }
+            )
+    passed = all(item.get("passed") for item in qc_results)
+    return {
+        "status": "passed" if passed else "blocked_text_qc",
+        "required": True,
+        "passed": passed,
+        "ocr_available": True,
+        "results": qc_results,
+    }
+
+
+def renderable_text_sources_pass(generation: dict[str, Any], rendered_results: list[dict[str, Any]]) -> bool:
+    result_count = len(generation.get("results") or [])
+    if result_count == 0:
+        return True
+    text_rendering = dict(generation.get("text_rendering") or {})
+    text_strategy = normalize_text_strategy(text_rendering.get("mode") or generation.get("text_strategy"))
+    expected = "model_text_with_qc" if text_strategy == "model_text_with_qc" else "local_overlay"
+    return len([result for result in generation.get("results") or [] if result.get("text_source") == expected]) == result_count
+
+
 def build_qc_report(
     card_plan: dict[str, Any],
     generation: dict[str, Any],
@@ -1247,22 +1541,32 @@ def build_qc_report(
     card_count = len(card_plan.get("cards", []))
     prompt_count = len(generation.get("prompts", []))
     text_rendering = dict(generation.get("text_rendering") or {})
+    text_strategy = normalize_text_strategy(text_rendering.get("mode") or generation.get("text_strategy"))
     result_count = len(generation.get("results") or [])
     rendered_results = [result for result in generation.get("results", []) if result.get("text_source") == "local_overlay"]
+    text_qc = build_text_qc_report(generation)
     checks = {
         "card_count": {"passed": 5 <= card_count <= 9, "value": card_count},
         "prompt_count": {"passed": prompt_count == card_count, "value": prompt_count},
         "source_ledger": {"passed": bool(source_ledger), "value": len(source_ledger)},
-        "text_rendering": {"passed": text_rendering.get("mode") == "local_overlay", "value": text_rendering.get("mode", "")},
+        "text_rendering": {"passed": text_strategy in TEXT_STRATEGIES, "value": text_strategy},
         "rendered_cards": {
-            "passed": result_count == 0 or len(rendered_results) == result_count,
-            "value": f"{len(rendered_results)}/{result_count}",
+            "passed": renderable_text_sources_pass(generation, rendered_results),
+            "value": f"{len(rendered_results)}/{result_count}" if text_strategy != "model_text_with_qc" else f"{result_count}/{result_count}",
         },
+        "text_qc": {"passed": bool(text_qc.get("passed")), "value": text_qc.get("status", "")},
         "publish_approval": {"passed": False, "value": "manual approval required"},
     }
+    status = "needs_human_review"
+    if text_qc.get("status") == "needs_manual_text_qc":
+        status = "needs_manual_text_qc"
+    elif text_qc.get("status") == "blocked_text_qc":
+        status = "blocked_text_qc"
     return {
-        "status": "needs_human_review",
+        "status": status,
         "checks": checks,
+        "text_strategy": text_strategy,
+        "text_qc": text_qc,
         "blocked_from_auto_publish": True,
     }
 
@@ -1272,6 +1576,17 @@ def render_qc_markdown(qc: dict[str, Any]) -> str:
     for name, check in qc.get("checks", {}).items():
         marker = "PASS" if check.get("passed") else "REVIEW"
         lines.append(f"- {marker} `{name}`: {check.get('value')}")
+    text_qc = dict(qc.get("text_qc") or {})
+    if text_qc:
+        lines.extend(["", "## Text QC", "", f"- Status: `{text_qc.get('status')}`"])
+        lines.append(f"- OCR available: `{str(bool(text_qc.get('ocr_available'))).lower()}`")
+        if text_qc.get("message"):
+            lines.append(f"- Note: {text_qc.get('message')}")
+        for result in text_qc.get("results") or []:
+            marker = "PASS" if result.get("passed") else "REVIEW"
+            lines.append(f"- {marker} `{result.get('path', '')}`")
+            for violation in result.get("violations") or []:
+                lines.append(f"  - {violation.get('type')}: `{violation.get('text')}`")
     lines.extend(["", "Publishing remains blocked until explicit human approval is recorded.", ""])
     return "\n".join(lines)
 
@@ -1379,7 +1694,17 @@ def run_xhs_workflow(
     write_json(package_dir / "patterns.json", patterns)
     write_json(package_dir / "content_brief.json", content_brief)
     write_json(package_dir / "card_plan.json", card_plan)
-    write_json(package_dir / "generation" / "prompts.json", {"prompts": generation["prompts"]})
+    text_rendering = dict(generation.get("text_rendering") or {})
+    write_json(
+        package_dir / "generation" / "prompts.json",
+        {
+            "text_strategy": normalize_text_strategy(text_rendering.get("mode") or generation.get("text_strategy")),
+            "allowed_text": text_rendering.get("allowed_text") or [],
+            "forbidden_text_policy": text_rendering.get("forbidden_text_policy") or FORBIDDEN_TEXT_POLICY,
+            "qc_required": bool(text_rendering.get("qc_required")),
+            "prompts": generation["prompts"],
+        },
+    )
     write_json(package_dir / "generation" / "model_run.json", generation)
     write_json(package_dir / "qc_report.json", qc)
     write_json(package_dir / "performance_review.json", performance_review)
@@ -1403,7 +1728,7 @@ def run_xhs_workflow(
     (package_dir / "review.md").write_text(render_performance_review_markdown(performance_review), encoding="utf-8")
 
     result = {
-        "status": "ready_for_review",
+        "status": "ready_for_review" if qc["status"] == "needs_human_review" else qc["status"],
         "package_dir": str(package_dir),
         "benchmark_count": len(benchmarks),
         "benchmark_import": benchmark_import,
@@ -1411,6 +1736,7 @@ def run_xhs_workflow(
         "collector_run": collector_run,
         "card_count": len(card_plan["cards"]),
         "image_generation_mode": generation["mode"],
+        "text_strategy": normalize_text_strategy(text_rendering.get("mode") or generation.get("text_strategy")),
         "qc_status": qc["status"],
         "performance_review": {"status": performance_review["status"]},
         "performance_collection_plan": performance_collection_plan,
