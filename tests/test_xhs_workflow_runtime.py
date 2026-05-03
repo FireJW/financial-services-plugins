@@ -674,6 +674,28 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertIn(b'filename="product-shot.png"', body)
         self.assertTrue(body.endswith(b"--TESTBOUNDARY--\r\n"))
 
+    def test_build_openai_api_url_uses_configurable_base_url(self) -> None:
+        self.assertEqual(
+            module_under_test.build_openai_api_url(
+                {"base_url": "https://proxy.example/v1"},
+                "images/generations",
+            ),
+            "https://proxy.example/v1/images/generations",
+        )
+        self.assertEqual(
+            module_under_test.build_openai_api_url(
+                {"base_url": "https://proxy.example"},
+                "images/edits",
+            ),
+            "https://proxy.example/v1/images/edits",
+        )
+
+    def test_build_openai_api_url_uses_openai_base_url_env(self) -> None:
+        with patch.dict(module_under_test.os.environ, {"OPENAI_BASE_URL": "https://env-proxy.example/v1"}):
+            url = module_under_test.build_openai_api_url({}, "images/generations")
+
+        self.assertEqual(url, "https://env-proxy.example/v1/images/generations")
+
     def test_maybe_generate_images_routes_reference_images_to_edit_api(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             generation = {

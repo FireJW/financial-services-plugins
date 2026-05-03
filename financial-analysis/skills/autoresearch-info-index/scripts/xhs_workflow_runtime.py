@@ -17,6 +17,7 @@ from typing import Any
 DEFAULT_IMAGE_MODEL = "gpt-image-2"
 DEFAULT_CARD_COUNT = 7
 DEFAULT_IMAGE_SIZE = "1024x1536"
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com"
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -865,7 +866,7 @@ def generate_openai_image(prompt: str, config: dict[str, Any], output_path: Path
         "n": 1,
     }
     request = urllib.request.Request(
-        "https://api.openai.com/v1/images/generations",
+        build_openai_api_url(config, "images/generations"),
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -881,6 +882,16 @@ def generate_openai_image(prompt: str, config: dict[str, Any], output_path: Path
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(base64.b64decode(b64))
     return {"status": "generated", "path": str(output_path), "model": payload["model"]}
+
+
+def build_openai_api_url(config: dict[str, Any], path: str) -> str:
+    base_url = str(config.get("base_url") or os.environ.get("OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL).strip()
+    if not base_url:
+        base_url = DEFAULT_OPENAI_BASE_URL
+    root = base_url.rstrip("/")
+    if not root.endswith("/v1"):
+        root = f"{root}/v1"
+    return f"{root}/{path.lstrip('/')}"
 
 
 def build_multipart_form_data(
@@ -949,7 +960,7 @@ def generate_openai_image_edit(
     }
     body, content_type = build_multipart_form_data(fields, build_reference_image_files(reference_images))
     request = urllib.request.Request(
-        "https://api.openai.com/v1/images/edits",
+        build_openai_api_url(config, "images/edits"),
         data=body,
         headers={
             "Authorization": f"Bearer {api_key}",

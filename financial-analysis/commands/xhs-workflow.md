@@ -101,6 +101,11 @@ Related capability references:
 `scripts/cli.py` to exist before collector, publish-preview, or performance
 collection plans are treated as runnable.
 
+OpenAI image generation reads `OPENAI_API_KEY` from the environment unless
+`image_generation.api_key` is provided. OpenAI-compatible endpoints can be set
+with `OPENAI_BASE_URL` or `image_generation.base_url`; the workflow appends
+`/v1/images/generations` or `/v1/images/edits` as needed.
+
 Before auto-running collector or publish-preview commands, this workflow sends a
 no-browser bridge preflight ping. If the bridge server or browser extension is
 not connected, it records `bridge_server_not_running` or `bridge_not_connected`
