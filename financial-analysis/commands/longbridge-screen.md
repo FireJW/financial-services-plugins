@@ -57,6 +57,8 @@ Default flow:
      and unparsed news/filing details
    - top-level read-only `dry_run_action_plan` with suggested watchlist and
      alert operations, always `should_apply: false` and `side_effects: "none"`
+   - top-level `trading_plan_report`, the standardized premarket handoff schema
+     consumed by `longbridge-trading-plan` for intraday and post-close review
    - watchlist bucket and alert suggestions
    - read-only `account_state`, `portfolio_inspection`, `account_health`,
    `intraday_confirmation`, `theme_chain_analysis`, and per-candidate
@@ -127,6 +129,8 @@ Side-effect boundary:
 - For plan monitoring after a candidate has concrete trigger, stop, or abandon
   levels, use `financial-analysis/commands/longbridge-intraday-monitor.md`.
   `longbridge-screen` keeps only its lightweight intraday confirmation layer.
+- For standardized Markdown/JSON handoff and post-close trigger/stop/abandon
+  review, use `financial-analysis/commands/longbridge-trading-plan.md`.
 - For account-side watchlist or alert changes, pass the screen JSON result to
   `financial-analysis/commands/longbridge-action-gateway.md` as
   `screen_result` or `longbridge_screen_result`. The gateway uses the shared

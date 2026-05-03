@@ -27,6 +27,12 @@ following native routes fits the task.
   - Primary path: `financial-analysis/commands/longbridge-screen.md`
   - Fallback rule: keep Longbridge for quote/intraday confirmation and only use
     Eastmoney or Tushare to backfill longer history when needed
+- Standardized Longbridge trading-plan handoff, intraday confirmation merge, or
+  post-close trigger/stop/abandon review
+  - Primary path: `financial-analysis/commands/longbridge-trading-plan.md`
+  - Runtime: `financial-analysis/skills/longbridge/scripts/longbridge_trading_plan_runtime.py`
+  - Fallback rule: reuse `longbridge-screen` and `longbridge-intraday-monitor`
+    artifacts first; do not rebuild the plan from generic commentary
 - Intraday plan trigger, invalidation, market-open, capital-flow, anomaly, or
   trade-stat monitoring after levels already exist
   - Primary path: `financial-analysis/commands/longbridge-intraday-monitor.md`

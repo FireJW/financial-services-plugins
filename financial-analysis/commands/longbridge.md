@@ -54,6 +54,9 @@ Native route:
    user already has plan trigger/stop levels and needs a read-only intraday
    status check against market status, trading day, capital flow, anomaly, and
    trade-stat evidence.
+7. Use `financial-analysis/commands/longbridge-trading-plan.md` when a
+   Longbridge screen result should become a standardized Markdown/JSON
+   premarket, intraday, or post-close handoff artifact.
 
 Compatibility notes:
 
@@ -79,6 +82,9 @@ Compatibility notes:
 - `longbridge-intraday-monitor` remains an independent plan-monitoring command
   rather than a broad screen layer; use it after a plan already has trigger,
   stop, or abandon levels.
+- `longbridge-trading-plan` is a pure artifact builder around screen,
+  intraday-monitor, and post-close actuals. It forces `should_apply: false`
+  and `side_effects: "none"`.
 - `longbridge-action-gateway` remains the account-side action gate. Feed it a
   `longbridge-screen` result when watchlist or alert suggestions should become
   audited dry-run action plans.
