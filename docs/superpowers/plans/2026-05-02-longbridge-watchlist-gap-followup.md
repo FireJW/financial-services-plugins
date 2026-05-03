@@ -8,6 +8,22 @@
 
 **Tech Stack:** Python runtime scripts under `financial-analysis/skills/longbridge/scripts`, command docs under `financial-analysis/commands`, pytest regression tests under `tests/test_longbridge*.py`, and local dry-run artifacts under `.tmp/longbridge-watchlist-2026-05-02`.
 
+## Current Status as of 2026-05-03
+
+- Landed and pushed `a7a5183 feat(longbridge): add watchlist qualitative dry-run workflow`.
+- Landed and pushed `cd4a1c8 fix(longbridge): tighten qualitative report evidence`.
+- Generated local handoff artifacts:
+  - `.tmp/longbridge-watchlist-2026-05-02/result.longbridge-screen.qualitative.json`
+  - `.tmp/longbridge-watchlist-2026-05-02/report.longbridge-screen.qualitative.md`
+  - `.tmp/longbridge-watchlist-2026-05-02/review.action-gateway-dry-run-2026-05-03.json`
+- Task 1 remains blocked by Longbridge CLI authentication refresh. `auth status` reports `refresh_pending`, while read-only `trading days` and `market-status` return `Authentication failed: Not authenticated. Please run 'longbridge auth login' first.`
+- Task 2 is complete for nested/non-standard detail payload preservation. `compact_detail_payload()` now unwraps nested response containers and preserves PDF/plain/raw text previews.
+- Task 3 is complete for normalized profit, EPS, revenue, and operating cash-flow aliases, including common camelCase fields.
+- Task 4 is complete for valuation/target-price conflict tests: target below spot and expensive optimistic target are flagged; fair PE with positive target is not.
+- Task 5 dry-run review is complete. The 2026-05-02 action gateway artifact has 12 plans, all `should_apply: false`, all `side_effects: "none"`, and no order or DCA operation.
+- `longbridge_ownership_runtime.py` and `longbridge_quant_runtime.py` already have minimal CLI `main()` and `--help` behavior covered by tests; no broader CLI rewrite is recommended.
+- No real watchlist, alert, order, or DCA side effect has been run.
+
 ---
 
 ## New Session Startup
