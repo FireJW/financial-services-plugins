@@ -63,15 +63,48 @@ def clean_string_list(value: Any) -> list[str]:
     return items
 
 
-def path_exists(path_value: Any) -> bool:
+def resolve_existing_local_path(path_value: Any) -> Path | None:
     path_text = clean_text(path_value)
-    return bool(path_text) and Path(path_text).exists()
+    if not path_text or path_text.startswith(("http://", "https://", "file://")):
+        return None
+    try:
+        path = Path(path_text).expanduser()
+    except (OSError, ValueError):
+        return None
+
+    candidates = [path]
+    if not path.is_absolute():
+        candidates.append(Path.cwd() / path)
+        candidates.extend(parent / path for parent in Path(__file__).resolve().parent.parents)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError):
+            resolved = candidate
+        key = str(resolved).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            if resolved.exists():
+                return resolved
+        except OSError:
+            continue
+    return None
+
+
+def path_exists(path_value: Any) -> bool:
+    return resolve_existing_local_path(path_value) is not None
 
 
 def normalize_local_path(path_value: Any) -> str:
     path_text = clean_text(path_value)
+    resolved = resolve_existing_local_path(path_text)
+    if resolved:
+        path_text = str(resolved)
     return path_text.replace("\\", "/") if path_text else ""
-
 
 def is_source_result(payload: dict[str, Any]) -> bool:
     return any(key in payload for key in ("x_posts", "evidence_pack", "retrieval_result", "observations", "verdict_output"))
@@ -102,6 +135,55 @@ def sanitize_article_framework(value: Any) -> str:
     return "auto"
 
 
+STYLE_BAND_QUALITY_FLOORS = {
+    "commentary_variable_first": {"target_length_chars": 2200, "human_signal_ratio": 60},
+    "tech_supply_chain_commentary": {"target_length_chars": 2800, "human_signal_ratio": 72},
+    "tech_model_governance_commentary": {"target_length_chars": 2800, "human_signal_ratio": 74},
+    "macro_conflict_transmission": {"target_length_chars": 2800, "human_signal_ratio": 70},
+}
+
+
+def apply_generation_quality_defaults(
+    request: dict[str, Any],
+    *,
+    explicit_target_length: bool,
+    explicit_human_signal: bool,
+) -> dict[str, Any]:
+    language_mode = sanitize_language_mode(request.get("language_mode"))
+    framework = resolve_article_framework(request)
+    style_band = clean_text(request_style_memory(request).get("target_band"))
+
+    target_floor = 1200
+    human_floor = 40
+    if language_mode == "chinese":
+        target_floor = 1800
+        human_floor = 55
+    elif language_mode == "bilingual":
+        target_floor = 1800
+        human_floor = 50
+    if framework == "deep_analysis":
+        if language_mode == "chinese":
+            target_floor = max(target_floor, 2400)
+            human_floor = max(human_floor, 68)
+        elif language_mode == "bilingual":
+            target_floor = max(target_floor, 2200)
+            human_floor = max(human_floor, 60)
+        else:
+            target_floor = max(target_floor, 1800)
+            human_floor = max(human_floor, 50)
+
+    band_floors = safe_dict(STYLE_BAND_QUALITY_FLOORS.get(style_band))
+    target_floor = max(target_floor, int(band_floors.get("target_length_chars", 0) or 0))
+    human_floor = max(human_floor, int(band_floors.get("human_signal_ratio", 0) or 0))
+
+    if not explicit_target_length:
+        request["target_length_chars"] = max(int(request.get("target_length_chars", 0) or 0), target_floor)
+    if not explicit_human_signal:
+        request["human_signal_ratio"] = max(int(request.get("human_signal_ratio", 0) or 0), human_floor)
+        request["humanization_level"] = human_signal_level(int(request.get("human_signal_ratio", 35) or 35))
+    return request
+
+
 def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     payload = deepcopy(raw_payload)
     if is_source_result(payload):
@@ -128,6 +210,8 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         source_request.get("analysis_time"),
         fallback=now_utc(),
     ) or now_utc()
+    explicit_target_length = any(payload.get(key) not in (None, "", []) for key in ("target_length_chars", "target_length"))
+    explicit_human_signal = any(payload.get(key) not in (None, "", []) for key in ("human_signal_ratio", "humanization_level"))
 
     request = {
         "topic": clean_text(payload.get("topic") or source_request.get("topic") or "article-topic"),
@@ -199,6 +283,11 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     request["article_framework"] = sanitize_article_framework(request.get("article_framework"))
     request["headline_hook_mode"] = normalize_headline_hook_mode(request.get("headline_hook_mode"))
     request["headline_hook_prefixes"] = clean_string_list(request.get("headline_hook_prefixes"))
+    request = apply_generation_quality_defaults(
+        request,
+        explicit_target_length=explicit_target_length,
+        explicit_human_signal=explicit_human_signal,
+    )
     request["feedback_profile_dir"] = str(profile_dir)
     request["feedback_profile_status"] = feedback_profile_status(
         profile_dir,
@@ -1353,7 +1442,7 @@ def framework_headings(framework: str) -> list[tuple[str, str]]:
         "deep_analysis": [
             ("先看变化本身", "What Changed"),
             ("深层原因", "The Deeper Driver"),
-            ("影响会传到哪里", "Why This Matters"),
+            ("为什么这事值得关注", "Why This Matters"),
             ("接下来盯什么", "What To Watch Next"),
         ],
         "tutorial": [
@@ -2060,7 +2149,7 @@ def framework_headings(framework: str) -> list[tuple[str, str]]:
         "deep_analysis": [
             ("\u5148\u770b\u53d8\u5316\u672c\u8eab", "What Changed"),
             ("\u6df1\u5c42\u539f\u56e0", "The Deeper Driver"),
-            ("\u5f71\u54cd\u4f1a\u4f20\u5230\u54ea\u91cc", "Why This Matters"),
+            ("\u4e3a\u4ec0\u4e48\u8fd9\u4e8b\u503c\u5f97\u5173\u6ce8", "Why This Matters"),
             ("\u63a5\u4e0b\u6765\u76ef\u4ec0\u4e48", "What To Watch Next"),
         ],
         "tutorial": [
@@ -3949,6 +4038,27 @@ def article_ready_fact_texts(
     return texts
 
 
+def clean_article_internal_source_text(text: str, *, mode: str) -> str:
+    updated = clean_text(text)
+    if not updated:
+        return ""
+    replacements = [
+        ("google-news-search, 36kr", "公开报道和行业讨论"),
+        ("36kr, google-news-search", "公开报道和行业讨论"),
+        ("google-news-search and 36kr", "public reporting and industry discussion"),
+        ("36kr and google-news-search", "public reporting and industry discussion"),
+    ]
+    for source, target in replacements:
+        updated = updated.replace(source, target)
+    if mode == "chinese":
+        updated = updated.replace("google-news-search", "海外媒体")
+        updated = updated.replace("zhihu", "社区讨论")
+    else:
+        updated = updated.replace("google-news-search", "overseas outlets")
+        updated = updated.replace("zhihu", "community discussion")
+    return updated
+
+
 def localized_trend_texts(trend_lines: list[dict[str, Any]], *, mode: str, limit: int = 2) -> list[str]:
     texts: list[str] = []
     for item in trend_lines:
@@ -3959,6 +4069,7 @@ def localized_trend_texts(trend_lines: list[dict[str, Any]], *, mode: str, limit
             raw_text,
             mode,
         )
+        text = clean_article_internal_source_text(text, mode=mode)
         if text:
             texts.append(text)
         if len(texts) >= limit:
@@ -5701,6 +5812,15 @@ def build_public_lede(
                     )
                 else:
                     sentences.append("写深这类题材的关键，是先把已经落地的变化、仍待验证的判断和后续传导变量分开。")
+            if requested_target_length_chars(request) >= 2200:
+                if concrete_focus:
+                    sentences.append(
+                        f"换句话说，真正要回答的不是这条消息热不热，而是{chinese_focus_cluster(concrete_focus[:2], fallback='后面的真实变量')}有没有开始变得更具体。"
+                    )
+                else:
+                    sentences.append("换句话说，真正要回答的不是这条消息热不热，而是后面的真实变量到底有没有开始动起来。")
+            if requested_target_length_chars(request) >= 2800:
+                sentences.append("如果后面没有新的硬确认，这种讨论很容易重新退回情绪层；只要再多一层验证，整篇文章的判断重心就会完全不一样。")
             sentences = apply_slot_memory(
                 sentences,
                 request,
@@ -5889,7 +6009,7 @@ def build_sections_from_brief(
 
         fact_sentences: list[str] = []
         if _selected_angle_zh and primary_fact:
-            # angle-driven opener: weave the angle framing around the primary fact
+            fact_sentences.append(f"最先能确认的变化其实很具体：{primary_fact}")
             fact_sentences.append(_selected_angle_zh)
         elif primary_fact:
             fact_sentences.append(f"最先能确认的变化其实很具体：{primary_fact}")
@@ -5919,11 +6039,21 @@ def build_sections_from_brief(
                     fact_sentences.append(f"眼下更该盯的，是{chinese_focus_cluster(_focus_fact)}这几条传导线")
         if longform_mode:
             fact_sentences.append("这一步最重要的，不是把所有判断一次写满，而是先把已经落地的变化和还在路上的推演拆开。")
+        if dense_longform_mode and not looks_like_developer_tooling_focus(concrete_focus or all_focus_items):
+            if _focus_fact:
+                fact_sentences.append(
+                    f"再往下一层看，真正会把热度变成判断题的，往往是{chinese_focus_cluster(_focus_fact, fallback='这些更具体的变化')}有没有开始连续出现。"
+                )
+            else:
+                fact_sentences.append("再往下一层看，真正会把热度变成判断题的，往往是那些更具体的变化有没有开始连续出现。")
         if extended_longform_mode:
             if looks_like_developer_tooling_focus(concrete_focus or all_focus_items):
                 fact_sentences.append("比起继续数彩蛋，更关键的是这些入口到底有没有对应到真实调用链、权限门槛和协同路径。")
             elif concrete_focus:
                 fact_sentences.append(f"真正拉开差距的，不是再堆一个更大的判断，而是看{chinese_focus_cluster(_focus_fact[:1], fallback='前面那条更具体的变化')}有没有继续被验证。")
+                fact_sentences.append("如果只能复述热度而交代不清后面谁会先动，这篇文章很快就会变成搬运，而不是分析。")
+            else:
+                fact_sentences.append("如果只能复述热度而交代不清后面谁会先动，这篇文章很快就会变成搬运，而不是分析。")
         if extended_longform_mode and looks_like_developer_tooling_focus(concrete_focus or all_focus_items):
             fact_sentences.append("再往下一层看，真正关键的不是源码里有没有更多名字，而是这些名字有没有开始对应到公开入口、权限说明和可复现的调用链。")
         fact_sentences = apply_slot_memory(
@@ -5957,6 +6087,8 @@ def build_sections_from_brief(
         )
         if longform_mode:
             spread_sentences.append("说白了，这里不是情绪在原地打转，而是不同来源都在抢着证明哪条传导链会先被坐实。")
+        if dense_longform_mode and not looks_like_developer_tooling_focus(all_focus_items):
+            spread_sentences.append("这也是为什么同一条消息会同时吸引媒体、从业者和投资端反复确认，因为他们盯的不是同一个结论，而是哪条变量先动。")
         if extended_longform_mode:
             if core_source_count > 0 and shadow_source_count > 0:
                 spread_sentences.append("这轮讨论能继续往下走，不是靠单一爆料，而是官方文档、recovered 代码和社区拆解开始互相补位。")
@@ -5964,6 +6096,8 @@ def build_sections_from_brief(
                     spread_sentences.append("再直白一点，官方文档负责证明哪些入口已经摆上台面，源码和社区拆解则在提示台面后面还藏着多深的工作流层。")
             elif trend_texts:
                 spread_sentences.append(f"也就是说，真正往前推它的，不是更响的口号，而是{trend_texts[0]}这条线开始被更多人反复验证。")
+            elif not looks_like_developer_tooling_focus(all_focus_items):
+                spread_sentences.append("如果后面只有热度没有新的交叉印证，这轮讨论很快会回到情绪层；反过来，只要多出一层硬确认，读法就会明显变重。")
         if extended_longform_mode and looks_like_developer_tooling_focus(all_focus_items):
             spread_sentences.append("也正因为如此，这轮讨论才没有停在“又挖到几个彩蛋”，而是在逼近一个更实际的问题：团队会不会把这些能力真的用起来。")
         if _angle_risk_zh:
@@ -6003,13 +6137,16 @@ def build_sections_from_brief(
                 impact_sentences.append("对开发者真正有影响的，不是多一个隐藏入口，而是浏览器代执行、权限回收和多步协作会不会慢慢变成日常动作。")
             else:
                 impact_sentences.append("真正会改变判断的，不是口号本身，而是这些传导链会不会开始持续改写后面的动作。")
+                impact_sentences.append("再往前推一步，最先被迫调整的通常不是观点本身，而是公司、资金和从业者会不会真的跟着改动作。")
         if extended_longform_mode and focus_for_progression:
             if looks_like_developer_tooling_focus(focus_for_progression):
                 impact_sentences.append("一旦文档、权限说明和可调用迹象开始连成线，团队对它的预期也会从“能不能做”转到“什么时候会被常态化用起来”。")
             elif len(_focus_impact) >= 2:
                 impact_sentences.append(f"再往下一层看，真正决定叙事能不能站稳的，是{chinese_focus_cluster(_focus_impact[1:2], fallback='后续传导变量')}会不会连续出现在后续动作里。")
+                impact_sentences.append("也就是说，这里真正要分清的，不是情绪有没有抬高，而是哪一类人已经开始因此收紧或放大自己的动作。")
             else:
                 impact_sentences.append("再往下一层看，真正决定叙事能不能站稳的，是后续传导变量会不会连续出现在后续动作里。")
+                impact_sentences.append("也就是说，这里真正要分清的，不是情绪有没有抬高，而是哪一类人已经开始因此收紧或放大自己的动作。")
         if extended_longform_mode and looks_like_developer_tooling_focus(focus_for_progression):
             impact_sentences.append("一旦团队真开始照着这套东西往下用，讨论的重心也会跟着变，从功能猎奇转到谁来开权限、谁来兜底执行、谁来审计整条调用链。")
         impact_sentences = apply_slot_memory(
@@ -6035,6 +6172,9 @@ def build_sections_from_brief(
             labels = ("第一", "第二", "第三")
             for index, item in enumerate(watch_list):
                 watch_sentences.append(f"{labels[index]}，{item}")
+            if dense_longform_mode and not developer_watch_mode:
+                watch_sentences.append("别只看有没有人继续讨论，更要看后面会不会出现新的公开数字、管理层表态或连续动作。")
+                watch_sentences.append("顺序也别看反：先看硬信号有没有补强，再看市场预期有没有跟上，最后看叙事会不会被重新定价。")
             if extended_longform_mode:
                 if developer_watch_mode:
                     watch_sentences.append("别只看有没有新截图或新命名，更要看有没有新的公开文档、可调用迹象和权限边界说明。")
@@ -6045,6 +6185,8 @@ def build_sections_from_brief(
                         watch_sentences.append("截图和帖子配图要是只剩热闹，对不上调用痕迹和权限说明，讨论也很难再往下沉。")
                 else:
                     watch_sentences.append("别只看情绪有没有继续抬高，更要看这些点里有没有哪一项真正开始落地。")
+                    watch_sentences.append("顺序最好也别看反：先看硬信号有没有补强，再看市场预期有没有跟上，最后看叙事会不会被带成新的共识。")
+                    watch_sentences.append("如果后面只有讨论没有动作，热度会先掉；但只要有两三个点开始连续兑现，市场对这件事的定性就会立刻变重。")
             watch_close = "只要这里面有两项开始连续被验证，叙事就还能往前走。要是一项都落不了地，热度很快会掉头。"
             if not sentence_is_redundant(watch_close, impact_sentences):
                 watch_sentences.append(watch_close)
@@ -6098,11 +6240,14 @@ def build_sections_from_brief(
                 verification_sentences.append("这里最容易看走眼的，是把 feature flag、命名和实验入口，直接当成已经公开承诺的产品路线图。")
             else:
                 verification_sentences.append("最容易走偏的一步，不是没有判断，而是把仍然缺少第二层验证的推演写得比事实还满。")
+                verification_sentences.append("更稳的写法，不是把所有乐观或悲观都写满，而是把已经确认的动作、还在博弈的判断和真正决定后续走向的变量分层摆开。")
+                verification_sentences.append("写到这一层时，最好把事实、边界和后续观察点各占一个位置，这样后面的判断才不容易飘。")
         if extended_longform_mode:
             if looks_like_developer_tooling_focus(all_focus_items):
                 verification_sentences.append("更稳的写法，是把官方已经写明的能力、源码里只露出命名的入口、以及社区顺着这些入口做出的推演分开来写。")
             else:
                 verification_sentences.append("更稳的写法，是把已经证实的动作、仍在观察的迹象和顺着迹象推出来的判断拆成三栏。")
+                verification_sentences.append("真正拉开文章质量差距的，往往不是语气更满，而是每一层判断背后都有对应的证据和后续观察点。")
         if extended_longform_mode and looks_like_developer_tooling_focus(all_focus_items):
             verification_sentences.append("到底有没有走到这一步，看三个点就够了：先看文档是不是继续补，接着看入口能不能稳定调，最后看权限边界是不是开始写细。")
         if extended_longform_mode and mixed_visual_mode and looks_like_developer_tooling_focus(all_focus_items):
@@ -6126,6 +6271,10 @@ def build_sections_from_brief(
             judgment_sentences.append(f"换个方向看，{implication_fact}")
         elif not_proven_texts:
             judgment_sentences.append(f"如果后面只剩“{not_proven_texts[0]}”这类大结论，却没有新的公开验证，这轮热度反而更容易回头。")
+        if dense_longform_mode and not looks_like_developer_tooling_focus(focus_for_progression or all_focus_items):
+            judgment_sentences.append("真正的分水岭，不是谁把话说得更满，而是有没有新的硬信号把其中一条线连续坐实。")
+            if watch_list:
+                judgment_sentences.append(f"只要像“{watch_list[0]}”这样的点开始反复出现，市场就会把这件事从围观题改写成判断题。")
         if extended_longform_mode:
             if looks_like_developer_tooling_focus(focus_for_progression):
                 judgment_sentences.append("要是下一轮只是又多几个内部名词，这事很快还会回到挖源码、猜功能。")
@@ -6776,7 +6925,7 @@ def requested_focus_sentences(request: dict[str, Any], slot: str, *, mode: str) 
             if developer_focus:
                 sentences.append(developer_focus_variant(topic_lines, "requested"))
             elif macro_focus:
-                sentences.append("真正要看的，不在于谁说得更狠，而是打击频率、航运风险和油价这条线会不会继续往下走")
+                sentences.append("真正要看的，不只是打击频率、航运风险和油价，而是油价会不会继续传到通胀预期、Fed 路径、贴现率和权益估值这条链")
             elif business_focus:
                 sentences.append("真正该看的，是这波变化会不会继续落到订单、预算和定价上")
             else:

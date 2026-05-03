@@ -33,13 +33,40 @@ def clean_string_list(value: Any) -> list[str]:
     return items
 
 
-def path_exists(value: Any) -> bool:
+def resolve_existing_local_path(value: Any) -> Path | None:
+    text = clean_text(value)
+    if not text or text.startswith(("http://", "https://", "file://")):
+        return None
     try:
-        text = clean_text(value)
-        return bool(text) and Path(text).exists()
-    except OSError:
-        return False
+        path = Path(text).expanduser()
+    except (OSError, ValueError):
+        return None
 
+    candidates = [path]
+    if not path.is_absolute():
+        candidates.append(Path.cwd() / path)
+        candidates.extend(parent / path for parent in Path(__file__).resolve().parent.parents)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError):
+            resolved = candidate
+        key = str(resolved).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            if resolved.exists():
+                return resolved
+        except OSError:
+            continue
+    return None
+
+
+def path_exists(value: Any) -> bool:
+    return resolve_existing_local_path(value) is not None
 
 def looks_like_ui_capture_noise(text: Any) -> bool:
     cleaned = clean_text(text)

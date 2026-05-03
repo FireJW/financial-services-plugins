@@ -137,6 +137,51 @@ class ArticlePublishReuseRuntimeTests(unittest.TestCase):
         self.assertTrue(Path(result["report_path"]).exists())
         self.assertTrue(Path(result["result_path"]).exists())
 
+    def test_build_reuse_publish_result_surfaces_benchmark_rubric_in_report(self) -> None:
+        revised_result = self.build_revised_article_result()
+        revised_result["request"]["target_length_chars"] = 3400
+        revised_result["article_package"]["draft_thesis"] = "The hiring reset is a timing-gap story, not a simple headline rebound."
+        revised_result["article_package"]["citations"] = [
+            {"citation_id": "C1", "source_name": "Example Source", "url": "https://example.com/source"}
+        ]
+        revised_result["article_package"]["sections"] = [
+            {
+                "heading": "What changed",
+                "paragraph": "The first confirmed change is that companies are re-opening AI agent roles, but that does not yet prove durable demand.",
+            },
+            {
+                "heading": "The deeper variable",
+                "paragraph": "The real question is whether budget, deployment speed, and customer trust move together; otherwise the rebound remains a timing gap.",
+            },
+            {
+                "heading": "Market transmission",
+                "paragraph": "Investors should watch hiring, cloud spending, customer pilots, and pricing because those signals travel through cost, capacity, and valuation.",
+            },
+            {
+                "heading": "What to watch next",
+                "paragraph": "First, watch whether budgets convert into orders; second, whether deployment data improves; third, whether guidance confirms the demand. If two weaken, the thesis should be repriced.",
+            },
+        ]
+        revised_result["article_package"]["article_markdown"] = "\n\n".join(
+            [
+                revised_result["article_package"]["draft_thesis"],
+                *[item["heading"] + "\n" + item["paragraph"] for item in revised_result["article_package"]["sections"]],
+            ]
+        )
+
+        result = build_reuse_publish_result(
+            {
+                "base_publish_result": self.build_base_publish_result(),
+                "revised_article_result": revised_result,
+                "output_dir": str(self.temp_dir / "rubric-report-out"),
+            }
+        )
+
+        rubric = result["publish_package"]["regression_checks"]["benchmark_rubric"]
+        self.assertTrue(rubric["expected"])
+        self.assertEqual(len(rubric["weakest_dimensions"]), 3)
+        self.assertIn("Benchmark rubric score", result["report_markdown"])
+        self.assertIn("Benchmark weakest dimensions", result["report_markdown"])
     def test_build_reuse_publish_result_preserves_manual_revised_markdown(self) -> None:
         revised_result = self.build_revised_article_result()
         revised_result["article_package"]["manual_article_override"] = True

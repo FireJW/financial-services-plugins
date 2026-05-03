@@ -97,6 +97,12 @@ def build_reuse_report_markdown(result: dict[str, Any]) -> str:
     workflow_manual_review = safe_dict(workflow_publication_gate.get("manual_review")) or safe_dict(result.get("workflow_manual_review"))
     automatic_acceptance = safe_dict(result.get("automatic_acceptance"))
     publish_package = safe_dict(result.get("publish_package"))
+    benchmark_rubric = safe_dict(safe_dict(publish_package.get("regression_checks")).get("benchmark_rubric"))
+    weakest_dimensions = ", ".join(
+        clean_text(item.get("label"))
+        for item in safe_list(benchmark_rubric.get("weakest_dimensions"))[:3]
+        if clean_text(item.get("label"))
+    )
     lines = [
         "# Article Publish Reuse",
         "",
@@ -114,6 +120,18 @@ def build_reuse_report_markdown(result: dict[str, Any]) -> str:
         f"- Automatic acceptance report: {clean_text(result.get('automatic_acceptance_report_path')) or 'unknown'}",
         f"- Push readiness: {clean_text(safe_dict(publish_package.get('push_readiness')).get('status')) or 'unknown'}",
     ]
+    if benchmark_rubric:
+        lines.extend(
+            [
+                "",
+                "## Benchmark Rubric",
+                "",
+                f"- Benchmark rubric score: {int(benchmark_rubric.get('total_score', 0) or 0)} / {int(benchmark_rubric.get('threshold', 0) or 0)}",
+                f"- Benchmark rubric target met: {'yes' if benchmark_rubric.get('passed') else 'no'}",
+                f"- Benchmark rubric blocking ok: {'yes' if benchmark_rubric.get('blocking_passed') else 'no'}",
+                f"- Benchmark weakest dimensions: {weakest_dimensions or 'none'}",
+            ]
+        )
     return "\n".join(lines).strip() + "\n"
 
 

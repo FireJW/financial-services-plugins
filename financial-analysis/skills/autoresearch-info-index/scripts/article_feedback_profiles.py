@@ -312,6 +312,16 @@ TECH_INFRA_STYLE_MEMORY = {
             "tech-ai-citi-capex-returns.md",
             "Use for linking AI capex to returns, beneficiaries, and macro constraints.",
         ),
+        sample_source_entry(
+            "User benchmark / Nvidia real moat",
+            "user-benchmarks/nvidia-real-moat.md",
+            "Use only for structure: opening tension, single thesis, second-order moat logic, and trackable ending variable.",
+        ),
+        sample_source_entry(
+            "User benchmark / TSMC ASML AI infra capex",
+            "user-benchmarks/tsmc-asml-ai-infra-capex.md",
+            "Use only for structure: upstream data entry, dual evidence chains, transmission, and verification nodes.",
+        ),
     ],
 }
 

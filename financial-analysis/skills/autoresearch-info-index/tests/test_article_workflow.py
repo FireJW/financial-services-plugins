@@ -25,6 +25,7 @@ from article_draft_flow_runtime import (
     chinese_watch_item,
     normalize_request as normalize_article_draft_request,
     polish_chinese_wechat_paragraph,
+    requested_focus_sentences,
     split_chinese_wechat_breaths,
     topic_prefers_business_shorthand,
 )
@@ -166,13 +167,18 @@ class ArticleWorkflowTests(unittest.TestCase):
 
         self.assertEqual(request["article_framework"], "deep_analysis")
         self.assertEqual(request["style_memory"]["target_band"], "tech_supply_chain_commentary")
+        self.assertEqual(request["target_length_chars"], 2800)
+        self.assertEqual(request["human_signal_ratio"], 72)
         self.assertIn("顺着钱的流向看下去", request["personal_phrase_bank"])
         self.assertIn(
             "把公司新闻翻译成资金流向、订单流向、产能流向或部署变量",
             request["must_include"],
         )
         self.assertTrue(request["style_memory"].get("sample_sources"))
-        self.assertIn("SemiAnalysis", [item.get("name", "") for item in request["style_memory"]["sample_sources"]])
+        sample_names = [item.get("name", "") for item in request["style_memory"]["sample_sources"]]
+        self.assertIn("SemiAnalysis", sample_names)
+        self.assertIn("User benchmark / Nvidia real moat", sample_names)
+        self.assertIn("User benchmark / TSMC ASML AI infra capex", sample_names)
 
     def test_article_draft_normalize_request_applies_model_governance_lane_defaults(self) -> None:
         source_result = run_news_index(
@@ -213,20 +219,75 @@ class ArticleWorkflowTests(unittest.TestCase):
 
         self.assertEqual(request["article_framework"], "deep_analysis")
         self.assertEqual(request["style_memory"]["target_band"], "tech_model_governance_commentary")
-        self.assertIn("???????????", request["personal_phrase_bank"])
+        self.assertIn("先简单描述下发生了什么", request["personal_phrase_bank"])
         self.assertIn(
-            "?????????????????????????????",
+            "开头先抓人物或公司身份冲突，再把事实收束成一个行业边界问题",
             request["must_include"],
         )
         self.assertIn(
-            "????????????????????????",
+            "不要在开头堆媒体名单、英文标题差异或完整出处列表",
             request["must_avoid"],
         )
         self.assertIn(
-            "????????????????????????????????",
+            "事实段用一句“多个可靠信息来源”先收住，详细来源放到后文或文末。",
             request["style_memory"]["slot_guidance"]["facts"],
         )
         self.assertNotEqual(request["style_memory"]["target_band"], "tech_supply_chain_commentary")
+
+    def test_article_draft_normalize_request_defaults_longform_quality_for_chinese_deep_analysis(self) -> None:
+        request = normalize_article_draft_request(
+            {
+                "source_result": self.build_clean_core_news_result(),
+                "language_mode": "chinese",
+                "article_framework": "deep_analysis",
+            }
+        )
+
+        self.assertEqual(request["target_length_chars"], 2400)
+        self.assertEqual(request["human_signal_ratio"], 68)
+        self.assertEqual(request["humanization_level"], "medium")
+
+    def test_article_draft_normalize_request_respects_explicit_quality_overrides(self) -> None:
+        source_result = run_news_index(
+            {
+                "topic": "Agentic AI reprices the semiconductor supply chain",
+                "analysis_time": "2026-04-25T12:00:00+00:00",
+                "claims": [
+                    {
+                        "claim_id": "claim-1",
+                        "claim_text": "A large AI infrastructure deal is pushing compute demand upstream.",
+                    }
+                ],
+                "candidates": [
+                    {
+                        "source_id": "tech-1",
+                        "source_name": "The Information",
+                        "source_type": "major_news",
+                        "published_at": "2026-04-25T11:00:00+00:00",
+                        "observed_at": "2026-04-25T11:05:00+00:00",
+                        "url": "https://example.com/tech-1",
+                        "text_excerpt": (
+                            "Google and Anthropic are expanding TPU and GPU capacity, "
+                            "pulling Broadcom, TSMC, packaging, and cloud infrastructure into focus."
+                        ),
+                        "claim_ids": ["claim-1"],
+                        "claim_states": {"claim-1": "support"},
+                    }
+                ],
+            }
+        )
+
+        request = normalize_article_draft_request(
+            {
+                "source_result": source_result,
+                "language_mode": "chinese",
+                "target_length_chars": 1600,
+                "human_signal_ratio": 44,
+            }
+        )
+
+        self.assertEqual(request["target_length_chars"], 1600)
+        self.assertEqual(request["human_signal_ratio"], 44)
 
     def test_article_draft_normalize_request_keeps_non_tech_topics_out_of_tech_lane(self) -> None:
         source_result = run_news_index(
@@ -305,12 +366,29 @@ class ArticleWorkflowTests(unittest.TestCase):
 
         self.assertEqual(request["article_framework"], "deep_analysis")
         self.assertEqual(request["style_memory"]["target_band"], "macro_conflict_transmission")
+        self.assertEqual(request["target_length_chars"], 2800)
+        self.assertEqual(request["human_signal_ratio"], 70)
         self.assertIn("先看结论", request["personal_phrase_bank"])
         self.assertIn("把事件翻译成油价、通胀预期、Fed 路径和权益贴现率的传导链", request["must_include"])
         self.assertTrue(request["style_memory"].get("sample_sources"))
         sample_names = [item.get("name", "") for item in request["style_memory"]["sample_sources"]]
         self.assertIn("HFI Research", sample_names)
         self.assertIn("Bloomberg Opinion / Javier Blas", sample_names)
+
+    def test_requested_focus_sentences_macro_impact_writes_full_market_chain(self) -> None:
+        request = {
+            "topic": "Hormuz oil shock reprices inflation expectations and Fed path",
+            "language_mode": "chinese",
+            "must_include": ["把事件翻译成油价、通胀预期、Fed 路径和权益贴现率的传导链"],
+        }
+
+        sentences = requested_focus_sentences(request, "impact", mode="chinese")
+        joined = " ".join(sentences)
+
+        self.assertIn("通胀预期", joined)
+        self.assertIn("Fed", joined)
+        self.assertIn("贴现率", joined)
+        self.assertIn("权益估值", joined)
 
     def build_seed_x_request(self, tmpdir: Path) -> dict:
         tmpdir.mkdir(parents=True, exist_ok=True)

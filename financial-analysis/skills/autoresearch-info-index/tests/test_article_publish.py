@@ -14,12 +14,16 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from article_benchmark_rubric import score_benchmark_rubric
+from article_benchmark_artifacts import build_benchmark_enrichment_request
 from article_publish_runtime import (
     build_news_request_from_topic,
     build_chinese_publish_markdown,
     build_publish_package,
     build_regression_checks,
     build_report_markdown,
+    load_json,
+    minimum_body_chars_for_target,
     normalize_request,
     run_article_publish,
     select_cover_plan,
@@ -69,6 +73,163 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(request["push_backend"], "auto")
 
+    def test_normalize_request_defaults_chinese_publish_to_longform_quality_budget(self) -> None:
+        request = normalize_request(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": self.manual_topic_candidates(),
+                "output_dir": str(self.temp_dir / "default-quality-budget"),
+            }
+        )
+
+        self.assertEqual(request["language_mode"], "chinese")
+        self.assertEqual(request["target_length_chars"], 2400)
+        self.assertEqual(request["human_signal_ratio"], 68)
+
+    def test_normalize_request_respects_explicit_publish_quality_overrides(self) -> None:
+        request = normalize_request(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": self.manual_topic_candidates(),
+                "output_dir": str(self.temp_dir / "explicit-quality-budget"),
+                "target_length_chars": 1600,
+                "human_signal_ratio": 42,
+            }
+        )
+
+        self.assertEqual(request["target_length_chars"], 1600)
+        self.assertEqual(request["human_signal_ratio"], 42)
+
+    def test_benchmark_rubric_scores_strong_longform_shape(self) -> None:
+        package = {
+            "title": "AI 基建还没见顶：上游订单才是主线",
+            "draft_thesis": "真正值得看的不是模型发布热度，而是上游订单和资本开支有没有继续传导。",
+            "lede": (
+                "最近市场又开始担心 AI 资本开支快见顶了。这个担心不是没有道理，但如果只盯模型端，"
+                "很容易错过更硬的信号。真正值得看的，是上游产能、设备订单和云厂商采购有没有一起往前走。"
+            ),
+            "not_proven": [{"claim_text": "AI capex has peaked"}],
+            "citations": [{"title": "Source A"}, {"title": "Source B"}],
+            "sections": [
+                {
+                    "heading": "先看最硬的事实",
+                    "paragraph": "第一层能确认的，是晶圆厂资本开支和设备订单仍在高位。这个事实不等于所有 AI 公司都会受益，但它说明需求还没有从上游开始松。",
+                },
+                {
+                    "heading": "为什么要放在一起看",
+                    "paragraph": "TSMC 代表先进制程产能，ASML 代表关键设备能力。把这两条线放在一起，才知道资本开支有没有真的传导到产能和订单。",
+                },
+                {
+                    "heading": "市场哪里容易误判",
+                    "paragraph": "模型端热度下降可能是真的，应用收入兑现慢也可能是真的。问题在于，这些噪音不能直接写成上游投资已经结束。",
+                },
+                {
+                    "heading": "真正的传导链条",
+                    "paragraph": "再往下一层看，资金会先落到 GPU、封装、服务器、网络和数据中心，再影响成本、利润率、估值和市场定价。",
+                },
+                {
+                    "heading": "投资者该怎么读",
+                    "paragraph": "对投资者来说，真正有风险的是只讲 AI 故事却没有稀缺供给和稳定订单的公司；真正值得重估的是谁能把需求变成长期交付。",
+                },
+                {
+                    "heading": "接下来盯什么",
+                    "paragraph": "第一，云厂商 capex 指引会不会继续上修；第二，先进封装和设备订单是否维持紧张；第三，关键平台出货节奏是否顺畅。如果这三条里有两条松动，主线就要重估。",
+                },
+            ],
+        }
+
+        rubric = score_benchmark_rubric(package, {"language_mode": "chinese", "target_length_chars": 2800})
+
+        self.assertEqual(rubric["contract_version"], "article_benchmark_rubric_v1")
+        self.assertEqual(rubric["policy"], "derived_rules_only_no_raw_benchmark_text")
+        self.assertGreaterEqual(rubric["total_score"], rubric["threshold"])
+        self.assertTrue(rubric["passed"])
+        self.assertEqual(len(rubric["weakest_dimensions"]), 3)
+        self.assertIn("trackable ending variables", rubric["source_rules"])
+
+    def test_benchmark_rubric_counts_plain_chinese_reader_payoff_actions(self) -> None:
+        package = {
+            "title": "AI 投资链条需要看真实落点",
+            "lede": "真正的问题不是新闻热不热，而是投资者和公司接下来应该观察哪些风险和受益节点。",
+            "citations": [{"title": "Source A"}],
+            "sections": [
+                {
+                    "heading": "谁会受影响",
+                    "paragraph": "对投资者来说，值得盯的是预算、订单和定价会不会连续变化；对公司来说，应该决定是否调整采购和交付节奏。",
+                },
+                {
+                    "heading": "接下来怎么验证",
+                    "paragraph": "第一，观察订单是否补强；第二，观察客户预算是否收紧；第三，观察风险是否从叙事变成数据。",
+                },
+            ],
+        }
+
+        rubric = score_benchmark_rubric(package, {"language_mode": "chinese", "target_length_chars": 2800})
+        reader_payoff = rubric["dimensions"]["reader_payoff"]
+
+        self.assertGreaterEqual(reader_payoff["signals"]["action_hits"], 2)
+        self.assertGreaterEqual(reader_payoff["score"], 50)
+
+    def test_benchmark_rubric_counts_chinese_watch_phrasing_from_generated_drafts(self) -> None:
+        package = {
+            "title": "样例",
+            "lede": "真正要看的不是标题热度，而是谁会受影响。",
+            "sections": [
+                {
+                    "heading": "接下来盯什么",
+                    "paragraph": (
+                        "真正值得注意的，后面先看三处更实的落点。"
+                        "第一，变化会不会继续扩大。第二，硬信号有没有补强。"
+                        "要是一项都落不了地，热度很快会掉头。"
+                    ),
+                }
+            ],
+        }
+
+        rubric = score_benchmark_rubric(package, {"language_mode": "chinese", "target_length_chars": 2800})
+        reader_payoff = rubric["dimensions"]["reader_payoff"]
+
+        self.assertGreaterEqual(reader_payoff["signals"]["action_hits"], 2)
+        self.assertGreaterEqual(reader_payoff["score"], 50)
+
+    def test_build_regression_checks_blocks_weak_longform_against_benchmark_rubric(self) -> None:
+        regression_checks = build_regression_checks(
+            {
+                "title": "AI 新闻汇总",
+                "lede": "多家媒体报道 AI 公司又有新消息。",
+                "sections": [
+                    {"heading": "消息", "paragraph": "这件事很重要。市场会继续关注。"},
+                    {"heading": "总结", "paragraph": "后续还要继续看新闻。"},
+                ],
+                "selected_images": [],
+            },
+            {
+                "article_framework": "deep_analysis",
+                "language_mode": "chinese",
+                "target_length_chars": 2800,
+                "draft_mode": "balanced",
+                "image_strategy": "mixed",
+            },
+            {"selection_mode": "manual_required", "selection_reason": "manual cover required"},
+            {"cover_source": "missing"},
+            {"title": "AI 新闻汇总", "summary": "一篇缺少主线和传导的弱稿", "keywords": ["AI"]},
+        )
+
+        rubric = regression_checks["benchmark_rubric"]
+        self.assertTrue(regression_checks["checks"]["benchmark_rubric_expected"])
+        self.assertFalse(regression_checks["checks"]["benchmark_rubric_ok"])
+        self.assertLess(rubric["total_score"], rubric["threshold"])
+        self.assertEqual(len(rubric["weakest_dimensions"]), 3)
+
+        result = article_publish_runtime.build_automatic_acceptance_result(
+            regression_checks,
+            target="weak-longform",
+            output_dir=str(self.temp_dir / "weak-longform"),
+            regression_source="unit_test",
+        )
+
+        self.assertIn("Benchmark rubric score is below the longform quality floor.", result["failures"])
+        self.assertIn("benchmark_rubric", {item["area"] for item in result["optimization_options"]})
     def manual_topic_candidates(self) -> list[dict]:
         return [
             {
@@ -1485,6 +1646,44 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertIn("资本开支、产能扩张和先进封装", markdown)
         self.assertNotIn("融资意愿、订单能见度和预算投放", markdown)
         self.assertNotIn("招聘节奏、组织扩张和行业景气度", markdown)
+
+    def test_build_chinese_publish_markdown_expands_short_longform_sections_to_length_floor(self) -> None:
+        selected_topic = {
+            "title": "AI抢走了你的内存条",
+            "summary": "AI 服务器需求继续挤压内存供给，现阶段还需要更多交叉验证。",
+            "source_items": [
+                {
+                    "source_name": "36kr",
+                    "url": "https://36kr.com/p/3791556962972417",
+                    "published_at": "2026-05-02T15:24:34+00:00",
+                    "summary": "内存条价格和供需讨论升温。",
+                }
+            ],
+        }
+        article_package = {
+            "subtitle": "先把发生了什么说清楚，再看这件事为什么会继续发酵。",
+            "lede": "这件事不能只看标题热度，真正要看的，是供需紧张会不会继续传到价格、订单和下游预算。",
+            "sections": [
+                {"heading": "先看变化本身", "paragraph": "内存供给变紧，价格和交付节奏开始被重新讨论。"},
+                {"heading": "深层原因", "paragraph": "AI 服务器需求更强，传统终端复苏又在争抢供给。"},
+                {"heading": "影响会传到哪里", "paragraph": "先传到 DRAM 和 HBM，再传到云厂商资本开支和整机成本。"},
+                {"heading": "接下来盯什么", "paragraph": "看厂商报价、交付周期、云厂商订单和消费电子需求能否同时确认。"},
+                {"heading": "最后的观察", "paragraph": "如果只有价格上涨，没有订单和交付确认，叙事还站不稳。"},
+            ],
+        }
+        request = normalize_request(
+            {
+                "analysis_time": "2026-05-02T15:24:34+00:00",
+                "account_name": "Test Account",
+                "language_mode": "chinese",
+            }
+        )
+
+        markdown = build_chinese_publish_markdown(selected_topic, article_package, request, developer_tooling=False)
+
+        self.assertGreaterEqual(len(markdown), minimum_body_chars_for_target(request["target_length_chars"]))
+        self.assertIn("## 还要补哪几层验证", markdown)
+        self.assertIn("不能因为标题热，就默认供需拐点已经确认", markdown)
 
     def test_build_subtitle_uses_semiconductor_capex_copy_instead_of_generic_heat_copy(self) -> None:
         request = {
@@ -3746,10 +3945,142 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertNotIn("有解释价值，不只是情绪型热度", package["content_markdown"])
         self.assertNotIn("google-news-search, 36kr", package["content_markdown"])
         self.assertNotIn("现在最直接的观察对象是", package["content_markdown"])
-        self.assertIn("最先能确认的变化其实很具体", package["content_markdown"])
+        self.assertIn("先把已经落地的变化和还在路上的推演拆开", package["content_markdown"])
         self.assertIn("这轮讨论没有很快掉下去", package["content_markdown"])
         self.assertIn("## 接下来盯什么", package["content_markdown"])
         self.assertIn("第一，", package["content_markdown"])
+
+
+    def test_article_publish_writes_benchmark_loop_artifacts(self) -> None:
+        output_dir = self.temp_dir / "benchmark-loop"
+        result = run_article_publish(
+            {
+                "analysis_time": "2026-03-29T10:30:00+00:00",
+                "manual_topic_candidates": self.manual_topic_candidates(),
+                "audience_keywords": ["AI", "business", "investing", "industry"],
+                "account_name": "Test Account",
+                "author": "Codex",
+                "output_dir": str(output_dir),
+                "draft_mode": "balanced",
+            }
+        )
+
+        artifact_paths = result["benchmark_artifact_paths"]
+        for key in ("candidate_index", "viral_teardown", "quality_loop", "enrichment_request"):
+            self.assertTrue(Path(artifact_paths[key]).exists(), key)
+
+        candidate_index = load_json(Path(artifact_paths["candidate_index"]))
+        self.assertEqual(candidate_index["contract_version"], "benchmark_candidate_index_v1")
+        self.assertEqual(candidate_index["policy"], "structure_only_no_source_text_copy")
+        self.assertIn("discovery_quality", candidate_index)
+        self.assertTrue(candidate_index["discovery_quality"]["needs_interaction_enrichment"])
+        self.assertEqual(candidate_index["discovery_quality"]["high_interaction_reference_count"], 0)
+        self.assertNotIn("summary", candidate_index["topics"][0])
+        self.assertGreaterEqual(len(candidate_index["contents"]), 1)
+        first_content = candidate_index["contents"][0]
+        for field in ("url", "title", "source", "published_at", "interaction_metrics", "topic", "viral_point", "adaptation_reason"):
+            self.assertIn(field, first_content)
+        self.assertIn("benchmark_fit", first_content)
+        self.assertEqual(first_content["benchmark_fit"]["interaction_level"], "thin")
+        self.assertIn("needs_higher_interaction_reference", first_content["benchmark_fit"]["flags"])
+
+        enrichment_request = load_json(Path(artifact_paths["enrichment_request"]))
+        self.assertEqual(enrichment_request["contract_version"], "benchmark_enrichment_request_v1")
+        self.assertTrue(enrichment_request["needed"])
+        self.assertEqual(enrichment_request["source_priority_order"][0], "x_index")
+        self.assertIn("x_index_request", enrichment_request)
+        self.assertIn("opencli_request", enrichment_request)
+
+        teardown = load_json(Path(artifact_paths["viral_teardown"]))
+        self.assertEqual(teardown["contract_version"], "benchmark_viral_teardown_v1")
+        for field in ("title_hook", "opening_conflict", "mainline", "evidence_order", "paragraph_rhythm", "second_order_judgment", "ending_watch_items", "style_memory", "prompt_controls"):
+            self.assertIn(field, teardown)
+        self.assertIn("slot_guidance", teardown["style_memory"])
+        benchmark_must_land = teardown["style_memory"]["must_land"]
+        self.assertIn("Translate the analysis into a concrete reader payoff.", benchmark_must_land)
+        self.assertIn("Show the affected actors and the transmission path.", benchmark_must_land)
+
+        quality_loop = load_json(Path(artifact_paths["quality_loop"]))
+        self.assertEqual(quality_loop["contract_version"], "benchmark_quality_loop_v1")
+        self.assertTrue(Path(quality_loop["generation_request_path"]).exists())
+        self.assertTrue(Path(quality_loop["article_draft_path"]).exists())
+        self.assertTrue(Path(quality_loop["publish_package_path"]).exists())
+        self.assertIn("rubric_score", quality_loop)
+        self.assertEqual(len(quality_loop["weakest_dimensions"]), 3)
+        self.assertGreaterEqual(len(quality_loop["improvement_suggestions"]), 1)
+        self.assertIn("style_memory_delta", quality_loop)
+        self.assertIn("prompt_controls", quality_loop)
+        self.assertEqual(
+            quality_loop["prompt_controls"]["rubric_focus"],
+            [item["key"] for item in quality_loop["weakest_dimensions"]],
+        )
+        style_memory = result["publish_package"]["style_profile_applied"]["style_memory"]
+        self.assertIn("Translate the analysis into a concrete reader payoff.", style_memory["must_land"])
+        self.assertIn("Show the affected actors and the transmission path.", style_memory["must_land"])
+        self.assertIn(
+            "Translate the analysis into a concrete reader payoff.",
+            result["publish_package"]["style_profile_applied"]["constraints"]["must_include"],
+        )
+        report_markdown = result["report_markdown"]
+        self.assertIn("## Benchmark Loop Artifacts", report_markdown)
+        self.assertIn("Benchmark candidate index:", report_markdown)
+        self.assertIn("benchmark-candidate-index.json", report_markdown)
+        self.assertIn("Benchmark viral teardown:", report_markdown)
+        self.assertIn("benchmark-viral-teardown.json", report_markdown)
+        self.assertIn("Benchmark quality loop:", report_markdown)
+        self.assertIn("benchmark-quality-loop.json", report_markdown)
+        self.assertIn("Benchmark enrichment request:", report_markdown)
+        self.assertIn("benchmark-enrichment-request.json", report_markdown)
+        self.assertIn("Benchmark weakest dimensions:", report_markdown)
+        self.assertIn("Benchmark discovery enrichment needed: yes", report_markdown)
+        self.assertIn("Benchmark high-interaction references: 0", report_markdown)
+
+    def test_benchmark_enrichment_request_anchors_x_queries_to_topic_terms(self) -> None:
+        request = build_benchmark_enrichment_request(
+            {
+                "discovery_quality": {
+                    "needs_interaction_enrichment": True,
+                    "flags": ["no_high_interaction_reference"],
+                },
+                "topics": [{"title": "AI抢走了你的内存条"}],
+            },
+            {
+                "title": "AI抢走了你的内存条",
+                "keywords": ["ai", "AI", "抢走了你的内存条"],
+            },
+        )
+
+        x_request = request["x_index_request"]
+        query_overrides = x_request["query_overrides"]
+        self.assertTrue(query_overrides)
+        self.assertNotIn("ai AI 抢走了你的内存条", query_overrides)
+        self.assertNotIn("AI", x_request["keywords"])
+        self.assertNotIn("ai", x_request["keywords"])
+        self.assertIn("relevance_filter", x_request)
+        self.assertIn("内存", x_request["relevance_filter"]["required_any_terms"])
+        for query in query_overrides:
+            self.assertTrue(
+                any(term.lower() in query.lower() for term in x_request["relevance_filter"]["required_any_terms"]),
+                query,
+            )
+
+        english_request = build_benchmark_enrichment_request(
+            {
+                "discovery_quality": {
+                    "needs_interaction_enrichment": True,
+                    "flags": ["no_high_interaction_reference"],
+                },
+                "topics": [{"title": "Trump is running out of options to contain gas price backlash"}],
+            },
+            {
+                "title": "Trump is running out of options to contain gas price backlash",
+                "keywords": ["Trump", "is", "running", "out", "of", "options", "to", "gas", "price"],
+            },
+        )
+        english_keywords = english_request["x_index_request"]["keywords"]
+        self.assertNotIn("is", english_keywords)
+        self.assertNotIn("of", english_keywords)
+        self.assertNotIn("to", english_keywords)
 
     def test_article_publish_surfaces_workflow_publication_gate_on_result_and_acceptance(self) -> None:
         workflow_result = self.build_publish_workflow_result(
@@ -5632,11 +5963,11 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
             },
             "push_readiness": {"cover_source": "dedicated_cover_candidate"},
             "regression_checks": {
-                "section_count": 5,
+                "section_count": 6,
                 "target_length_chars": 2800,
-                "body_char_count": 1600,
+                "body_char_count": 2150,
                 "content_char_count": 4681,
-                "section_headings": ["先看变化本身", "为什么没那么快结束", "真正的传导链条", "我的预测", "最后一句话总结"],
+                "section_headings": ["先看变化本身", "为什么没那么快结束", "真正的传导链条", "谁会先感受到变化", "接下来盯什么", "最后一句话总结"],
                 "first_image": {
                     "asset_id": "IMG-01",
                     "role": "root_post_screenshot",
@@ -5683,6 +6014,8 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
                 "checks": {
                     "expanded_sections_expected": True,
                     "expanded_sections_ok": True,
+                    "body_length_expected": True,
+                    "body_length_ok": True,
                     "ui_capture_noise_clean": True,
                     "generic_business_talk_expected": True,
                     "generic_business_talk_clean": True,
@@ -5718,6 +6051,247 @@ class ArticlePublishRuntimeTests(unittest.TestCase):
         self.assertIn("screenshot_caption_margin", option_areas)
         self.assertIn("可选优化项", result["recommended_next_action"])
         self.assertIn("Optional Improvements", result["report_markdown"])
+
+    def test_article_publish_regression_check_blocks_when_length_and_depth_miss_budget(self) -> None:
+        output_dir = self.temp_dir / "publish-regression-length-depth-block"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        package = {
+            "cover_plan": {
+                "selection_mode": "screenshot_candidate",
+                "selected_cover_role": "root_post_screenshot",
+                "selected_cover_asset_id": "IMG-09",
+                "selection_reason": "screenshot cover candidate",
+            },
+            "push_readiness": {"cover_source": "dedicated_cover_candidate"},
+            "regression_checks": {
+                "section_count": 5,
+                "target_length_chars": 2800,
+                "body_char_count": 1600,
+                "content_char_count": 4420,
+                "section_headings": ["先看变化本身", "为什么没那么快结束", "真正的传导链条", "接下来盯什么", "最后一句话总结"],
+                "first_image": {
+                    "asset_id": "IMG-09",
+                    "role": "root_post_screenshot",
+                    "status": "local_ready",
+                    "caption": "首页截图",
+                    "placement": "after_lede",
+                },
+                "cover": {
+                    "selected_cover_asset_id": "IMG-09",
+                    "selected_cover_role": "root_post_screenshot",
+                    "selected_cover_caption": "首页截图",
+                    "selection_mode": "screenshot_candidate",
+                    "selection_reason": "screenshot cover candidate",
+                    "cover_source": "dedicated_cover_candidate",
+                },
+                "forbidden_phrase_hits": {
+                    "登录": 0,
+                    "/url:": 0,
+                    "预算": 0,
+                    "订单": 0,
+                    "定价": 0,
+                    "经营变量": 0,
+                    "经营层": 0,
+                    "经营和投资判断题": 0,
+                },
+                "developer_focus_phrase_hits": {
+                    "产品边界、权限设计": 1,
+                    "浏览器控制、工作流编排": 1,
+                    "能力边界和开发者工作流": 1,
+                    "哪些入口会开放、哪些权限会收口": 1,
+                },
+                "wechat_transition_phrase_hits": {
+                    "换句话说": 1,
+                    "反过来看": 1,
+                    "真正把讨论撑住的": 1,
+                    "最容易误判的地方": 1,
+                    "判断有没有走到这一步": 1,
+                },
+                "wechat_tail_tone_phrase_hits": {},
+                "checks": {
+                    "expanded_sections_expected": True,
+                    "expanded_sections_ok": False,
+                    "body_length_expected": True,
+                    "body_length_ok": False,
+                    "ui_capture_noise_clean": True,
+                    "generic_business_talk_expected": True,
+                    "generic_business_talk_clean": True,
+                    "developer_focus_copy_expected": True,
+                    "developer_focus_copy_clean": True,
+                    "developer_focus_phrase_varied": True,
+                    "wechat_transition_phrase_varied": True,
+                    "wechat_tail_tone_expected": True,
+                    "wechat_tail_tone_clean": True,
+                    "screenshot_path_expected": True,
+                    "first_image_is_screenshot": True,
+                    "screenshot_cover_preferred": True,
+                    "cover_reason_present": True,
+                    "cover_caption_clean": True,
+                    "title_complete": True,
+                },
+            },
+        }
+        (output_dir / "publish-package.json").write_text(json.dumps(package, ensure_ascii=False), encoding="utf-8-sig")
+
+        result = run_publish_regression_check({"target": str(output_dir)})
+
+        self.assertEqual(result["status"], "changes_recommended")
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["decision_required"])
+        self.assertIn("Expanded sections are still below the expected article depth.", result["failures"])
+        self.assertIn("Body copy is still under the requested length and density budget.", result["failures"])
+        option_areas = {item["area"] for item in result["optimization_options"]}
+        self.assertIn("structure", option_areas)
+        self.assertIn("length_depth", option_areas)
+
+    def test_build_regression_checks_adds_benchmark_rubric_scorecard(self) -> None:
+        regression_checks = build_regression_checks(
+            {
+                "title": "AI capex reset reaches the foundry bottleneck",
+                "article_framework": "deep_analysis",
+                "lede": (
+                    "The important question is not whether AI spending is hot. "
+                    "It is whether the money is now turning into foundry capacity, equipment orders, and market repricing."
+                ),
+                "sections": [
+                    {
+                        "heading": "Start with the confirmed change",
+                        "paragraph": (
+                            "TSMC and ASML are now the cleaner way to read the story because the debate has moved "
+                            "from model demand into capacity, lithography bottlenecks, and customer delivery timing."
+                        ),
+                    },
+                    {
+                        "heading": "Why this is not just another AI headline",
+                        "paragraph": (
+                            "The second-order point is that cloud budgets only matter if they keep converting into "
+                            "wafer starts, advanced packaging commitments, and equipment backlog visibility."
+                        ),
+                    },
+                    {
+                        "heading": "Where the market transmission sits",
+                        "paragraph": (
+                            "Upstream foundries, tool vendors, packaging suppliers, server vendors, and the hyperscalers "
+                            "will not be repriced at the same time, so the useful question is which link confirms first."
+                        ),
+                    },
+                    {
+                        "heading": "What readers can use",
+                        "paragraph": (
+                            "For investors, the benefit is a tracking map: capex guidance, order backlog, utilization, "
+                            "gross margin pressure, and customer concentration should be read in that order."
+                        ),
+                    },
+                    {
+                        "heading": "What to watch next",
+                        "paragraph": (
+                            "First, watch whether capex guidance rises again. Second, watch ASML backlog. "
+                            "Third, watch whether TSMC packaging capacity remains the gating variable."
+                        ),
+                    },
+                    {
+                        "heading": "The boundary",
+                        "paragraph": (
+                            "This still does not prove unlimited AI returns; it only says the next round of evidence "
+                            "should be tracked through capacity, orders, and pricing rather than through slogans."
+                        ),
+                    },
+                ],
+                "citations": [
+                    {"citation_id": "c1", "source_name": "TSMC", "title": "earnings call", "url": "https://example.com/tsmc"},
+                    {"citation_id": "c2", "source_name": "ASML", "title": "results", "url": "https://example.com/asml"},
+                ],
+                "selected_images": [],
+            },
+            {
+                "article_framework": "deep_analysis",
+                "target_length_chars": 2800,
+                "draft_mode": "balanced",
+                "image_strategy": "mixed",
+                "language_mode": "english",
+            },
+            {
+                "selected_cover_role": "post_media",
+                "selection_mode": "body_image_fallback",
+                "selection_reason": "body image fallback",
+            },
+            {"cover_source": "article_image"},
+            {
+                "title": "AI capex reaches the foundry and equipment layer",
+                "summary": "A supply-chain read on TSMC, ASML, hyperscaler capex, and AI infrastructure.",
+                "keywords": ["AI", "capex", "TSMC", "ASML", "semiconductor", "market"],
+            },
+        )
+
+        rubric = regression_checks["benchmark_rubric"]
+        self.assertEqual(
+            [item["dimension"] for item in rubric["scorecard"]],
+            [
+                "opening_hook",
+                "single_mainline",
+                "fact_restraint",
+                "second_order_analysis",
+                "industry_market_transmission",
+                "reader_payoff",
+                "trackable_variables",
+            ],
+        )
+        self.assertEqual(len(rubric["weakest_three"]), 3)
+        self.assertGreaterEqual(rubric["average_score"], 7.0)
+        self.assertIn("nvidia-real-moat.md", rubric["reference_samples"])
+        self.assertIn("tsmc-asml-ai-infra-capex.md", rubric["reference_samples"])
+        self.assertTrue(regression_checks["checks"]["benchmark_rubric_expected"])
+        self.assertTrue(regression_checks["checks"]["benchmark_rubric_ok"])
+
+    def test_article_publish_regression_check_reports_benchmark_weakest_three(self) -> None:
+        output_dir = self.temp_dir / "publish-regression-benchmark-rubric"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        regression_checks = build_regression_checks(
+            {
+                "title": "AI story update",
+                "article_framework": "deep_analysis",
+                "lede": "AI spending is still hot.",
+                "sections": [
+                    {"heading": "What happened", "paragraph": "A company said demand is strong."},
+                    {"heading": "Why it matters", "paragraph": "The stock market may care later."},
+                ],
+                "citations": [],
+                "selected_images": [],
+            },
+            {
+                "article_framework": "deep_analysis",
+                "target_length_chars": 1800,
+                "draft_mode": "balanced",
+                "image_strategy": "mixed",
+                "language_mode": "english",
+            },
+            {
+                "selected_cover_role": "post_media",
+                "selection_mode": "body_image_fallback",
+                "selection_reason": "body image fallback",
+            },
+            {"cover_source": "article_image"},
+            {
+                "title": "AI spending remains hot",
+                "summary": "Generic AI demand update.",
+                "keywords": ["AI"],
+            },
+        )
+        package = {
+            "cover_plan": {"selection_reason": "body image fallback"},
+            "push_readiness": {"cover_source": "article_image"},
+            "regression_checks": regression_checks,
+        }
+        (output_dir / "publish-package.json").write_text(json.dumps(package, ensure_ascii=False), encoding="utf-8-sig")
+
+        result = run_publish_regression_check({"target": str(output_dir)})
+
+        self.assertEqual(len(result["benchmark_rubric"]["weakest_three"]), 3)
+        self.assertFalse(result["benchmark_rubric"]["passes_floor"])
+        self.assertIn("## Benchmark Rubric", result["report_markdown"])
+        self.assertIn("Weakest three", result["report_markdown"])
+        advisory_areas = {item["area"] for item in result["advisory_options"] + result["optimization_options"]}
+        self.assertIn("benchmark_rubric", advisory_areas)
 
     def test_publish_scripts_compile_cleanly(self) -> None:
         for name in [

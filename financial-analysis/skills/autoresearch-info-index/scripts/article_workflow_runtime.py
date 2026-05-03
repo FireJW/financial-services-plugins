@@ -135,6 +135,9 @@ def normalize_workflow_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "max_images": payload.get("max_images"),
         "human_signal_ratio": payload.get("human_signal_ratio"),
         "personal_phrase_bank": payload.get("personal_phrase_bank"),
+        "style_memory": safe_dict(payload.get("style_memory")),
+        "must_include": clean_string_list(payload.get("must_include") or payload.get("focus_points")),
+        "must_avoid": clean_string_list(payload.get("must_avoid")),
         "image_strategy": clean_text(payload.get("image_strategy")),
         "draft_mode": clean_text(payload.get("draft_mode")),
         "article_framework": clean_text(payload.get("article_framework")),
@@ -201,6 +204,8 @@ def build_draft_payload(request: dict[str, Any], source_result: dict[str, Any]) 
         "max_images",
         "human_signal_ratio",
         "personal_phrase_bank",
+        "must_include",
+        "must_avoid",
         "language_mode",
         "article_framework",
         "headline_hook_mode",
@@ -209,6 +214,8 @@ def build_draft_payload(request: dict[str, Any], source_result: dict[str, Any]) 
     ):
         if request.get(key) not in (None, ""):
             draft_payload[key] = request[key]
+    if safe_dict(request.get("style_memory")):
+        draft_payload["style_memory"] = safe_dict(request.get("style_memory"))
     if request.get("image_strategy"):
         draft_payload["image_strategy"] = request["image_strategy"]
     if request.get("draft_mode"):

@@ -9,6 +9,15 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
+from article_benchmark_artifacts import (
+    build_benchmark_candidate_index,
+    build_benchmark_enrichment_request,
+    build_benchmark_generation_style_memory,
+    build_benchmark_quality_loop_artifact,
+    build_benchmark_viral_teardown,
+)
+from article_benchmark_rubric import score_benchmark_rubric
+from article_feedback_profiles import merge_style_memory
 from article_workflow_runtime import run_article_workflow
 from hot_topic_discovery_runtime import run_hot_topic_discovery
 from news_index_runtime import isoformat_or_blank, load_json, parse_datetime, short_excerpt, write_json
@@ -321,6 +330,31 @@ def localized_market_relevance(selected_topic: dict[str, Any], clean_title: str,
     return ["谁会真正受影响，变化会传到哪里", "这件事什么时候会从热度变成判断题"]
 
 
+def publish_quality_defaults(language_mode: str, article_framework: str) -> dict[str, int]:
+    normalized_language = clean_text(language_mode).lower() or "chinese"
+    normalized_framework = clean_text(article_framework).lower() or "auto"
+
+    target_floor = 1600
+    human_floor = 45
+    if normalized_language == "chinese":
+        target_floor = 2200
+        human_floor = 60
+    elif normalized_language == "bilingual":
+        target_floor = 2000
+        human_floor = 55
+    if normalized_framework in {"", "auto", "deep_analysis"}:
+        if normalized_language == "chinese":
+            target_floor = max(target_floor, 2400)
+            human_floor = max(human_floor, 68)
+        elif normalized_language == "bilingual":
+            target_floor = max(target_floor, 2200)
+            human_floor = max(human_floor, 60)
+        else:
+            target_floor = max(target_floor, 1800)
+            human_floor = max(human_floor, 50)
+    return {"target_length_chars": target_floor, "human_signal_ratio": human_floor}
+
+
 def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
     payload = deepcopy(safe_dict(raw_payload))
     analysis_time = parse_datetime(payload.get("analysis_time"), fallback=datetime.now(UTC)) or datetime.now(UTC)
@@ -337,13 +371,23 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
                 author = ""
     requested_language = clean_text(payload.get("language_mode"))
     language_mode = requested_language or "chinese"
+    requested_framework = clean_text(payload.get("article_framework")) or "auto"
+    quality_defaults = publish_quality_defaults(language_mode, requested_framework)
+    explicit_target_length = any(payload.get(key) not in (None, "", []) for key in ("target_length_chars", "target_length"))
+    explicit_human_signal = payload.get("human_signal_ratio") not in (None, "", [])
+    target_length_chars = int(payload.get("target_length_chars", payload.get("target_length", quality_defaults["target_length_chars"])) or quality_defaults["target_length_chars"])
+    human_signal_ratio = int(payload.get("human_signal_ratio", quality_defaults["human_signal_ratio"]) or quality_defaults["human_signal_ratio"])
+    if not explicit_target_length:
+        target_length_chars = max(target_length_chars, quality_defaults["target_length_chars"])
+    if not explicit_human_signal:
+        human_signal_ratio = max(human_signal_ratio, quality_defaults["human_signal_ratio"])
     return {
         "analysis_time": isoformat_or_blank(analysis_time),
         "account_name": clean_text(payload.get("account_name")) or "Codex Research Notes",
         "author": author or "Codex",
         "feedback_profile_dir": feedback_profile_dir,
         "language_mode": language_mode,
-        "article_framework": clean_text(payload.get("article_framework")) or "auto",
+        "article_framework": requested_framework,
         "editor_anchor_mode": clean_text(payload.get("editor_anchor_mode")) or "hidden",
         "headline_hook_mode": clean_text(payload.get("headline_hook_mode")) or ("traffic" if language_mode == "chinese" else "auto"),
         "headline_hook_prefixes": clean_string_list(payload.get("headline_hook_prefixes")),
@@ -351,9 +395,9 @@ def normalize_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "image_strategy": clean_text(payload.get("image_strategy")) or "mixed",
         "draft_mode": clean_text(payload.get("draft_mode")) or "balanced",
         "tone": clean_text(payload.get("tone")) or "professional-calm",
-        "target_length_chars": int(payload.get("target_length_chars", 1600) or 1600),
+        "target_length_chars": target_length_chars,
         "max_images": int(payload.get("max_images", 3) or 3),
-        "human_signal_ratio": int(payload.get("human_signal_ratio", 35) or 35),
+        "human_signal_ratio": human_signal_ratio,
         "digest_max_chars": int(payload.get("digest_max_chars", 120) or 120),
         "show_cover_pic": int(payload.get("show_cover_pic", 1) or 1),
         "need_open_comment": 1 if payload.get("need_open_comment") else 0,
@@ -707,6 +751,87 @@ CANONICAL_MUST_AVOID = [
 ]
 
 
+def append_chinese_longform_length_floor(
+    lines: list[str],
+    selected_topic: dict[str, Any],
+    request: dict[str, Any],
+) -> None:
+    target_length_chars = int(request.get("target_length_chars", 0) or 0)
+    if target_length_chars < 2200:
+        return
+    required_body_chars = minimum_body_chars_for_target(target_length_chars)
+    if len("\n\n".join(lines)) >= required_body_chars:
+        return
+
+    title = clean_text(selected_topic.get("title")) or "这件事"
+    summary = clean_text(selected_topic.get("summary"))
+    source_count = int(selected_topic.get("source_count", 0) or len(safe_list(selected_topic.get("source_items"))))
+    source_hint = f"现在可用的公开来源大约有 {source_count} 条，" if source_count else "现在公开来源还不算厚，"
+    proof_hint = summary or "后续仍要看更多公开信号能不能互相指向同一条线"
+    additions = [
+        (
+            "还要补哪几层验证",
+            (
+                f"不能因为标题热，就默认供需拐点已经确认。{source_hint}更稳的写法是先把已经发生的事实、"
+                f"正在被市场放大的推演、以及还没有被交叉验证的部分拆开。放到{title}这条线上，第一层要看"
+                f"{proof_hint}；第二层要看同一变化会不会继续出现在价格、订单、交付周期和下游预算里；第三层"
+                "才是资本市场愿不愿意把它重新定价。只有这三层至少有两层连起来，文章里的判断才不是单靠热度往前推。"
+            ),
+        ),
+        (
+            "从题材到判断的传导",
+            (
+                "这类题材真正容易误判的地方，是把一次性情绪写成持续趋势。更有用的观察顺序，是先看供给端有没有"
+                "继续收紧，再看需求端是否愿意接受更高成本，最后看企业和投资者是否因此调整预算、库存和估值假设。"
+                "如果只是新闻标题在涨，企业订单、交付周期和价格口径没有跟上，那它还只是一个讨论点；如果这些变量"
+                "开始连续出现，才说明它可能从话题变成经营约束，再从经营约束变成市场判断。"
+            ),
+        ),
+        (
+            "反过来看风险",
+            (
+                "反过来看，最需要防的不是错过热度，而是过早把故事写满。后续如果新增来源只是在复述同一个标题，"
+                "没有新的价格、产能、订单或客户预算信息，这条线的可信度就应该下调。相反，如果不同来源开始给出"
+                "相互独立的供需变化，且这些变化能落到公司指引、产业链报价或终端采购动作上，才值得继续提高权重。"
+                "所以结尾不该停在情绪判断，而要把读者带到下一轮可观察变量上。"
+            ),
+        ),
+        (
+            "证据顺序应该怎么排",
+            (
+                "写这类文章时，证据顺序比观点更重要。先放最硬的公开事实，再放能解释变化的产业变量，最后才放"
+                "市场可能怎么反应。这样的顺序可以避免一上来就把推演写成结论，也能让读者看清每一层判断的来源。"
+                "如果后面出现新的公司口径、渠道报价或机构调研，它们应该先被放回这条顺序里，而不是直接拿来强化"
+                "已经写好的标题。能被纳入同一条证据链的信号，权重才会上升；只负责制造热闹的信号，权重反而应该下降。"
+            ),
+        ),
+        (
+            "最后留下可跟踪的观察项",
+            (
+                "所以最后真正要留下的，不是一句情绪判断，而是一组下次可以复盘的观察项。第一，看公开来源会不会"
+                "继续增加，且不是同源转载。第二，看价格、产能、交付周期和订单口径里有没有两个以上变量同时变化。"
+                "第三，看下游预算、库存和资本开支是否开始被迫调整。第四，看市场反应是短期交易，还是开始影响估值"
+                "假设。只要这些观察项还没有连续出现，文章就应该保持克制；一旦它们开始连成线，下一轮更新才有更强理由。"
+            ),
+        ),
+        (
+            "读者该怎么使用这篇文章",
+            (
+                "对读者来说，这篇文章更适合作为判断框架，而不是直接给出单点结论。它提醒你先分清事实、推演和"
+                "待验证变量，再把新增信息放回同一套框架里比较。后续如果只看到标题继续升温，但没有更多独立来源"
+                "和可量化变量，就不应该追着情绪加码；如果看到供给、需求、价格和资本开支开始同时变化，才说明"
+                "这件事可能进入第二阶段。这样的写法不追求一次把话说满，而是让下一次更新有清楚的校验标准。"
+                "它也能避免文章停在概念层面：读者知道哪些信号只是噪音，哪些信号会改变判断，哪些信号足以触发复盘。"
+                "等下一轮信息出来时，直接沿着这组问题检查，就能知道叙事是在变强，还是只是在重复和消耗注意力。这个边界要留住，别被热词带走才行。"
+            ),
+        ),
+    ]
+    for heading, paragraph in additions:
+        if len("\n\n".join(lines)) >= required_body_chars:
+            break
+        lines.extend(["", f"## {heading}", paragraph])
+
+
 def build_chinese_publish_markdown(selected_topic: dict[str, Any], article_package: dict[str, Any], request: dict[str, Any], *, developer_tooling: bool) -> str:
     title = clean_text(selected_topic.get("title"))
     source_items = [safe_dict(item) for item in safe_list(selected_topic.get("source_items")) if isinstance(item, dict)]
@@ -789,6 +914,25 @@ def build_chinese_publish_markdown(selected_topic: dict[str, Any], article_packa
         )
         lines.extend(formatted_source_lines)
         return "\n\n".join(lines)
+
+    longform_sections = [
+        safe_dict(item)
+        for item in safe_list(article_package.get("sections"))
+        if isinstance(item, dict) and clean_text(item.get("heading")) and clean_text(item.get("paragraph"))
+    ]
+    if int(request.get("target_length_chars", 0) or 0) >= 2200 and len(longform_sections) >= 5:
+        lines = [
+            clean_text(article_package.get("subtitle")) or "先把发生了什么说清楚，再看这件事为什么会继续发酵。",
+        ]
+        lede = clean_text(article_package.get("lede"))
+        if lede:
+            lines.extend(["", f"> {lede}"])
+        for section in longform_sections:
+            lines.extend(["", f"## {clean_text(section.get('heading'))}", clean_text(section.get("paragraph"))])
+        append_chinese_longform_length_floor(lines, selected_topic, request)
+        lines.extend(["", "## 来源"])
+        lines.extend(formatted_source_lines)
+        return "\n\n".join(line for line in lines if line is not None)
 
     if "先进制程产能和设备订单" in market_relevance_zh:
         lines = [
@@ -1259,6 +1403,26 @@ def build_push_readiness(
     }
 
 
+def minimum_section_count_for_target(target_length_chars: int) -> int:
+    if target_length_chars >= 2600:
+        return 6
+    if target_length_chars >= 2200:
+        return 5
+    if target_length_chars >= 1600:
+        return 4
+    return 1
+
+
+def minimum_body_chars_for_target(target_length_chars: int) -> int:
+    if target_length_chars >= 2600:
+        return max(2000, int(target_length_chars * 0.75))
+    if target_length_chars >= 2200:
+        return max(1700, int(target_length_chars * 0.7))
+    if target_length_chars >= 1800:
+        return max(1500, int(target_length_chars * 0.72))
+    return 0
+
+
 def build_regression_checks(
     article_package: dict[str, Any],
     request: dict[str, Any],
@@ -1321,13 +1485,32 @@ def build_regression_checks(
         if "screenshot" in clean_text(item.get("role")).lower()
     ]
     missing_upload_source_asset_ids = clean_string_list(push_readiness.get("missing_upload_source_asset_ids"))
+    target_length_chars = int(request.get("target_length_chars", 0) or 0)
+    required_section_count = minimum_section_count_for_target(target_length_chars)
+    required_body_chars = minimum_body_chars_for_target(target_length_chars)
+    rubric_package = deepcopy(article_package)
+    rubric_package.update(
+        {
+            "title": title,
+            "body_markdown": body_markdown,
+            "article_markdown": article_markdown,
+        }
+    )
+    benchmark_rubric = score_benchmark_rubric(rubric_package, {**request, "target_length_chars": target_length_chars})
+    rubric_weakest_scores = [int(item.get("score", 0) or 0) for item in safe_list(benchmark_rubric.get("weakest_dimensions"))]
+    benchmark_rubric["blocking_floor"] = 55
+    benchmark_rubric["blocking_dimension_floor"] = 25
+    benchmark_rubric["blocking_passed"] = (not benchmark_rubric.get("expected")) or (
+        int(benchmark_rubric.get("total_score", 0) or 0) >= int(benchmark_rubric["blocking_floor"])
+        and min(rubric_weakest_scores or [100]) >= int(benchmark_rubric["blocking_dimension_floor"])
+    )
     return {
         "title": title,
         "section_count": len(section_headings),
         "section_headings": section_headings,
         "requested_article_framework": clean_text(request.get("article_framework")) or "auto",
         "effective_article_framework": clean_text(article_package.get("article_framework") or request.get("article_framework")) or "auto",
-        "target_length_chars": int(request.get("target_length_chars", 0) or 0),
+        "target_length_chars": target_length_chars,
         "body_char_count": len(body_markdown),
         "content_char_count": len(article_markdown),
         "first_image": {
@@ -1363,9 +1546,12 @@ def build_regression_checks(
             "developer_tooling_topic": is_developer_tooling_topic(title + " " + clean_text(topic.get("summary"))),
             "macro_conflict_topic": macro_conflict_topic,
         },
+        "benchmark_rubric": benchmark_rubric,
         "checks": {
-            "expanded_sections_expected": int(request.get("target_length_chars", 0) or 0) >= 2400,
-            "expanded_sections_ok": len(section_headings) >= (4 if int(request.get("target_length_chars", 0) or 0) >= 2000 else 1),
+            "expanded_sections_expected": target_length_chars >= 1800,
+            "expanded_sections_ok": len(section_headings) >= required_section_count,
+            "body_length_expected": target_length_chars >= 1800,
+            "body_length_ok": len(body_markdown) >= required_body_chars,
             "ui_capture_noise_clean": forbidden_hits["登录"] == 0 and forbidden_hits["/url:"] == 0,
             "generic_business_talk_expected": macro_conflict_topic,
             "generic_business_talk_clean": all(forbidden_hits[item] == 0 for item in ["预算", "订单", "定价", "经营变量", "经营层", "经营和投资判断题"]),
@@ -1385,6 +1571,9 @@ def build_regression_checks(
             "cover_caption_clean": "登录" not in clean_text(cover_plan.get("selected_cover_caption")) and "/url:" not in clean_text(cover_plan.get("selected_cover_caption")),
             "localized_copy_expected": is_chinese_mode(request),
             "localized_copy_clean": True,
+            "benchmark_rubric_expected": bool(benchmark_rubric.get("expected")),
+            "benchmark_rubric_ok": bool(benchmark_rubric.get("blocking_passed")),
+            "benchmark_rubric_target_met": bool(benchmark_rubric.get("passed")),
         },
     }
 
@@ -1398,11 +1587,16 @@ def build_automatic_acceptance_result(
     extra_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     checks = safe_dict(regression_checks.get("checks"))
+    benchmark_rubric = safe_dict(regression_checks.get("benchmark_rubric"))
     failures: list[str] = []
     if not checks.get("title_complete", True):
         failures.append("Title is incomplete and should be rewritten before publishing.")
     if checks.get("expanded_sections_expected", False) and not checks.get("expanded_sections_ok", True):
         failures.append("Expanded sections are still below the expected article depth.")
+    if checks.get("body_length_expected", False) and not checks.get("body_length_ok", True):
+        failures.append("Body copy is still under the requested length and density budget.")
+    if checks.get("benchmark_rubric_expected", False) and not checks.get("benchmark_rubric_ok", True):
+        failures.append("Benchmark rubric score is below the longform quality floor.")
     if not checks.get("ui_capture_noise_clean", True):
         failures.append("UI capture noise leaked into the article or image captions.")
     if checks.get("generic_business_talk_expected", False) and not checks.get("generic_business_talk_clean", True):
@@ -1419,6 +1613,14 @@ def build_automatic_acceptance_result(
     if failures:
         if not checks.get("expanded_sections_ok", True):
             optimization_options.append({"area": "structure", "reason": "Expand the article into a fuller multi-section flow."})
+        if not checks.get("body_length_ok", True):
+            optimization_options.append({"area": "length_depth", "reason": "Extend the core argument with enough evidence, transmission, and follow-through to meet the requested budget."})
+        if checks.get("benchmark_rubric_expected", False) and not checks.get("benchmark_rubric_ok", True):
+            weakest_labels = ", ".join(
+                clean_text(item.get("label")) or clean_text(item.get("key"))
+                for item in safe_list(benchmark_rubric.get("weakest_dimensions"))[:3]
+            )
+            optimization_options.append({"area": "benchmark_rubric", "reason": f"Improve weakest benchmark areas: {weakest_labels or 'unknown'}."})
         if not checks.get("ui_capture_noise_clean", True):
             optimization_options.append({"area": "screenshot_caption", "reason": "Clean screenshot captions and remove UI leakage."})
         if not checks.get("cover_reason_present", True):
@@ -1441,10 +1643,12 @@ def build_automatic_acceptance_result(
             advisory_options.append({"area": "wechat_transition_repetition_margin", "reason": "Transition phrases are repeating too often."})
         if sum(tail_hits.values()) > 0:
             advisory_options.append({"area": "wechat_tail_tone_margin", "reason": "The tail still sounds too much like workflow/operator copy."})
-        if int(safe_dict(regression_checks).get("section_count", 0) or 0) < 6 or int(safe_dict(regression_checks).get("body_char_count", 0) or 0) < 1800:
+        target_chars = int(safe_dict(regression_checks).get("target_length_chars", 0) or 0)
+        required_section_count = minimum_section_count_for_target(target_chars)
+        required_body_chars = minimum_body_chars_for_target(target_chars)
+        if int(safe_dict(regression_checks).get("section_count", 0) or 0) <= required_section_count or int(safe_dict(regression_checks).get("body_char_count", 0) or 0) <= max(required_body_chars, 1800):
             advisory_options.append({"area": "structure_margin", "reason": "The publish package still has room to expand structure or body density."})
         body_chars = int(safe_dict(regression_checks).get("body_char_count", 0) or 0)
-        target_chars = int(safe_dict(regression_checks).get("target_length_chars", 0) or 0)
         if target_chars and body_chars < int(target_chars * 0.8):
             advisory_options.append({"area": "length_budget_margin", "reason": "The package is still under the requested length budget."})
         cover_caption = clean_text(safe_dict(safe_dict(regression_checks).get("cover")).get("selected_cover_caption"))
@@ -1465,6 +1669,7 @@ def build_automatic_acceptance_result(
         "target": target,
         "output_dir": output_dir,
         "regression_source": regression_source,
+        "benchmark_rubric": benchmark_rubric,
         "regression_checks": regression_checks,
         "failures": failures,
         "optimization_options": optimization_options,
@@ -1482,6 +1687,11 @@ def build_automatic_acceptance_markdown(result: dict[str, Any]) -> str:
     manual_review = safe_dict(gate.get("manual_review"))
     checks = safe_dict(safe_dict(result.get("regression_checks")).get("checks"))
     cover = safe_dict(safe_dict(result.get("regression_checks")).get("cover"))
+    benchmark_rubric = safe_dict(safe_dict(result.get("regression_checks")).get("benchmark_rubric"))
+    weakest_rubric = ", ".join(
+        clean_text(item.get("label")) or clean_text(item.get("key"))
+        for item in safe_list(benchmark_rubric.get("weakest_three") or benchmark_rubric.get("weakest_dimensions"))[:3]
+    )
     lines = [
         "# Publish Automatic Acceptance",
         "",
@@ -1512,6 +1722,9 @@ def build_automatic_acceptance_markdown(result: dict[str, Any]) -> str:
         f"- Content chars: {int(safe_dict(result.get('regression_checks')).get('content_char_count', 0) or 0)}",
         f"- Target chars: {int(safe_dict(result.get('regression_checks')).get('target_length_chars', 0) or 0)}",
         f"- Expanded sections ok: {'yes' if checks.get('expanded_sections_ok', True) else 'no'}",
+        f"- Benchmark rubric score: {int(benchmark_rubric.get('total_score', 0) or 0)} / {int(benchmark_rubric.get('threshold', 0) or 0)}",
+        f"- Benchmark rubric ok: {'yes' if checks.get('benchmark_rubric_ok', True) else 'no'}",
+        f"- Benchmark weakest three: {weakest_rubric or 'none'}",
         f"- Screenshot path expected: {'yes' if checks.get('screenshot_path_expected', False) else 'no'}",
         f"- UI capture noise clean: {'yes' if checks.get('ui_capture_noise_clean', True) else 'no'}",
         f"- Generic business talk expected: {'yes' if checks.get('generic_business_talk_expected', False) else 'no'}",
@@ -1531,6 +1744,14 @@ def build_automatic_acceptance_markdown(result: dict[str, Any]) -> str:
         f"- Cover caption: {clean_text(cover.get('selected_cover_caption')) or 'none'}",
         f"- Cover selection mode: {clean_text(cover.get('selection_mode')) or 'none'}",
         f"- Cover selection reason: {clean_text(cover.get('selection_reason')) or 'none'}",
+        "",
+        "## Benchmark Rubric",
+        "",
+        f"- Average score: {benchmark_rubric.get('average_score', 0) or 0} / 10",
+        f"- Total score: {int(benchmark_rubric.get('total_score', 0) or 0)} / {int(benchmark_rubric.get('threshold', 0) or 0)}",
+        f"- Passes floor: {'yes' if benchmark_rubric.get('passes_floor', benchmark_rubric.get('passed', True)) else 'no'}",
+        f"- Weakest three: {weakest_rubric or 'none'}",
+        f"- Reference samples: {', '.join(clean_string_list(benchmark_rubric.get('reference_samples'))) or 'none'}",
         "",
         "## Failures",
         "",
@@ -1696,6 +1917,12 @@ def build_publish_package(workflow_result: dict[str, Any], selected_topic: dict[
             len(article_markdown),
             2900 if any(clean_text(item.get("role")) == "post_media" for item in selected_images) else 2200,
         )
+        target_chars = int(regression_checks.get("target_length_chars", 0) or 0)
+        checks = safe_dict(regression_checks.get("checks"))
+        checks["expanded_sections_expected"] = target_chars >= 1800
+        checks["expanded_sections_ok"] = regression_checks["section_count"] >= minimum_section_count_for_target(target_chars)
+        checks["body_length_expected"] = target_chars >= 1800
+        checks["body_length_ok"] = regression_checks["body_char_count"] >= minimum_body_chars_for_target(target_chars)
     if developer_tooling and is_chinese_mode(request):
         regression_checks["checks"]["generic_business_talk_expected"] = True
     digest = short_excerpt(digest_source_markdown.replace("#", "").replace(">", ""), limit=request["digest_max_chars"])
@@ -1777,6 +2004,30 @@ def build_report_markdown(result: dict[str, Any]) -> str:
     workflow_manual_review = safe_dict(result.get("workflow_manual_review")) or safe_dict(safe_dict(result.get("publish_package")).get("workflow_manual_review")) or safe_dict(result.get("manual_review"))
     style_profile = safe_dict(safe_dict(result.get("publish_package")).get("style_profile_applied"))
     style_memory = safe_dict(style_profile.get("style_memory"))
+    benchmark_artifact_paths = safe_dict(result.get("benchmark_artifact_paths"))
+    benchmark_candidate_index = safe_dict(result.get("benchmark_candidate_index"))
+    benchmark_discovery_quality = safe_dict(benchmark_candidate_index.get("discovery_quality"))
+    benchmark_quality_loop = safe_dict(result.get("benchmark_quality_loop"))
+    benchmark_weakest = ", ".join(
+        clean_text(item.get("label")) or clean_text(item.get("key"))
+        for item in safe_list(benchmark_quality_loop.get("weakest_dimensions"))[:3]
+    )
+    benchmark_section: list[str] = []
+    if benchmark_artifact_paths or benchmark_quality_loop:
+        benchmark_section = [
+            "",
+            "## Benchmark Loop Artifacts",
+            "",
+            f"- Benchmark candidate index: {clean_text(benchmark_artifact_paths.get('candidate_index')) or 'not written'}",
+            f"- Benchmark enrichment request: {clean_text(benchmark_artifact_paths.get('enrichment_request')) or 'not written'}",
+            f"- Benchmark viral teardown: {clean_text(benchmark_artifact_paths.get('viral_teardown')) or 'not written'}",
+            f"- Benchmark quality loop: {clean_text(benchmark_artifact_paths.get('quality_loop')) or 'not written'}",
+            f"- Benchmark discovery enrichment needed: {'yes' if benchmark_discovery_quality.get('needs_interaction_enrichment') else 'no'}",
+            f"- Benchmark high-interaction references: {int(benchmark_discovery_quality.get('high_interaction_reference_count', 0) or 0)}",
+            f"- Benchmark rubric score: {int(benchmark_quality_loop.get('rubric_score', 0) or 0)} / {int(benchmark_quality_loop.get('rubric_threshold', 0) or 0)}",
+            f"- Benchmark rubric target met: {'yes' if benchmark_quality_loop.get('rubric_passed') else 'no'}",
+            f"- Benchmark weakest dimensions: {benchmark_weakest or 'none'}",
+        ]
     workflow_queue_items = safe_list(workflow_manual_review.get("queue"))
     workflow_queue_text = (
         "None"
@@ -1803,6 +2054,7 @@ def build_report_markdown(result: dict[str, Any]) -> str:
         f"- Publish package: {clean_text(result.get('publish_package_path')) or 'not written'}",
         f"- Automatic acceptance: {clean_text(result.get('automatic_acceptance_path')) or 'not written'}",
         f"- Next push command: {clean_text(result.get('next_push_command')) or 'none'}",
+        *benchmark_section,
         "",
         "## Human Review Gate",
         "",
@@ -1924,10 +2176,26 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
     selected_topic = pick_selected_topic(discovery_result, request)
     selected_topic_path = request["output_dir"] / "selected-topic.json"
     news_request_path = request["output_dir"] / "news-request.json"
+    benchmark_candidate_index_path = request["output_dir"] / "benchmark-candidate-index.json"
+    benchmark_enrichment_request_path = request["output_dir"] / "benchmark-enrichment-request.json"
+    benchmark_viral_teardown_path = request["output_dir"] / "benchmark-viral-teardown.json"
+    benchmark_quality_loop_path = request["output_dir"] / "benchmark-quality-loop.json"
     workflow_dir = request["output_dir"] / "workflow"
+    benchmark_candidate_index = build_benchmark_candidate_index(
+        discovery_result,
+        selected_title=clean_text(selected_topic.get("title")),
+    )
+    benchmark_enrichment_request = build_benchmark_enrichment_request(benchmark_candidate_index, selected_topic)
+    benchmark_viral_teardown = build_benchmark_viral_teardown(selected_topic, benchmark_candidate_index)
+    benchmark_generation_style_memory = build_benchmark_generation_style_memory(benchmark_viral_teardown)
+    if benchmark_generation_style_memory:
+        request["style_memory"] = merge_style_memory(request.get("style_memory"), benchmark_generation_style_memory)
     news_request = build_news_request_from_topic(selected_topic, request)
     write_json(selected_topic_path, selected_topic)
     write_json(news_request_path, news_request)
+    write_json(benchmark_candidate_index_path, benchmark_candidate_index)
+    write_json(benchmark_enrichment_request_path, benchmark_enrichment_request)
+    write_json(benchmark_viral_teardown_path, benchmark_viral_teardown)
     workflow_result = run_article_workflow({**request, **news_request, "output_dir": str(workflow_dir)})
     publish_package = build_publish_package(workflow_result, selected_topic, request)
     workflow_publication_gate = build_workflow_publication_gate(publish_package)
@@ -1951,6 +2219,14 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
     automatic_acceptance["report_markdown"] = build_automatic_acceptance_markdown(automatic_acceptance)
     write_json(acceptance_path, automatic_acceptance)
     acceptance_report_path.write_text(automatic_acceptance["report_markdown"], encoding="utf-8-sig")
+    benchmark_quality_loop = build_benchmark_quality_loop_artifact(
+        news_request_path=news_request_path,
+        article_draft_path=clean_text(safe_dict(workflow_result.get("draft_stage")).get("result_path")),
+        publish_package_path=publish_package_path,
+        benchmark_rubric=safe_dict(safe_dict(publish_package.get("regression_checks")).get("benchmark_rubric")),
+        automatic_acceptance=automatic_acceptance,
+    )
+    write_json(benchmark_quality_loop_path, benchmark_quality_loop)
 
     review_gate = {
         "approved": bool(request["human_review_approved"]),
@@ -2063,6 +2339,16 @@ def run_article_publish(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "selected_topic": selected_topic,
         "selected_topic_path": str(selected_topic_path),
         "news_request_path": str(news_request_path),
+        "benchmark_artifact_paths": {
+            "candidate_index": str(benchmark_candidate_index_path),
+            "enrichment_request": str(benchmark_enrichment_request_path),
+            "viral_teardown": str(benchmark_viral_teardown_path),
+            "quality_loop": str(benchmark_quality_loop_path),
+        },
+        "benchmark_candidate_index": benchmark_candidate_index,
+        "benchmark_enrichment_request": benchmark_enrichment_request,
+        "benchmark_viral_teardown": benchmark_viral_teardown,
+        "benchmark_quality_loop": benchmark_quality_loop,
         "workflow_stage": {
             "draft_result_path": clean_text(safe_dict(workflow_result.get("draft_stage")).get("result_path")),
             "final_result_path": clean_text(safe_dict(workflow_result.get("final_stage")).get("result_path")),
