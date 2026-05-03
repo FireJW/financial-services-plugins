@@ -25,10 +25,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run the configured fill-publish preview after package generation; never clicks publish",
     )
-    parser.add_argument("--image-mode", choices=["dry_run", "openai"], help="Override image_generation.mode")
+    parser.add_argument("--image-mode", choices=["dry_run", "openai", "compose"], help="Override image_generation.mode")
     parser.add_argument("--image-model", help="Override image_generation.model")
     parser.add_argument("--image-size", help="Override image_generation.size")
     parser.add_argument("--reference-image", action="append", default=[], help="Add a local reference image path for GPT Image edits")
+    parser.add_argument(
+        "--background-image",
+        action="append",
+        default=[],
+        help="Add a local textless background image for compose mode; repeat once per card",
+    )
     parser.add_argument("--performance-file", help="Optional XHS detail JSON to import into performance review")
     parser.add_argument("--output", help="Optional path to save summary JSON")
     parser.add_argument("--quiet", action="store_true", help="Suppress stdout JSON")
@@ -50,16 +56,20 @@ def build_payload(args: argparse.Namespace) -> dict:
         publish["auto_run_preview"] = True
         publish["click_publish"] = False
         payload["publish"] = publish
-    if args.image_mode or args.image_model or args.image_size or args.reference_image:
+    if args.image_mode or args.image_model or args.image_size or args.reference_image or args.background_image:
         image_generation = dict(payload.get("image_generation") or {})
         if args.image_mode:
             image_generation["mode"] = args.image_mode
+        elif args.background_image:
+            image_generation["mode"] = "compose"
         if args.image_model:
             image_generation["model"] = args.image_model
         if args.image_size:
             image_generation["size"] = args.image_size
         if args.reference_image:
             image_generation["reference_images"] = list(args.reference_image)
+        if args.background_image:
+            image_generation["background_images"] = list(args.background_image)
         payload["image_generation"] = image_generation
     if args.performance_file:
         payload["performance_file"] = args.performance_file

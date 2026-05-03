@@ -18,6 +18,9 @@ DEFAULT_IMAGE_MODEL = "gpt-image-2"
 DEFAULT_CARD_COUNT = 7
 DEFAULT_IMAGE_SIZE = "1024x1536"
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com"
+DEFAULT_OVERLAY_TEXT_COLOR = (248, 250, 252, 255)
+DEFAULT_OVERLAY_MUTED_COLOR = (203, 213, 225, 255)
+DEFAULT_OVERLAY_ACCENT_COLOR = (56, 189, 248, 255)
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -150,6 +153,20 @@ def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None =
                 missing_references.append(path_text)
         reference_images_ok = not missing_references
 
+    background_images = normalize_background_images(list(image_config.get("background_images") or []))
+    background_images_ok = True
+    missing_backgrounds = []
+    if mode == "compose":
+        for path_text in background_images:
+            if path_text.startswith("http://") or path_text.startswith("https://"):
+                missing_backgrounds.append(f"remote URL not supported for compose backgrounds: {path_text}")
+                continue
+            if not Path(path_text).resolve().exists():
+                missing_backgrounds.append(path_text)
+        if len(background_images) < DEFAULT_CARD_COUNT:
+            missing_backgrounds.append(f"expected at least {DEFAULT_CARD_COUNT} background images, got {len(background_images)}")
+        background_images_ok = bool(background_images) and not missing_backgrounds
+
     output_dir = Path(str(request.get("output_dir") or "output/xhs-workflow")).resolve()
     output_parent = output_dir if output_dir.exists() else output_dir.parent
     output_dir_ok = output_parent.exists()
@@ -159,6 +176,7 @@ def build_readiness_report(request: dict[str, Any], env: dict[str, str] | None =
         "benchmark_file": {"passed": benchmark_file_exists, "value": str(benchmark_file or "")},
         "openai_api_key": {"passed": api_key_ok, "value": "required" if mode == "openai" else "not_required"},
         "reference_images": {"passed": reference_images_ok, "value": len(reference_images), "missing": missing_references},
+        "background_images": {"passed": background_images_ok, "value": len(background_images), "missing": missing_backgrounds},
         "output_dir": {"passed": output_dir_ok, "value": str(output_dir)},
     }
     if collector_requested:
@@ -810,6 +828,20 @@ def normalize_reference_images(items: list[Any]) -> list[dict[str, str]]:
     return normalized
 
 
+def normalize_background_images(items: list[Any]) -> list[str]:
+    normalized = []
+    for item in items:
+        if isinstance(item, str):
+            path = item.strip()
+        elif isinstance(item, dict):
+            path = str(item.get("path") or "").strip()
+        else:
+            path = ""
+        if path:
+            normalized.append(path)
+    return normalized
+
+
 def build_image_prompt(
     card: dict[str, Any],
     style_profile: dict[str, Any] | None = None,
@@ -824,12 +856,14 @@ def build_image_prompt(
         else ""
     )
     return (
-        f"{visual_style}. vertical 9:16 Xiaohongshu card. "
-        f"Card type: {card.get('type')}. Title intent: {card.get('title')}. "
-        f"Main message: {card.get('message')}. "
+        f"{visual_style}. vertical 9:16 Xiaohongshu editorial background only. "
+        f"Card type: {card.get('type')}. Visual concept: {card.get('title')} / {card.get('message')}. "
         f"{reference_line}"
-        "Use clear Chinese typography, strong hierarchy, clean composition, realistic material texture, "
-        f"and no copied competitor assets. Material policy: {material_policy}."
+        "Create a clean finance/technology visual background with realistic material texture, data-center, chip, "
+        "earnings-dashboard, or infrastructure motifs where appropriate. Leave generous negative space for later "
+        "local text overlay. Do not render any readable text, letters, numbers; no dates, time stamps, calendar UI, "
+        "logos, watermarks, labels, tickers, or chart axis values. No copied competitor assets. "
+        f"Material policy: {material_policy}."
     )
 
 
@@ -840,18 +874,33 @@ def prepare_image_generation(card_plan: dict[str, Any], config: dict[str, Any] |
     size = str(config.get("size") or DEFAULT_IMAGE_SIZE)
     style_profile = dict(config.get("style_profile") or {})
     reference_images = normalize_reference_images(list(config.get("reference_images") or []))
+    background_images = normalize_background_images(list(config.get("background_images") or []))
     prompts = [
         {
             "card_index": card.get("index"),
             "card_type": card.get("type"),
+            "card_title": str(card.get("title") or ""),
+            "card_message": str(card.get("message") or ""),
             "model": model,
             "size": size,
             "reference_images": reference_images,
+            "background_image": background_images[index] if index < len(background_images) else "",
             "prompt": build_image_prompt(card, style_profile, reference_images),
         }
-        for card in card_plan.get("cards", [])
+        for index, card in enumerate(card_plan.get("cards", []))
     ]
-    return {"mode": mode, "model": model, "size": size, "prompts": prompts, "results": []}
+    return {
+        "mode": mode,
+        "model": model,
+        "size": size,
+        "prompts": prompts,
+        "results": [],
+        "text_rendering": {
+            "mode": "local_overlay",
+            "allowed_text": [[prompt["card_title"], prompt["card_message"]] for prompt in prompts],
+            "forbidden_model_text": True,
+        },
+    }
 
 
 def generate_openai_image(prompt: str, config: dict[str, Any], output_path: Path) -> dict[str, Any]:
@@ -892,6 +941,156 @@ def build_openai_api_url(config: dict[str, Any], path: str) -> str:
     if not root.endswith("/v1"):
         root = f"{root}/v1"
     return f"{root}/{path.lstrip('/')}"
+
+
+def parse_image_size(size: str | tuple[int, int] | list[int]) -> tuple[int, int]:
+    if isinstance(size, (tuple, list)) and len(size) == 2:
+        return int(size[0]), int(size[1])
+    match = re.match(r"^\s*(\d+)\s*x\s*(\d+)\s*$", str(size or DEFAULT_IMAGE_SIZE))
+    if not match:
+        return 1024, 1536
+    return int(match.group(1)), int(match.group(2))
+
+
+def create_placeholder_background(path: Path, size: str | tuple[int, int] = DEFAULT_IMAGE_SIZE) -> None:
+    from PIL import Image, ImageDraw
+
+    width, height = parse_image_size(size)
+    image = Image.new("RGB", (width, height), (12, 18, 28))
+    draw = ImageDraw.Draw(image)
+    for y in range(height):
+        ratio = y / max(height - 1, 1)
+        red = int(12 + ratio * 10)
+        green = int(18 + ratio * 28)
+        blue = int(28 + ratio * 44)
+        draw.line([(0, y), (width, y)], fill=(red, green, blue))
+    for offset in range(0, width, max(width // 8, 1)):
+        draw.line([(offset, int(height * 0.18)), (offset + int(width * 0.28), int(height * 0.82))], fill=(24, 42, 65), width=max(width // 180, 1))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
+
+
+def load_overlay_font(size: int, bold: bool = False) -> Any:
+    from PIL import ImageFont
+
+    candidates = [
+        r"C:\Windows\Fonts\msyhbd.ttc" if bold else r"C:\Windows\Fonts\msyh.ttc",
+        r"C:\Windows\Fonts\simhei.ttf",
+        r"C:\Windows\Fonts\arialbd.ttf" if bold else r"C:\Windows\Fonts\arial.ttf",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return ImageFont.truetype(candidate, size=size)
+    return ImageFont.load_default()
+
+
+def text_width(draw: Any, text: str, font: Any) -> int:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return int(bbox[2] - bbox[0])
+
+
+def wrap_text(draw: Any, text: str, font: Any, max_width: int) -> list[str]:
+    value = str(text or "").strip()
+    if not value:
+        return []
+    words = value.split()
+    if len(words) > 1:
+        lines: list[str] = []
+        current = ""
+        for word in words:
+            candidate = word if not current else f"{current} {word}"
+            if text_width(draw, candidate, font) <= max_width:
+                current = candidate
+                continue
+            if current:
+                lines.append(current)
+            current = word
+        if current:
+            lines.append(current)
+        return lines
+    lines = []
+    current = ""
+    for char in value:
+        candidate = current + char
+        if text_width(draw, candidate, font) <= max_width:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+        current = char
+    if current:
+        lines.append(current)
+    return lines
+
+
+def render_local_card_overlay(
+    background_path: Path,
+    card: dict[str, Any],
+    output_path: Path,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    from PIL import Image, ImageDraw, ImageFilter
+
+    config = config or {}
+    target_size = parse_image_size(config.get("size") or DEFAULT_IMAGE_SIZE)
+    if not background_path.exists():
+        raise FileNotFoundError(f"Background image not found: {background_path}")
+    base = Image.open(background_path).convert("RGB")
+    base.thumbnail(target_size, Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", target_size, (11, 18, 32))
+    left = (target_size[0] - base.width) // 2
+    top = (target_size[1] - base.height) // 2
+    canvas.paste(base, (left, top))
+    image = canvas.convert("RGBA")
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    width, height = image.size
+    margin = int(width * 0.08)
+    panel_top = int(height * 0.56)
+    panel_bottom = int(height * 0.92)
+    panel_radius = int(width * 0.035)
+    shadow = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    shadow_draw = ImageDraw.Draw(shadow)
+    panel_box = (margin, panel_top, width - margin, panel_bottom)
+    shadow_draw.rounded_rectangle(panel_box, radius=panel_radius, fill=(0, 0, 0, 170))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=max(width // 80, 8)))
+    overlay.alpha_composite(shadow)
+    draw.rounded_rectangle(panel_box, radius=panel_radius, fill=(8, 13, 24, 225), outline=(56, 189, 248, 120), width=max(width // 220, 2))
+    draw.rectangle((margin, panel_top, margin + int(width * 0.018), panel_bottom), fill=DEFAULT_OVERLAY_ACCENT_COLOR)
+
+    card_index = int(card.get("index") or 0)
+    card_type = str(card.get("type") or "").upper()
+    label_font = load_overlay_font(max(int(width * 0.026), 16), bold=True)
+    title_font = load_overlay_font(max(int(width * 0.066), 34), bold=True)
+    message_font = load_overlay_font(max(int(width * 0.041), 24), bold=False)
+    label = f"{card_index:02d} / {card_type}" if card_index else card_type
+    x = margin + int(width * 0.05)
+    y = panel_top + int(height * 0.04)
+    draw.text((x, y), label, font=label_font, fill=DEFAULT_OVERLAY_ACCENT_COLOR)
+    y += int(height * 0.055)
+    max_text_width = width - (2 * margin) - int(width * 0.1)
+    title_lines = wrap_text(draw, str(card.get("title") or ""), title_font, max_text_width)[:2]
+    for line in title_lines:
+        draw.text((x, y), line, font=title_font, fill=DEFAULT_OVERLAY_TEXT_COLOR)
+        y += int(height * 0.065)
+    y += int(height * 0.018)
+    message_lines = wrap_text(draw, str(card.get("message") or ""), message_font, max_text_width)[:3]
+    for line in message_lines:
+        draw.text((x, y), line, font=message_font, fill=DEFAULT_OVERLAY_MUTED_COLOR)
+        y += int(height * 0.048)
+
+    image = Image.alpha_composite(image, overlay).convert("RGB")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output_path)
+    allowed_text = [str(card.get("title") or ""), str(card.get("message") or "")]
+    return {
+        "status": "rendered",
+        "path": str(output_path),
+        "background_path": str(background_path),
+        "text_source": "local_overlay",
+        "allowed_text": allowed_text,
+        "bytes": output_path.stat().st_size,
+    }
 
 
 def build_multipart_form_data(
@@ -979,18 +1178,36 @@ def generate_openai_image_edit(
 
 
 def maybe_generate_images(package_dir: Path, generation: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
-    if generation["mode"] != "openai":
+    if generation["mode"] not in ("openai", "compose"):
         return generation
     results = []
     for prompt in generation.get("prompts", []):
-        output_path = package_dir / "images" / f"card-{int(prompt['card_index']):02d}.png"
-        if prompt.get("reference_images"):
-            result = generate_openai_image_edit(prompt["prompt"], prompt["reference_images"], config, output_path)
-            result["route"] = result.get("route") or "openai_images_edits"
+        card_index = int(prompt["card_index"])
+        output_path = package_dir / "images" / f"card-{card_index:02d}.png"
+        background_path = package_dir / "backgrounds" / f"card-{card_index:02d}.png"
+        route = "manual_background_compose"
+        if generation["mode"] == "compose":
+            manual_background = Path(str(prompt.get("background_image") or "")).resolve()
+            if not manual_background.exists():
+                raise FileNotFoundError(f"Background image not found for card {card_index}: {manual_background}")
+            background_path.parent.mkdir(parents=True, exist_ok=True)
+            background_path.write_bytes(manual_background.read_bytes())
         else:
-            result = generate_openai_image(prompt["prompt"], config, output_path)
-            result["route"] = result.get("route") or "openai_images_generations"
-        result["card_index"] = prompt.get("card_index")
+            if prompt.get("reference_images"):
+                generated = generate_openai_image_edit(prompt["prompt"], prompt["reference_images"], config, background_path)
+                route = generated.get("route") or "openai_images_edits"
+            else:
+                generated = generate_openai_image(prompt["prompt"], config, background_path)
+                route = generated.get("route") or "openai_images_generations"
+        card = {
+            "index": card_index,
+            "type": prompt.get("card_type"),
+            "title": prompt.get("card_title"),
+            "message": prompt.get("card_message"),
+        }
+        result = render_local_card_overlay(background_path, card, output_path, {"size": prompt.get("size") or config.get("size")})
+        result["route"] = route
+        result["card_index"] = card_index
         results.append(result)
     generation["results"] = results
     return generation
@@ -1029,10 +1246,18 @@ def build_qc_report(
 ) -> dict[str, Any]:
     card_count = len(card_plan.get("cards", []))
     prompt_count = len(generation.get("prompts", []))
+    text_rendering = dict(generation.get("text_rendering") or {})
+    result_count = len(generation.get("results") or [])
+    rendered_results = [result for result in generation.get("results", []) if result.get("text_source") == "local_overlay"]
     checks = {
         "card_count": {"passed": 5 <= card_count <= 9, "value": card_count},
         "prompt_count": {"passed": prompt_count == card_count, "value": prompt_count},
         "source_ledger": {"passed": bool(source_ledger), "value": len(source_ledger)},
+        "text_rendering": {"passed": text_rendering.get("mode") == "local_overlay", "value": text_rendering.get("mode", "")},
+        "rendered_cards": {
+            "passed": result_count == 0 or len(rendered_results) == result_count,
+            "value": f"{len(rendered_results)}/{result_count}",
+        },
         "publish_approval": {"passed": False, "value": "manual approval required"},
     }
     return {
@@ -1116,7 +1341,7 @@ def run_xhs_workflow(
 ) -> dict[str, Any]:
     package_dir = resolve_package_dir(request)
     package_dir.mkdir(parents=True, exist_ok=True)
-    for child in ["raw", "generation", "preview", "images"]:
+    for child in ["raw", "generation", "preview", "backgrounds", "images"]:
         (package_dir / child).mkdir(parents=True, exist_ok=True)
 
     collector_plan = build_collector_plan(request)

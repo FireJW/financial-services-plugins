@@ -163,6 +163,12 @@ flow. In dry-run mode the workflow records those images in
 `generation/prompts.json` and adds prompt instructions to preserve concrete
 source details while improving XHS card composition.
 
+Image prompts are background-only. The model must not render text, numbers,
+dates, labels, chart axes, or watermarks. Exact card titles and body copy come
+from `card_plan.json` and are composited locally into final PNGs. This keeps
+finance facts, dates, and checklist language out of the image model's freeform
+generation path.
+
 To import benchmark output from `xiaohongshu-skills` or another collector:
 
 ```powershell
@@ -182,6 +188,13 @@ When `mode=openai` and local `reference_images` are present, the runtime uses
 the OpenAI image edit endpoint with multipart `image[]` files. Remote image URLs
 are not passed directly to the API in this version; download or provide local
 files first.
+
+If backgrounds are generated manually, pass them back in card order and compose
+the final cards locally:
+
+```powershell
+python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py "<request.json>" --image-mode compose --background-image "D:/path/to/card-01-background.png" --background-image "D:/path/to/card-02-background.png" --output "<result.json>"
+```
 
 For a real GPT Image run from the CLI, first run doctor:
 
@@ -211,6 +224,8 @@ The workflow writes one package directory containing:
 - `hashtags.txt`
 - `generation/prompts.json`
 - `generation/model_run.json`
+- `backgrounds/card-*.png` when images are generated or composed
+- `images/card-*.png` final cards with local text overlay
 - `qc_report.json`
 - `qc_report.md`
 - `performance_review.json`

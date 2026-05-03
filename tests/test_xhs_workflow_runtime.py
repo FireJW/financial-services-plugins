@@ -611,6 +611,23 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(len(generation["prompts"]), 2)
         self.assertIn("vertical 9:16", generation["prompts"][0]["prompt"])
 
+    def test_prepare_image_generation_prompts_request_textless_backgrounds(self) -> None:
+        card_plan = {
+            "cards": [
+                {"index": 1, "type": "cover", "title": "AI capex", "message": "Watch the ROI question."},
+            ]
+        }
+
+        generation = module_under_test.prepare_image_generation(card_plan, {"mode": "openai"})
+
+        prompt = generation["prompts"][0]["prompt"]
+        self.assertIn("background only", prompt)
+        self.assertIn("Do not render any readable text", prompt)
+        self.assertIn("no dates", prompt)
+        self.assertNotIn("clear Chinese typography", prompt)
+        self.assertEqual(generation["text_rendering"]["mode"], "local_overlay")
+        self.assertEqual(generation["text_rendering"]["allowed_text"][0], ["AI capex", "Watch the ROI question."])
+
     def test_prepare_image_generation_keeps_reference_images_for_image_to_image(self) -> None:
         card_plan = {
             "cards": [
@@ -674,6 +691,25 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertIn(b'filename="product-shot.png"', body)
         self.assertTrue(body.endswith(b"--TESTBOUNDARY--\r\n"))
 
+    def test_render_local_card_overlay_writes_exact_text_card(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            background_path = temp_path / "background.png"
+            output_path = temp_path / "card-01.png"
+            module_under_test.create_placeholder_background(background_path, size=(320, 480))
+
+            result = module_under_test.render_local_card_overlay(
+                background_path,
+                {"index": 1, "type": "cover", "title": "AI capex", "message": "Watch the ROI question."},
+                output_path,
+                {"size": "320x480"},
+            )
+
+        self.assertEqual(result["status"], "rendered")
+        self.assertEqual(result["text_source"], "local_overlay")
+        self.assertEqual(result["allowed_text"], ["AI capex", "Watch the ROI question."])
+        self.assertGreater(result["bytes"], 0)
+
     def test_build_openai_api_url_uses_configurable_base_url(self) -> None:
         self.assertEqual(
             module_under_test.build_openai_api_url(
@@ -712,12 +748,20 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             with patch.object(
                 module_under_test,
                 "generate_openai_image_edit",
-                return_value={"status": "edited", "path": "card-01.png"},
+                side_effect=lambda prompt, references, config, output_path: (
+                    module_under_test.create_placeholder_background(output_path),
+                    {"status": "edited", "path": str(output_path)},
+                )[1],
             ) as edit_mock, patch.object(module_under_test, "generate_openai_image") as generate_mock:
                 result = module_under_test.maybe_generate_images(pathlib.Path(temp_dir), generation, {"mode": "openai"})
+                background_exists = pathlib.Path(result["results"][0]["background_path"]).exists()
+                card_exists = pathlib.Path(result["results"][0]["path"]).exists()
 
-        self.assertEqual(result["results"][0]["status"], "edited")
+        self.assertEqual(result["results"][0]["status"], "rendered")
         self.assertEqual(result["results"][0]["route"], "openai_images_edits")
+        self.assertEqual(result["results"][0]["text_source"], "local_overlay")
+        self.assertTrue(background_exists)
+        self.assertTrue(card_exists)
         edit_mock.assert_called_once()
         generate_mock.assert_not_called()
 
@@ -737,13 +781,53 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
             with patch.object(
                 module_under_test,
                 "generate_openai_image",
-                return_value={"status": "generated", "path": "card-01.png"},
+                side_effect=lambda prompt, config, output_path: (
+                    module_under_test.create_placeholder_background(output_path),
+                    {"status": "generated", "path": str(output_path)},
+                )[1],
             ) as generate_mock, patch.object(module_under_test, "generate_openai_image_edit") as edit_mock:
                 result = module_under_test.maybe_generate_images(pathlib.Path(temp_dir), generation, {"mode": "openai"})
+                background_exists = pathlib.Path(result["results"][0]["background_path"]).exists()
+                card_exists = pathlib.Path(result["results"][0]["path"]).exists()
 
-        self.assertEqual(result["results"][0]["status"], "generated")
+        self.assertEqual(result["results"][0]["status"], "rendered")
         self.assertEqual(result["results"][0]["route"], "openai_images_generations")
+        self.assertEqual(result["results"][0]["text_source"], "local_overlay")
+        self.assertTrue(background_exists)
+        self.assertTrue(card_exists)
         generate_mock.assert_called_once()
+        edit_mock.assert_not_called()
+
+    def test_maybe_generate_images_composes_provided_backgrounds_without_openai(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            background_path = temp_path / "manual-background.png"
+            module_under_test.create_placeholder_background(background_path)
+            generation = {
+                "mode": "compose",
+                "prompts": [
+                    {
+                        "card_index": 1,
+                        "card_type": "cover",
+                        "card_title": "AI capex",
+                        "card_message": "Watch the ROI question.",
+                        "prompt": "background only",
+                        "reference_images": [],
+                        "background_image": str(background_path),
+                    }
+                ],
+            }
+
+            with patch.object(module_under_test, "generate_openai_image") as generate_mock, patch.object(
+                module_under_test,
+                "generate_openai_image_edit",
+            ) as edit_mock:
+                result = module_under_test.maybe_generate_images(temp_path, generation, {"mode": "compose"})
+
+        self.assertEqual(result["results"][0]["status"], "rendered")
+        self.assertEqual(result["results"][0]["route"], "manual_background_compose")
+        self.assertEqual(result["results"][0]["text_source"], "local_overlay")
+        generate_mock.assert_not_called()
         edit_mock.assert_not_called()
 
     def test_build_readiness_report_blocks_openai_without_api_key_and_missing_reference_image(self) -> None:
@@ -766,6 +850,56 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertFalse(report["checks"]["openai_api_key"]["passed"])
         self.assertFalse(report["checks"]["reference_images"]["passed"])
         self.assertGreaterEqual(len(report["blockers"]), 3)
+
+    def test_build_readiness_report_blocks_compose_without_background_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = {
+                "topic": "AI capex",
+                "output_dir": temp_dir,
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "image_generation": {"mode": "compose"},
+            }
+
+            report = module_under_test.build_readiness_report(request, env={})
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["checks"]["background_images"]["passed"])
+        self.assertIn("background_images", report["blockers"])
+
+    def test_build_readiness_report_accepts_compose_with_local_background_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            background_paths = []
+            for index in range(1, 8):
+                background_path = pathlib.Path(temp_dir) / f"background-{index:02d}.png"
+                module_under_test.create_placeholder_background(background_path)
+                background_paths.append(str(background_path))
+            request = {
+                "topic": "AI capex",
+                "output_dir": temp_dir,
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "image_generation": {"mode": "compose", "background_images": background_paths},
+            }
+
+            report = module_under_test.build_readiness_report(request, env={})
+
+        self.assertEqual(report["status"], "ready")
+        self.assertTrue(report["checks"]["background_images"]["passed"])
+
+    def test_build_readiness_report_blocks_compose_with_too_few_background_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            background_path = pathlib.Path(temp_dir) / "background.png"
+            module_under_test.create_placeholder_background(background_path)
+            request = {
+                "topic": "AI capex",
+                "output_dir": temp_dir,
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "image_generation": {"mode": "compose", "background_images": [str(background_path)]},
+            }
+
+            report = module_under_test.build_readiness_report(request, env={})
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["checks"]["background_images"]["passed"])
 
     def test_build_readiness_report_passes_for_dry_run_with_inline_benchmarks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1121,6 +1255,47 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(image_config["model"], "gpt-image-2")
         self.assertEqual(image_config["size"], "1024x1536")
         self.assertEqual(image_config["reference_images"][0], str(reference_path))
+
+    def test_xhs_workflow_cli_background_image_sets_compose_mode(self) -> None:
+        cli_path = SCRIPT_DIR / "xhs_workflow.py"
+        cli_spec = importlib.util.spec_from_file_location("xhs_workflow_cli_background_under_test", cli_path)
+        cli_module = importlib.util.module_from_spec(cli_spec)
+        assert cli_spec and cli_spec.loader
+        cli_spec.loader.exec_module(cli_module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "request.json"
+            background_path = temp_path / "background.png"
+            background_path.write_bytes(b"fake")
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "topic": "AI capex",
+                        "output_dir": str(temp_path / "out"),
+                        "benchmarks": [{"title": "3 signals", "likes": 10}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                ["xhs_workflow.py", str(input_path), "--background-image", str(background_path), "--quiet"],
+            ), patch.object(
+                cli_module,
+                "run_xhs_workflow",
+                return_value={"status": "ready_for_review"},
+            ) as run_mock:
+                with self.assertRaises(SystemExit) as exit_context:
+                    cli_module.main()
+
+        self.assertEqual(exit_context.exception.code, 0)
+        payload = run_mock.call_args.args[0]
+        image_config = payload["image_generation"]
+        self.assertEqual(image_config["mode"], "compose")
+        self.assertEqual(image_config["background_images"], [str(background_path)])
 
     def test_xhs_workflow_cli_performance_file_override(self) -> None:
         cli_path = SCRIPT_DIR / "xhs_workflow.py"
