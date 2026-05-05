@@ -39,6 +39,10 @@ FORBIDDEN_OCR_PATTERNS = [
     ("time", re.compile(r"\b(?:[01]?\d|2[0-3]):[0-5]\d\b")),
     ("date_or_number", re.compile(r"\b\d{1,2}[-/.]\d{1,2}\b|\b\d{2,}\b|[+-]?\d+(?:\.\d+)?%")),
 ]
+DEFAULT_TESSERACT_PATHS = [
+    Path("D:/Tools/Tesseract-OCR/tesseract.exe"),
+    Path("C:/Program Files/Tesseract-OCR/tesseract.exe"),
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -755,6 +759,24 @@ def run_publish_preview_plan(
     }
 
 
+def gate_publish_preview_plan_by_qc(plan: dict[str, Any], qc: dict[str, Any]) -> dict[str, Any]:
+    qc_status = str(qc.get("status") or "")
+    if plan.get("status") != "ready_preview" or qc_status == "needs_human_review":
+        return plan
+    gated = dict(plan)
+    gated.update(
+        {
+            "status": "blocked_qc",
+            "command": [],
+            "click_publish": False,
+            "qc_status": qc_status,
+            "reason": f"qc status is {qc_status}",
+            "message": "Resolve text QC before creating a publish preview.",
+        }
+    )
+    return gated
+
+
 def classify_title_formula(title: str) -> str:
     if re.search(r"\d+\s*(signals?|points?|steps?|things?|rules?)", title, flags=re.IGNORECASE):
         return "numbered_signal"
@@ -1358,8 +1380,31 @@ def render_hashtags(request: dict[str, Any]) -> str:
     return "\n".join(base) + "\n"
 
 
+def resolve_tesseract_command(env: dict[str, str] | None = None) -> str | None:
+    env = env if env is not None else os.environ
+    configured = str(env.get("TESSERACT_CMD") or env.get("TESSERACT_EXE") or "").strip()
+    if configured:
+        expanded = os.path.expanduser(os.path.expandvars(configured))
+        configured_path = Path(expanded)
+        if configured_path.exists():
+            return str(configured_path)
+        found = shutil.which(expanded)
+        if found:
+            return found
+        return None
+
+    found = shutil.which("tesseract")
+    if found:
+        return found
+
+    for candidate in DEFAULT_TESSERACT_PATHS:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
 def is_tesseract_available() -> bool:
-    return shutil.which("tesseract") is not None
+    return resolve_tesseract_command() is not None
 
 
 def run_tesseract_ocr(
@@ -1367,7 +1412,10 @@ def run_tesseract_ocr(
     runner: Any = subprocess.run,
     timeout_seconds: int = 60,
 ) -> str:
-    command = ["tesseract", str(image_path), "stdout", "-l", "chi_sim+eng"]
+    tesseract = resolve_tesseract_command()
+    if not tesseract:
+        raise RuntimeError("tesseract OCR is not available")
+    command = [tesseract, str(image_path), "stdout", "-l", "chi_sim+eng"]
     completed = runner(
         command,
         timeout=timeout_seconds,
@@ -1379,7 +1427,7 @@ def run_tesseract_ocr(
     )
     if completed.returncode != 0 and ("Failed loading language" in completed.stderr or "Error opening data file" in completed.stderr):
         completed = runner(
-            ["tesseract", str(image_path), "stdout"],
+            [tesseract, str(image_path), "stdout"],
             timeout=timeout_seconds,
             capture_output=True,
             text=True,
@@ -1712,15 +1760,23 @@ def run_xhs_workflow(
     (package_dir / "draft.md").write_text(render_draft(card_plan), encoding="utf-8")
     (package_dir / "caption.md").write_text(render_caption(request, card_plan), encoding="utf-8")
     (package_dir / "hashtags.txt").write_text(render_hashtags(request), encoding="utf-8")
-    publish_plan = build_publish_preview_plan(request, package_dir, card_plan)
+    publish_plan = gate_publish_preview_plan_by_qc(build_publish_preview_plan(request, package_dir, card_plan), qc)
     publish_preview_run = {"status": "not_requested", "source": publish_plan.get("source", ""), "click_publish": False}
     publish = dict(request.get("publish") or {})
     if publish.get("auto_run_preview"):
-        publish_preview_run = run_publish_preview_plan(
-            publish_plan,
-            runner=publish_preview_runner,
-            timeout_seconds=int(publish.get("timeout_seconds") or 180),
-        )
+        if qc["status"] != "needs_human_review":
+            publish_preview_run = {
+                "status": "skipped",
+                "reason": f"qc status is {qc['status']}",
+                "source": publish_plan.get("source", ""),
+                "click_publish": False,
+            }
+        else:
+            publish_preview_run = run_publish_preview_plan(
+                publish_plan,
+                runner=publish_preview_runner,
+                timeout_seconds=int(publish.get("timeout_seconds") or 180),
+            )
     write_json(package_dir / "publish_plan.json", publish_plan)
     write_json(package_dir / "publish_preview_run.json", publish_preview_run)
     write_json(package_dir / "performance_collection_plan.json", performance_collection_plan)

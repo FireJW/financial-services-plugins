@@ -188,7 +188,12 @@ chart axes, timestamps, or metadata. If `tesseract` is available, the workflow
 OCRs final cards and blocks text QC on obvious forbidden patterns such as
 `2024-01`, `2024/01`, `2024.01`, `09:30`, unallowed years, and unallowed
 number/date strings. If OCR is not available, QC status becomes
-`needs_manual_text_qc`; do not treat the package as publish-ready.
+`needs_manual_text_qc`; the workflow blocks `publish_plan.json` with
+`status=blocked_qc` and removes the `fill-publish` command until text QC is
+resolved.
+
+OCR discovery checks `TESSERACT_CMD` or `TESSERACT_EXE`, then `PATH`, then common
+Windows installs including `D:/Tools/Tesseract-OCR/tesseract.exe`.
 
 Recommended production loop for stronger expression:
 
@@ -285,9 +290,11 @@ python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py
 
 `publish.type=xiaohongshu-skills` creates a preview-only `publish_plan.json`.
 When card images exist, it writes `publish/title.txt` and `publish/content.txt`
-and prepares a `python scripts/cli.py fill-publish ...` command. It never adds a
-click-publish step; the final publish action stays manual. Do not add or run
-automatic `click-publish` from this workflow.
+and prepares a `python scripts/cli.py fill-publish ...` command only when QC is
+reviewable. If text QC is blocked or needs manual review, `publish_plan.json`
+uses `status=blocked_qc` and leaves `command=[]`. It never adds a click-publish
+step; the final publish action stays manual. Do not add or run automatic
+`click-publish` from this workflow.
 
 To explicitly run the preview fill step after package generation:
 
@@ -297,11 +304,13 @@ python financial-analysis/skills/autoresearch-info-index/scripts/xhs_workflow.py
 
 This only executes `fill-publish`. The workflow blocks `click-publish` even when
 a malformed plan or request attempts to include it. Use this only after card
-images exist and the referenced `xiaohongshu-skills` checkout is installed and
-logged in as needed.
+images exist, `publish_plan.json` is not `blocked_qc`, and the referenced
+`xiaohongshu-skills` checkout is installed and logged in as needed.
 
 ## Publish Gate
 
-This command does not automatically publish. The result remains
+This command does not automatically publish. A package with clear QC remains
 `ready_for_review`, and `qc_report` keeps `publish_approval` failed until a
-human explicitly approves the package.
+human explicitly approves it. A package with `needs_manual_text_qc` or
+`blocked_text_qc` keeps the publish preview blocked until the text issue is
+resolved.

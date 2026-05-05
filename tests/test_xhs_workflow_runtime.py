@@ -564,6 +564,60 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(result["publish_preview_run"]["status"], "filled_preview")
         self.assertFalse(result["publish_plan"]["click_publish"])
 
+    def test_run_xhs_workflow_skips_publish_preview_when_text_qc_needs_manual_review(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            skills_dir = make_xiaohongshu_skills_dir(temp_path)
+            request = {
+                "topic": "AI capex",
+                "run_id": "20260505130000",
+                "output_dir": temp_dir,
+                "benchmarks": [{"title": "3 signals", "likes": 10}],
+                "image_generation": {"mode": "dry_run", "text_strategy": "model_text_with_qc"},
+                "publish": {
+                    "type": "xiaohongshu-skills",
+                    "skills_dir": str(skills_dir),
+                    "mode": "preview",
+                    "auto_run_preview": True,
+                },
+            }
+            preview_calls = []
+
+            def fake_generate(package_dir, generation, config):
+                results = []
+                for prompt in generation["prompts"]:
+                    card_index = int(prompt["card_index"])
+                    image_path = package_dir / "images" / f"card-{card_index:02d}.png"
+                    image_path.write_bytes(b"fake")
+                    results.append(
+                        {
+                            "status": "generated",
+                            "path": str(image_path),
+                            "text_source": "model_text_with_qc",
+                            "allowed_text": prompt["allowed_text"],
+                        }
+                    )
+                generation["results"] = results
+                return generation
+
+            def fake_runner(*args, **kwargs):
+                preview_calls.append((args, kwargs))
+                return types.SimpleNamespace(returncode=0, stdout='{"status":"filled"}', stderr="")
+
+            with patch.object(module_under_test, "maybe_generate_images", side_effect=fake_generate), patch.object(
+                module_under_test,
+                "is_tesseract_available",
+                return_value=False,
+            ):
+                result = module_under_test.run_xhs_workflow(request, publish_preview_runner=fake_runner)
+
+        self.assertEqual(result["qc_status"], "needs_manual_text_qc")
+        self.assertEqual(result["publish_plan"]["status"], "blocked_qc")
+        self.assertEqual(result["publish_plan"]["command"], [])
+        self.assertEqual(result["publish_preview_run"]["status"], "skipped")
+        self.assertEqual(result["publish_preview_run"]["reason"], "qc status is needs_manual_text_qc")
+        self.assertEqual(preview_calls, [])
+
     def test_deconstructs_benchmarks_into_reusable_patterns_without_copying_source_text(self) -> None:
         benchmarks = module_under_test.rank_benchmarks(
             [{"title": "3 signals to understand AI investment", "likes": 100, "collects": 50, "comments": 20}]
@@ -705,6 +759,32 @@ class XhsWorkflowRuntimeTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertEqual(result["violations"][0]["type"], "forbidden_pattern")
         self.assertIn("2024-01", result["violations"][0]["text"])
+
+    def test_resolve_tesseract_command_uses_env_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tesseract_path = pathlib.Path(temp_dir) / "tesseract.exe"
+            tesseract_path.write_bytes(b"fake")
+
+            with patch.dict(module_under_test.os.environ, {"TESSERACT_CMD": str(tesseract_path)}):
+                command = module_under_test.resolve_tesseract_command()
+
+        self.assertEqual(command, str(tesseract_path))
+
+    def test_resolve_tesseract_command_uses_d_tools_fallback_when_path_is_stale(self) -> None:
+        fallback = pathlib.Path("D:/Tools/Tesseract-OCR/tesseract.exe")
+
+        with patch.dict(module_under_test.os.environ, {}, clear=True), patch.object(
+            module_under_test.shutil,
+            "which",
+            return_value=None,
+        ), patch.object(
+            module_under_test.Path,
+            "exists",
+            lambda path: pathlib.Path(path) == fallback,
+        ):
+            command = module_under_test.resolve_tesseract_command()
+
+        self.assertEqual(pathlib.Path(command), fallback)
 
     def test_qc_report_marks_model_text_as_manual_text_qc_when_ocr_unavailable(self) -> None:
         card_plan = {
