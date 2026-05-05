@@ -62,6 +62,11 @@ following native routes fits the task.
   - Primary path: `financial-analysis/commands/hot-topics.md`
   - Fallback rule: use generic search only if the source mix is outside the
     configured discovery surface
+- Xiaohongshu image-post workflow from benchmarks to GPT Image package
+  - Primary path: `financial-analysis/commands/xhs-workflow.md`
+  - Fallback rule: use public scraping or ad hoc browser automation only after
+    the benchmark import/manual source path and XHS-specific skill references
+    have been checked
 - End-to-end article pipeline
   - Primary path: `financial-analysis/commands/article-workflow.md`
   - Fallback rule: use ad hoc browsing only when a required upstream source is
