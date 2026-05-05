@@ -966,6 +966,31 @@ class MonthEndShortlistDegradedReportingTests(unittest.TestCase):
         self.assertIn("压力 196.0", factor["trade_layer_summary"])
         self.assertIn("放弃线 155.02", factor["trade_layer_summary"])
 
+    def test_enrich_live_result_reporting_annotates_bare_tickers_in_report_markdown(self) -> None:
+        result = {
+            "filter_summary": {"kept_count": 0, "keep_threshold": 58.0},
+            "dropped": [
+                {"ticker": "002281.SZ", "name": "光迅科技", "drop_reason": "price_below_floor"},
+                {"ticker": "002384.SZ", "name": "东山精密", "drop_reason": "price_below_floor"},
+                {"ticker": "600111.SS", "name": "北方稀土", "drop_reason": "price_below_floor"},
+            ],
+            "top_picks": [],
+            "scorecard": [],
+            "report_markdown": (
+                "# Month-End Shortlist Report: 2026-04-30\n\n"
+                "- 主确认：`002281.SZ` 站稳 146.16，`002384.SZ` 站稳 196.00。\n"
+                "- 已有名称：`600111.SS` 北方稀土继续观察。\n"
+            ),
+        }
+
+        enriched = module_under_test.enrich_live_result_reporting(result, [], [])
+
+        markdown = enriched["report_markdown"]
+        self.assertIn("`002281.SZ` 光迅科技 站稳 146.16", markdown)
+        self.assertIn("`002384.SZ` 东山精密 站稳 196.00", markdown)
+        self.assertIn("`600111.SS` 北方稀土继续观察", markdown)
+        self.assertNotIn("北方稀土 北方稀土", markdown)
+
     def test_enrich_live_result_reporting_adds_qualified_decision_factors(self) -> None:
         result = {
             "filter_summary": {"kept_count": 1, "keep_threshold": 70.0},

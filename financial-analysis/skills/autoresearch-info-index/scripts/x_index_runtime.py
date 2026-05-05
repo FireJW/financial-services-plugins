@@ -1472,6 +1472,101 @@ def score_post(post: dict[str, Any], request: dict[str, Any]) -> int:
     return score
 
 
+def post_has_usable_evidence(post: dict[str, Any]) -> bool:
+    if any(
+        clean_text(post.get(field))
+        for field in ("post_text_raw", "post_summary", "media_summary", "combined_summary")
+    ):
+        return True
+    for item in post.get("thread_posts", []):
+        if isinstance(item, dict) and clean_text(item.get("post_text_raw")):
+            return True
+    for item in post.get("media_items", []):
+        if not isinstance(item, dict):
+            continue
+        if (
+            clean_text(item.get("ocr_text_raw"))
+            or clean_text(item.get("ocr_summary"))
+            or meaningful_image_hint(item.get("alt_text"))
+        ):
+            return True
+    return False
+
+
+def post_relevance_haystack(post: dict[str, Any]) -> str:
+    parts = [
+        post.get("post_text_raw", ""),
+        post.get("post_summary", ""),
+        post.get("media_summary", ""),
+        post.get("combined_summary", ""),
+        post.get("discovery_reason", ""),
+        post.get("author_handle", ""),
+        post.get("post_url", ""),
+    ]
+    for item in post.get("thread_posts", []):
+        if isinstance(item, dict):
+            parts.append(item.get("post_text_raw", ""))
+    for item in post.get("media_items", []):
+        if isinstance(item, dict):
+            parts.extend([item.get("ocr_text_raw", ""), item.get("ocr_summary", ""), item.get("alt_text", "")])
+    return " ".join(clean_text(part) for part in parts if clean_text(part)).lower()
+
+
+def request_relevance_clues(request: dict[str, Any]) -> list[str]:
+    clues = [
+        clean_text(request.get("topic")),
+        *[clean_text(item) for item in request.get("keywords", [])],
+        *[clean_text(item) for item in request.get("phrase_clues", [])],
+        *[clean_text(item) for item in request.get("entity_clues", [])],
+    ]
+    return unique_cleaned_strings([item for item in clues if item], limit=32, min_length=3)
+
+
+def post_matches_relevance_filter(post: dict[str, Any], request: dict[str, Any]) -> tuple[bool, str]:
+    if not clean_text(post.get("post_url")):
+        return False, "missing_post_url"
+
+    has_usable_evidence = post_has_usable_evidence(post)
+    access_mode = clean_text(post.get("access_mode"))
+    session_health = clean_text(post.get("session_health"))
+    session_status = clean_text(post.get("session_status"))
+    if (
+        access_mode == "blocked"
+        or session_health == "degraded"
+        or session_status in {"failed", "fallback_public", "unavailable"}
+    ) and not has_usable_evidence:
+        return False, "blocked_or_unusable_post"
+    if not has_usable_evidence:
+        return False, "empty_post_record"
+
+    author_handle = clean_text(post.get("author_handle")).lstrip("@").lower()
+    allowlist = {
+        clean_text(item).lstrip("@").lower()
+        for item in request.get("account_allowlist", [])
+        if clean_text(item)
+    }
+    if author_handle and author_handle in allowlist:
+        return True, ""
+
+    clues = request_relevance_clues(request)
+    if not clues:
+        return True, ""
+
+    haystack = post_relevance_haystack(post)
+    if any(clue.lower() in haystack for clue in clues):
+        return True, ""
+
+    topic_tokens = [
+        token
+        for token in re.findall(r"[A-Za-z0-9]{3,}", clean_text(request.get("topic")).lower())
+        if token not in {"the", "and", "for", "with", "from"}
+    ]
+    if topic_tokens and sum(1 for token in topic_tokens if token in haystack) >= min(2, len(topic_tokens)):
+        return True, ""
+
+    return False, "weak_relevance"
+
+
 def fetch_thread_posts(
     root_post: dict[str, Any],
     links_text: str,
@@ -2096,6 +2191,23 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
                 continue
             try:
                 post = build_x_post_record(candidate, request, index, session_context)
+                matches_filter, block_reason = post_matches_relevance_filter(post, request)
+                if not matches_filter:
+                    blocked_candidate = deepcopy(candidate)
+                    blocked_candidate.update(
+                        {
+                            "post_url": clean_text(post.get("post_url")) or clean_text(candidate.get("post_url")),
+                            "author_handle": clean_text(post.get("author_handle")),
+                            "access_mode": clean_text(post.get("access_mode")),
+                            "session_status": clean_text(post.get("session_status")),
+                            "session_health": clean_text(post.get("session_health")),
+                            "block_reason": block_reason,
+                        }
+                    )
+                    if post.get("crawl_notes"):
+                        blocked_candidate["crawl_notes"] = deepcopy(post.get("crawl_notes", []))
+                    blocked_candidates.append(blocked_candidate)
+                    continue
                 post["social_rank"] = score_post(post, request)
                 x_posts.append(post)
             except Exception as exc:

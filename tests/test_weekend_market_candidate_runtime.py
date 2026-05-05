@@ -63,6 +63,25 @@ class WeekendMarketCandidateRuntimeTests(unittest.TestCase):
             "D:\\Users\\rickylu\\dev\\financial-services-plugins-clean\\.tmp\\weekend-market-candidate-actual\\result.x-index.linqingv.live.json",
         )
 
+    def test_normalize_weekend_market_candidate_input_keeps_zero_post_x_result_metadata(self) -> None:
+        normalized = module_under_test.normalize_weekend_market_candidate_input(
+            {
+                "x_live_index_results": [
+                    {
+                        "source_result_path": ".tmp/plan/result.x-index.json",
+                        "run_completeness": {"status": "full", "x_posts_captured": 0},
+                        "x_posts": [],
+                    }
+                ]
+            }
+        )
+
+        self.assertIsNotNone(normalized)
+        live_result = normalized["x_live_index_results"][0]
+        self.assertEqual(live_result["source_result_path"], ".tmp/plan/result.x-index.json")
+        self.assertEqual(live_result["run_completeness"]["x_posts_captured"], 0)
+        self.assertEqual(live_result["x_posts"], [])
+
     def test_build_weekend_market_candidate_infers_commercial_space_from_live_x_results(self) -> None:
         candidate, reference_map = module_under_test.build_weekend_market_candidate(
             {

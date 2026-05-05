@@ -126,6 +126,64 @@ class XIndexRuntimeTests(unittest.TestCase):
         self.assertIn("Partial stage: retrieval_bridge", report)
         self.assertIn("degraded repo-native X run", report)
 
+    def test_run_x_index_blocks_degraded_unusable_posts_before_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = {
+                "topic": "commercial space",
+                "analysis_time": "2026-05-01T20:30:00+08:00",
+                "keywords": ["launch"],
+                "phrase_clues": ["satellite launch delay"],
+                "entity_clues": ["SPACE"],
+                "manual_urls": ["https://x.com/Noise/status/999"],
+                "output_dir": temp_dir,
+            }
+            degraded_post = {
+                "post_url": "https://x.com/Noise/status/999",
+                "author_handle": "Noise",
+                "posted_at": "2026-05-01T12:00:00+00:00",
+                "collected_at": "2026-05-01T12:01:00+00:00",
+                "post_text_raw": "",
+                "post_summary": "",
+                "media_summary": "",
+                "combined_summary": "",
+                "artifact_manifest": [],
+                "thread_posts": [],
+                "media_items": [],
+                "engagement": {},
+                "session_health": "degraded",
+                "session_source": "remote_debugging",
+                "session_status": "failed",
+                "access_mode": "blocked",
+                "discovery_reason": "manual_url",
+                "crawl_notes": ["page appeared blocked during browser extraction"],
+                "post_text_source": "unavailable",
+                "post_text_confidence": 0.0,
+                "root_post_screenshot_path": "",
+            }
+
+            with patch.object(
+                module_under_test,
+                "collect_candidates",
+                return_value=[{"post_url": "https://x.com/Noise/status/999"}],
+            ), patch.object(
+                module_under_test,
+                "build_x_post_record",
+                return_value=degraded_post,
+            ), patch.object(
+                module_under_test,
+                "run_news_index",
+                return_value={"status": "skipped"},
+            ):
+                result = module_under_test.run_x_index(request)
+
+        self.assertEqual(result["x_posts"], [])
+        self.assertEqual(len(result["discovery_summary"]["blocked_candidates"]), 1)
+        self.assertEqual(
+            result["discovery_summary"]["blocked_candidates"][0]["block_reason"],
+            "blocked_or_unusable_post",
+        )
+        self.assertNotIn("@Noise", result["report_markdown"])
+
     def test_x_index_wrapper_writes_partial_outputs_and_exits_nonzero(self) -> None:
         cli_path = SCRIPT_DIR / "x_index.py"
         cli_spec = importlib.util.spec_from_file_location("x_index_cli_under_test", cli_path)
