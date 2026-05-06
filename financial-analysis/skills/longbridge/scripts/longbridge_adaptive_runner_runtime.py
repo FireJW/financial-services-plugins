@@ -111,6 +111,13 @@ def _text_has_any(text: str, terms: tuple[str, ...]) -> bool:
     return any(term in lowered for term in terms)
 
 
+def _is_broker_holding_context(prompt: str) -> bool:
+    return _text_has_any(
+        prompt,
+        ("broker holding", "broker-holding", "brokers", "券商持仓", "经纪持仓"),
+    )
+
+
 def _listify(value: Any) -> list[str]:
     if isinstance(value, str):
         return [item.strip() for item in value.split(",") if item.strip()]
@@ -123,7 +130,7 @@ def _listify(value: Any) -> list[str]:
 
 def _extract_tickers(prompt: str) -> list[str]:
     tickers: list[str] = []
-    for match in re.finditer(r"\b([A-Z]{1,6}|\d{4,6})(?:\.(US|HK|SH|SZ|SG|HAS))\b", prompt):
+    for match in re.finditer(r"\b([A-Z]{1,6}|\d{1,6})(?:\.(US|HK|SH|SZ|SG|HAS))\b", prompt):
         symbol = match.group(0).upper()
         if symbol not in tickers:
             tickers.append(symbol)
@@ -135,12 +142,12 @@ def normalize_task_type(request: dict[str, Any]) -> str:
     if explicit:
         return TASK_ALIASES.get(explicit, explicit)
     prompt = clean_text(request.get("prompt") or request.get("query") or request.get("task"))
-    if _text_has_any(prompt, ("portfolio", "assets", "positions", "组合", "资产", "持仓")):
-        return "portfolio_review"
     if _text_has_any(prompt, ("复盘", "review", "postclose", "post-close", "回顾")):
         return "review"
     if _text_has_any(prompt, ("交易计划", "trading plan", "trade plan", "trigger", "止损", "入场", "仓位")):
         return "trading_plan"
+    if _text_has_any(prompt, ("portfolio", "assets", "positions", "组合", "资产", "持仓")) and not _is_broker_holding_context(prompt):
+        return "portfolio_review"
     return "stock_analysis"
 
 
@@ -253,7 +260,7 @@ def infer_analysis_layers(request: dict[str, Any], *, task_type: str) -> list[st
         layers.add("ownership_risk")
     if _text_has_any(prompt, ("资金面", "capital flow", "intraday", "盘中", "短线", "market-temp", "市场温度")):
         layers.add("intraday")
-    if _text_has_any(prompt, ("portfolio", "assets", "positions", "组合", "资产", "持仓")):
+    if _text_has_any(prompt, ("portfolio", "assets", "positions", "组合", "资产", "持仓")) and not _is_broker_holding_context(prompt):
         layers.add("portfolio")
     if task_type in {"review", "portfolio_review"} and _text_has_any(
         prompt,

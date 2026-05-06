@@ -263,6 +263,18 @@ class LongbridgeAdaptiveRunnerRuntimeTests(unittest.TestCase):
         self.assertEqual(inferred["task_type"], "trading_plan")
         self.assertIn("execution_preflight", inferred["analysis_layers"])
 
+    def test_infers_hk_microstructure_from_three_digit_hk_symbol_prompt(self) -> None:
+        inferred = infer_adaptive_request(
+            {
+                "prompt": "给 700.HK 做港股券商持仓、AH溢价和微观结构分析",
+            }
+        )
+
+        self.assertEqual(inferred["task_type"], "stock_analysis")
+        self.assertEqual(inferred["tickers"], ["700.HK"])
+        self.assertIn("hk_microstructure", inferred["analysis_layers"])
+        self.assertNotIn("portfolio", inferred["analysis_layers"])
+
     def test_stock_analysis_runs_adapted_longbridge_screen(self) -> None:
         runner = RecordingLongbridgeRunner()
 
