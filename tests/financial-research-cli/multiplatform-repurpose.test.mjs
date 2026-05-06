@@ -50,6 +50,41 @@ test("multiplatform-repurpose emits stable contract envelope", () => {
   assert.match(payload.execution_target.wrapper, /run_multiplatform_repurpose\.cmd$/);
 });
 
+test("multiplatform-repurpose text summary shows completion counts", () => {
+  const result = runCli(
+    [
+      "multiplatform-repurpose",
+      "--input",
+      "financial-analysis/skills/autoresearch-info-index/tests/fixtures/multiplatform-repurpose/request.json",
+    ],
+    {
+      runner: makeRunner({
+        "multiplatform-repurpose": {
+          status: "ok",
+          workflow_kind: "multiplatform_repurpose",
+          run_id: "sample-agent-budget-discipline",
+          source_integrity: { status: "ok" },
+          platforms: {
+            wechat_article: { source_integrity_status: "ok" },
+            x_thread: { source_integrity_status: "ok" },
+          },
+          completion_check: {
+            status: "warning",
+            summary: { ready_platform_count: 1, blocker_count: 0, warning_count: 2 },
+          },
+          manifest_path: "out/manifest.json",
+        },
+      }),
+    },
+  );
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.match(result.stdout, /Completion check: warning/);
+  assert.match(result.stdout, /Ready platforms: 1\/2/);
+  assert.match(result.stdout, /Blockers: 0/);
+  assert.match(result.stdout, /Warnings: 2/);
+});
+
 test("multiplatform-repurpose dry-run forwards output dir", () => {
   const result = runCli([
     "multiplatform-repurpose",

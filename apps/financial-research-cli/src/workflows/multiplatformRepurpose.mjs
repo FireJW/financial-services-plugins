@@ -42,6 +42,9 @@ export const multiplatformRepurposeCommand = {
       `Source integrity: ${contract.summary.source_integrity_status || "unknown"}`,
       `Completion check: ${contract.summary.completion_check_status || "unknown"}`,
       `Platforms: ${contract.summary.platform_count}`,
+      `Ready platforms: ${contract.summary.ready_platform_count}/${contract.summary.platform_count}`,
+      `Blockers: ${contract.summary.blocker_count}`,
+      `Warnings: ${contract.summary.warning_count}`,
       `Manifest: ${contract.summary.manifest_path || "n/a"}`,
     ].join("\n");
   },
