@@ -30,6 +30,9 @@ Default routing:
 2. Wrap all Longbridge CLI calls in the local safety runner.
 3. Return a single JSON envelope with `workflow_steps`, `outputs`,
    `should_apply: false`, and `side_effects: "none"`.
+   - Screen-native evidence such as `account_state`, `account_health`, and
+     `quant_analysis` is also promoted from `outputs.screen_result` to stable
+     top-level `outputs` keys when those layers are selected.
 
 Prompt-to-layer hints:
 

@@ -1130,6 +1130,12 @@ def _run_screen(
     return run_longbridge_screen(_screen_request(inferred), runner=runner, env=env)
 
 
+def _promote_screen_outputs(result: dict[str, Any], screen_result: dict[str, Any]) -> None:
+    for key in ("account_state", "account_health", "quant_analysis"):
+        if key in screen_result:
+            result["outputs"][key] = deepcopy(screen_result[key])
+
+
 def run_longbridge_adaptive_task(
     request: dict[str, Any],
     *,
@@ -1206,6 +1212,7 @@ def run_longbridge_adaptive_task(
     screen_result = _run_screen(inferred, runner=safe_runner, env=env)
     result["workflow_steps"].append("longbridge-screen")
     result["outputs"]["screen_result"] = screen_result
+    _promote_screen_outputs(result, screen_result)
 
     if _has_analysis_layer(inferred, "governance_structure"):
         governance_structure = _collect_governance_structure(screen_result)

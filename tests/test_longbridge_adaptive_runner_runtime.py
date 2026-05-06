@@ -167,12 +167,26 @@ class RecordingLongbridgeRunner:
             return {"total_volume": "2000", "dominant_price": "251.00"}
         if command == "market-temp":
             return {"market": "US", "temperature": 72}
+        if command == "watchlist":
+            return [{"id": "ai", "name": "AI Watch", "securities": []}]
+        if command == "alert":
+            return [{"id": "a1", "symbol": "NVDA.US", "price": "248.00", "direction": "above", "enabled": False}]
         if command == "portfolio":
             return {"overview": {"total_asset": "100000", "total_pl": "1200"}}
         if command == "assets":
             return {"overview": {"net_assets": "100000", "buy_power": "20000"}}
         if command == "positions":
             return [{"symbol": "NVDA.US", "quantity": "10", "market_value": "2500"}]
+        if command == "fund-positions":
+            return [{"symbol": "FUND123.HK", "market_value": "10000"}]
+        if command == "exchange-rate":
+            return [{"from_currency": "USD", "to_currency": "HKD", "rate": "7.8"}]
+        if command == "margin-ratio":
+            return {"symbol": args[1], "im_factor": "0.5", "mm_factor": "0.4", "fm_factor": "0.3"}
+        if command == "max-qty":
+            return {"symbol": args[1], "side": args[args.index("--side") + 1], "cash_max_qty": "10", "margin_max_qty": "20"}
+        if command == "quant":
+            return {"series": {"momentum": [1, 2, 3]}}
         if command == "order":
             order_symbol = args[args.index("--symbol") + 1] if "--symbol" in args else ""
             if args[1:2] == ["executions"]:
@@ -298,6 +312,65 @@ class LongbridgeAdaptiveRunnerRuntimeTests(unittest.TestCase):
         self.assertIn("filing NVDA.US", calls)
         self.assertIn("insider-trades NVDA.US", calls)
         self.assertIn("investors --top", calls)
+
+    def test_stock_analysis_exposes_watchlist_alert_output(self) -> None:
+        runner = RecordingLongbridgeRunner()
+
+        result = run_longbridge_adaptive_task(
+            {
+                "prompt": "给 NVDA.US 观察池和提醒建议",
+                "analysis_date": "2026-05-06",
+            },
+            runner=runner,
+        )
+
+        self.assertIn("watchlist_alert", result["inferred_request"]["analysis_layers"])
+        account_state = result["outputs"]["account_state"]
+        self.assertTrue(account_state["data_coverage"]["watchlist_available"])
+        self.assertTrue(account_state["data_coverage"]["alert_available"])
+        self.assertFalse(account_state["should_apply"])
+        self.assertEqual(account_state["side_effects"], "none")
+        self.assertIn(["watchlist", "--format", "json"], runner.calls)
+        self.assertIn(["alert", "--format", "json"], runner.calls)
+
+    def test_stock_analysis_exposes_account_health_output(self) -> None:
+        runner = RecordingLongbridgeRunner()
+
+        result = run_longbridge_adaptive_task(
+            {
+                "prompt": "看 NVDA.US 保证金、购买力和最大可买，只读",
+                "analysis_date": "2026-05-06",
+            },
+            runner=runner,
+        )
+
+        self.assertIn("account_health", result["inferred_request"]["analysis_layers"])
+        account_health = result["outputs"]["account_health"]
+        self.assertTrue(account_health["data_coverage"]["statement_available"])
+        self.assertTrue(account_health["data_coverage"]["margin_ratio_available"])
+        self.assertTrue(account_health["data_coverage"]["max_qty_available"])
+        self.assertFalse(account_health["should_apply"])
+        self.assertEqual(account_health["side_effects"], "none")
+        self.assertIn(["fund-positions", "--format", "json"], runner.calls)
+        self.assertTrue(any(call[:2] == ["max-qty", "NVDA.US"] for call in runner.calls))
+
+    def test_stock_analysis_exposes_quant_output(self) -> None:
+        runner = RecordingLongbridgeRunner()
+
+        result = run_longbridge_adaptive_task(
+            {
+                "prompt": "分析 NVDA.US 技术指标 RSI MACD",
+                "analysis_date": "2026-05-06",
+            },
+            runner=runner,
+        )
+
+        self.assertIn("quant", result["inferred_request"]["analysis_layers"])
+        quant = result["outputs"]["quant_analysis"]
+        self.assertGreater(quant["data_coverage"]["successful_runs"], 0)
+        self.assertFalse(quant["should_apply"])
+        self.assertEqual(quant["side_effects"], "none")
+        self.assertTrue(any(call[:3] == ["quant", "run", "NVDA.US"] for call in runner.calls))
 
     def test_trading_plan_combines_screen_and_plan_artifact(self) -> None:
         runner = RecordingLongbridgeRunner()
