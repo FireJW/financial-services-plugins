@@ -375,6 +375,21 @@ def build_report_markdown(result: dict[str, Any]) -> str:
     ]
     for platform, package in safe_dict(result.get("platforms")).items():
         lines.append(f"- {platform}: {clean_text(package.get('source_integrity_status'))}")
+    lines.extend(["", "## Review Queue"])
+    for platform, package in safe_dict(result.get("platforms")).items():
+        files = safe_dict(package.get("files"))
+        lines.extend(
+            [
+                "",
+                f"### {platform}",
+                f"- Status: {clean_text(package.get('source_integrity_status'))}",
+                f"- Content: {clean_text(files.get('content')) or 'n/a'}",
+                f"- Rewrite packet: {clean_text(files.get('rewrite_packet')) or 'n/a'}",
+                f"- Quality scorecard: {clean_text(files.get('quality_scorecard')) or 'n/a'}",
+                f"- Human edit checklist: {clean_text(files.get('human_edit_required')) or 'n/a'}",
+                f"- What not to say: {clean_text(files.get('what_not_to_say')) or 'n/a'}",
+            ]
+        )
     return "\n".join(lines) + "\n"
 
 

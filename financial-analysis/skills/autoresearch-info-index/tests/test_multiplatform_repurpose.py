@@ -178,6 +178,25 @@ class MultiplatformRepurposeTests(unittest.TestCase):
         self.assertIn("Customer case studies are still thin", rewrite_packet)
         self.assertIn("Framework\n- What changed", rewrite_packet)
 
+    def test_report_surfaces_review_queue_file_paths(self) -> None:
+        request = load_json(self.fixture_dir / "request.json")
+        request["output_dir"] = str(self.temp_dir / "review-queue")
+        request["source_article"]["markdown_path"] = str(self.fixture_dir / "source-article.md")
+        request["platform_targets"] = ["wechat_article", "x_thread"]
+
+        result = build_multiplatform_repurpose(request)
+
+        report = Path(result["report_path"]).read_text(encoding="utf-8-sig")
+        wechat = result["platforms"]["wechat_article"]
+        x_thread = result["platforms"]["x_thread"]
+        self.assertIn("## Review Queue", report)
+        self.assertIn("### wechat_article", report)
+        self.assertIn("### x_thread", report)
+        self.assertIn(f"- Content: {wechat['files']['content']}", report)
+        self.assertIn(f"- Rewrite packet: {wechat['files']['rewrite_packet']}", report)
+        self.assertIn(f"- Quality scorecard: {wechat['files']['quality_scorecard']}", report)
+        self.assertIn(f"- Human edit checklist: {x_thread['files']['human_edit_required']}", report)
+
     def test_defaults_to_all_supported_platform_targets(self) -> None:
         result = build_multiplatform_repurpose(
             {
