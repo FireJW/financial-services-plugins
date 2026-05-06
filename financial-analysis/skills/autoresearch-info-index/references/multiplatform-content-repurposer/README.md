@@ -19,6 +19,31 @@ Optional output override:
 financial-analysis\skills\autoresearch-info-index\scripts\run_multiplatform_repurpose.cmd request.json --output-dir ".tmp\multiplatform-content-repurposer\my-run"
 ```
 
+## Publish Artifact Shortcut
+
+After `article_publish` or `article_publish_reuse`, pass the repo-native output
+directly instead of hand-writing a request JSON:
+
+```powershell
+financial-analysis\skills\autoresearch-info-index\scripts\run_multiplatform_repurpose.cmd ".tmp\article-publish\article-publish-result.json"
+financial-analysis\skills\autoresearch-info-index\scripts\run_multiplatform_repurpose.cmd ".tmp\article-publish-reuse\article-publish-reuse-result.json"
+financial-analysis\skills\autoresearch-info-index\scripts\run_multiplatform_repurpose.cmd ".tmp\article-publish\publish-package.json"
+```
+
+Accepted shortcut inputs:
+
+- `article_publish` result JSON with inline `publish_package` or
+  `publish_package_path`
+- `article_publish_reuse` result JSON with inline `publish_package` or
+  `publish_package_path`
+- Direct `publish-package/v1` JSON
+
+The runtime converts these into a normalized `multiplatform_repurpose_request/v1`
+with source artifact metadata, default local-only source notes, and a voice guide
+that preserves the publish package thesis, citations, caveats, and operator
+notes. The normalized request is written to `request.normalized.json` in the
+run output directory.
+
 ## Minimal Request
 
 ```json
@@ -79,6 +104,8 @@ Inline equivalents are also accepted:
 
 When present, these artifacts supply `draft_thesis`, `citations`,
 `not_proven`, `misread_risks`, and operator notes for source-integrity checks.
+For publish-result or direct publish-package shortcuts, the runtime fills the
+publish package and source artifact metadata automatically.
 
 ## Supported Platform Targets
 

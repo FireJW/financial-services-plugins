@@ -24,6 +24,7 @@ REQUEST_CONTRACT_VERSION = "multiplatform_repurpose_request/v1"
 MANIFEST_CONTRACT_VERSION = "multiplatform_repurpose_manifest/v1"
 COMPLETION_CHECK_CONTRACT_VERSION = "multiplatform_completion_check/v1"
 DEFAULT_ROOT = Path(".tmp") / "multiplatform-content-repurposer"
+PUBLISH_ARTIFACT_WORKFLOW_KINDS = {"article_publish", "article_publish_reuse"}
 REQUIRED_PLATFORM_FILE_KEYS = [
     "json",
     "content",
@@ -63,6 +64,16 @@ def path_exists(path_value: Any) -> bool:
     return bool(path_text) and Path(path_text).exists()
 
 
+def resolve_optional_path(path_value: Any, *, base_dir: Path | None = None) -> Path | None:
+    path_text = clean_text(path_value)
+    if not path_text:
+        return None
+    path = Path(path_text).expanduser()
+    if not path.is_absolute() and base_dir is not None:
+        path = base_dir / path
+    return path.resolve()
+
+
 def slugify(value: str, fallback: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", clean_text(value).lower()).strip("-")
     return slug or fallback
@@ -79,12 +90,9 @@ def read_optional_text(path_value: Any, *, base_dir: Path | None = None) -> str:
 
 
 def load_optional_json(path_value: Any, *, base_dir: Path | None = None) -> dict[str, Any]:
-    path_text = clean_text(path_value)
-    if not path_text:
+    path = resolve_optional_path(path_value, base_dir=base_dir)
+    if path is None:
         return {}
-    path = Path(path_text)
-    if not path.is_absolute() and base_dir is not None:
-        path = base_dir / path
     return load_json(path)
 
 
@@ -194,14 +202,143 @@ def collect_brief_caveats(article_brief: dict[str, Any]) -> tuple[list[str], lis
     return caveats, misread_risks
 
 
-def normalize_request(raw_payload: dict[str, Any], *, base_dir: Path | None = None) -> dict[str, Any]:
-    payload = deepcopy(raw_payload)
-    publish_package = safe_dict(payload.get("existing_publish_package")) or safe_dict(payload.get("publish_package"))
+def is_publish_artifact_payload(payload: dict[str, Any]) -> bool:
+    contract_version = clean_text(payload.get("contract_version"))
+    workflow_kind = clean_text(payload.get("workflow_kind"))
+    return contract_version.startswith("publish-package/") or workflow_kind in PUBLISH_ARTIFACT_WORKFLOW_KINDS
+
+
+def publish_artifact_kind(payload: dict[str, Any]) -> str:
+    contract_version = clean_text(payload.get("contract_version"))
+    if contract_version.startswith("publish-package/"):
+        return "publish_package"
+    return clean_text(payload.get("workflow_kind")) or "publish_artifact"
+
+
+def load_publish_package_from_artifact(
+    payload: dict[str, Any],
+    *,
+    base_dir: Path | None = None,
+    artifact_path: Path | None = None,
+) -> tuple[dict[str, Any], Path | None]:
+    if clean_text(payload.get("contract_version")).startswith("publish-package/"):
+        return deepcopy(payload), artifact_path.resolve() if artifact_path else None
+
+    publish_package_path = resolve_optional_path(payload.get("publish_package_path"), base_dir=base_dir)
+    publish_package = deepcopy(safe_dict(payload.get("publish_package")))
+    if not publish_package and publish_package_path is not None:
+        loaded = load_json(publish_package_path)
+        publish_package = deepcopy(safe_dict(loaded.get("publish_package")) or loaded)
     if not publish_package:
-        publish_package = load_optional_json(
-            payload.get("existing_publish_package_path") or payload.get("publish_package_path"),
-            base_dir=base_dir,
-        )
+        raise ValueError("publish artifact input requires publish_package or publish_package_path")
+    return publish_package, publish_package_path
+
+
+def publish_package_markdown(publish_package: dict[str, Any]) -> str:
+    for key in ["content_markdown", "edited_article_markdown", "article_markdown", "markdown"]:
+        if clean_text(publish_package.get(key)):
+            return str(publish_package.get(key) or "")
+    return ""
+
+
+def default_creator_voice_guide_from_publish_package(publish_package: dict[str, Any]) -> dict[str, str]:
+    style_profile = safe_dict(publish_package.get("style_profile_applied"))
+    style_constraints = safe_dict(style_profile.get("constraints"))
+    must_include = [clean_text(item) for item in safe_list(style_constraints.get("must_include")) if clean_text(item)]
+    if must_include:
+        return {
+            "text": "Follow the source publish package style and preserve these constraints: "
+            + "; ".join(must_include)
+            + ". Do not add new sourcing or unverified claims.",
+        }
+    return {
+        "text": "Follow the source publish package voice. Preserve thesis, citations, caveats, and operator notes. Do not add new sourcing or unverified claims.",
+    }
+
+
+def default_source_notes_from_publish_artifact(
+    payload: dict[str, Any],
+    *,
+    publish_package_path: Path | None,
+    artifact_path: Path | None,
+) -> dict[str, list[dict[str, str]]]:
+    items = [
+        {
+            "note": "Generated from a repo-native publish artifact for local multiplatform repurposing only; this does not authorize live publishing.",
+        }
+    ]
+    if artifact_path is not None:
+        items.append({"note": f"Source artifact: {artifact_path.resolve()}"})
+    if publish_package_path is not None and (artifact_path is None or publish_package_path.resolve() != artifact_path.resolve()):
+        items.append({"note": f"Publish package: {publish_package_path.resolve()}"})
+    workflow_kind = clean_text(payload.get("workflow_kind"))
+    if workflow_kind:
+        items.append({"note": f"Upstream workflow: {workflow_kind}"})
+    return {"items": items}
+
+
+def build_request_from_publish_artifact(
+    raw_payload: dict[str, Any],
+    *,
+    base_dir: Path | None = None,
+    artifact_path: Path | None = None,
+) -> dict[str, Any]:
+    payload = deepcopy(raw_payload)
+    publish_package, publish_package_path = load_publish_package_from_artifact(
+        payload,
+        base_dir=base_dir,
+        artifact_path=artifact_path,
+    )
+    title = clean_text(publish_package.get("title")) or extract_title(publish_package_markdown(publish_package))
+    kind = publish_artifact_kind(payload)
+    source_artifact = {
+        "kind": kind,
+        "workflow_kind": clean_text(payload.get("workflow_kind")),
+        "input_path": str(artifact_path.resolve()) if artifact_path is not None else "",
+        "publish_package_path": str(publish_package_path.resolve()) if publish_package_path is not None else "",
+    }
+    request = {
+        "contract_version": REQUEST_CONTRACT_VERSION,
+        "run_id": clean_text(payload.get("run_id")) or slugify(title, "publish-package"),
+        "source_article": {
+            "title": title,
+            "markdown": publish_package_markdown(publish_package),
+            "language": clean_text(publish_package.get("language") or payload.get("language") or "mixed"),
+        },
+        "existing_publish_package": publish_package,
+        "existing_publish_package_path": str(publish_package_path) if publish_package_path is not None else "",
+        "platform_targets": safe_list(payload.get("platform_targets")),
+        "platform_profiles": safe_dict(payload.get("platform_profiles")),
+        "creator_voice_guide": safe_dict(payload.get("creator_voice_guide"))
+        or safe_dict(publish_package.get("creator_voice_guide"))
+        or default_creator_voice_guide_from_publish_package(publish_package),
+        "source_notes": safe_dict(payload.get("source_notes"))
+        or safe_dict(publish_package.get("source_notes"))
+        or default_source_notes_from_publish_artifact(payload, publish_package_path=publish_package_path, artifact_path=artifact_path),
+        "source_artifact": source_artifact,
+    }
+    for key in ["article_brief", "article_brief_path", "evidence_bundle", "evidence_bundle_path", "citations", "output_dir"]:
+        if key in payload:
+            request[key] = payload[key]
+    return request
+
+
+def normalize_request(
+    raw_payload: dict[str, Any],
+    *,
+    base_dir: Path | None = None,
+    artifact_path: Path | None = None,
+) -> dict[str, Any]:
+    payload = deepcopy(raw_payload)
+    if is_publish_artifact_payload(payload):
+        payload = build_request_from_publish_artifact(payload, base_dir=base_dir, artifact_path=artifact_path)
+    publish_package = safe_dict(payload.get("existing_publish_package")) or safe_dict(payload.get("publish_package"))
+    publish_package_path = resolve_optional_path(
+        payload.get("existing_publish_package_path") or payload.get("publish_package_path"),
+        base_dir=base_dir,
+    )
+    if not publish_package:
+        publish_package = load_json(publish_package_path) if publish_package_path is not None else {}
         publish_package = safe_dict(publish_package.get("publish_package")) or publish_package
     article_brief = safe_dict(payload.get("article_brief")) or load_optional_json(payload.get("article_brief_path"), base_dir=base_dir)
     evidence_bundle = safe_dict(payload.get("evidence_bundle")) or load_optional_json(payload.get("evidence_bundle_path"), base_dir=base_dir)
@@ -231,6 +368,8 @@ def normalize_request(raw_payload: dict[str, Any], *, base_dir: Path | None = No
         },
         "creator_voice_guide": safe_dict(payload.get("creator_voice_guide")),
         "platform_profiles": safe_dict(payload.get("platform_profiles")),
+        "source_artifact": safe_dict(payload.get("source_artifact")),
+        "existing_publish_package_path": str(publish_package_path) if publish_package_path is not None else "",
         "source_notes": safe_dict(payload.get("source_notes")),
         "citations": normalize_citations(
             payload.get("citations"),
@@ -526,8 +665,13 @@ def build_multiplatform_completion_check(result: dict[str, Any]) -> dict[str, An
     }
 
 
-def build_multiplatform_repurpose(raw_payload: dict[str, Any], *, base_dir: Path | None = None) -> dict[str, Any]:
-    request = normalize_request(raw_payload, base_dir=base_dir)
+def build_multiplatform_repurpose(
+    raw_payload: dict[str, Any],
+    *,
+    base_dir: Path | None = None,
+    artifact_path: Path | None = None,
+) -> dict[str, Any]:
+    request = normalize_request(raw_payload, base_dir=base_dir, artifact_path=artifact_path)
     output_dir = Path(request["output_dir"])
     dist_dir = output_dir / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -546,6 +690,10 @@ def build_multiplatform_repurpose(raw_payload: dict[str, Any], *, base_dir: Path
             "platform_targets": request["platform_targets"],
             "source_article": request["source_article"],
             "platform_profiles": request["platform_profiles"],
+            "source_artifact": request["source_artifact"],
+            "existing_publish_package_path": request["existing_publish_package_path"],
+            "creator_voice_guide": request["creator_voice_guide"],
+            "source_notes": request["source_notes"],
         },
         "source_integrity": integrity,
         "platforms": platform_packages,

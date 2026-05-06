@@ -25,7 +25,7 @@ def main() -> None:
     payload = load_json(request_path)
     if args.output_dir:
         payload["output_dir"] = str(Path(args.output_dir).resolve())
-    result = build_multiplatform_repurpose(payload, base_dir=request_path.parent)
+    result = build_multiplatform_repurpose(payload, base_dir=request_path.parent, artifact_path=request_path)
     if args.output:
         write_json(Path(args.output).resolve(), result)
     if not args.quiet:

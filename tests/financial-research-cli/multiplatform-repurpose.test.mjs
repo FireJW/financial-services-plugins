@@ -29,6 +29,9 @@ test("multiplatform-repurpose emits stable contract envelope", () => {
             status: "ready",
             summary: { ready_platform_count: 2, blocker_count: 0, warning_count: 0 },
           },
+          request: {
+            source_artifact: { kind: "article_publish_reuse" },
+          },
           manifest_path: "out/manifest.json",
           report_path: "out/report.md",
           completion_check_path: "out/multiplatform-completion-check.json",
@@ -47,6 +50,7 @@ test("multiplatform-repurpose emits stable contract envelope", () => {
   assert.equal(payload.summary.completion_check_status, "ready");
   assert.equal(payload.summary.ready_platform_count, 2);
   assert.equal(payload.summary.completion_check_path, "out/multiplatform-completion-check.json");
+  assert.equal(payload.summary.source_artifact_kind, "article_publish_reuse");
   assert.match(payload.execution_target.wrapper, /run_multiplatform_repurpose\.cmd$/);
 });
 

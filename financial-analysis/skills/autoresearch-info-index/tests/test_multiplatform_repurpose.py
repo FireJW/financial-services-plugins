@@ -112,6 +112,109 @@ class MultiplatformRepurposeTests(unittest.TestCase):
         self.assertTrue(any("adoption announcements" in item for item in platform["what_not_to_say"]))
         self.assertTrue(platform["human_edit_required"])
 
+    def test_cli_accepts_publish_package_json_as_source_artifact(self) -> None:
+        publish_package_path = self.temp_dir / "publish-package.json"
+        publish_package_path.write_text(
+            json.dumps(
+                {
+                    "contract_version": "publish-package/v1",
+                    "title": "Agent budget discipline",
+                    "draft_thesis": "Agent budgets need measurable retention proof before the market pays for them.",
+                    "content_markdown": "# Agent budget discipline\n\nAgent budgets need measurable retention proof.",
+                    "citations": [
+                        {
+                            "citation_id": "P1",
+                            "source_name": "Company Blog",
+                            "title": "Agent workflow rollout",
+                            "url": "https://example.com/company-agent-rollout",
+                        }
+                    ],
+                    "operator_notes": ["Keep unsupported margin-expansion claims out of every platform draft."],
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        output_dir = self.temp_dir / "publish-package-direct"
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "multiplatform_repurpose.py"),
+                str(publish_package_path),
+                "--output-dir",
+                str(output_dir),
+            ],
+            cwd=Path.cwd(),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        manifest = json.loads(completed.stdout)
+        self.assertEqual(manifest["source_integrity"]["status"], "ok")
+        self.assertEqual(manifest["completion_check"]["status"], "ready")
+        self.assertEqual(manifest["request"]["source_artifact"]["kind"], "publish_package")
+        self.assertEqual(Path(manifest["request"]["source_artifact"]["input_path"]), publish_package_path)
+        normalized_request = load_json(output_dir / "request.normalized.json")
+        self.assertEqual(Path(normalized_request["existing_publish_package_path"]), publish_package_path)
+        self.assertIn("publish package voice", normalized_request["creator_voice_guide"]["text"])
+        self.assertTrue(normalized_request["source_notes"]["items"])
+        self.assertTrue((output_dir / "dist" / "wechat_article" / "rewrite-packet.md").exists())
+
+    def test_publish_result_path_input_builds_ready_request_without_manual_json(self) -> None:
+        run_dir = self.temp_dir / "publish-reuse-run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        publish_package_path = run_dir / "publish-package.json"
+        publish_package_path.write_text(
+            json.dumps(
+                {
+                    "contract_version": "publish-package/v1",
+                    "title": "Agent budget discipline",
+                    "draft_thesis": "Agent budgets need measurable retention proof before the market pays for them.",
+                    "content_markdown": "# Agent budget discipline\n\nAgent budgets need measurable retention proof.",
+                    "citations": [
+                        {
+                            "citation_id": "P1",
+                            "source_name": "Company Blog",
+                            "title": "Agent workflow rollout",
+                            "url": "https://example.com/company-agent-rollout",
+                        }
+                    ],
+                    "operator_notes": ["Keep unsupported margin-expansion claims out of every platform draft."],
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        publish_result_path = run_dir / "article-publish-reuse-result.json"
+        publish_result_path.write_text(
+            json.dumps(
+                {
+                    "workflow_kind": "article_publish_reuse",
+                    "publish_package_path": "publish-package.json",
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        result = build_multiplatform_repurpose(
+            load_json(publish_result_path),
+            base_dir=publish_result_path.parent,
+        )
+
+        self.assertEqual(result["source_integrity"]["status"], "ok")
+        self.assertEqual(result["completion_check"]["status"], "ready")
+        self.assertEqual(result["request"]["source_artifact"]["kind"], "article_publish_reuse")
+        self.assertEqual(Path(result["request"]["source_artifact"]["publish_package_path"]), publish_package_path)
+        self.assertNotIn("creator_voice_guide", result["source_integrity"]["missing_inputs"])
+        self.assertNotIn("source_notes", result["source_integrity"]["missing_inputs"])
+
     def test_missing_citations_are_marked_without_fabricating_sources(self) -> None:
         result = build_multiplatform_repurpose(
             {

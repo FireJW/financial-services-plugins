@@ -1,6 +1,6 @@
 ---
 description: Repurpose one source Markdown article into platform-native review packages
-argument-hint: "[request-json]"
+argument-hint: "[request-json|publish-package-json|article-publish-result-json]"
 ---
 
 # Multiplatform Repurpose Command
@@ -16,6 +16,19 @@ Local helper:
 ```powershell
 financial-analysis\skills\autoresearch-info-index\scripts\run_multiplatform_repurpose.cmd "<request.json>"
 ```
+
+Shortcut from repo-native publish artifacts:
+
+```powershell
+financial-analysis\skills\autoresearch-info-index\scripts\run_multiplatform_repurpose.cmd "<article-publish-result.json>"
+financial-analysis\skills\autoresearch-info-index\scripts\run_multiplatform_repurpose.cmd "<article-publish-reuse-result.json>"
+financial-analysis\skills\autoresearch-info-index\scripts\run_multiplatform_repurpose.cmd "<publish-package.json>"
+```
+
+The helper recognizes `article_publish`, `article_publish_reuse`, and
+`publish-package/v1` inputs, then writes a normalized request beside the normal
+manifest artifacts. This is still local-only repurposing; it does not push or
+approve a live publish.
 
 Default output:
 
