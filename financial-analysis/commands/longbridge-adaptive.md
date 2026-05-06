@@ -42,13 +42,17 @@ Prompt-to-layer hints:
 - `portfolio`, `assets`, `positions`, `组合`, `资产`, `持仓`: portfolio layer or
   portfolio-review task.
 - `account review`, `order history`, `executions`, `cash-flow`,
-  `profit-analysis`, `statement list`: account-review-plus layer.
+  `profit-analysis`, `statement list`, `订单历史`, `成交`, `现金流`,
+  `收益分析`, `日结单`: account-review-plus layer for review or
+  portfolio-review tasks.
 - `theme`, `sector`, `constituent`, `shareholder`, `fund-holder`: theme-chain
   layer.
-- `executive`, `invest-relation`, `governance`, `board`, `control`, `fund exposure`:
+- `executive`, `invest-relation`, `governance`, `board`, `control`, `fund exposure`,
+  `治理结构`, `高管`, `投资者关系`, `控股结构`, `基金暴露`:
   governance-structure layer.
-- `static`, `calc-index`, `market-status`, `trading session`, `trading days`:
-  execution-preflight layer.
+- `execution preflight`, `preflight`, `static`, `calc-index`, `market-status`,
+  `trading session`, `trading days`, `overnight eligibility`, `可执行性`,
+  `隔夜资格`, `市场状态`, `交易日`: execution-preflight layer for trading plans.
 - `option`, `options`, `iv`, `oi`, `call`, `put`, `warrant`, `期权`, `窝轮`:
   derivative-event-risk layer.
 - `brokers`, `broker-holding`, `ah-premium`, `participants`, `港股`, `AH`:

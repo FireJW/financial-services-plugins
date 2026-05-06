@@ -231,6 +231,38 @@ class LongbridgeAdaptiveRunnerRuntimeTests(unittest.TestCase):
 
         self.assertIn("governance_structure", inferred["analysis_layers"])
 
+    def test_infers_governance_structure_layer_from_chinese_prompt_aliases(self) -> None:
+        inferred = infer_adaptive_request(
+            {
+                "prompt": "分析 NVDA.US 治理结构、高管、投资者关系、控股结构和基金暴露",
+                "tickers": ["NVDA.US"],
+            }
+        )
+
+        self.assertIn("governance_structure", inferred["analysis_layers"])
+
+    def test_infers_account_review_plus_layer_from_review_prompt_aliases(self) -> None:
+        inferred = infer_adaptive_request(
+            {
+                "prompt": "复盘 NVDA.US 订单历史、成交、现金流、收益分析和日结单",
+                "tickers": ["NVDA.US"],
+            }
+        )
+
+        self.assertEqual(inferred["task_type"], "review")
+        self.assertIn("account_review_plus", inferred["analysis_layers"])
+
+    def test_infers_execution_preflight_layer_from_trading_plan_prompt_aliases(self) -> None:
+        inferred = infer_adaptive_request(
+            {
+                "prompt": "Build NVDA.US trading plan with execution preflight, market status, trading days and overnight eligibility",
+                "tickers": ["NVDA.US"],
+            }
+        )
+
+        self.assertEqual(inferred["task_type"], "trading_plan")
+        self.assertIn("execution_preflight", inferred["analysis_layers"])
+
     def test_stock_analysis_runs_adapted_longbridge_screen(self) -> None:
         runner = RecordingLongbridgeRunner()
 

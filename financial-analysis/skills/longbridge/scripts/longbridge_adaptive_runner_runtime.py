@@ -214,11 +214,39 @@ def infer_analysis_layers(request: dict[str, Any], *, task_type: str) -> list[st
             "ownership structure",
             "fund exposure",
             "model governance",
+            "治理",
+            "治理结构",
+            "高管",
+            "管理层",
+            "投资者关系",
+            "控股结构",
+            "股权结构",
+            "基金暴露",
         ),
     ):
         layers.add("governance_structure")
     if task_type == "trading_plan":
         layers.update({"financial_event", "ownership_risk"})
+        if _text_has_any(
+            prompt,
+            (
+                "execution preflight",
+                "preflight",
+                "overnight eligibility",
+                "market status",
+                "trading days",
+                "trading session",
+                "tradability",
+                "可执行",
+                "可执行性",
+                "隔夜",
+                "隔夜资格",
+                "市场状态",
+                "交易日",
+                "交易时段",
+            ),
+        ):
+            layers.add("execution_preflight")
     if _text_has_any(prompt, ("filing", "财报", "业绩", "earnings", "financial report", "dividend", "分红")):
         layers.add("financial_event")
     if _text_has_any(prompt, ("insider", "investors", "institutional", "short interest", "short-position", "空头", "内部人", "机构")):
@@ -227,6 +255,31 @@ def infer_analysis_layers(request: dict[str, Any], *, task_type: str) -> list[st
         layers.add("intraday")
     if _text_has_any(prompt, ("portfolio", "assets", "positions", "组合", "资产", "持仓")):
         layers.add("portfolio")
+    if task_type in {"review", "portfolio_review"} and _text_has_any(
+        prompt,
+        (
+            "order history",
+            "trade history",
+            "executions",
+            "fills",
+            "cash-flow",
+            "cash flow",
+            "profit-analysis",
+            "profit analysis",
+            "statement list",
+            "daily statement",
+            "订单",
+            "订单历史",
+            "成交",
+            "现金流",
+            "收益分析",
+            "盈亏分析",
+            "日结单",
+            "结单",
+            "对账单",
+        ),
+    ):
+        layers.add("account_review_plus")
     if _text_has_any(prompt, ("产业链", "theme", "sector", "constituent", "fund-holder", "shareholder", "板块")):
         layers.add("theme_chain")
     if _text_has_any(prompt, ("margin", "buying power", "max-qty", "statement list", "保证金", "购买力", "最大可买")):
