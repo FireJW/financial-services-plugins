@@ -12,6 +12,8 @@ from multiplatform_repurpose_platforms import (
     ALL_PLATFORM_TARGETS,
     PLATFORM_OUTPUT_FILES,
     build_human_edit_required,
+    build_platform_profile,
+    build_quality_scorecard,
     build_what_not_to_say,
     platform_body,
     platform_citations_used,
@@ -212,6 +214,7 @@ def normalize_request(raw_payload: dict[str, Any], *, base_dir: Path | None = No
             "language": clean_text(source_article.get("language") or payload.get("language") or "mixed"),
         },
         "creator_voice_guide": safe_dict(payload.get("creator_voice_guide")),
+        "platform_profiles": safe_dict(payload.get("platform_profiles")),
         "source_notes": safe_dict(payload.get("source_notes")),
         "citations": normalize_citations(
             payload.get("citations"),
@@ -260,13 +263,24 @@ def build_source_integrity(request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def scorecard_markdown(scorecard: list[dict[str, str]]) -> str:
+    return "\n".join(
+        f"- [{item['status']}] {item['check']}: {item['requirement']}"
+        for item in scorecard
+    ) + "\n"
+
+
 def build_platform_package(platform: str, request: dict[str, Any], integrity: dict[str, Any], platform_dir: Path) -> dict[str, Any]:
     title = clean_text(safe_dict(request.get("source_article")).get("title"))
     citations = deepcopy(safe_list(integrity.get("citation_inventory")))
     caveats = [clean_text(item) for item in safe_list(integrity.get("key_caveats")) if clean_text(item)]
+    profile = build_platform_profile(platform, safe_dict(safe_dict(request.get("platform_profiles")).get(platform)))
+    scorecard = build_quality_scorecard(platform, profile, integrity)
     body = platform_body(platform, title, integrity["core_thesis"], caveats, citations)
     content_file = platform_dir / PLATFORM_OUTPUT_FILES[platform]
     package_path = platform_dir / "platform-package.json"
+    profile_path = platform_dir / "platform-profile.json"
+    scorecard_path = platform_dir / "quality-scorecard.md"
     what_not_path = platform_dir / "what-not-to-say.md"
     human_edit_path = platform_dir / "human-edit-required.md"
     package = {
@@ -276,6 +290,8 @@ def build_platform_package(platform: str, request: dict[str, Any], integrity: di
         "hook": body.splitlines()[0].lstrip("# ").strip(),
         "core_thesis": integrity["core_thesis"],
         "body_or_script": body,
+        "platform_profile": profile,
+        "quality_scorecard": scorecard,
         "citations_used": platform_citations_used(citations),
         "caveats_preserved": caveats,
         "what_not_to_say": build_what_not_to_say(platform, integrity),
@@ -284,12 +300,16 @@ def build_platform_package(platform: str, request: dict[str, Any], integrity: di
         "files": {
             "json": str(package_path),
             "content": str(content_file),
+            "platform_profile": str(profile_path),
+            "quality_scorecard": str(scorecard_path),
             "what_not_to_say": str(what_not_path),
             "human_edit_required": str(human_edit_path),
         },
     }
     platform_dir.mkdir(parents=True, exist_ok=True)
     content_file.write_text(body, encoding="utf-8-sig")
+    write_json(profile_path, profile)
+    scorecard_path.write_text(scorecard_markdown(scorecard), encoding="utf-8-sig")
     what_not_path.write_text("\n".join(f"- {item}" for item in package["what_not_to_say"]) + "\n", encoding="utf-8-sig")
     human_edit_path.write_text("\n".join(f"- {item}" for item in package["human_edit_required"]) + "\n", encoding="utf-8-sig")
     write_json(package_path, package)
@@ -330,6 +350,7 @@ def build_multiplatform_repurpose(raw_payload: dict[str, Any], *, base_dir: Path
             "contract_version": request["contract_version"],
             "platform_targets": request["platform_targets"],
             "source_article": request["source_article"],
+            "platform_profiles": request["platform_profiles"],
         },
         "source_integrity": integrity,
         "platforms": platform_packages,

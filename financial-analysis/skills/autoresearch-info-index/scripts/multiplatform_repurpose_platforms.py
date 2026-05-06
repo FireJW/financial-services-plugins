@@ -41,13 +41,128 @@ PLATFORM_LABELS = {
     "substack_article": "Substack version",
 }
 
+DEFAULT_PLATFORM_PROFILES = {
+    "wechat_article": {
+        "format": "structured long-form article",
+        "voice": "analytical, evidence-first, calm",
+        "target_length": "1200-1800 Chinese characters",
+        "must_include": ["thesis", "evidence boundary", "what would change the view"],
+    },
+    "toutiao_article": {
+        "format": "broad-reader explainer",
+        "voice": "direct, plain, headline-aware",
+        "target_length": "800-1200 Chinese characters",
+        "must_include": ["who is affected", "why it matters", "what not to overread"],
+    },
+    "xiaohongshu_cards": {
+        "format": "saveable card deck",
+        "voice": "plain, visual, checklist-oriented",
+        "target_length": "6-8 cards, one idea per card",
+        "must_include": ["saveable hook", "evidence caveat", "practical checklist"],
+    },
+    "douyin_short_video": {
+        "format": "short video script",
+        "voice": "spoken, high-contrast, concise",
+        "target_length": "30-60 seconds",
+        "must_include": ["3-second hook", "conflict", "payoff"],
+    },
+    "wechat_channels_script": {
+        "format": "private-domain short video script",
+        "voice": "spoken, trust-building, conversational",
+        "target_length": "45-90 seconds",
+        "must_include": ["opening stance", "evidence boundary", "save or compare CTA"],
+    },
+    "bilibili_long_video_outline": {
+        "format": "chaptered long-video outline",
+        "voice": "explanatory, layered, source-aware",
+        "target_length": "5-7 chapters",
+        "must_include": ["setup", "core thesis", "case depth", "caveats"],
+    },
+    "x_thread": {
+        "format": "numbered social thread",
+        "voice": "sharp, transparent, build-in-public",
+        "target_length": "4-8 posts",
+        "must_include": ["working thesis", "what not to overclaim", "source labels"],
+    },
+    "linkedin_post": {
+        "format": "professional social post",
+        "voice": "business-oriented, measured, practical",
+        "target_length": "120-220 words",
+        "must_include": ["professional insight", "business implication", "evidence boundary"],
+    },
+    "substack_article": {
+        "format": "context article for international readers",
+        "voice": "contextual, careful, globally legible",
+        "target_length": "900-1500 words",
+        "must_include": ["local context", "thesis", "evidence boundary"],
+    },
+}
+
 
 def _clean(value: Any) -> str:
     return " ".join(str(value or "").replace("\u200b", " ").split()).strip()
 
 
+def _safe_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _safe_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _clean_list(value: Any) -> list[str]:
+    return [_clean(item) for item in _safe_list(value) if _clean(item)]
+
+
+def build_platform_profile(platform: str, override: dict[str, Any] | None = None) -> dict[str, Any]:
+    profile = deepcopy(DEFAULT_PLATFORM_PROFILES.get(platform, {}))
+    override = _safe_dict(override)
+    for key in ("format", "voice", "target_length"):
+        if _clean(override.get(key)):
+            profile[key] = _clean(override.get(key))
+    if _clean_list(override.get("must_include")):
+        profile["must_include"] = _clean_list(override.get("must_include"))
+    if _clean_list(override.get("quality_checks")):
+        profile["quality_checks"] = _clean_list(override.get("quality_checks"))
+    profile["platform"] = platform
+    profile["label"] = PLATFORM_LABELS.get(platform, platform)
+    return profile
+
+
+def build_quality_scorecard(platform: str, profile: dict[str, Any], integrity: dict[str, Any]) -> list[dict[str, str]]:
+    scorecard = [
+        {
+            "check": "core_thesis",
+            "status": "required",
+            "requirement": "Preserve the supplied core thesis without adding a new claim.",
+        },
+        {
+            "check": "citation_integrity",
+            "status": "pass" if _safe_list(integrity.get("citation_inventory")) else "needs_review",
+            "requirement": "Use only citation labels present in the supplied citation inventory.",
+        },
+        {
+            "check": "caveat_visibility",
+            "status": "pass" if _safe_list(integrity.get("key_caveats")) else "needs_review",
+            "requirement": "Keep at least one evidence boundary visible in the platform package.",
+        },
+        {
+            "check": "target_length",
+            "status": "editor_check",
+            "requirement": _clean(profile.get("target_length")) or "Apply the platform target length before publishing.",
+        },
+        {
+            "check": "platform_voice",
+            "status": "editor_check",
+            "requirement": _clean(profile.get("voice")) or f"Adjust voice for {PLATFORM_LABELS.get(platform, platform)}.",
+        },
+    ]
+    for item in _clean_list(profile.get("must_include")):
+        scorecard.append({"check": "must_include", "status": "editor_check", "requirement": item})
+    for item in _clean_list(profile.get("quality_checks")):
+        scorecard.append({"check": "custom_quality_check", "status": "editor_check", "requirement": item})
+    return scorecard
 
 
 def platform_title(platform: str, title: str) -> str:
@@ -118,6 +233,8 @@ def platform_citations_used(citations: list[dict[str, str]]) -> list[Any]:
 __all__ = [
     "ALL_PLATFORM_TARGETS",
     "PLATFORM_OUTPUT_FILES",
+    "build_platform_profile",
+    "build_quality_scorecard",
     "build_human_edit_required",
     "build_what_not_to_say",
     "platform_body",

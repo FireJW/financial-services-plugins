@@ -34,6 +34,16 @@ financial-analysis\skills\autoresearch-info-index\scripts\run_multiplatform_repu
     "douyin_short_video",
     "x_thread"
   ],
+  "platform_profiles": {
+    "xiaohongshu_cards": {
+      "voice": "Calm creator, plain language, saveable checklist.",
+      "target_length": "6 cards, one idea per card",
+      "must_include": [
+        "keep evidence caveat visible",
+        "end with a practical checklist"
+      ]
+    }
+  },
   "creator_voice_guide": {
     "text": "Direct, evidence-bound, practical."
   },
@@ -84,6 +94,23 @@ When present, these artifacts supply `draft_thesis`, `citations`,
 
 If `platform_targets` is omitted, all supported platforms are generated.
 
+## Platform Profiles
+
+Every platform package now includes a default `platform_profile` and
+`quality_scorecard`.
+
+Use request-level `platform_profiles` when a platform needs tighter control over
+format, voice, length, or required elements. Supported override fields are:
+
+- `format`
+- `voice`
+- `target_length`
+- `must_include`
+- `quality_checks`
+
+These profiles are review constraints. They do not relax source-integrity rules:
+the repurposer still only uses supplied thesis, caveats, and citations.
+
 ## Output Layout
 
 Default root:
@@ -98,11 +125,15 @@ Default root:
     |-- wechat_article/
     |   |-- article.md
     |   |-- platform-package.json
+    |   |-- platform-profile.json
+    |   |-- quality-scorecard.md
     |   |-- what-not-to-say.md
     |   `-- human-edit-required.md
     `-- <platform-name>/
         |-- <content-file>.md
         |-- platform-package.json
+        |-- platform-profile.json
+        |-- quality-scorecard.md
         |-- what-not-to-say.md
         `-- human-edit-required.md
 ```
@@ -113,6 +144,8 @@ Each platform package contains:
 - `title`
 - `hook`
 - `body_or_script`
+- `platform_profile`
+- `quality_scorecard`
 - `citations_used`
 - `caveats_preserved`
 - `what_not_to_say`

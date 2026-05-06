@@ -130,6 +130,33 @@ class MultiplatformRepurposeTests(unittest.TestCase):
         self.assertEqual(platform["citations_used"], [{"status": "missing", "note": "No citations were supplied."}])
         self.assertTrue(any("missing citation" in item.lower() for item in platform["what_not_to_say"]))
 
+    def test_platform_profiles_add_length_voice_and_review_scorecard(self) -> None:
+        request = load_json(self.fixture_dir / "request.json")
+        request["output_dir"] = str(self.temp_dir / "quality-profile")
+        request["source_article"]["markdown_path"] = str(self.fixture_dir / "source-article.md")
+        request["platform_targets"] = ["xiaohongshu_cards", "x_thread"]
+        request["platform_profiles"] = {
+            "xiaohongshu_cards": {
+                "voice": "calm creator, plain language, saveable checklist",
+                "target_length": "6 cards, one idea per card",
+                "must_include": ["keep evidence caveat visible", "end with a practical checklist"],
+            }
+        }
+
+        result = build_multiplatform_repurpose(request)
+
+        xhs = result["platforms"]["xiaohongshu_cards"]
+        x_thread = result["platforms"]["x_thread"]
+        self.assertEqual(xhs["platform_profile"]["target_length"], "6 cards, one idea per card")
+        self.assertIn("saveable checklist", xhs["platform_profile"]["voice"])
+        self.assertIn("keep evidence caveat visible", xhs["platform_profile"]["must_include"])
+        self.assertIn("thread", x_thread["platform_profile"]["format"].lower())
+        self.assertTrue(any(item["check"] == "target_length" for item in xhs["quality_scorecard"]))
+        self.assertTrue(any(item["check"] == "citation_integrity" for item in xhs["quality_scorecard"]))
+        self.assertEqual(xhs["citations_used"][0]["citation_id"], "S1")
+        self.assertTrue((self.temp_dir / "quality-profile" / "dist" / "xiaohongshu_cards" / "platform-profile.json").exists())
+        self.assertTrue((self.temp_dir / "quality-profile" / "dist" / "xiaohongshu_cards" / "quality-scorecard.md").exists())
+
     def test_defaults_to_all_supported_platform_targets(self) -> None:
         result = build_multiplatform_repurpose(
             {
