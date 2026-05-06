@@ -1,0 +1,32 @@
+{
+  "contract_version": "multiplatform_repurpose_request/v1",
+  "run_id": "sample-agent-budget-discipline",
+  "source_article": {
+    "markdown_path": "source-article.md"
+  },
+  "platform_targets": [
+    "wechat_article",
+    "xiaohongshu_cards",
+    "douyin_short_video",
+    "x_thread"
+  ],
+  "creator_voice_guide": {
+    "text": "Direct, evidence-bound, practical, and skeptical of unsupported certainty."
+  },
+  "source_notes": {
+    "items": [
+      {
+        "note": "The source article is a thesis piece, not a live market report."
+      }
+    ]
+  },
+  "citations": [
+    {
+      "citation_id": "S1",
+      "source_name": "Example Research",
+      "title": "AI workflow adoption survey",
+      "url": "https://example.com/ai-workflow-survey",
+      "published_at": "2026-05-01"
+    }
+  ]
+}

@@ -1,0 +1,176 @@
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+
+SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from multiplatform_repurpose_runtime import (
+    ALL_PLATFORM_TARGETS,
+    build_multiplatform_repurpose,
+    load_json,
+)
+
+
+class MultiplatformRepurposeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.fixture_dir = Path(__file__).resolve().parent / "fixtures" / "multiplatform-repurpose"
+        self.temp_dir = Path(__file__).resolve().parent / ".tmp-multiplatform-repurpose"
+        if self.temp_dir.exists():
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_builds_dist_packages_for_requested_platforms(self) -> None:
+        request = load_json(self.fixture_dir / "request.json")
+        request["output_dir"] = str(self.temp_dir / "run")
+        request["source_article"]["markdown_path"] = str(self.fixture_dir / "source-article.md")
+
+        result = build_multiplatform_repurpose(request)
+
+        self.assertEqual(result["contract_version"], "multiplatform_repurpose_manifest/v1")
+        self.assertEqual(result["run_id"], "sample-agent-budget-discipline")
+        self.assertEqual(result["source_integrity"]["status"], "ok")
+        self.assertEqual(set(result["platforms"].keys()), {"wechat_article", "xiaohongshu_cards", "douyin_short_video", "x_thread"})
+        self.assertEqual(result["source_integrity"]["core_thesis"], result["platforms"]["wechat_article"]["core_thesis"])
+
+        manifest_path = Path(result["manifest_path"])
+        self.assertTrue(manifest_path.exists())
+        self.assertTrue((self.temp_dir / "run" / "dist" / "wechat_article" / "article.md").exists())
+        self.assertTrue((self.temp_dir / "run" / "dist" / "xiaohongshu_cards" / "cards.md").exists())
+        self.assertTrue((self.temp_dir / "run" / "dist" / "douyin_short_video" / "script.md").exists())
+        self.assertTrue((self.temp_dir / "run" / "dist" / "x_thread" / "thread.md").exists())
+
+        wechat = result["platforms"]["wechat_article"]
+        xhs = result["platforms"]["xiaohongshu_cards"]
+        douyin = result["platforms"]["douyin_short_video"]
+        self.assertIn("framework", wechat["body_or_script"].lower())
+        self.assertIn("Card 1", xhs["body_or_script"])
+        self.assertIn("3-second hook", douyin["body_or_script"])
+        self.assertNotEqual(wechat["body_or_script"], xhs["body_or_script"])
+        self.assertTrue(
+            any(
+                "Customer case studies are still thin" in item
+                for item in wechat["caveats_preserved"]
+            )
+        )
+
+    def test_preserves_citations_and_caveats_from_publish_package_and_brief(self) -> None:
+        publish_package = {
+            "contract_version": "publish-package/v1",
+            "title": "Agent budget discipline",
+            "draft_thesis": "Agent budgets need measurable retention and cycle-time proof before the market pays for them.",
+            "content_markdown": "# Agent budget discipline\n\nAgent budgets need measurable retention and cycle-time proof.",
+            "citations": [
+                {
+                    "citation_id": "P1",
+                    "source_name": "Company Blog",
+                    "title": "Agent workflow rollout",
+                    "url": "https://example.com/company-agent-rollout"
+                }
+            ],
+            "operator_notes": ["Keep the unsupported margin-expansion claim out of the article."]
+        }
+        article_brief = {
+            "analysis_brief": {
+                "recommended_thesis": "Agent budgets need measurable retention and cycle-time proof before the market pays for them.",
+                "not_proven": [
+                    {
+                        "claim_text": "AI agents have already improved margins across the sector.",
+                        "why_not_proven": "No audited customer-level margin evidence was supplied.",
+                        "citation_ids": []
+                    }
+                ],
+                "misread_risks": ["Readers may mistake adoption announcements for retention proof."]
+            }
+        }
+        result = build_multiplatform_repurpose(
+            {
+                "run_id": "package-input",
+                "source_article": {},
+                "existing_publish_package": publish_package,
+                "article_brief": article_brief,
+                "platform_targets": ["linkedin_post"],
+                "output_dir": str(self.temp_dir / "package-input"),
+            }
+        )
+
+        platform = result["platforms"]["linkedin_post"]
+        self.assertEqual(result["source_integrity"]["status"], "ok")
+        self.assertEqual(platform["source_integrity_status"], "ok")
+        self.assertEqual(platform["citations_used"][0]["citation_id"], "P1")
+        self.assertTrue(any("already improved margins" in item for item in platform["caveats_preserved"]))
+        self.assertTrue(any("adoption announcements" in item for item in platform["what_not_to_say"]))
+        self.assertTrue(platform["human_edit_required"])
+
+    def test_missing_citations_are_marked_without_fabricating_sources(self) -> None:
+        result = build_multiplatform_repurpose(
+            {
+                "run_id": "missing-citations",
+                "source_article": {
+                    "markdown": "# Thin Source\n\nThe thesis is that weak evidence must stay labeled as weak."
+                },
+                "platform_targets": ["substack_article"],
+                "output_dir": str(self.temp_dir / "missing-citations"),
+            }
+        )
+
+        platform = result["platforms"]["substack_article"]
+        self.assertEqual(result["source_integrity"]["status"], "needs_human_review")
+        self.assertEqual(platform["source_integrity_status"], "needs_human_review")
+        self.assertEqual(platform["citations_used"], [{"status": "missing", "note": "No citations were supplied."}])
+        self.assertTrue(any("missing citation" in item.lower() for item in platform["what_not_to_say"]))
+
+    def test_defaults_to_all_supported_platform_targets(self) -> None:
+        result = build_multiplatform_repurpose(
+            {
+                "run_id": "all-platforms",
+                "source_article": {
+                    "markdown": "# Platform Test\n\nThe thesis is that one source can become many platform-native packages."
+                },
+                "citations": [{"citation_id": "S1", "source_name": "Fixture", "url": "https://example.com/source"}],
+                "output_dir": str(self.temp_dir / "all-platforms"),
+            }
+        )
+
+        self.assertEqual(set(result["platforms"].keys()), set(ALL_PLATFORM_TARGETS))
+        for platform_name, package in result["platforms"].items():
+            with self.subTest(platform=platform_name):
+                self.assertTrue(package["what_not_to_say"])
+                self.assertTrue(package["human_edit_required"])
+                self.assertTrue(Path(package["files"]["json"]).exists())
+
+    def test_cli_output_dir_override_resolves_relative_to_cwd(self) -> None:
+        output_dir = self.temp_dir / "cli-run"
+        relative_output_dir = output_dir.relative_to(Path.cwd())
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "multiplatform_repurpose.py"),
+                str(self.fixture_dir / "request.json"),
+                "--output-dir",
+                str(relative_output_dir),
+            ],
+            cwd=Path.cwd(),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        manifest = json.loads(completed.stdout)
+        self.assertEqual(Path(manifest["manifest_path"]).resolve(), (output_dir / "manifest.json").resolve())
+        self.assertTrue((output_dir / "dist" / "wechat_article" / "article.md").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
