@@ -24,8 +24,13 @@ export const multiplatformRepurposeCommand = {
       run_id: payload.run_id || "",
       source_integrity_status: payload.source_integrity?.status || "",
       platform_count: Object.keys(platforms).length,
+      completion_check_status: payload.completion_check?.status || "",
+      ready_platform_count: payload.completion_check?.summary?.ready_platform_count ?? 0,
+      blocker_count: payload.completion_check?.summary?.blocker_count ?? 0,
+      warning_count: payload.completion_check?.summary?.warning_count ?? 0,
       manifest_path: payload.manifest_path || "",
       report_path: payload.report_path || "",
+      completion_check_path: payload.completion_check_path || "",
     };
   },
   renderSummary(contract) {
@@ -35,6 +40,7 @@ export const multiplatformRepurposeCommand = {
       `Workflow: ${contract.workflow_kind}`,
       `Run id: ${contract.summary.run_id || "unknown"}`,
       `Source integrity: ${contract.summary.source_integrity_status || "unknown"}`,
+      `Completion check: ${contract.summary.completion_check_status || "unknown"}`,
       `Platforms: ${contract.summary.platform_count}`,
       `Manifest: ${contract.summary.manifest_path || "n/a"}`,
     ].join("\n");

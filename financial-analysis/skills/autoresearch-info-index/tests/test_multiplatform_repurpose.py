@@ -197,6 +197,44 @@ class MultiplatformRepurposeTests(unittest.TestCase):
         self.assertIn(f"- Quality scorecard: {wechat['files']['quality_scorecard']}", report)
         self.assertIn(f"- Human edit checklist: {x_thread['files']['human_edit_required']}", report)
 
+    def test_completion_check_marks_ready_packages_and_writes_artifacts(self) -> None:
+        request = load_json(self.fixture_dir / "request.json")
+        request["output_dir"] = str(self.temp_dir / "completion-ready")
+        request["source_article"]["markdown_path"] = str(self.fixture_dir / "source-article.md")
+        request["platform_targets"] = ["wechat_article", "x_thread"]
+
+        result = build_multiplatform_repurpose(request)
+
+        check = result["completion_check"]
+        self.assertEqual(check["contract_version"], "multiplatform_completion_check/v1")
+        self.assertEqual(check["status"], "ready")
+        self.assertEqual(check["recommendation"], "proceed_to_human_edit")
+        self.assertEqual(check["summary"]["platform_count"], 2)
+        self.assertEqual(check["summary"]["ready_platform_count"], 2)
+        self.assertEqual(check["summary"]["blocker_count"], 0)
+        self.assertEqual(check["summary"]["warning_count"], 0)
+        self.assertTrue(Path(result["completion_check_path"]).exists())
+        self.assertTrue(Path(result["completion_check_report_path"]).exists())
+        self.assertTrue(all(item["status"] == "ready" for item in check["platforms"].values()))
+
+    def test_completion_check_warns_when_source_integrity_needs_human_review(self) -> None:
+        result = build_multiplatform_repurpose(
+            {
+                "run_id": "completion-warning",
+                "source_article": {
+                    "markdown": "# Warning Source\n\nThe thesis is that missing citations must stay visible."
+                },
+                "platform_targets": ["substack_article"],
+                "output_dir": str(self.temp_dir / "completion-warning"),
+            }
+        )
+
+        check = result["completion_check"]
+        self.assertEqual(check["status"], "warning")
+        self.assertEqual(check["summary"]["ready_platform_count"], 0)
+        self.assertTrue(any("source integrity" in item.lower() for item in check["warnings"]))
+        self.assertTrue(any("missing citation" in item.lower() for item in check["warnings"]))
+
     def test_defaults_to_all_supported_platform_targets(self) -> None:
         result = build_multiplatform_repurpose(
             {

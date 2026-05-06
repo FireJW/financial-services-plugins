@@ -32,6 +32,10 @@ Open the top-level `report.md` first. Its review queue lists the content,
 rewrite packet, scorecard, human edit checklist, and what-not-to-say file for
 each generated platform.
 
+The run also writes `multiplatform-completion-check.json` and
+`multiplatform-completion-check.md`. Treat `ready` as safe to move into human
+editing, `warning` as review-before-reuse, and `blocked` as not ready.
+
 Read the usage doc first:
 
 ```text

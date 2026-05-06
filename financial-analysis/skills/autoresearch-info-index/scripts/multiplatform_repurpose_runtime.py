@@ -22,7 +22,18 @@ from multiplatform_repurpose_platforms import (
 
 REQUEST_CONTRACT_VERSION = "multiplatform_repurpose_request/v1"
 MANIFEST_CONTRACT_VERSION = "multiplatform_repurpose_manifest/v1"
+COMPLETION_CHECK_CONTRACT_VERSION = "multiplatform_completion_check/v1"
 DEFAULT_ROOT = Path(".tmp") / "multiplatform-content-repurposer"
+REQUIRED_PLATFORM_FILE_KEYS = [
+    "json",
+    "content",
+    "platform_profile",
+    "quality_scorecard",
+    "rewrite_packet",
+    "what_not_to_say",
+    "human_edit_required",
+]
+REQUIRED_SCORECARD_CHECKS = {"core_thesis", "citation_integrity", "caveat_visibility"}
 
 
 def clean_text(value: Any) -> str:
@@ -45,6 +56,11 @@ def write_json(path: str | Path, payload: dict[str, Any]) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8-sig")
+
+
+def path_exists(path_value: Any) -> bool:
+    path_text = clean_text(path_value)
+    return bool(path_text) and Path(path_text).exists()
 
 
 def slugify(value: str, fallback: str) -> str:
@@ -364,10 +380,12 @@ def build_platform_package(platform: str, request: dict[str, Any], integrity: di
 
 
 def build_report_markdown(result: dict[str, Any]) -> str:
+    completion_check = safe_dict(result.get("completion_check"))
     lines = [
         f"# Multiplatform Content Repurposer: {clean_text(result.get('run_id'))}",
         "",
         f"- Source integrity: {clean_text(safe_dict(result.get('source_integrity')).get('status'))}",
+        f"- Completion check: {clean_text(completion_check.get('status')) or 'not_run'}",
         f"- Output dir: {clean_text(result.get('output_dir'))}",
         f"- Platforms: {', '.join(result.get('platforms', {}).keys())}",
         "",
@@ -391,6 +409,121 @@ def build_report_markdown(result: dict[str, Any]) -> str:
             ]
         )
     return "\n".join(lines) + "\n"
+
+
+def package_has_missing_citation(package: dict[str, Any]) -> bool:
+    return any(clean_text(safe_dict(item).get("status")) == "missing" for item in safe_list(package.get("citations_used")))
+
+
+def build_platform_completion_result(platform: str, package: dict[str, Any]) -> dict[str, Any]:
+    blockers: list[str] = []
+    warnings: list[str] = []
+    files = safe_dict(package.get("files"))
+    missing_file_keys = [key for key in REQUIRED_PLATFORM_FILE_KEYS if not path_exists(files.get(key))]
+    if missing_file_keys:
+        blockers.append(f"Missing required files: {', '.join(missing_file_keys)}")
+    if not clean_text(package.get("core_thesis")):
+        blockers.append("Missing core thesis.")
+    if not clean_text(package.get("body_or_script")):
+        blockers.append("Missing platform body_or_script.")
+    if not safe_list(package.get("what_not_to_say")):
+        blockers.append("Missing what_not_to_say boundaries.")
+    if not safe_list(package.get("human_edit_required")):
+        blockers.append("Missing human_edit_required checklist.")
+    if not safe_list(package.get("caveats_preserved")):
+        warnings.append("No caveats were preserved for review.")
+    present_scorecard_checks = {clean_text(safe_dict(item).get("check")) for item in safe_list(package.get("quality_scorecard"))}
+    missing_scorecard_checks = sorted(REQUIRED_SCORECARD_CHECKS - present_scorecard_checks)
+    if missing_scorecard_checks:
+        blockers.append(f"Missing quality scorecard checks: {', '.join(missing_scorecard_checks)}")
+    source_integrity_status = clean_text(package.get("source_integrity_status"))
+    if source_integrity_status == "blocked":
+        blockers.append("Source integrity is blocked.")
+    elif source_integrity_status and source_integrity_status != "ok":
+        warnings.append(f"Source integrity needs human review: {source_integrity_status}.")
+    if package_has_missing_citation(package):
+        warnings.append("Missing citation marker is present; verify sources before reuse.")
+    status = "blocked" if blockers else "warning" if warnings else "ready"
+    return {
+        "platform": platform,
+        "status": status,
+        "blockers": blockers,
+        "warnings": warnings,
+        "files": {key: clean_text(files.get(key)) for key in REQUIRED_PLATFORM_FILE_KEYS},
+    }
+
+
+def build_completion_check_markdown(check: dict[str, Any]) -> str:
+    lines = [
+        f"# Multiplatform Completion Check: {clean_text(check.get('status'))}",
+        "",
+        f"- Recommendation: {clean_text(check.get('recommendation'))}",
+        f"- Platforms: {safe_dict(check.get('summary')).get('ready_platform_count', 0)}/{safe_dict(check.get('summary')).get('platform_count', 0)} ready",
+        f"- Blockers: {safe_dict(check.get('summary')).get('blocker_count', 0)}",
+        f"- Warnings: {safe_dict(check.get('summary')).get('warning_count', 0)}",
+        "",
+        "## Platform Results",
+    ]
+    for platform, platform_result in safe_dict(check.get("platforms")).items():
+        lines.extend(["", f"### {platform}", f"- Status: {clean_text(platform_result.get('status'))}"])
+        for blocker in safe_list(platform_result.get("blockers")):
+            lines.append(f"- Blocker: {clean_text(blocker)}")
+        for warning in safe_list(platform_result.get("warnings")):
+            lines.append(f"- Warning: {clean_text(warning)}")
+    if safe_list(check.get("blockers")):
+        lines.extend(["", "## Blockers"])
+        lines.extend(f"- {clean_text(item)}" for item in safe_list(check.get("blockers")))
+    if safe_list(check.get("warnings")):
+        lines.extend(["", "## Warnings"])
+        lines.extend(f"- {clean_text(item)}" for item in safe_list(check.get("warnings")))
+    return "\n".join(lines) + "\n"
+
+
+def build_multiplatform_completion_check(result: dict[str, Any]) -> dict[str, Any]:
+    platforms = safe_dict(result.get("platforms"))
+    blockers: list[str] = []
+    warnings: list[str] = []
+    if not platforms:
+        blockers.append("No platform packages were generated.")
+    source_integrity = safe_dict(result.get("source_integrity"))
+    source_status = clean_text(source_integrity.get("status"))
+    if source_status == "blocked":
+        blockers.append("Source integrity is blocked.")
+    elif source_status and source_status != "ok":
+        warnings.append(f"Source integrity needs human review: {source_status}.")
+    missing_inputs = [clean_text(item) for item in safe_list(source_integrity.get("missing_inputs")) if clean_text(item)]
+    if missing_inputs:
+        warnings.append(f"Missing source inputs: {', '.join(missing_inputs)}.")
+    platform_results = {
+        platform: build_platform_completion_result(platform, safe_dict(package))
+        for platform, package in platforms.items()
+    }
+    for platform, platform_result in platform_results.items():
+        blockers.extend(f"{platform}: {item}" for item in safe_list(platform_result.get("blockers")))
+        warnings.extend(f"{platform}: {item}" for item in safe_list(platform_result.get("warnings")))
+    ready_platform_count = sum(1 for item in platform_results.values() if item["status"] == "ready")
+    status = "blocked" if blockers else "warning" if warnings else "ready"
+    recommendation = (
+        "resolve_blockers_before_reuse"
+        if status == "blocked"
+        else "review_warnings_before_reuse"
+        if status == "warning"
+        else "proceed_to_human_edit"
+    )
+    return {
+        "contract_version": COMPLETION_CHECK_CONTRACT_VERSION,
+        "status": status,
+        "recommendation": recommendation,
+        "summary": {
+            "platform_count": len(platform_results),
+            "ready_platform_count": ready_platform_count,
+            "blocker_count": len(blockers),
+            "warning_count": len(warnings),
+        },
+        "blockers": blockers,
+        "warnings": warnings,
+        "platforms": platform_results,
+    }
 
 
 def build_multiplatform_repurpose(raw_payload: dict[str, Any], *, base_dir: Path | None = None) -> dict[str, Any]:
@@ -418,9 +551,15 @@ def build_multiplatform_repurpose(raw_payload: dict[str, Any], *, base_dir: Path
         "platforms": platform_packages,
         "manifest_path": str(output_dir / "manifest.json"),
         "report_path": str(output_dir / "report.md"),
+        "completion_check_path": str(output_dir / "multiplatform-completion-check.json"),
+        "completion_check_report_path": str(output_dir / "multiplatform-completion-check.md"),
     }
+    result["completion_check"] = build_multiplatform_completion_check(result)
+    result["completion_check_markdown"] = build_completion_check_markdown(result["completion_check"])
     write_json(output_dir / "request.normalized.json", result["request"])
     write_json(output_dir / "source-integrity.json", integrity)
+    write_json(result["completion_check_path"], result["completion_check"])
+    Path(result["completion_check_report_path"]).write_text(result["completion_check_markdown"], encoding="utf-8-sig")
     result["report_markdown"] = build_report_markdown(result)
     Path(result["report_path"]).write_text(result["report_markdown"], encoding="utf-8-sig")
     write_json(result["manifest_path"], result)
@@ -429,6 +568,7 @@ def build_multiplatform_repurpose(raw_payload: dict[str, Any], *, base_dir: Path
 
 __all__ = [
     "ALL_PLATFORM_TARGETS",
+    "COMPLETION_CHECK_CONTRACT_VERSION",
     "MANIFEST_CONTRACT_VERSION",
     "REQUEST_CONTRACT_VERSION",
     "build_multiplatform_repurpose",

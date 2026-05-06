@@ -119,6 +119,8 @@ Default root:
 .tmp/multiplatform-content-repurposer/<run-id>/
 |-- request.normalized.json
 |-- source-integrity.json
+|-- multiplatform-completion-check.json
+|-- multiplatform-completion-check.md
 |-- manifest.json
 |-- report.md
 `-- dist/
@@ -144,6 +146,13 @@ Start review from `report.md`. Its `Review Queue` section lists each platform's
 content file, `rewrite-packet.md`, `quality-scorecard.md`,
 `human-edit-required.md`, and `what-not-to-say.md` paths so the operator can
 open the right artifact without inspecting `manifest.json` first.
+
+The completion check files summarize whether the package set is ready for human
+editing or reuse. `ready` means all platform packages have required files,
+source integrity is `ok`, citations are present, and required scorecard checks
+exist. `warning` means the package exists but needs human review, such as when
+citations are missing. `blocked` means required artifacts or core fields are
+missing.
 
 Each platform package contains:
 
