@@ -140,6 +140,11 @@ Default root:
         `-- human-edit-required.md
 ```
 
+Start review from `report.md`. Its `Review Queue` section lists each platform's
+content file, `rewrite-packet.md`, `quality-scorecard.md`,
+`human-edit-required.md`, and `what-not-to-say.md` paths so the operator can
+open the right artifact without inspecting `manifest.json` first.
+
 Each platform package contains:
 
 - `platform`

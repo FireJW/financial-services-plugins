@@ -28,6 +28,10 @@ Each platform dist package includes `platform-profile.json`,
 LLM rewrite can enforce platform length, voice, required elements, citation
 integrity, caveat visibility, and the supplied what-not-to-say boundaries.
 
+Open the top-level `report.md` first. Its review queue lists the content,
+rewrite packet, scorecard, human edit checklist, and what-not-to-say file for
+each generated platform.
+
 Read the usage doc first:
 
 ```text
