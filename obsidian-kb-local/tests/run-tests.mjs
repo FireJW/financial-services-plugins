@@ -187,6 +187,7 @@ import {
 } from "../scripts/prune-codex-thread-audit-logs.mjs";
 import {
   buildCodexThreadBatchInitPlan,
+  loadCodexThreadNameIndex,
   parseInitCodexThreadBatchArgs,
   parseThreadsFromText,
   runInitCodexThreadBatch
@@ -478,6 +479,51 @@ run("init-codex-thread-batch plan creates manifest entries and body templates", 
     assert.equal(plan.manifest.defaults.compile, true);
     assert.equal(plan.manifest.entries[0].topic, "鎵归噺娌夋穩");
     assert.match(plan.entries[0].bodyPath, /bodies/);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+run("init-codex-thread-batch uses session_index thread names", () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-init-codex-thread-batch-name-"));
+
+  try {
+    const sessionIndexPath = path.join(tempRoot, "session_index.jsonl");
+    fs.writeFileSync(
+      sessionIndexPath,
+      [
+        JSON.stringify({
+          id: "019dfe10-7cc1-71b1-b507-a7674a74aa68",
+          thread_name: "multi platform handoff",
+          updated_at: "2026-05-06T16:13:24.7392599Z"
+        }),
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+
+    const plan = buildCodexThreadBatchInitPlan({
+      outputDir: path.join(tempRoot, "out"),
+      sessionIndexPath,
+      threadIds: ["019dfe10-7cc1-71b1-b507-a7674a74aa68"],
+      threadUris: [],
+      topic: "Codex thread archive",
+      titlePrefix: "Thread",
+      sourceLabel: "Codex batch import",
+      compile: true
+    });
+
+    assert.equal(
+      loadCodexThreadNameIndex(sessionIndexPath).get("019dfe10-7cc1-71b1-b507-a7674a74aa68")
+        .threadName,
+      "multi platform handoff"
+    );
+    assert.equal(plan.entries[0].threadName, "multi platform handoff");
+    assert.equal(plan.manifest.entries[0].thread_name, "multi platform handoff");
+    assert.equal(plan.manifest.entries[0].title, "Thread - multi platform handoff");
+    assert.match(plan.entries[0].bodyTemplate, /Thread name: multi platform handoff/);
+    assert.match(plan.entries[0].bodyTemplate, /# Codex Thread Capture\n\nThread URI:/);
+    assert.match(plan.entries[0].bodyTemplate, /Topic: Codex thread archive\n\n## User Request/);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
