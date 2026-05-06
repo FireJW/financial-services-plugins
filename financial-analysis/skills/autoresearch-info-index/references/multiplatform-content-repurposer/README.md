@@ -127,6 +127,7 @@ Default root:
     |   |-- platform-package.json
     |   |-- platform-profile.json
     |   |-- quality-scorecard.md
+    |   |-- rewrite-packet.md
     |   |-- what-not-to-say.md
     |   `-- human-edit-required.md
     `-- <platform-name>/
@@ -134,6 +135,7 @@ Default root:
         |-- platform-package.json
         |-- platform-profile.json
         |-- quality-scorecard.md
+        |-- rewrite-packet.md
         |-- what-not-to-say.md
         `-- human-edit-required.md
 ```
@@ -146,11 +148,17 @@ Each platform package contains:
 - `body_or_script`
 - `platform_profile`
 - `quality_scorecard`
+- `rewrite_packet`
 - `citations_used`
 - `caveats_preserved`
 - `what_not_to_say`
 - `human_edit_required`
 - `source_integrity_status`
+
+`rewrite-packet.md` is the safest handoff artifact for model-assisted or human
+editing. It bundles the core thesis, platform profile, scorecard, allowed
+citations, caveats, what-not-to-say list, human-edit checklist, and the draft to
+improve without authorizing new sourcing or publishing.
 
 ## Source Integrity Rules
 

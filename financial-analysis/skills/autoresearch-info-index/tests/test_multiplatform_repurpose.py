@@ -157,6 +157,27 @@ class MultiplatformRepurposeTests(unittest.TestCase):
         self.assertTrue((self.temp_dir / "quality-profile" / "dist" / "xiaohongshu_cards" / "platform-profile.json").exists())
         self.assertTrue((self.temp_dir / "quality-profile" / "dist" / "xiaohongshu_cards" / "quality-scorecard.md").exists())
 
+    def test_platform_packages_include_rewrite_packet_for_model_or_editor(self) -> None:
+        request = load_json(self.fixture_dir / "request.json")
+        request["output_dir"] = str(self.temp_dir / "rewrite-packet")
+        request["source_article"]["markdown_path"] = str(self.fixture_dir / "source-article.md")
+        request["platform_targets"] = ["wechat_article"]
+
+        result = build_multiplatform_repurpose(request)
+
+        package = result["platforms"]["wechat_article"]
+        rewrite_packet_path = Path(package["files"]["rewrite_packet"])
+        self.assertTrue(rewrite_packet_path.exists())
+        rewrite_packet = rewrite_packet_path.read_text(encoding="utf-8-sig")
+        self.assertIn("Preserve this core thesis", rewrite_packet)
+        self.assertIn(package["core_thesis"], rewrite_packet)
+        self.assertIn("Platform profile", rewrite_packet)
+        self.assertIn("Quality scorecard", rewrite_packet)
+        self.assertIn("What not to say", rewrite_packet)
+        self.assertIn("S1", rewrite_packet)
+        self.assertIn("Customer case studies are still thin", rewrite_packet)
+        self.assertIn("Framework\n- What changed", rewrite_packet)
+
     def test_defaults_to_all_supported_platform_targets(self) -> None:
         result = build_multiplatform_repurpose(
             {

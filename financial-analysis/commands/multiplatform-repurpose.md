@@ -23,10 +23,10 @@ Default output:
 .tmp/multiplatform-content-repurposer/<run-id>/dist/<platform-name>/
 ```
 
-Each platform dist package includes `platform-profile.json` and
-`quality-scorecard.md` so the human edit or downstream LLM rewrite can enforce
-platform length, voice, required elements, citation integrity, and caveat
-visibility.
+Each platform dist package includes `platform-profile.json`,
+`quality-scorecard.md`, and `rewrite-packet.md` so the human edit or downstream
+LLM rewrite can enforce platform length, voice, required elements, citation
+integrity, caveat visibility, and the supplied what-not-to-say boundaries.
 
 Read the usage doc first:
 

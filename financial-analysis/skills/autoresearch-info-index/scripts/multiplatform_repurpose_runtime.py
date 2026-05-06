@@ -270,6 +270,50 @@ def scorecard_markdown(scorecard: list[dict[str, str]]) -> str:
     ) + "\n"
 
 
+def bullet_markdown(items: list[Any]) -> str:
+    cleaned = [clean_text(item) for item in items if clean_text(item)]
+    return "\n".join(f"- {item}" for item in cleaned) + ("\n" if cleaned else "- None supplied.\n")
+
+
+def json_block(value: Any) -> str:
+    return "```json\n" + json.dumps(value, ensure_ascii=False, indent=2) + "\n```\n"
+
+
+def build_rewrite_packet_markdown(package: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            f"# Rewrite Packet: {clean_text(package.get('platform'))}",
+            "",
+            "Use this packet for model-assisted or human rewrite. It is not a publish command.",
+            "",
+            "## Preserve this core thesis",
+            clean_text(package.get("core_thesis")) or "Missing core thesis. Stop and repair the request before rewriting.",
+            "",
+            "## Platform profile",
+            json_block(safe_dict(package.get("platform_profile"))).rstrip(),
+            "",
+            "## Quality scorecard",
+            scorecard_markdown([safe_dict(item) for item in safe_list(package.get("quality_scorecard"))]).rstrip(),
+            "",
+            "## Caveats to preserve",
+            bullet_markdown(safe_list(package.get("caveats_preserved"))).rstrip(),
+            "",
+            "## Citations allowed",
+            json_block(safe_list(package.get("citations_used"))).rstrip(),
+            "",
+            "## What not to say",
+            bullet_markdown(safe_list(package.get("what_not_to_say"))).rstrip(),
+            "",
+            "## Human edit required",
+            bullet_markdown(safe_list(package.get("human_edit_required"))).rstrip(),
+            "",
+            "## Draft to improve",
+            str(package.get("body_or_script") or "").strip(),
+            "",
+        ]
+    )
+
+
 def build_platform_package(platform: str, request: dict[str, Any], integrity: dict[str, Any], platform_dir: Path) -> dict[str, Any]:
     title = clean_text(safe_dict(request.get("source_article")).get("title"))
     citations = deepcopy(safe_list(integrity.get("citation_inventory")))
@@ -281,6 +325,7 @@ def build_platform_package(platform: str, request: dict[str, Any], integrity: di
     package_path = platform_dir / "platform-package.json"
     profile_path = platform_dir / "platform-profile.json"
     scorecard_path = platform_dir / "quality-scorecard.md"
+    rewrite_packet_path = platform_dir / "rewrite-packet.md"
     what_not_path = platform_dir / "what-not-to-say.md"
     human_edit_path = platform_dir / "human-edit-required.md"
     package = {
@@ -302,6 +347,7 @@ def build_platform_package(platform: str, request: dict[str, Any], integrity: di
             "content": str(content_file),
             "platform_profile": str(profile_path),
             "quality_scorecard": str(scorecard_path),
+            "rewrite_packet": str(rewrite_packet_path),
             "what_not_to_say": str(what_not_path),
             "human_edit_required": str(human_edit_path),
         },
@@ -310,6 +356,7 @@ def build_platform_package(platform: str, request: dict[str, Any], integrity: di
     content_file.write_text(body, encoding="utf-8-sig")
     write_json(profile_path, profile)
     scorecard_path.write_text(scorecard_markdown(scorecard), encoding="utf-8-sig")
+    rewrite_packet_path.write_text(build_rewrite_packet_markdown(package), encoding="utf-8-sig")
     what_not_path.write_text("\n".join(f"- {item}" for item in package["what_not_to_say"]) + "\n", encoding="utf-8-sig")
     human_edit_path.write_text("\n".join(f"- {item}" for item in package["human_edit_required"]) + "\n", encoding="utf-8-sig")
     write_json(package_path, package)
