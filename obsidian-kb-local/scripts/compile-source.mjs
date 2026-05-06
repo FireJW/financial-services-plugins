@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../src/config.mjs";
-import { loadCodexLlmProvider, summarizeLlmProvider } from "../src/codex-config.mjs";
+import {
+  formatCodexProviderRouteDetail,
+  loadCodexLlmProvider,
+  summarizeLlmProvider
+} from "../src/codex-config.mjs";
 import { executeCompileForRawNote } from "../src/compile-runner.mjs";
 import {
   buildCompilePrompt,
@@ -9,8 +13,48 @@ import {
   findWikiNotes
 } from "../src/compile-pipeline.mjs";
 import { rebuildAutomaticLinks } from "../src/link-graph.mjs";
+import { callResponsesApi } from "../src/llm-provider.mjs";
 
 const args = process.argv.slice(2);
+
+export function parseCompileSourceArgs(inputArgs = []) {
+  const parsed = {
+    topic: getArgFrom(inputArgs, "topic"),
+    file: getArgFrom(inputArgs, "file"),
+    dryRun: inputArgs.includes("--dry-run"),
+    execute: inputArgs.includes("--execute"),
+    skipLinks: inputArgs.includes("--skip-links"),
+    probeProviderOnly: inputArgs.includes("--probe-provider-only"),
+    compileTimeoutMs: normalizePositiveInteger(getArgFrom(inputArgs, "timeout-ms"), 240000)
+  };
+  if (parsed.topic === undefined) {
+    parsed.topic = null;
+  }
+  if (parsed.file === undefined) {
+    parsed.file = null;
+  }
+  return parsed;
+}
+
+export async function runCompileSourceProviderProbe(config, runtime = {}) {
+  const writer = runtime.writer || console;
+  const provider = (runtime.loadProvider || (() => loadCodexLlmProvider({ requireApiKey: false })))();
+  writer.log(`Provider route: ${formatCodexProviderRouteDetail(provider)}`);
+  const callProvider =
+    runtime.callProvider ||
+    ((activeProvider) =>
+      callResponsesApi(activeProvider, {
+        input: "Respond with OK.",
+        timeoutMs: runtime.timeoutMs || 240000
+      }));
+  const response = await callProvider(provider, {
+    input: "Respond with OK.",
+    timeoutMs: runtime.timeoutMs || 240000,
+    config
+  });
+  writer.log(`Provider probe: OK via ${response.endpoint} -> ${response.outputText}`);
+  return { provider, response };
+}
 
 function getArg(name) {
   const index = args.indexOf(`--${name}`);
@@ -35,9 +79,17 @@ function printUsage() {
 }
 
 async function main() {
+  const parsed = parseCompileSourceArgs(args);
   if (hasFlag("help") || hasFlag("h")) {
     printUsage();
     process.exit(0);
+  }
+
+  if (parsed.probeProviderOnly) {
+    await runCompileSourceProviderProbe(loadConfig(), {
+      timeoutMs: parsed.compileTimeoutMs
+    });
+    return;
   }
 
   const topic = getArg("topic");
@@ -167,4 +219,19 @@ async function main() {
   }
 }
 
-await main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  await main();
+}
+
+function getArgFrom(inputArgs, name) {
+  const index = inputArgs.indexOf(`--${name}`);
+  if (index === -1 || index + 1 >= inputArgs.length) {
+    return undefined;
+  }
+  return inputArgs[index + 1];
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}

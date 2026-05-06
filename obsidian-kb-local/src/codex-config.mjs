@@ -70,9 +70,14 @@ export function loadCodexLlmProvider(options = {}) {
     ? parseTomlConfig(fs.readFileSync(configPath, "utf8"))
     : {};
   const providerConfig = resolveProviderConfig(parsedConfig, env);
-  const apiKey = loadOpenAiApiKey(authPath, env);
+  const auth = loadOpenAiAuthDetails(authPath, env);
 
-  if (providerConfig.requiresOpenAiAuth && requireApiKey && !apiKey) {
+  if (
+    providerConfig.requiresOpenAiAuth &&
+    requireApiKey &&
+    !auth.apiKey &&
+    !auth.canUseChatGptSession
+  ) {
     throw new Error(
       `LLM provider requires OPENAI_API_KEY, but no key was found in env or ${authPath}`
     );
@@ -89,7 +94,9 @@ export function loadCodexLlmProvider(options = {}) {
     reasoningEffort: providerConfig.reasoningEffort,
     requiresOpenAiAuth: providerConfig.requiresOpenAiAuth,
     disableResponseStorage: providerConfig.disableResponseStorage,
-    apiKey
+    apiKey: auth.apiKey,
+    authMode: auth.authMode,
+    canUseChatGptSession: auth.canUseChatGptSession
   };
 }
 
@@ -101,6 +108,49 @@ export function summarizeLlmProvider(provider) {
     provider.baseUrl || DEFAULT_OPENAI_BASE_URL
   ];
   return parts.join(" | ");
+}
+
+export function describeCodexProviderRoute(provider = {}) {
+  const authMode = provider.authMode || (provider.apiKey ? "api_key" : "api_key");
+  const flags = [
+    `route:${providerRoute(provider)}`,
+    `auth-mode:${authMode}`,
+    provider.requiresOpenAiAuth === false
+      ? "api-key:not-required"
+      : provider.apiKey
+        ? "api-key:present"
+        : "api-key:missing"
+  ];
+  const canUseChatGptFallback =
+    provider.providerName === "openai" &&
+    authMode === "chatgpt" &&
+    provider.canUseChatGptSession === true &&
+    !provider.apiKey;
+
+  if (provider.requiresOpenAiAuth === false || provider.apiKey || canUseChatGptFallback) {
+    return {
+      ok: true,
+      route: canUseChatGptFallback ? "codex-exec-fallback" : "direct",
+      flags: canUseChatGptFallback
+        ? ["route:codex-exec-fallback", `auth-mode:${authMode}`, "api-key:missing"]
+        : flags
+    };
+  }
+
+  if (authMode === "chatgpt" && provider.providerName !== "openai") {
+    flags.push("chatgpt-session:openai-only");
+  }
+
+  return {
+    ok: false,
+    route: "blocked",
+    flags: flags.map((flag) => (flag.startsWith("route:") ? "route:blocked" : flag))
+  };
+}
+
+export function formatCodexProviderRouteDetail(provider = {}) {
+  const route = describeCodexProviderRoute(provider);
+  return `${summarizeLlmProvider(provider)} (${route.flags.join(", ")})`;
 }
 
 function resolveProviderConfig(parsedConfig, env) {
@@ -165,18 +215,50 @@ function hasEnvironmentProviderOverride(env) {
   );
 }
 
-function loadOpenAiApiKey(authPath, env) {
+function loadOpenAiAuthDetails(authPath, env) {
   const envKey = firstNonEmptyString(env.OPENAI_API_KEY);
   if (envKey) {
-    return envKey;
+    return {
+      apiKey: envKey,
+      authMode: "api_key",
+      canUseChatGptSession: false
+    };
   }
 
   if (!fs.existsSync(authPath)) {
-    return null;
+    return {
+      apiKey: null,
+      authMode: "api_key",
+      canUseChatGptSession: false
+    };
   }
 
   const auth = JSON.parse(fs.readFileSync(authPath, "utf8"));
-  return firstNonEmptyString(auth.OPENAI_API_KEY) || null;
+  const apiKey = firstNonEmptyString(auth.OPENAI_API_KEY) || null;
+  const authMode = firstNonEmptyString(auth.auth_mode) || (apiKey ? "api_key" : "api_key");
+  const canUseChatGptSession =
+    authMode === "chatgpt" &&
+    Boolean(auth.tokens && typeof auth.tokens === "object" && firstNonEmptyString(auth.tokens.access_token));
+  return {
+    apiKey,
+    authMode,
+    canUseChatGptSession
+  };
+}
+
+function providerRoute(provider) {
+  if (
+    provider.providerName === "openai" &&
+    provider.authMode === "chatgpt" &&
+    provider.canUseChatGptSession === true &&
+    !provider.apiKey
+  ) {
+    return "codex-exec-fallback";
+  }
+  if (provider.requiresOpenAiAuth !== false && !provider.apiKey) {
+    return "blocked";
+  }
+  return "direct";
 }
 
 function normalizeBaseUrl(input) {

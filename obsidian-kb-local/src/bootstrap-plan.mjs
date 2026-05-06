@@ -1,4 +1,10 @@
 import { formatIso8601Tz } from "./frontmatter.mjs";
+import {
+  getDashboardPath,
+  getOpenQuestionsPath,
+  getSourcesByTopicPath,
+  getStaleNotesPath
+} from "./view-paths.mjs";
 
 export function buildBootstrapPlan(config) {
   const root = config.machineRoot;
@@ -21,6 +27,7 @@ export function buildBootstrapPlan(config) {
     `${root}/20-wiki/sources`,
     `${root}/20-wiki/syntheses`,
     `${root}/30-views`,
+    `${root}/30-views/00-System`,
     `${root}/90-ops`,
     `${root}/90-ops/contracts`,
     `${root}/90-ops/logs`,
@@ -51,19 +58,19 @@ export function buildBootstrapPlan(config) {
       content: wikiReadme()
     },
     {
-      path: `${root}/30-views/00-KB Dashboard.md`,
+      path: getDashboardPath(root),
       content: dashboard(root)
     },
     {
-      path: `${root}/30-views/01-Stale Notes.md`,
+      path: getStaleNotesPath(root),
       content: staleNotesView(root)
     },
     {
-      path: `${root}/30-views/02-Open Questions.md`,
+      path: getOpenQuestionsPath(root),
       content: openQuestionsView(root)
     },
     {
-      path: `${root}/30-views/03-Sources by Topic.md`,
+      path: getSourcesByTopicPath(root),
       content: sourcesByTopicView(root)
     },
     {
@@ -124,10 +131,12 @@ cmd /c npm run obsidian -- search query="Karpathy"
 
 - [[${config.machineRoot}/10-raw/README|10-raw 说明]]
 - [[${config.machineRoot}/20-wiki/README|20-wiki 说明]]
-- [[${config.machineRoot}/30-views/00-KB Dashboard|KB Dashboard]]
-- [[${config.machineRoot}/30-views/01-Stale Notes|Stale Notes]]
-- [[${config.machineRoot}/30-views/02-Open Questions|Open Questions]]
-- [[${config.machineRoot}/30-views/03-Sources by Topic|Sources by Topic]]
+- [[${config.machineRoot}/20-wiki/_index|Wiki Index]]
+- [[${config.machineRoot}/20-wiki/_log|Wiki Log]]
+- [[${getDashboardPath(config.machineRoot).replace(/\.md$/, "")}|KB Dashboard]]
+- [[${getStaleNotesPath(config.machineRoot).replace(/\.md$/, "")}|Stale Notes]]
+- [[${getOpenQuestionsPath(config.machineRoot).replace(/\.md$/, "")}|Open Questions]]
+- [[${getSourcesByTopicPath(config.machineRoot).replace(/\.md$/, "")}|Sources by Topic]]
 - [[${config.machineRoot}/90-ops/contracts/raw-note|raw contract]]
 - [[${config.machineRoot}/90-ops/contracts/wiki-note|wiki contract]]
 `;
@@ -281,6 +290,46 @@ TABLE wiki_kind, topic, kb_date
 FROM "${root}/20-wiki"
 WHERE review_state = "draft"
 SORT kb_date DESC
+\`\`\`
+
+## Trading Fast Lane
+
+- [[${root}/20-wiki/syntheses/开仓前30秒决策卡片|开仓前30秒决策卡片]]
+- [[${root}/20-wiki/syntheses/收盘后3分钟复盘卡片|收盘后3分钟复盘卡片]]
+
+## Maintenance Commands
+
+\`\`\`powershell
+cmd /c "cd obsidian-kb-local && npm run refresh-trading-suite"
+cmd /c "cd obsidian-kb-local && npm run refresh-political-economy-suite"
+\`\`\`
+
+## Trading Card Stack
+
+\`\`\`dataview
+TABLE topic, kb_date, kb_source_count
+FROM "${root}/20-wiki/syntheses"
+WHERE contains(file.name, "卡片")
+SORT kb_date DESC
+\`\`\`
+
+## Political Economy Sources
+
+\`\`\`dataview
+TABLE topic, kb_date, review_state, kb_source_count
+FROM "${root}/20-wiki/sources"
+WHERE contains(topic, "中国") OR contains(topic, "政治经济学")
+SORT kb_date DESC
+LIMIT 12
+\`\`\`
+
+## Recent Mentor Sessions
+
+\`\`\`dataview
+TABLE file.link AS "Session", file.mtime AS "Updated"
+FROM "${root}/30-views/10-Trading Psychology Mentor/01-Sessions"
+SORT file.mtime DESC
+LIMIT 8
 \`\`\`
 `;
 }

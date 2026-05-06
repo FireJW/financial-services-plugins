@@ -115,9 +115,10 @@ export function formatExistingWikiNotes(notes) {
 
 export function buildCompilePrompt(templateContent, rawNote, existingWikiNotes) {
   const topic = rawNote.frontmatter?.topic || "";
+  const rawContent = rawNote.promptContent || rawNote.content;
   return templateContent
     .split("{{RAW_CONTENT}}")
-    .join(rawNote.content)
+    .join(rawContent)
     .split("{{TOPIC}}")
     .join(topic)
     .split("{{EXISTING_NOTES}}")
@@ -245,7 +246,8 @@ export function applyCompileOutput(config, params, options = {}) {
       action: existingPath ? "update" : "create",
       path: notePath,
       raw_path: rawPath,
-      dedup_key: dedupKey
+      dedup_key: dedupKey,
+      ...(options.logContext || {})
     });
   }
 

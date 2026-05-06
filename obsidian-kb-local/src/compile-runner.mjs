@@ -6,71 +6,83 @@ import {
   parseCompileNotes,
   updateRawNoteStatus
 } from "./compile-pipeline.mjs";
+import { formatCodexProviderRouteDetail } from "./codex-config.mjs";
 import { formatIso8601Tz } from "./frontmatter.mjs";
 import { callResponsesApi } from "./llm-provider.mjs";
 
 export async function executeCompileForRawNote(config, params, options = {}) {
-  const {
-    rawNote,
-    existingWikiNotes,
-    templateContent,
-    provider
-  } = params;
-  const prompt = buildCompilePrompt(templateContent, rawNote, existingWikiNotes);
+  const { rawNote, existingWikiNotes, templateContent, provider } = params;
+  const promptVariants = normalizePromptVariants(params, templateContent, rawNote, existingWikiNotes);
+  const attempts = [];
+  let lastError = null;
 
-  try {
-    const response = await callResponsesApi(provider, prompt, {
-      fetchImpl: options.fetchImpl,
-      signal: options.signal
-    });
-    const notes = parseCompileNotes(response.outputText);
-    const applyResult = applyCompileOutput(
-      config,
-      {
-        rawPath: rawNote.relativePath,
-        notes
-      },
-      {
-        allowFilesystemFallback: options.allowFilesystemFallback ?? true,
-        preferCli: options.preferCli ?? true,
-        timestamp: options.timestamp
-      }
-    );
+  for (const variant of promptVariants) {
+    try {
+      const response = await callResponsesApi(provider, variant.prompt, {
+        fetchImpl: options.fetchImpl,
+        signal: options.signal,
+        timeoutMs: options.timeoutMs,
+        maxAttempts: options.maxAttempts,
+        retryBaseDelayMs: options.retryBaseDelayMs,
+        sleepImpl: options.sleepImpl,
+        spawnSyncImpl: options.spawnSyncImpl
+      });
+      const notes = parseCompileNotes(response.outputText);
+      const applyResult = applyCompileOutput(
+        config,
+        {
+          rawPath: rawNote.relativePath,
+          notes
+        },
+        {
+          allowFilesystemFallback: options.allowFilesystemFallback ?? true,
+          preferCli: options.preferCli ?? true,
+          timestamp: options.timestamp,
+          logContext: buildLogContext(provider, response, options)
+        }
+      );
 
-    return {
-      ok: true,
-      prompt,
-      response,
-      notes,
-      applyResult
-    };
-  } catch (error) {
-    const rawWriteResult = updateRawNoteStatus(
-      config,
-      rawNote.relativePath,
-      "error",
-      {
-        allowFilesystemFallback: options.allowFilesystemFallback ?? true,
-        preferCli: options.preferCli ?? true
-      }
-    );
-    const timestamp = options.timestamp || formatIso8601Tz(new Date());
-    const logFile = appendCompileErrorLog(config.projectRoot, timestamp, {
-      timestamp,
-      raw_path: rawNote.relativePath,
-      model: provider.model,
-      provider: provider.providerName,
-      error: error instanceof Error ? error.message : String(error)
-    });
-
-    return {
-      ok: false,
-      prompt,
-      error: error instanceof Error ? error : new Error(String(error)),
-      rawWriteMode: rawWriteResult.mode,
-      logFile
-    };
+      attempts.push({ label: variant.label, status: "success", endpoint: response.endpoint });
+      return {
+        ok: true,
+        prompt: variant.prompt,
+        promptVariant: { label: variant.label },
+        attempts,
+        response,
+        notes,
+        applyResult
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      attempts.push({ label: variant.label, status: "failed", error: lastError.message });
+    }
   }
+
+  const rawWriteResult = updateRawNoteStatus(config, rawNote.relativePath, "error", {
+    allowFilesystemFallback: options.allowFilesystemFallback ?? true,
+    preferCli: options.preferCli ?? true
+  });
+  const timestamp = options.timestamp || formatIso8601Tz(new Date());
+  const logFile = appendCompileErrorLog(config.projectRoot, timestamp, {
+    timestamp,
+    raw_path: rawNote.relativePath,
+    provider: provider.providerName,
+    model: provider.model,
+    provider_route: providerRouteDetail(provider),
+    timeout_ms: options.timeoutMs,
+    attempts,
+    error: lastError ? lastError.message : "Unknown compile error"
+  });
+
+  return {
+    ok: false,
+    prompt: promptVariants[0]?.prompt || "",
+    promptVariant: promptVariants[0] ? { label: promptVariants[0].label } : null,
+    attempts,
+    error: lastError || new Error("Unknown compile error"),
+    rawWriteMode: rawWriteResult.mode,
+    logFile
+  };
 }
 
 export function appendCompileErrorLog(projectRoot, timestamp, entry) {
@@ -81,4 +93,41 @@ export function appendCompileErrorLog(projectRoot, timestamp, entry) {
   const logFile = path.join(logDirectory, `compile-errors-${today}.jsonl`);
   fs.appendFileSync(logFile, `${JSON.stringify(entry)}\n`, "utf8");
   return logFile;
+}
+
+function normalizePromptVariants(params, templateContent, rawNote, existingWikiNotes) {
+  if (Array.isArray(params.promptVariants) && params.promptVariants.length > 0) {
+    return params.promptVariants.map((variant) => ({
+      label: variant.label || "variant",
+      prompt: buildCompilePrompt(
+        templateContent,
+        {
+          ...rawNote,
+          promptContent: variant.promptContent
+        },
+        existingWikiNotes
+      )
+    }));
+  }
+
+  return [
+    {
+      label: "default",
+      prompt: buildCompilePrompt(templateContent, rawNote, existingWikiNotes)
+    }
+  ];
+}
+
+function buildLogContext(provider, response, options) {
+  return {
+    provider: provider.providerName,
+    model: provider.model,
+    provider_route: providerRouteDetail(provider),
+    provider_endpoint: response.endpoint,
+    timeout_ms: options.timeoutMs
+  };
+}
+
+function providerRouteDetail(provider) {
+  return formatCodexProviderRouteDetail(provider).replace("route:direct", "route:responses-api");
 }
