@@ -11,6 +11,13 @@ from typing import Any
 PLAN_SCHEMA_VERSION = "longbridge_trading_plan/v1"
 REVIEW_SCHEMA_VERSION = "longbridge_trading_plan_review/v1"
 VALID_SESSION_TYPES = {"premarket", "intraday", "postclose"}
+EVIDENCE_LAYER_KEYS = (
+    "account_review_plus",
+    "execution_preflight",
+    "derivative_event_risk",
+    "hk_microstructure",
+    "governance_structure",
+)
 
 
 def clean_text(value: Any) -> str:
@@ -162,6 +169,10 @@ def _build_candidate_entry(
 ) -> dict[str, Any]:
     symbol = _candidate_symbol(candidate)
     qualitative = candidate.get("qualitative_evaluation") if isinstance(candidate.get("qualitative_evaluation"), dict) else {}
+    for key in EVIDENCE_LAYER_KEYS:
+        value = candidate.get(key)
+        if isinstance(value, dict):
+            qualitative[key] = deepcopy(value)
     entry = {
         "rank": rank,
         "symbol": symbol,
@@ -177,6 +188,10 @@ def _build_candidate_entry(
         "should_apply": False,
         "side_effects": "none",
     }
+    for key in EVIDENCE_LAYER_KEYS:
+        value = candidate.get(key)
+        if isinstance(value, dict):
+            entry[key] = deepcopy(value)
     confirmation = _intraday_confirmation(symbol, monitor)
     if confirmation:
         entry["intraday_confirmation"] = confirmation
