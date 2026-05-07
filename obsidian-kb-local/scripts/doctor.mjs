@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { loadConfig } from "../src/config.mjs";
+import { isCliEntrypoint } from "../src/cli-entrypoint.mjs";
 import {
   describeCodexProviderRoute,
   formatCodexProviderRouteDetail,
@@ -82,9 +83,53 @@ export function runDoctor(options = {}) {
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const result = runDoctor();
-  process.exit(result.ok ? 0 : 1);
+export async function runDoctorCli(args = process.argv.slice(2), runtime = {}) {
+  const parsed = parseDoctorArgs(args);
+  const writer = runtime.writer || console;
+
+  if (args.includes("--help") || args.includes("-h")) {
+    printUsage(writer);
+    return 0;
+  }
+
+  if (parsed.probeProvider) {
+    try {
+      const { runCompileSourceProviderProbe } = await import("./compile-source.mjs");
+      const config = runtime.config || loadConfig();
+      await runCompileSourceProviderProbe(config, {
+        writer,
+        timeoutMs: parsed.timeoutMs
+      });
+      return 0;
+    } catch (error) {
+      writer.error?.(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
+
+  if (parsed.json) {
+    const config = runtime.config || loadConfig();
+    const result = buildDoctorChecks(config);
+    const ok = !result.checks.some((check) => !check.ok);
+    writer.log(JSON.stringify({ ok, env: result.env, checks: result.checks }, null, 2));
+    return ok ? 0 : 1;
+  }
+
+  const result = runDoctor({ ...runtime, writer });
+  return result.ok ? 0 : 1;
+}
+
+function printUsage(writer = console.error) {
+  const write =
+    typeof writer === "function"
+      ? writer
+      : writer?.error?.bind(writer) || writer?.log?.bind(writer) || console.error;
+  write("Usage: node scripts/doctor.mjs [--json] [--probe-provider] [--timeout-ms <ms>]");
+}
+
+if (isCliEntrypoint(import.meta.url)) {
+  const exitCode = await runDoctorCli();
+  process.exit(exitCode);
 }
 
 function resolveProviderCheck() {

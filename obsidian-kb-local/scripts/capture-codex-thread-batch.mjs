@@ -17,6 +17,7 @@ export function parseCaptureCodexThreadBatchArgs(args = []) {
   const list = Array.isArray(args) ? args : [];
   const manifestPath = String(getArg(list, "manifest") || "").trim();
   const compile = hasFlag(list, "compile");
+  const dryRun = hasFlag(list, "dry-run");
   const runId = String(getArg(list, "run-id") || "").trim();
   const skipLinks = hasFlag(list, "skip-links");
   const skipViews = hasFlag(list, "skip-views");
@@ -35,6 +36,7 @@ export function parseCaptureCodexThreadBatchArgs(args = []) {
   return {
     manifestPath: path.resolve(manifestPath),
     compile,
+    dryRun,
     runId,
     skipLinks,
     skipViews,
@@ -77,9 +79,14 @@ export function loadCodexThreadBatchManifest(manifestPath) {
 
 export async function runCaptureCodexThreadBatch(command, runtime = {}) {
   const writer = runtime.writer || console;
-  const config = runtime.config || loadConfig();
   const runId = normalizeAuditRunId(command.runId);
   const manifest = runtime.manifest || loadCodexThreadBatchManifest(command.manifestPath);
+
+  if (command.dryRun) {
+    return previewCaptureCodexThreadBatch(command, manifest, writer);
+  }
+
+  const config = runtime.config || loadConfig();
   const captureFn = runtime.captureFn || captureCodexThreadToVault;
   const rebuildLinksFn = runtime.rebuildLinksFn || rebuildAutomaticLinks;
   const refreshViewsFn = runtime.refreshViewsFn || refreshWikiViews;
@@ -178,6 +185,7 @@ export async function runCaptureCodexThreadBatch(command, runtime = {}) {
   }
 
   const summary = {
+    dryRun: false,
     total: manifest.entries.length,
     completed: successes.length,
     failed: failures.length,
@@ -218,8 +226,31 @@ export async function runCaptureCodexThreadBatch(command, runtime = {}) {
 
 function printUsage(writer = console.error) {
   writer(
-    "Usage: node scripts/capture-codex-thread-batch.mjs --manifest <path> [--compile] [--skip-links] [--skip-views] [--continue-on-error|--fail-fast] [--timeout-ms N]"
+    "Usage: node scripts/capture-codex-thread-batch.mjs --manifest <path> [--compile] [--dry-run] [--skip-links] [--skip-views] [--continue-on-error|--fail-fast] [--timeout-ms N]"
   );
+}
+
+function previewCaptureCodexThreadBatch(command, manifest, writer) {
+  writer.log(`Batch dry-run preview: total=${manifest.entries.length}`);
+  for (const [index, entry] of manifest.entries.entries()) {
+    const effectiveCompile = entry.compile === true || (entry.compile == null && command.compile);
+    const thread = entry.threadUri || entry.threadId || "codex://threads/current-thread";
+    writer.log(
+      `${index + 1}. ${entry.title} topic=${entry.topic || "(none)"} thread=${thread} compile=${effectiveCompile}`
+    );
+  }
+  writer.log("Dry-run only: no vault writes, provider calls, link rebuilds, view refreshes, or audit logs.");
+
+  return {
+    dryRun: true,
+    total: manifest.entries.length,
+    completed: 0,
+    failed: 0,
+    failures: [],
+    linkResult: null,
+    viewResults: [],
+    auditLogPath: ""
+  };
 }
 
 async function main(args = process.argv.slice(2)) {

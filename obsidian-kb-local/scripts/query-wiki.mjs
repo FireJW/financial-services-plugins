@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { loadConfig } from "../src/config.mjs";
+import { isCliEntrypoint } from "../src/cli-entrypoint.mjs";
 import { findWikiNotes } from "../src/compile-pipeline.mjs";
 import { parseFrontmatter } from "../src/frontmatter.mjs";
 import {
@@ -103,12 +105,53 @@ export async function executeQueryWikiCommand(command, runtime = {}) {
   };
 }
 
+export async function runQueryWikiCli(args = process.argv.slice(2), runtime = {}) {
+  const writer = runtime.writer || console;
+
+  if (args.includes("--help") || args.includes("-h")) {
+    printUsage(writer);
+    return 0;
+  }
+
+  try {
+    const command = parseQueryWikiCliArgs(args);
+    const config = runtime.config || loadConfig();
+    const result = await executeQueryWikiCommand(command, {
+      ...runtime,
+      config,
+      writer
+    });
+
+    if (result.executed) {
+      writer.log(`Selected notes: ${result.selectedNotes.length}`);
+      if (result.writeResult?.path) {
+        writer.log(`Query synthesis: ${result.writeResult.path}`);
+      }
+    } else {
+      writer.log(result.prompt);
+    }
+
+    return 0;
+  } catch (error) {
+    reportCliError(error, writer.error?.bind(writer) || writer.log?.bind(writer) || console.error);
+    return 1;
+  }
+}
+
 export function reportCliError(error, writer = console.error) {
   if (error?.code === "USAGE") {
     writer("Usage: node scripts/query-wiki.mjs --query <text> [--topic <topic>] [--execute]");
     writer("");
   }
   writer(error?.message || String(error));
+}
+
+function printUsage(writer = console.error) {
+  const write =
+    typeof writer === "function"
+      ? writer
+      : writer?.error?.bind(writer) || writer?.log?.bind(writer) || console.error;
+  write("Usage: node scripts/query-wiki.mjs --query <text> [--topic <topic>] [--execute]");
 }
 
 function resolveTopicNotes(config, command, writer) {
@@ -174,4 +217,9 @@ function readJson(filePath, fallback) {
 function normalizePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+if (isCliEntrypoint(import.meta.url)) {
+  const exitCode = await runQueryWikiCli();
+  process.exit(exitCode);
 }
