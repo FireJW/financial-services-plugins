@@ -33,6 +33,7 @@ ALL_ANALYSIS_LAYERS = (
     "portfolio",
     "intraday",
     "theme_chain",
+    "governance_structure",
     "account_health",
     "financial_event",
     "ownership_risk",
@@ -155,6 +156,16 @@ def normalize_analysis_layers(request: dict[str, Any]) -> set[str]:
         "catalysts": "catalyst",
         "chain": "theme_chain",
         "company": "theme_chain",
+        "control_structure": "governance_structure",
+        "etf_exposure": "governance_structure",
+        "executive": "governance_structure",
+        "executives": "governance_structure",
+        "fund_exposure": "governance_structure",
+        "governance": "governance_structure",
+        "governance_structure": "governance_structure",
+        "invest_relation": "governance_structure",
+        "invest-relation": "governance_structure",
+        "management": "governance_structure",
         "news": "catalyst",
         "fundamental": "valuation",
         "fundamentals": "valuation",
@@ -1449,6 +1460,8 @@ def fetch_theme_chain_analysis(
 ) -> dict[str, Any]:
     symbol = clean_text(candidate.get("symbol"))
     unavailable: list[dict[str, str]] = []
+    analysis_layers = normalize_analysis_layers(request)
+    include_governance = "governance_structure" in analysis_layers
     company = first_payload_dict(
         optional_longbridge_payload(
             ["company", symbol, "--format", "json"],
@@ -1489,6 +1502,22 @@ def fetch_theme_chain_analysis(
             unavailable=unavailable,
         )
     )[:5]
+    executives = list_payload(
+        optional_longbridge_payload(
+            ["executive", symbol, "--format", "json"],
+            runner=runner,
+            env=env,
+            unavailable=unavailable,
+        )
+    )[:5] if include_governance else []
+    invest_relations = list_payload(
+        optional_longbridge_payload(
+            ["invest-relation", symbol, "--format", "json"],
+            runner=runner,
+            env=env,
+            unavailable=unavailable,
+        )
+    )[:5] if include_governance else []
     theme_indexes = [clean_text(item) for item in request.get("theme_indexes") or [] if clean_text(item)]
     memberships: list[str] = []
     constituent_samples: list[dict[str, Any]] = []
@@ -1531,6 +1560,94 @@ def fetch_theme_chain_analysis(
     score += min(len(fund_holders), 3) * 0.6
     if corp_actions:
         score -= 1.0
+    if include_governance:
+        score += min(len(executives), 3) * 0.8
+        score += min(len(invest_relations), 3) * 0.4
+        if shareholders:
+            score += 0.6
+        if fund_holders:
+            score += 0.5
+        if constituent_samples:
+            score += 0.5
+        if not executives:
+            score -= 0.8
+    top_shareholder = shareholders[0] if shareholders else {}
+    top_shareholder_owned = first_number(
+        top_shareholder.get("owned")
+        or top_shareholder.get("ownership")
+        or top_shareholder.get("weight")
+        or top_shareholder.get("percent")
+        or top_shareholder.get("percentage")
+    )
+    governance_flags: list[str] = []
+    if shareholders:
+        governance_flags.append(
+            f"top_shareholder={clean_text(top_shareholder.get('name') or top_shareholder.get('holder') or top_shareholder.get('symbol'))}"
+        )
+    if not math.isnan(top_shareholder_owned) and top_shareholder_owned >= 20:
+        governance_flags.append(f"concentrated_ownership={round(top_shareholder_owned, 2)}")
+    if executives:
+        governance_flags.append(f"executive_count={len(executives)}")
+    if invest_relations:
+        governance_flags.append(f"invest_relation_count={len(invest_relations)}")
+    if fund_holders:
+        governance_flags.append(f"fund_holder_count={len(fund_holders)}")
+    if constituent_samples:
+        governance_flags.append(f"index_membership_count={len(constituent_samples)}")
+    governance_summary_parts = [
+        clean_text(company.get("name")) or symbol,
+        f"industry={clean_text(company.get('industry')) or 'unavailable'}",
+    ]
+    if shareholders:
+        governance_summary_parts.append(f"top_holder={clean_text(top_shareholder.get('name') or top_shareholder.get('holder') or top_shareholder.get('symbol')) or 'unavailable'}")
+    if executives:
+        governance_summary_parts.append(f"executives={len(executives)}")
+    if invest_relations:
+        governance_summary_parts.append(f"invest_relations={len(invest_relations)}")
+    if constituent_samples:
+        governance_summary_parts.append(f"index_memberships={len(constituent_samples)}")
+    governance_structure = {
+        "summary": "; ".join(part for part in governance_summary_parts if part),
+        "executive_summary": [
+            {
+                "name": clean_text(item.get("name") or item.get("person_name")),
+                "title": clean_text(item.get("title") or item.get("role")),
+            }
+            for item in executives[:3]
+            if clean_text(item.get("name") or item.get("person_name"))
+        ],
+        "invest_relation_summary": [
+            {
+                "title": clean_text(item.get("title") or item.get("name")),
+                "published_at": clean_text(item.get("published_at") or item.get("publish_at")),
+                "url": clean_text(item.get("url")),
+            }
+            for item in invest_relations[:3]
+            if clean_text(item.get("title") or item.get("name"))
+        ],
+        "holder_summary": {
+            "top_shareholder": clean_text(top_shareholder.get("name") or top_shareholder.get("holder") or top_shareholder.get("symbol")),
+            "top_shareholder_owned": top_shareholder_owned if not math.isnan(top_shareholder_owned) else None,
+            "fund_holder_count": len(fund_holders),
+        },
+        "constituent_summary": {
+            "index_memberships": memberships,
+            "sample_count": len(constituent_samples),
+        },
+        "key_flags": governance_flags,
+        "governance_structure_score": round(max(min(score, 16.0), -8.0), 2),
+        "data_coverage": {
+            "executive_available": bool(executives) or not include_governance,
+            "invest_relation_available": bool(invest_relations) or not include_governance,
+            "company_available": bool(company),
+            "shareholder_available": bool(shareholders),
+            "fund_holder_available": bool(fund_holders),
+            "constituent_available": bool(constituent_samples),
+        },
+        "unavailable": [item for item in unavailable if item.get("command") in {"executive", "invest-relation"}] if include_governance else [],
+        "should_apply": False,
+        "side_effects": "none",
+    }
     return {
         "company": {
             "symbol": clean_text(company.get("symbol")) or symbol,
@@ -1551,7 +1668,8 @@ def fetch_theme_chain_analysis(
         "fund_holder_clues": fund_holders,
         "corp_action_risks": corp_actions,
         "theme_chain_score": round(max(min(score, 14.0), -8.0), 2),
-        "theme_rank_explanation": "Ranks higher when company basics are available, industry valuation is not stretched, and index/fund/shareholder links confirm the theme.",
+        "theme_rank_explanation": "Ranks higher when company basics are available, industry valuation is not stretched, and index/fund/shareholder or governance links confirm the theme.",
+        "governance_structure": governance_structure,
         "data_coverage": {
             "company_available": bool(company),
             "industry_valuation_available": bool(industry_valuation),
@@ -1559,6 +1677,9 @@ def fetch_theme_chain_analysis(
             "shareholder_available": bool(shareholders),
             "fund_holder_available": bool(fund_holders),
             "corp_action_available": bool(corp_actions) or not any(item.get("command") == "corp-action" for item in unavailable),
+            "executive_available": bool(executives) or not include_governance,
+            "invest_relation_available": bool(invest_relations) or not include_governance,
+            "governance_structure_available": include_governance,
         },
         "unavailable": unavailable,
         "should_apply": False,
@@ -1997,6 +2118,8 @@ def build_qualitative_evaluation(candidate: dict[str, Any]) -> dict[str, Any]:
     rating = valuation_layer.get("rating") if isinstance(valuation_layer.get("rating"), dict) else {}
     forecast = valuation_layer.get("forecast_eps") if isinstance(valuation_layer.get("forecast_eps"), dict) else {}
     consensus = valuation_layer.get("consensus") if isinstance(valuation_layer.get("consensus"), dict) else {}
+    theme_chain = candidate.get("theme_chain_analysis") if isinstance(candidate.get("theme_chain_analysis"), dict) else {}
+    governance = theme_chain.get("governance_structure") if isinstance(theme_chain.get("governance_structure"), dict) else {}
 
     net_income = numeric_field(report, "net_income", "profit", "net_profit", "netProfit")
     operating_cash_flow = numeric_field(
@@ -2063,6 +2186,12 @@ def build_qualitative_evaluation(candidate: dict[str, Any]) -> dict[str, Any]:
             f" Forecast EPS={forecast.get('forecast_eps_mean') if forecast else None}, "
             f"latest consensus period={consensus.get('latest_period') if consensus else ''}."
         )
+    governance_structure_summary = clean_text(governance.get("summary")) or "Governance and company-structure evidence was not requested or parsed."
+    governance_structure_flags = [
+        clean_text(item)
+        for item in (governance.get("key_flags") if isinstance(governance.get("key_flags"), list) else [])
+        if clean_text(item)
+    ][:5]
 
     key_risks: list[str] = []
     if has_profit_cashflow_divergence(candidate):
@@ -2073,6 +2202,8 @@ def build_qualitative_evaluation(candidate: dict[str, Any]) -> dict[str, Any]:
         key_risks.append("topic clarification or filing-event risk")
     if details_are_incomplete(candidate):
         key_risks.append("news or filing detail not fully parsed")
+    if any(flag.startswith("concentrated_ownership") for flag in governance_structure_flags):
+        key_risks.append("governance concentration risk")
     if not key_risks:
         key_risks.append("no major qualitative risk parsed from available Longbridge evidence")
 
@@ -2090,6 +2221,8 @@ def build_qualitative_evaluation(candidate: dict[str, Any]) -> dict[str, Any]:
         "rating_target_price_assessment": rating_target_price_assessment,
         "filing_event_summary": filing_event_summary,
         "research_or_topic_quality": research_or_topic_quality,
+        "governance_structure_summary": governance_structure_summary,
+        "governance_structure_flags": governance_structure_flags,
         "key_risks": key_risks,
         "qualitative_verdict": qualitative_verdict,
     }
@@ -2288,7 +2421,7 @@ def run_longbridge_screen(
             contribution = to_float(confirmation.get("short_term_confirmation_score"))
             candidate["workbench_score"] = round(score + (0.0 if math.isnan(contribution) else contribution), 2)
 
-    if "theme_chain" in analysis_layers:
+    if "theme_chain" in analysis_layers or "governance_structure" in analysis_layers:
         for candidate in ranked:
             chain = fetch_theme_chain_analysis(candidate, request, runner=runner, env=env)
             candidate["theme_chain_analysis"] = chain

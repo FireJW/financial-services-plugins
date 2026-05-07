@@ -18,9 +18,12 @@ For setup and authentication details, see [references/setup.md](references/setup
 
 When the user asks about stock performance, portfolio advice, or market analysis:
 
-1. **Get live data** via CLI — quotes, positions, K-line history, intraday
-2. **Get news/catalysts** via CLI — **prefer Longbridge first**; fall back to WebSearch only if insufficient
-3. **Combine** — price action + volume + catalyst → analysis + suggestion
+1. **Prefer the repo-native adaptive runner** when the request is analysis,
+   trading-plan generation, plan review, or portfolio inspection:
+   `financial-analysis/commands/longbridge-adaptive.md`.
+2. **Get live data** via CLI — quotes, positions, K-line history, intraday
+3. **Get news/catalysts** via CLI — **prefer Longbridge first**; fall back to WebSearch only if insufficient
+4. **Combine** — price action + volume + catalyst → analysis + suggestion
 
 ```bash
 # Market data
@@ -58,6 +61,12 @@ longbridge filing detail SYMBOL.US <id> --format json
 longbridge investors                # top active fund managers by AUM
 longbridge investors <CIK>          # holdings for a specific investor by CIK
 longbridge insider-trades SYMBOL.US # SEC Form 4 insider transaction history
+```
+
+For adaptive local workflows, use:
+
+```bash
+py financial-analysis/skills/longbridge/scripts/longbridge_adaptive_runner_runtime.py request.json --output result.json --markdown-output report.md
 ```
 
 For commands with complex flags, always run `longbridge <command> --help` for current options.

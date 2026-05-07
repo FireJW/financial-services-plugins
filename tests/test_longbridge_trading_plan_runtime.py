@@ -5,6 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 
+
 SCRIPT_DIR = (
     Path(__file__).resolve().parents[1]
     / "financial-analysis"

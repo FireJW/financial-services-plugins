@@ -11,7 +11,13 @@ or trading-account data.
 Native route:
 
 1. Read `financial-analysis/skills/longbridge/SKILL.md`.
-2. Prefer the Longbridge CLI for live data:
+2. When the user asks for analysis, trading plans, plan review, or portfolio
+   inspection and has not specified a lower-level helper, use
+   `financial-analysis/commands/longbridge-adaptive.md`. It infers the task,
+   runs the right read-only Longbridge layers, and combines existing
+   `longbridge-screen`, `longbridge-intraday-monitor`, and
+   `longbridge-trading-plan` artifacts.
+3. Prefer the Longbridge CLI for live data:
    - `longbridge quote <SYMBOL> --format json`
    - `longbridge intraday <SYMBOL> --format json`
    - `longbridge news <SYMBOL> --format json`
@@ -39,22 +45,22 @@ Native route:
    - `longbridge market-status --format json`
    - `longbridge trading session --format json`
    - `longbridge trading days MARKET --start YYYY-MM-DD --end YYYY-MM-DD --format json`
-3. Use `tradingagents-decision-bridge` with `analysis_profile =
+4. Use `tradingagents-decision-bridge` with `analysis_profile =
    longbridge_market` when the task should feed Longbridge market data into the
    local TradingAgents path.
-4. Use `month-end-shortlist` normally; its local market snapshot layer can now
+5. Use `month-end-shortlist` normally; its local market snapshot layer can now
    accept `longbridge_market` when Longbridge is authenticated.
-5. Use `financial-analysis/commands/longbridge-screen.md` when Longbridge
+6. Use `financial-analysis/commands/longbridge-screen.md` when Longbridge
    should rank a supplied watchlist as a screening-analysis tool. That screen
    combines market action with optional Longbridge catalyst evidence
    (`news`, `topic`, `filing`) and valuation/expectation evidence
    (`valuation`, `institution-rating`, `forecast-eps`, `consensus`), plus
    optional ownership-risk and quant-indicator layers.
-6. Use `financial-analysis/commands/longbridge-intraday-monitor.md` when the
+7. Use `financial-analysis/commands/longbridge-intraday-monitor.md` when the
    user already has plan trigger/stop levels and needs a read-only intraday
    status check against market status, trading day, capital flow, anomaly, and
    trade-stat evidence.
-7. Use `financial-analysis/commands/longbridge-trading-plan.md` when a
+8. Use `financial-analysis/commands/longbridge-trading-plan.md` when a
    Longbridge screen result should become a standardized Markdown/JSON
    premarket, intraday, or post-close handoff artifact.
 
@@ -85,6 +91,11 @@ Compatibility notes:
 - `longbridge-trading-plan` is a pure artifact builder around screen,
   intraday-monitor, and post-close actuals. It forces `should_apply: false`
   and `side_effects: "none"`.
+- `longbridge-adaptive` is the preferred high-level repo-native route for
+  user-facing stock analysis, trading-plan generation, plan review, and
+  portfolio readouts. It chooses the lower-level helpers automatically and
+  blocks order, DCA, statement export, watchlist mutation, alert mutation, and
+  sharelist mutation commands before execution.
 - `longbridge-action-gateway` remains the account-side action gate. Feed it a
   `longbridge-screen` result when watchlist or alert suggestions should become
   audited dry-run action plans.

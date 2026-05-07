@@ -7,9 +7,17 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+
 PLAN_SCHEMA_VERSION = "longbridge_trading_plan/v1"
 REVIEW_SCHEMA_VERSION = "longbridge_trading_plan_review/v1"
 VALID_SESSION_TYPES = {"premarket", "intraday", "postclose"}
+EVIDENCE_LAYER_KEYS = (
+    "account_review_plus",
+    "execution_preflight",
+    "derivative_event_risk",
+    "hk_microstructure",
+    "governance_structure",
+)
 
 
 def clean_text(value: Any) -> str:
@@ -85,7 +93,10 @@ def _position_guidance(candidate: dict[str, Any]) -> dict[str, Any]:
 
 
 def _force_dry_run_action_plan(plan: Any) -> dict[str, Any]:
-    cleaned = deepcopy(plan) if isinstance(plan, dict) else {"status": "dry_run", "actions": []}
+    if isinstance(plan, dict):
+        cleaned = deepcopy(plan)
+    else:
+        cleaned = {"status": "dry_run", "actions": []}
     cleaned["should_apply"] = False
     cleaned["side_effects"] = "none"
     actions = cleaned.get("actions") if isinstance(cleaned.get("actions"), list) else []
@@ -101,10 +112,11 @@ def _monitor_by_symbol(intraday_monitor_result: dict[str, Any] | None) -> dict[s
         return {}
     result: dict[str, dict[str, Any]] = {}
     for item in intraday_monitor_result.get("monitored_symbols") or []:
-        if isinstance(item, dict):
-            symbol = _candidate_symbol(item)
-            if symbol:
-                result[symbol] = item
+        if not isinstance(item, dict):
+            continue
+        symbol = _candidate_symbol(item)
+        if symbol:
+            result[symbol] = item
     return result
 
 
@@ -136,8 +148,7 @@ def _market_context(
     context = deepcopy(market_context) if isinstance(market_context, dict) else {}
     context.setdefault("source", "longbridge-screen")
     context.setdefault("analysis_layers", screen_result.get("analysis_layers") or [])
-    summary = screen_result.get("summary") if isinstance(screen_result.get("summary"), dict) else {}
-    context.setdefault("summary", deepcopy(summary))
+    context.setdefault("summary", deepcopy(screen_result.get("summary") if isinstance(screen_result.get("summary"), dict) else {}))
     if isinstance(intraday_monitor_result, dict):
         monitored = [
             _candidate_symbol(item)
@@ -150,10 +161,18 @@ def _market_context(
     return context
 
 
-def _build_candidate_entry(candidate: dict[str, Any], *, rank: int, monitor: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def _build_candidate_entry(
+    candidate: dict[str, Any],
+    *,
+    rank: int,
+    monitor: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     symbol = _candidate_symbol(candidate)
     qualitative = candidate.get("qualitative_evaluation") if isinstance(candidate.get("qualitative_evaluation"), dict) else {}
-    tracking = candidate.get("tracking_plan") if isinstance(candidate.get("tracking_plan"), dict) else {}
+    for key in EVIDENCE_LAYER_KEYS:
+        value = candidate.get(key)
+        if isinstance(value, dict):
+            qualitative[key] = deepcopy(value)
     entry = {
         "rank": rank,
         "symbol": symbol,
@@ -161,23 +180,29 @@ def _build_candidate_entry(candidate: dict[str, Any], *, rank: int, monitor: dic
         "signal": clean_text(candidate.get("signal")),
         "scores": _score_block(candidate),
         "levels": _level_block(candidate),
-        "tracking_bucket": clean_text(tracking.get("suggested_watchlist_bucket")),
+        "tracking_bucket": clean_text((candidate.get("tracking_plan") or {}).get("suggested_watchlist_bucket"))
+        if isinstance(candidate.get("tracking_plan"), dict)
+        else "",
         "qualitative_evidence": deepcopy(qualitative),
         "risk_flags": _candidate_risk_flags(candidate),
         "should_apply": False,
         "side_effects": "none",
     }
+    for key in EVIDENCE_LAYER_KEYS:
+        value = candidate.get(key)
+        if isinstance(value, dict):
+            entry[key] = deepcopy(value)
     confirmation = _intraday_confirmation(symbol, monitor)
     if confirmation:
         entry["intraday_confirmation"] = confirmation
     return entry
 
 
-def _build_trigger_plan(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for item in candidates:
+def _build_trigger_plan(candidate_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    plan = []
+    for item in candidate_entries:
         levels = item.get("levels") if isinstance(item.get("levels"), dict) else {}
-        rows.append(
+        plan.append(
             {
                 "symbol": item.get("symbol"),
                 "trigger_price": levels.get("trigger_price"),
@@ -197,14 +222,14 @@ def _build_trigger_plan(candidates: list[dict[str, Any]]) -> list[dict[str, Any]
                 "side_effects": "none",
             }
         )
-    return rows
+    return plan
 
 
-def _build_invalidation_plan(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for item in candidates:
+def _build_invalidation_plan(candidate_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    plan = []
+    for item in candidate_entries:
         levels = item.get("levels") if isinstance(item.get("levels"), dict) else {}
-        rows.append(
+        plan.append(
             {
                 "symbol": item.get("symbol"),
                 "stop_loss": levels.get("stop_loss"),
@@ -219,7 +244,7 @@ def _build_invalidation_plan(candidates: list[dict[str, Any]]) -> list[dict[str,
                 "side_effects": "none",
             }
         )
-    return rows
+    return plan
 
 
 def build_trading_plan_report(
@@ -230,7 +255,12 @@ def build_trading_plan_report(
     market_context: dict[str, Any] | None = None,
     intraday_monitor_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a reusable plan handoff without account-side writes."""
+    """Build a reusable Longbridge trading-plan handoff report.
+
+    The function is a pure transformer: it does not call Longbridge, mutate
+    watchlists or alerts, submit orders, or run DCA.
+    """
+    normalized_session = normalize_session_type(session_type)
     request = screen_result.get("request") if isinstance(screen_result.get("request"), dict) else {}
     report_date = clean_text(plan_date) or clean_text(screen_result.get("analysis_date")) or clean_text(request.get("analysis_date"))
     monitor = _monitor_by_symbol(intraday_monitor_result)
@@ -238,6 +268,13 @@ def build_trading_plan_report(
     candidates = [
         _build_candidate_entry(candidate, rank=index + 1, monitor=monitor)
         for index, candidate in enumerate(raw_candidates)
+    ]
+    qualitative_evidence = [
+        {
+            "symbol": item.get("symbol"),
+            "qualitative_evidence": deepcopy(item.get("qualitative_evidence") or {}),
+        }
+        for item in candidates
     ]
     missed = deepcopy(screen_result.get("missed_attention_priorities") or screen_result.get("key_omissions") or [])
     risk_flags = sorted(
@@ -256,7 +293,7 @@ def build_trading_plan_report(
     return {
         "schema_version": PLAN_SCHEMA_VERSION,
         "plan_date": report_date,
-        "session_type": normalize_session_type(session_type),
+        "session_type": normalized_session,
         "market_context": _market_context(
             screen_result,
             market_context=market_context,
@@ -271,10 +308,7 @@ def build_trading_plan_report(
             "account_write_allowed": False,
             "order_allowed": False,
         },
-        "qualitative_evidence": [
-            {"symbol": item.get("symbol"), "qualitative_evidence": deepcopy(item.get("qualitative_evidence") or {})}
-            for item in candidates
-        ],
+        "qualitative_evidence": qualitative_evidence,
         "risk_flags": risk_flags,
         "missed_attention_priorities": missed,
         "dry_run_action_plan": _force_dry_run_action_plan(screen_result.get("dry_run_action_plan")),
@@ -306,17 +340,18 @@ def _actual_prices_by_symbol(actuals: dict[str, Any]) -> dict[str, dict[str, Any
     raw: Any = actuals.get("prices")
     if raw is None:
         raw = actuals.get("actual_prices") or actuals.get("candidates") or actuals.get("items")
-    if raw is None and actuals and all(isinstance(value, dict) for value in actuals.values()):
+    if raw is None and all(isinstance(value, dict) for value in actuals.values()):
         raw = actuals
     if isinstance(raw, dict):
         return {clean_text(symbol): value for symbol, value in raw.items() if clean_text(symbol) and isinstance(value, dict)}
     if isinstance(raw, list):
         result: dict[str, dict[str, Any]] = {}
         for item in raw:
-            if isinstance(item, dict):
-                symbol = _candidate_symbol(item)
-                if symbol:
-                    result[symbol] = item
+            if not isinstance(item, dict):
+                continue
+            symbol = _candidate_symbol(item)
+            if symbol:
+                result[symbol] = item
         return result
     return {}
 
@@ -557,6 +592,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         raise SystemExit("--screen-result or --plan-json is required")
+
     if args.session_type == "postclose":
         actuals = load_json(Path(args.actuals)) if args.actuals else {}
         output = build_postclose_review(plan, actuals)
@@ -564,6 +600,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         output = plan
         markdown = build_trading_plan_markdown(plan)
+
     payload = json.dumps(output, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         Path(args.output).write_text(payload, encoding="utf-8")

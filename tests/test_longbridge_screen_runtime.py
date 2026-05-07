@@ -640,6 +640,8 @@ class LongbridgeScreenRuntimeTests(unittest.TestCase):
                 "rating_target_price_assessment",
                 "filing_event_summary",
                 "research_or_topic_quality",
+                "governance_structure_summary",
+                "governance_structure_flags",
                 "key_risks",
                 "qualitative_verdict",
             },
