@@ -96,3 +96,10 @@ Verification:
 - Check CLI auth with `longbridge auth status --format json`.
 - Check connectivity with `longbridge check --format json`.
 - For a quick smoke test, run `longbridge quote AAPL.US --format json`.
+- In Codex on Windows, do not conclude Longbridge is unauthenticated from a
+  sandboxed `Not authenticated` result alone. Unapproved commands may resolve
+  the token path under `C:\Users\CodexSandboxOffline\.longbridge` instead of
+  the user's real `C:\Users\rickylu\.longbridge` directory. If `auth status` or
+  `check` is inconsistent with `quote`, rerun the required Longbridge command
+  with approved/escalated execution in the real user environment before falling
+  back to non-Longbridge sources or reporting an auth blocker.
