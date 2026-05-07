@@ -33,6 +33,9 @@ Default routing:
    - Screen-native evidence such as `account_state`, `account_health`, and
      `quant_analysis` is also promoted from `outputs.screen_result` to stable
      top-level `outputs` keys when those layers are selected.
+   - Read-only `subscriptions` and `sharelist` evidence is exposed as
+     `outputs.subscription_sharelist_state` when the prompt asks for active
+     real-time subscriptions, community lists, or popular sharelists.
 
 Prompt-to-layer hints:
 
@@ -61,6 +64,9 @@ Prompt-to-layer hints:
 - `brokers`, `broker-holding`, `ah-premium`, `participants`, `港股`, `AH`:
   HK-microstructure layer.
 - `quant`, `RSI`, `MACD`, `technical indicator`: quant layer.
+- `subscriptions`, `WebSocket subscriptions`, `sharelist`, `popular sharelist`,
+  `community stock list`, `实时订阅`, `共享列表`, `社区股票列表`: subscription-sharelist
+  layer.
 
 Example local runs:
 
@@ -97,13 +103,15 @@ Explicit request:
 Side-effect boundary:
 
 - The adaptive runner never submits orders, runs DCA, exports statements to
-  files, mutates watchlists, or mutates alerts.
+  files, mutates watchlists, mutates alerts, or mutates sharelists.
 - `order buy/sell/cancel/replace`, `dca`, and `statement export` are blocked by
   `build_safe_longbridge_runner()` before the CLI call is made.
+- Watchlist/sharelist mutation commands such as `watchlist pin` and
+  `sharelist sort` are also blocked by the safety runner.
 - `portfolio`, `assets`, `positions`, `statement list`, and other read-only
   diagnostics may be used only when the inferred task asks for them.
 - `account_review_plus`, `execution_preflight`, `derivative_event_risk`,
-  `hk_microstructure`, and `governance_structure` remain read-only evidence
-  layers only.
+  `hk_microstructure`, `governance_structure`, and `subscription_sharelist`
+  remain read-only evidence layers only.
 - Any future real account write must still go through `longbridge-action-gateway`
   and the explicit confirmation gate documented there.

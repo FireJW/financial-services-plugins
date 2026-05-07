@@ -94,8 +94,8 @@ Compatibility notes:
 - `longbridge-adaptive` is the preferred high-level repo-native route for
   user-facing stock analysis, trading-plan generation, plan review, and
   portfolio readouts. It chooses the lower-level helpers automatically and
-  blocks order, DCA, statement export, watchlist mutation, and alert mutation
-  commands before execution.
+  blocks order, DCA, statement export, watchlist mutation, alert mutation, and
+  sharelist mutation commands before execution.
 - `longbridge-action-gateway` remains the account-side action gate. Feed it a
   `longbridge-screen` result when watchlist or alert suggestions should become
   audited dry-run action plans.

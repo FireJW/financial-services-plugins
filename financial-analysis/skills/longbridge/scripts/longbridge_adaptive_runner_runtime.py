@@ -64,6 +64,7 @@ LAYER_ORDER = [
     "hk_microstructure",
     "quant",
     "watchlist_alert",
+    "subscription_sharelist",
 ]
 PLAN_EVIDENCE_LAYER_KEYS = (
     "account_review_plus",
@@ -81,10 +82,13 @@ WRITE_RISK_GENERIC_OPERATIONS = {
     "delete",
     "disable",
     "enable",
+    "pin",
     "remove",
     "remove-stock",
     "replace",
     "set",
+    "sort",
+    "unpin",
     "update",
 }
 
@@ -165,6 +169,8 @@ def infer_analysis_layers(request: dict[str, Any], *, task_type: str) -> list[st
             normalized.add("hk_microstructure")
         if normalized & {"governance", "governance_structure", "executive", "executives", "management", "invest_relation", "invest-relation", "fund_exposure", "control_structure"}:
             normalized.add("governance_structure")
+        if normalized & {"subscription", "subscriptions", "sharelist", "sharelists", "subscription_sharelist", "sharelist_subscription"}:
+            normalized.add("subscription_sharelist")
         return [item for item in LAYER_ORDER if item in normalized]
 
     prompt = clean_text(request.get("prompt") or request.get("query") or request.get("task"))
@@ -295,6 +301,24 @@ def infer_analysis_layers(request: dict[str, Any], *, task_type: str) -> list[st
         layers.add("quant")
     if _text_has_any(prompt, ("watchlist", "alert", "观察池", "提醒")):
         layers.add("watchlist_alert")
+    if _text_has_any(
+        prompt,
+        (
+            "subscription",
+            "subscriptions",
+            "websocket subscription",
+            "sharelist",
+            "share list",
+            "popular sharelist",
+            "community stock list",
+            "实时订阅",
+            "订阅",
+            "共享列表",
+            "社区股票列表",
+            "热门社区",
+        ),
+    ):
+        layers.add("subscription_sharelist")
     return [layer for layer in LAYER_ORDER if layer in layers]
 
 
@@ -568,6 +592,101 @@ def _fetch_account_review_plus(
         "should_apply": False,
         "side_effects": "none",
     }
+
+
+def _items_from_payload(payload: Any) -> list[Any]:
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("items", "sharelists", "lists", "data"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
+def _sharelist_ids_from_payload(payload: Any, *, limit: int) -> list[str]:
+    ids: list[str] = []
+    for item in _items_from_payload(payload):
+        if not isinstance(item, dict):
+            continue
+        sharelist_id = clean_text(item.get("id") or item.get("sharelist_id") or item.get("list_id"))
+        if sharelist_id and sharelist_id not in ids:
+            ids.append(sharelist_id)
+        if len(ids) >= limit:
+            break
+    return ids
+
+
+def _fetch_subscription_sharelist_state(
+    inferred: dict[str, Any],
+    *,
+    runner: CommandRunner,
+    env: dict[str, str] | None,
+) -> dict[str, Any]:
+    sharelist_count = max(1, min(_to_int(inferred.get("sharelist_count"), 20), 100))
+    popular_count = max(1, min(_to_int(inferred.get("sharelist_popular_count"), 10), 100))
+    detail_limit = max(0, min(_to_int(inferred.get("sharelist_detail_limit"), 0), 20))
+    unavailable: list[dict[str, str]] = []
+
+    subscriptions = _optional_account_payload(["subscriptions", "--format", "json"], runner=runner, env=env, unavailable=unavailable)
+    sharelists = _optional_account_payload(
+        ["sharelist", "--count", str(sharelist_count), "--format", "json"],
+        runner=runner,
+        env=env,
+        unavailable=unavailable,
+    )
+    popular_sharelists = _optional_account_payload(
+        ["sharelist", "popular", "--count", str(popular_count), "--format", "json"],
+        runner=runner,
+        env=env,
+        unavailable=unavailable,
+    )
+    sharelist_details: list[Any] = []
+    for sharelist_id in _sharelist_ids_from_payload(sharelists, limit=detail_limit):
+        detail = _optional_account_payload(
+            ["sharelist", "detail", sharelist_id, "--format", "json"],
+            runner=runner,
+            env=env,
+            unavailable=unavailable,
+        )
+        _extend_list_payload(sharelist_details, detail)
+
+    return {
+        "sharelist_count": sharelist_count,
+        "sharelist_popular_count": popular_count,
+        "sharelist_detail_limit": detail_limit,
+        "subscriptions": subscriptions,
+        "sharelists": sharelists,
+        "popular_sharelists": popular_sharelists,
+        "sharelist_details": sharelist_details,
+        "data_coverage": {
+            "subscriptions_available": subscriptions is not None,
+            "sharelists_available": sharelists is not None,
+            "popular_sharelists_available": popular_sharelists is not None,
+            "sharelist_details_available": bool(sharelist_details),
+        },
+        "unavailable": unavailable,
+        "should_apply": False,
+        "side_effects": "none",
+    }
+
+
+def _append_subscription_sharelist_state(
+    result: dict[str, Any],
+    inferred: dict[str, Any],
+    *,
+    runner: CommandRunner,
+    env: dict[str, str] | None,
+) -> None:
+    if not _has_analysis_layer(inferred, "subscription_sharelist"):
+        return
+    state = _fetch_subscription_sharelist_state(inferred, runner=runner, env=env)
+    result["workflow_steps"].append("longbridge subscription-sharelist")
+    result["outputs"]["subscription_sharelist_state"] = state
+    screen_result = result["outputs"].get("screen_result")
+    if isinstance(screen_result, dict):
+        screen_result["subscription_sharelist_state"] = state
 
 
 def _market_from_symbol(symbol: str, fallback_market: str = "") -> str:
@@ -1166,6 +1285,7 @@ def run_longbridge_adaptive_task(
                 runner=safe_runner,
                 env=env,
             )
+        _append_subscription_sharelist_state(result, inferred, runner=safe_runner, env=env)
         return result
 
     if task_type == "review":
@@ -1207,12 +1327,14 @@ def run_longbridge_adaptive_task(
         result["workflow_steps"].append("longbridge-trading-plan review")
         result["outputs"]["postclose_review"] = review
         result["outputs"]["actuals"] = actuals
+        _append_subscription_sharelist_state(result, inferred, runner=safe_runner, env=env)
         return result
 
     screen_result = _run_screen(inferred, runner=safe_runner, env=env)
     result["workflow_steps"].append("longbridge-screen")
     result["outputs"]["screen_result"] = screen_result
     _promote_screen_outputs(result, screen_result)
+    _append_subscription_sharelist_state(result, inferred, runner=safe_runner, env=env)
 
     if _has_analysis_layer(inferred, "governance_structure"):
         governance_structure = _collect_governance_structure(screen_result)
@@ -1330,6 +1452,18 @@ def build_adaptive_markdown(result: dict[str, Any]) -> str:
                 f"- data_coverage: `{json.dumps(review_plus.get('data_coverage') or {}, ensure_ascii=False, sort_keys=True)}`",
                 f"- should_apply: `{str(bool(review_plus.get('should_apply'))).lower()}`",
                 f"- side_effects: `{clean_text(review_plus.get('side_effects'))}`",
+                "",
+            ]
+        )
+    if isinstance(outputs.get("subscription_sharelist_state"), dict):
+        state = outputs["subscription_sharelist_state"]
+        lines.extend(
+            [
+                "## Subscription And Sharelist State",
+                "",
+                f"- data_coverage: `{json.dumps(state.get('data_coverage') or {}, ensure_ascii=False, sort_keys=True)}`",
+                f"- should_apply: `{str(bool(state.get('should_apply'))).lower()}`",
+                f"- side_effects: `{clean_text(state.get('side_effects'))}`",
                 "",
             ]
         )

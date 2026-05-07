@@ -167,10 +167,18 @@ class RecordingLongbridgeRunner:
             return {"total_volume": "2000", "dominant_price": "251.00"}
         if command == "market-temp":
             return {"market": "US", "temperature": 72}
+        if command == "subscriptions":
+            return [{"symbol": "NVDA.US", "sub_types": ["quote"], "candlesticks": ["1m"]}]
         if command == "watchlist":
             return [{"id": "ai", "name": "AI Watch", "securities": []}]
         if command == "alert":
             return [{"id": "a1", "symbol": "NVDA.US", "price": "248.00", "direction": "above", "enabled": False}]
+        if command == "sharelist":
+            if args[1:2] == ["popular"]:
+                return [{"id": "popular-ai", "name": "Popular AI", "securities": ["NVDA.US", "AAPL.US"]}]
+            if args[1:2] == ["detail"]:
+                return {"id": args[2], "name": "AI Watch", "securities": ["NVDA.US"]}
+            return [{"id": "list-ai", "name": "AI Watch", "securities": ["NVDA.US"]}]
         if command == "portfolio":
             return {"overview": {"total_asset": "100000", "total_pl": "1200"}}
         if command == "assets":
@@ -289,6 +297,16 @@ class LongbridgeAdaptiveRunnerRuntimeTests(unittest.TestCase):
         self.assertIn("hk_microstructure", inferred["analysis_layers"])
         self.assertNotIn("portfolio", inferred["analysis_layers"])
 
+    def test_infers_subscription_sharelist_layer_from_prompt_aliases(self) -> None:
+        inferred = infer_adaptive_request(
+            {
+                "prompt": "检查 NVDA.US 的 WebSocket subscriptions、sharelist 和热门社区股票列表",
+                "tickers": ["NVDA.US"],
+            }
+        )
+
+        self.assertIn("subscription_sharelist", inferred["analysis_layers"])
+
     def test_stock_analysis_runs_adapted_longbridge_screen(self) -> None:
         runner = RecordingLongbridgeRunner()
 
@@ -371,6 +389,34 @@ class LongbridgeAdaptiveRunnerRuntimeTests(unittest.TestCase):
         self.assertFalse(quant["should_apply"])
         self.assertEqual(quant["side_effects"], "none")
         self.assertTrue(any(call[:3] == ["quant", "run", "NVDA.US"] for call in runner.calls))
+
+    def test_stock_analysis_runs_subscription_sharelist_state_read_only(self) -> None:
+        runner = RecordingLongbridgeRunner()
+
+        result = run_longbridge_adaptive_task(
+            {
+                "task_type": "stock_analysis",
+                "tickers": ["NVDA.US"],
+                "analysis_layers": ["subscription_sharelist"],
+                "sharelist_count": 5,
+                "sharelist_popular_count": 2,
+                "sharelist_detail_limit": 1,
+            },
+            runner=runner,
+        )
+
+        self.assertIn("longbridge subscription-sharelist", result["workflow_steps"])
+        state = result["outputs"]["subscription_sharelist_state"]
+        self.assertTrue(state["data_coverage"]["subscriptions_available"])
+        self.assertTrue(state["data_coverage"]["sharelists_available"])
+        self.assertTrue(state["data_coverage"]["popular_sharelists_available"])
+        self.assertTrue(state["data_coverage"]["sharelist_details_available"])
+        self.assertFalse(state["should_apply"])
+        self.assertEqual(state["side_effects"], "none")
+        self.assertIn(["subscriptions", "--format", "json"], runner.calls)
+        self.assertIn(["sharelist", "--count", "5", "--format", "json"], runner.calls)
+        self.assertIn(["sharelist", "popular", "--count", "2", "--format", "json"], runner.calls)
+        self.assertIn(["sharelist", "detail", "list-ai", "--format", "json"], runner.calls)
 
     def test_trading_plan_combines_screen_and_plan_artifact(self) -> None:
         runner = RecordingLongbridgeRunner()
@@ -733,9 +779,13 @@ class LongbridgeAdaptiveRunnerRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "blocked write-risk Longbridge command"):
             runner(["watchlist", "add", "NVDA.US"], None, 20)
         with self.assertRaisesRegex(RuntimeError, "blocked write-risk Longbridge command"):
+            runner(["watchlist", "pin", "group-id", "NVDA.US"], None, 20)
+        with self.assertRaisesRegex(RuntimeError, "blocked write-risk Longbridge command"):
             runner(["alert", "remove", "alert-id"], None, 20)
         with self.assertRaisesRegex(RuntimeError, "blocked write-risk Longbridge command"):
             runner(["sharelist", "update", "list-id"], None, 20)
+        with self.assertRaisesRegex(RuntimeError, "blocked write-risk Longbridge command"):
+            runner(["sharelist", "sort", "list-id", "NVDA.US"], None, 20)
 
 
 if __name__ == "__main__":
