@@ -6,6 +6,7 @@
   "description": "Codex-to-Obsidian CLI control plane for a local knowledge base vault.",
   "scripts": {
     "doctor": "node scripts/doctor.mjs",
+    "doctor:probe": "node scripts/doctor.mjs --probe-provider",
     "bootstrap-vault": "node scripts/bootstrap-vault.mjs",
     "write-smoke": "node scripts/write-smoke.mjs",
     "obsidian": "node scripts/obsidian.mjs",

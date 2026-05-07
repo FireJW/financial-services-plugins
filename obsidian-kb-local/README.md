@@ -131,11 +131,17 @@ node scripts/verify-codex-thread-capture.mjs --thread-id "019d4cbd-823e-7ec2-8dd
 node scripts/reconcile-codex-thread-capture.mjs --output-dir ".tmp-codex-thread-reconcile-smoke" --thread-id "019d4cbd-823e-7ec2-8dd6-cfbd0b7232ab" --thread-id "019d-missing-demo-thread" --topic "历史 Codex 线程补录" --title-prefix "待补录线程"
 ```
 
+`init-codex-thread-batch.mjs` reads `$CODEX_HOME/session_index.jsonl` by
+default, or a specific file via `--session-index <path>`. When a thread id has a
+`thread_name`, the generated manifest keeps `thread_name` and uses it in the
+default title and body template.
+
 The manifest supports:
 
 - inline `body`
 - relative `body_file`
 - `thread_uri` or `thread_id`
+- optional `thread_name`
 - per-entry `compile` overrides
 
 The verifier reports whether each thread has:
