@@ -1,74 +1,146 @@
 import fs from "node:fs";
 import { loadConfig } from "../src/config.mjs";
-import { loadCodexLlmProvider, summarizeLlmProvider } from "../src/codex-config.mjs";
+import { isCliEntrypoint } from "../src/cli-entrypoint.mjs";
+import {
+  describeCodexProviderRoute,
+  formatCodexProviderRouteDetail,
+  loadCodexLlmProvider,
+  summarizeLlmProvider
+} from "../src/codex-config.mjs";
 import { resolveObsidianEnvironment } from "../src/obsidian-cli.mjs";
 
-const config = loadConfig();
-const env = resolveObsidianEnvironment(config);
-const providerCheck = resolveProviderCheck();
+export { describeCodexProviderRoute as describeProviderRoute };
 
-const checks = [
-  {
-    label: "Vault path exists",
-    ok: fs.existsSync(config.vaultPath),
-    detail: config.vaultPath
-  },
-  {
-    label: "Machine root configured",
-    ok: typeof config.machineRoot === "string" && config.machineRoot.length > 0,
-    detail: config.machineRoot
-  },
-  {
-    label: "Desktop app candidate configured",
-    ok: Boolean(env.exePath),
-    detail: env.exePath ?? "not configured"
-  },
-  {
-    label: "Obsidian command entrypoint",
-    ok: Boolean(env.cliCommand),
-    detail: formatCliDetail(env)
-  },
-  {
-    label: "Codex LLM provider ready",
-    ok: providerCheck.ok,
-    detail: providerCheck.detail
-  }
-];
-
-console.log("Obsidian KB Local doctor\n");
-for (const check of checks) {
-  console.log(`[${check.ok ? "OK" : "FAIL"}] ${check.label}: ${check.detail}`);
+export function parseDoctorArgs(args = []) {
+  return {
+    json: args.includes("--json"),
+    probeProvider: args.includes("--probe-provider"),
+    timeoutMs: normalizePositiveInteger(getArgFrom(args, "timeout-ms"), 240000)
+  };
 }
 
-if (!env.cliCommand) {
-  if (env.exePath) {
-    console.log("\nNote:");
-    console.log("Desktop app path is configured. The remaining blocker is command entrypoint detection.");
-  }
-
-  console.log("\nNext step:");
-  console.log("1. 打开 Obsidian");
-  console.log("2. 进入 Settings -> General");
-  console.log("3. 启用并注册 Command line interface");
-  console.log("4. 重新打开终端，再运行 cmd /c npm run doctor");
+export function buildDoctorChecks(config = loadConfig()) {
+  const env = resolveObsidianEnvironment(config);
+  const providerCheck = resolveProviderCheck();
+  return {
+    env,
+    checks: [
+      {
+        label: "Vault path exists",
+        ok: fs.existsSync(config.vaultPath),
+        detail: config.vaultPath
+      },
+      {
+        label: "Machine root configured",
+        ok: typeof config.machineRoot === "string" && config.machineRoot.length > 0,
+        detail: config.machineRoot
+      },
+      {
+        label: "Desktop app candidate configured",
+        ok: Boolean(env.exePath),
+        detail: env.exePath ?? "not configured"
+      },
+      {
+        label: "Obsidian command entrypoint",
+        ok: Boolean(env.cliCommand),
+        detail: formatCliDetail(env)
+      },
+      {
+        label: "Codex LLM provider ready",
+        ok: providerCheck.ok,
+        detail: providerCheck.detail
+      }
+    ]
+  };
 }
 
-const failed = checks.some((check) => !check.ok);
-process.exit(failed ? 1 : 0);
+export function runDoctor(options = {}) {
+  const config = options.config || loadConfig();
+  const writer = options.writer || console;
+  const { env, checks } = buildDoctorChecks(config);
+
+  writer.log("Obsidian KB Local doctor\n");
+  for (const check of checks) {
+    writer.log(`[${check.ok ? "OK" : "FAIL"}] ${check.label}: ${check.detail}`);
+  }
+
+  if (!env.cliCommand) {
+    if (env.exePath) {
+      writer.log("\nNote:");
+      writer.log("Desktop app path is configured. The remaining blocker is command entrypoint detection.");
+    }
+
+    writer.log("\nNext step:");
+    writer.log("1. 打开 Obsidian");
+    writer.log("2. 进入 Settings -> General");
+    writer.log("3. 启用并注册 Command line interface");
+    writer.log("4. 重新打开终端，再运行 cmd /c npm run doctor");
+  }
+
+  return {
+    ok: !checks.some((check) => !check.ok),
+    checks
+  };
+}
+
+export async function runDoctorCli(args = process.argv.slice(2), runtime = {}) {
+  const parsed = parseDoctorArgs(args);
+  const writer = runtime.writer || console;
+
+  if (args.includes("--help") || args.includes("-h")) {
+    printUsage(writer);
+    return 0;
+  }
+
+  if (parsed.probeProvider) {
+    try {
+      const { runCompileSourceProviderProbe } = await import("./compile-source.mjs");
+      const config = runtime.config || loadConfig();
+      await runCompileSourceProviderProbe(config, {
+        writer,
+        timeoutMs: parsed.timeoutMs
+      });
+      return 0;
+    } catch (error) {
+      writer.error?.(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
+
+  if (parsed.json) {
+    const config = runtime.config || loadConfig();
+    const result = buildDoctorChecks(config);
+    const ok = !result.checks.some((check) => !check.ok);
+    writer.log(JSON.stringify({ ok, env: result.env, checks: result.checks }, null, 2));
+    return ok ? 0 : 1;
+  }
+
+  const result = runDoctor({ ...runtime, writer });
+  return result.ok ? 0 : 1;
+}
+
+function printUsage(writer = console.error) {
+  const write =
+    typeof writer === "function"
+      ? writer
+      : writer?.error?.bind(writer) || writer?.log?.bind(writer) || console.error;
+  write("Usage: node scripts/doctor.mjs [--json] [--probe-provider] [--timeout-ms <ms>]");
+}
+
+if (isCliEntrypoint(import.meta.url)) {
+  const exitCode = await runDoctorCli();
+  process.exit(exitCode);
+}
 
 function resolveProviderCheck() {
   try {
     const provider = loadCodexLlmProvider({
       requireApiKey: false
     });
-    const keyState = provider.requiresOpenAiAuth
-      ? provider.apiKey
-        ? "api-key:present"
-        : "api-key:missing"
-      : "api-key:not-required";
+    const route = describeCodexProviderRoute(provider);
     return {
-      ok: provider.requiresOpenAiAuth ? Boolean(provider.apiKey) : true,
-      detail: `${summarizeLlmProvider(provider)} (${keyState})`
+      ok: route.ok,
+      detail: formatCodexProviderRouteDetail(provider)
     };
   } catch (error) {
     return {
@@ -96,4 +168,17 @@ function formatCliDetail(env) {
   }
 
   return env.cliCommand;
+}
+
+function getArgFrom(args, name) {
+  const index = args.indexOf(`--${name}`);
+  if (index === -1 || index + 1 >= args.length) {
+    return undefined;
+  }
+  return args[index + 1];
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }

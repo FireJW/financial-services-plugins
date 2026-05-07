@@ -187,6 +187,7 @@ import {
 } from "../scripts/prune-codex-thread-audit-logs.mjs";
 import {
   buildCodexThreadBatchInitPlan,
+  loadCodexThreadNameIndex,
   parseInitCodexThreadBatchArgs,
   parseThreadsFromText,
   runInitCodexThreadBatch
@@ -271,6 +272,50 @@ run("compile-source parser recognizes provider-only probe mode", () => {
   assert.equal(parsed.compileTimeoutMs, 250000);
   assert.equal(parsed.topic, null);
   assert.equal(parsed.file, null);
+});
+
+run("cli entrypoint detection accepts Windows argv paths", async () => {
+  const { isCliEntrypoint } = await import("../src/cli-entrypoint.mjs");
+  assert.equal(
+    isCliEntrypoint(
+      "file:///D:/repo/obsidian-kb-local/scripts/doctor.mjs",
+      "D:\\repo\\obsidian-kb-local\\scripts\\doctor.mjs"
+    ),
+    true
+  );
+  assert.equal(
+    isCliEntrypoint(
+      "file:///D:/repo/obsidian-kb-local/scripts/doctor.mjs",
+      "D:\\repo\\obsidian-kb-local\\scripts\\query-wiki.mjs"
+    ),
+    false
+  );
+  assert.equal(isCliEntrypoint("file:///D:/repo/script.mjs", ""), false);
+});
+
+run("package exposes documented doctor provider probe script", async () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), "obsidian-kb-local", "package.json"), "utf8")
+  );
+  assert.equal(packageJson.scripts["doctor:probe"], "node scripts/doctor.mjs --probe-provider");
+});
+
+run("cli help entrypoints print usage without loading runtime config", async () => {
+  const { runCompileSourceCli } = await import("../scripts/compile-source.mjs");
+  const { runQueryWikiCli } = await import("../scripts/query-wiki.mjs");
+  const { runQueryWikiBatchCli } = await import("../scripts/query-wiki-batch.mjs");
+
+  const compileHelp = captureWriter();
+  assert.equal(await runCompileSourceCli(["--help"], { writer: compileHelp.writer }), 0);
+  assert.match(compileHelp.output(), /Usage: node scripts\/compile-source\.mjs/);
+
+  const queryHelp = captureWriter();
+  assert.equal(await runQueryWikiCli(["--help"], { writer: queryHelp.writer }), 0);
+  assert.match(queryHelp.output(), /Usage: node scripts\/query-wiki\.mjs/);
+
+  const batchHelp = captureWriter();
+  assert.equal(await runQueryWikiBatchCli(["--help"], { writer: batchHelp.writer }), 0);
+  assert.match(batchHelp.output(), /Usage: node scripts\/query-wiki-batch\.mjs/);
 });
 
 run("codex thread uri normalizer accepts explicit uri and thread id", () => {
@@ -382,6 +427,7 @@ run("capture-codex-thread-batch parser recognizes manifest and fail-fast mode", 
     "--manifest",
     "examples/codex-thread-batch.template.json",
     "--compile",
+    "--dry-run",
     "--fail-fast",
     "--timeout-ms",
     "240000"
@@ -389,6 +435,7 @@ run("capture-codex-thread-batch parser recognizes manifest and fail-fast mode", 
 
   assert.match(parsed.manifestPath, /codex-thread-batch\.template\.json$/);
   assert.equal(parsed.compile, true);
+  assert.equal(parsed.dryRun, true);
   assert.equal(parsed.continueOnError, false);
   assert.equal(parsed.timeoutMs, 240000);
 });
@@ -478,6 +525,51 @@ run("init-codex-thread-batch plan creates manifest entries and body templates", 
     assert.equal(plan.manifest.defaults.compile, true);
     assert.equal(plan.manifest.entries[0].topic, "鎵归噺娌夋穩");
     assert.match(plan.entries[0].bodyPath, /bodies/);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+run("init-codex-thread-batch uses session_index thread names", () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-init-codex-thread-batch-name-"));
+
+  try {
+    const sessionIndexPath = path.join(tempRoot, "session_index.jsonl");
+    fs.writeFileSync(
+      sessionIndexPath,
+      [
+        JSON.stringify({
+          id: "019dfe10-7cc1-71b1-b507-a7674a74aa68",
+          thread_name: "multi platform handoff",
+          updated_at: "2026-05-06T16:13:24.7392599Z"
+        }),
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+
+    const plan = buildCodexThreadBatchInitPlan({
+      outputDir: path.join(tempRoot, "out"),
+      sessionIndexPath,
+      threadIds: ["019dfe10-7cc1-71b1-b507-a7674a74aa68"],
+      threadUris: [],
+      topic: "Codex thread archive",
+      titlePrefix: "Thread",
+      sourceLabel: "Codex batch import",
+      compile: true
+    });
+
+    assert.equal(
+      loadCodexThreadNameIndex(sessionIndexPath).get("019dfe10-7cc1-71b1-b507-a7674a74aa68")
+        .threadName,
+      "multi platform handoff"
+    );
+    assert.equal(plan.entries[0].threadName, "multi platform handoff");
+    assert.equal(plan.manifest.entries[0].thread_name, "multi platform handoff");
+    assert.equal(plan.manifest.entries[0].title, "Thread - multi platform handoff");
+    assert.match(plan.entries[0].bodyTemplate, /Thread name: multi platform handoff/);
+    assert.match(plan.entries[0].bodyTemplate, /# Codex Thread Capture\n\nThread URI:/);
+    assert.match(plan.entries[0].bodyTemplate, /Topic: Codex thread archive\n\n## User Request/);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
@@ -1158,6 +1250,87 @@ run("codex thread batch runs captures and refreshes links/views once", async () 
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
+run("codex thread batch dry-run previews entries without vault or audit writes", async () => {
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-codex-thread-batch-dry-run-"));
+  const writes = [];
+  const errors = [];
+  const captures = [];
+
+  try {
+    const summary = await runCaptureCodexThreadBatch(
+      {
+        manifestPath: "ignored.json",
+        compile: true,
+        dryRun: true,
+        skipLinks: false,
+        skipViews: false,
+        continueOnError: true,
+        timeoutMs: 240000
+      },
+      {
+        config: {
+          projectRoot: tempRoot
+        },
+        manifest: {
+          path: path.join(tempRoot, "batch.json"),
+          entries: [
+            {
+              threadUri: "codex://threads/a",
+              topic: "topic-a",
+              title: "Entry A",
+              body: "A",
+              compile: null
+            },
+            {
+              threadUri: "codex://threads/b",
+              topic: "topic-b",
+              title: "Entry B",
+              body: "B",
+              compile: false
+            }
+          ]
+        },
+        writer: {
+          log(line = "") {
+            writes.push(String(line));
+          },
+          error(line = "") {
+            errors.push(String(line));
+          }
+        },
+        loadProviderFn() {
+          throw new Error("provider should not load during dry-run");
+        },
+        captureFn: async () => {
+          captures.push("capture-called");
+        },
+        rebuildLinksFn() {
+          throw new Error("links should not rebuild during dry-run");
+        },
+        refreshViewsFn() {
+          throw new Error("views should not refresh during dry-run");
+        }
+      }
+    );
+
+    assert.equal(summary.dryRun, true);
+    assert.equal(summary.total, 2);
+    assert.equal(summary.completed, 0);
+    assert.equal(summary.failed, 0);
+    assert.equal(summary.auditLogPath, "");
+    assert.deepEqual(captures, []);
+    assert.equal(fs.existsSync(path.join(tempRoot, "logs")), false);
+    assert.match(writes.join("\n"), /Batch dry-run preview: total=2/);
+    assert.match(writes.join("\n"), /Entry A/);
+    assert.match(writes.join("\n"), /compile=true/);
+    assert.match(writes.join("\n"), /Entry B/);
+    assert.match(writes.join("\n"), /compile=false/);
+    assert.deepEqual(errors, []);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 run("codex thread audit report summarizes capture batch verify and reconcile logs", async () => {
   const tempRoot = fs.mkdtempSync(path.join(process.cwd(), ".tmp-codex-thread-audit-report-"));
   const writes = [];
@@ -1417,6 +1590,7 @@ run("backfill codex thread audit run ids updates legacy entries", async () => {
 
 run("compile-source provider probe reports endpoint and route", async () => {
   const writes = [];
+  const calls = [];
   const result = await runCompileSourceProviderProbe(
     {
       projectRoot: "C:\\repo\\obsidian-kb-local"
@@ -1441,16 +1615,22 @@ run("compile-source provider probe reports endpoint and route", async () => {
           canUseChatGptSession: true
         };
       },
-      callProvider: async () => ({
-        endpoint: "codex exec",
-        outputText: "OK"
-      })
+      callProvider: async (provider, prompt, options) => {
+        calls.push({ provider, prompt, options });
+        return {
+          endpoint: "codex exec",
+          outputText: "OK"
+        };
+      }
     }
   );
 
   assert.equal(result.response.endpoint, "codex exec");
   assert.match(writes.join("\n"), /Provider route: .*route:codex-exec-fallback/);
   assert.match(writes.join("\n"), /Provider probe: OK via codex exec -> OK/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].prompt, "Respond with OK.");
+  assert.equal(calls[0].options.timeoutMs, 123000);
 });
 
 run("rebuild-topic log appends provider route and endpoint", () => {
@@ -6558,6 +6738,22 @@ function walkFiles(directory, results) {
       results.push(fullPath);
     }
   }
+}
+
+function captureWriter() {
+  const lines = [];
+  const write = (...parts) => {
+    lines.push(parts.map((part) => String(part)).join(" "));
+  };
+  return {
+    writer: {
+      log: write,
+      error: write
+    },
+    output() {
+      return lines.join("\n");
+    }
+  };
 }
 
 function createRollbackFixture(tempRoot) {
