@@ -2,6 +2,8 @@
 
 Scope: `feat/longbridge-trading-plan-artifacts`
 
+PR: https://github.com/FireJW/financial-services-plugins/pull/30
+
 Fixed priority order:
 
 1. Keep the feature branch synced with `origin/main`.
@@ -21,5 +23,5 @@ Current guardrails:
 
 Last known next step:
 
-- If no PR exists yet, create the PR from this branch after pushing.
-- If the PR already exists and checks are clean, start the read-only live validation run.
+- Check PR #30 status and resolve any review/check failures first.
+- If PR #30 is clean, start the read-only P1 live validation run.
