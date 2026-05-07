@@ -19,6 +19,7 @@ import { fieldtheoryIndexCommand } from "./fieldtheoryIndex.mjs";
 import { last30daysBridgeCommand } from "./last30daysBridge.mjs";
 import { last30daysDeployCheckCommand } from "./last30daysDeployCheck.mjs";
 import { morningNoteCommand } from "./morningNote.mjs";
+import { multiplatformRepurposeCommand } from "./multiplatformRepurpose.mjs";
 import { opencliIndexCommand } from "./opencliIndex.mjs";
 import { operatorSummaryCommand } from "./operatorSummary.mjs";
 import { pluginCatalogCommand } from "./pluginCatalog.mjs";
@@ -46,6 +47,7 @@ export const COMMANDS = {
   [catalogCommand.name]: catalogCommand,
   [completionCheckCommand.name]: completionCheckCommand,
   [morningNoteCommand.name]: morningNoteCommand,
+  [multiplatformRepurposeCommand.name]: multiplatformRepurposeCommand,
   [earningsUpdateCommand.name]: earningsUpdateCommand,
   [evalHarnessCommand.name]: evalHarnessCommand,
   [fieldtheoryIndexCommand.name]: fieldtheoryIndexCommand,

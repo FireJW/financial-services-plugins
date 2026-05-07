@@ -333,6 +333,9 @@ patterns:
 - [scripts/run_article_publish.cmd](scripts/run_article_publish.cmd) runs the publish flow through the local Python wrapper
 - [scripts/run_article_publish_demo.cmd](scripts/run_article_publish_demo.cmd) runs the deterministic publish demo fixture end to end
 - [scripts/run_article_publish_acceptance.cmd](scripts/run_article_publish_acceptance.cmd) runs the article workflow + publish acceptance baselines in one shot
+- [scripts/multiplatform_repurpose_runtime.py](scripts/multiplatform_repurpose_runtime.py) builds local-only platform-native dist packages from one source Markdown article or publish package while preserving thesis, caveats, and citations
+- [scripts/multiplatform_repurpose.py](scripts/multiplatform_repurpose.py) runs the standalone multiplatform repurpose entry
+- [scripts/run_multiplatform_repurpose.cmd](scripts/run_multiplatform_repurpose.cmd) runs the multiplatform repurposer through the local Python wrapper
 - [scripts/wechat_draftbox_runtime.py](scripts/wechat_draftbox_runtime.py) uploads images and pushes a publish-package into the WeChat draft box
 - [scripts/wechat_push_draft.py](scripts/wechat_push_draft.py) runs the standalone WeChat draft push entry
 - [scripts/run_wechat_push_draft.cmd](scripts/run_wechat_push_draft.cmd) runs the WeChat draft push flow through the local Python wrapper

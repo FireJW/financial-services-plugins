@@ -229,12 +229,25 @@ def _normalize_live_result(row: Any) -> dict[str, Any] | None:
         return None
     x_posts = [_normalize_live_post(item) for item in row.get("x_posts", [])]
     normalized_posts = [item for item in x_posts if item]
-    if not normalized_posts:
+    source_result_path = _clean_text(row.get("source_result_path"))
+    run_completeness = deepcopy(row.get("run_completeness")) if isinstance(row.get("run_completeness"), dict) else {}
+    if not normalized_posts and not source_result_path and not run_completeness:
         return None
-    return {
+    normalized = {
         "x_posts": normalized_posts,
         "session_bootstrap": deepcopy(row.get("session_bootstrap")) if isinstance(row.get("session_bootstrap"), dict) else {},
     }
+    if source_result_path:
+        normalized["source_result_path"] = source_result_path
+    if run_completeness:
+        normalized["run_completeness"] = run_completeness
+    source_mode = _clean_text(row.get("source_mode"))
+    if source_mode:
+        normalized["source_mode"] = source_mode
+    analysis_time = _clean_text(row.get("analysis_time"))
+    if analysis_time:
+        normalized["analysis_time"] = analysis_time
+    return normalized
 
 
 def _load_live_result_from_path(raw_path: str) -> dict[str, Any] | None:

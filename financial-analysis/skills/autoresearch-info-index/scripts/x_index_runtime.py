@@ -148,6 +148,11 @@ def build_x_window_queries(request: dict[str, Any]) -> list[dict[str, str]]:
     queries: list[dict[str, str]] = []
     seen_queries: set[str] = set()
     handles = [item.lstrip("@") for item in request.get("account_allowlist", []) if clean_text(item)]
+    trusted_handles = [
+        clean_text(item.get("handle")).lstrip("@")
+        for item in request.get("trusted_rumor_accounts", [])
+        if isinstance(item, dict) and clean_text(item.get("handle"))
+    ]
     keywords = unique_cleaned_strings(request.get("keywords", []), limit=8, min_length=3)
     phrase_clues = unique_cleaned_strings(request.get("phrase_clues", []), limit=8, min_length=8)
     entity_clues = unique_cleaned_strings(request.get("entity_clues", []), limit=8, min_length=3)
@@ -176,6 +181,16 @@ def build_x_window_queries(request: dict[str, Any]) -> list[dict[str, str]]:
                     f'from:{handle} "{phrase}" "{entity}"',
                     f"allowlist_phrase_entity:@{handle}|phrase:{phrase}|entity:{entity}",
                 )
+
+    for handle in trusted_handles:
+        for phrase in phrase_clues[:4]:
+            add_query(f'from:{handle} "{phrase}"', f"trusted_rumor_phrase:@{handle}|phrase:{phrase}")
+        for keyword in keywords[:4]:
+            add_query(f'from:{handle} "{keyword}"', f"trusted_rumor_keyword:@{handle}|keyword:{keyword}")
+        for entity in entity_clues[:4]:
+            add_query(f'from:{handle} "{entity}"', f"trusted_rumor_entity:@{handle}|entity:{entity}")
+        if not keywords and not phrase_clues and not entity_clues:
+            add_query(f"from:{handle}", f"trusted_rumor_recent:@{handle}")
 
     if not queries:
         for phrase in phrase_clues[:4]:
@@ -216,6 +231,11 @@ def build_search_queries(request: dict[str, Any]) -> list[dict[str, str]]:
     seen_queries: set[str] = set()
     max_queries = max(1, int(request.get("max_search_queries", 24)))
     handles = [item.lstrip("@") for item in request.get("account_allowlist", []) if clean_text(item)]
+    trusted_handles = [
+        clean_text(item.get("handle")).lstrip("@")
+        for item in request.get("trusted_rumor_accounts", [])
+        if isinstance(item, dict) and clean_text(item.get("handle"))
+    ]
     keywords = unique_cleaned_strings(request.get("keywords", []), limit=10, min_length=3)
     phrase_clues = unique_cleaned_strings(request.get("phrase_clues", []), limit=10, min_length=8)
     entity_clues = unique_cleaned_strings(request.get("entity_clues", []), limit=12, min_length=3)
@@ -261,6 +281,21 @@ def build_search_queries(request: dict[str, Any]) -> list[dict[str, str]]:
         for entity in entity_clues[:6]:
             add_query(f'site:x.com/{handle}/status "{entity}"', f"entity:{entity}|allowlist:@{handle}")
 
+    for handle in trusted_handles:
+        for keyword in keywords[:6]:
+            add_query(f'site:x.com/{handle}/status "{keyword}"', f"trusted_rumor_keyword:@{handle}|keyword:{keyword}")
+        for phrase in phrase_clues[:6]:
+            add_query(f'site:x.com/{handle}/status "{phrase}"', f"trusted_rumor_phrase:@{handle}|phrase:{phrase}")
+            for entity in entity_clues[:4]:
+                add_query(
+                    f'site:x.com/{handle}/status "{phrase}" "{entity}"',
+                    f"trusted_rumor_phrase_entity:@{handle}|phrase:{phrase}|entity:{entity}",
+                )
+        for entity in entity_clues[:6]:
+            add_query(f'site:x.com/{handle}/status "{entity}"', f"trusted_rumor_entity:@{handle}|entity:{entity}")
+        if not keywords and not phrase_clues and not entity_clues:
+            add_query(f"site:x.com/{handle}/status", f"trusted_rumor_recent:@{handle}")
+
     return queries[:max_queries]
 
 
@@ -305,6 +340,86 @@ def build_same_author_scan_queries(root_post: dict[str, Any], request: dict[str,
     if not queries:
         add_query(f"site:x.com/{handle}/status", f"same_author_handle:@{handle}")
     return queries[:max_queries]
+
+
+def normalize_trusted_rumor_accounts(raw_accounts: Any) -> list[dict[str, Any]]:
+    accounts: list[dict[str, Any]] = []
+    seen_handles: set[str] = set()
+    if not isinstance(raw_accounts, list):
+        return []
+    for item in raw_accounts:
+        if isinstance(item, str):
+            payload: dict[str, Any] = {"handle": item}
+        elif isinstance(item, dict):
+            payload = deepcopy(item)
+        else:
+            continue
+        handle = clean_text(payload.get("handle") or payload.get("account") or payload.get("username")).lstrip("@")
+        if not handle:
+            continue
+        normalized_handle = handle.lower()
+        if normalized_handle in seen_handles:
+            continue
+        seen_handles.add(normalized_handle)
+        domains = unique_cleaned_strings(
+            [
+                *([payload.get("domain")] if clean_text(payload.get("domain")) else []),
+                *(payload.get("domains", []) if isinstance(payload.get("domains"), list) else []),
+            ],
+            limit=8,
+            min_length=2,
+        )
+        confidence = clean_text(payload.get("confidence") or payload.get("source_confidence") or "high")
+        accounts.append(
+            {
+                "handle": handle,
+                "domains": domains,
+                "confidence": confidence,
+                "historical_hit_rate": clean_text(payload.get("historical_hit_rate") or payload.get("hit_rate")),
+                "notes": unique_cleaned_strings(payload.get("notes", []) if isinstance(payload.get("notes"), list) else [], limit=6),
+            }
+        )
+    return accounts
+
+
+def trusted_rumor_account_map(request: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        clean_text(item.get("handle")).lstrip("@").lower(): item
+        for item in request.get("trusted_rumor_accounts", [])
+        if isinstance(item, dict) and clean_text(item.get("handle"))
+    }
+
+
+def trusted_rumor_status(account: dict[str, Any]) -> str:
+    confidence = clean_text(account.get("confidence")).lower()
+    hit_rate = clean_text(account.get("historical_hit_rate")).lower()
+    high_values = {"high", "very_high", "verified", "trusted", "tier1", "tier_1"}
+    if confidence in high_values or hit_rate in high_values:
+        return "rumor_high_confidence"
+    return "rumor_watch"
+
+
+def trusted_rumor_metadata(post_url: str, reason: str, request: dict[str, Any]) -> dict[str, Any]:
+    accounts = trusted_rumor_account_map(request)
+    if not accounts:
+        return {}
+    handle = ""
+    match = STATUS_URL_RE.search(clean_text(post_url))
+    if match:
+        handle = clean_text(match.group(1)).lstrip("@").lower()
+    if not handle:
+        reason_match = re.search(r"@([A-Za-z0-9_]+)", clean_text(reason))
+        if reason_match:
+            handle = reason_match.group(1).lower()
+    account = accounts.get(handle)
+    if not account:
+        return {}
+    return {
+        "source_lane": "trusted_rumor",
+        "rumor_status": trusted_rumor_status(account),
+        "source_verification_state": "early_signal",
+        "trusted_source": deepcopy(account),
+    }
 
 
 def meaningful_image_hint(text: Any) -> str:
@@ -451,6 +566,7 @@ def parse_request(raw_payload: dict[str, Any]) -> dict[str, Any]:
         "entity_clues": entity_clues,
         "query_overrides": [clean_text(item) for item in raw_payload.get("query_overrides", []) if clean_text(item)],
         "account_allowlist": [clean_text(item).lstrip("@") for item in raw_payload.get("account_allowlist", []) if clean_text(item)],
+        "trusted_rumor_accounts": normalize_trusted_rumor_accounts(raw_payload.get("trusted_rumor_accounts", [])),
         "manual_urls": [clean_text(item) for item in raw_payload.get("manual_urls", []) if clean_text(item)],
         "seed_posts": [item for item in raw_payload.get("seed_posts", []) if isinstance(item, dict)],
         "claims": [item for item in raw_payload.get("claims", []) if isinstance(item, dict)],
@@ -887,13 +1003,18 @@ def discover_search_candidates(request: dict[str, Any], session_context: dict[st
                     break
                 if any(item.get("post_url") == url for item in discovered):
                     continue
+                discovery_reason = f"x_live_search:{reason}"
+                trusted_metadata = trusted_rumor_metadata(url, discovery_reason, request)
+                if trusted_metadata and not clean_text(reason).startswith("trusted_rumor_"):
+                    discovery_reason = f"trusted_rumor_match:{discovery_reason}"
                 discovered.append(
                     {
                         "post_url": url,
-                        "discovery_reason": f"x_live_search:{reason}",
+                        "discovery_reason": discovery_reason,
                         "search_query": query,
                         "search_url": search_url,
                         "session_source": clean_text(session_context.get("source")),
+                        **trusted_metadata,
                     }
                 )
         except OSError as exc:
@@ -918,7 +1039,18 @@ def discover_search_candidates(request: dict[str, Any], session_context: dict[st
                     break
                 if any(item.get("post_url") == url for item in discovered):
                     continue
-                discovered.append({"post_url": url, "discovery_reason": reason, "search_query": query})
+                trusted_metadata = trusted_rumor_metadata(url, reason, request)
+                discovery_reason = reason
+                if trusted_metadata and not clean_text(reason).startswith("trusted_rumor_"):
+                    discovery_reason = f"trusted_rumor_match:{reason}"
+                discovered.append(
+                    {
+                        "post_url": url,
+                        "discovery_reason": discovery_reason,
+                        "search_query": query,
+                        **trusted_metadata,
+                    }
+                )
         except OSError as exc:
             discovered.append(
                 {
@@ -1456,6 +1588,10 @@ def score_post(post: dict[str, Any], request: dict[str, Any]) -> int:
 
     if post.get("author_handle") in request.get("account_allowlist", []):
         score += 20
+    if clean_text(post.get("source_lane")) == "trusted_rumor":
+        score += 28
+        if clean_text(post.get("rumor_status")) == "rumor_high_confidence":
+            score += 12
     haystack = " ".join(
         [
             post.get("post_text_raw", ""),
@@ -1470,6 +1606,101 @@ def score_post(post: dict[str, Any], request: dict[str, Any]) -> int:
     score += min(24, phrase_hits * 12)
     score += min(18, entity_hits * 6)
     return score
+
+
+def post_has_usable_evidence(post: dict[str, Any]) -> bool:
+    if any(
+        clean_text(post.get(field))
+        for field in ("post_text_raw", "post_summary", "media_summary", "combined_summary")
+    ):
+        return True
+    for item in post.get("thread_posts", []):
+        if isinstance(item, dict) and clean_text(item.get("post_text_raw")):
+            return True
+    for item in post.get("media_items", []):
+        if not isinstance(item, dict):
+            continue
+        if (
+            clean_text(item.get("ocr_text_raw"))
+            or clean_text(item.get("ocr_summary"))
+            or meaningful_image_hint(item.get("alt_text"))
+        ):
+            return True
+    return False
+
+
+def post_relevance_haystack(post: dict[str, Any]) -> str:
+    parts = [
+        post.get("post_text_raw", ""),
+        post.get("post_summary", ""),
+        post.get("media_summary", ""),
+        post.get("combined_summary", ""),
+        post.get("discovery_reason", ""),
+        post.get("author_handle", ""),
+        post.get("post_url", ""),
+    ]
+    for item in post.get("thread_posts", []):
+        if isinstance(item, dict):
+            parts.append(item.get("post_text_raw", ""))
+    for item in post.get("media_items", []):
+        if isinstance(item, dict):
+            parts.extend([item.get("ocr_text_raw", ""), item.get("ocr_summary", ""), item.get("alt_text", "")])
+    return " ".join(clean_text(part) for part in parts if clean_text(part)).lower()
+
+
+def request_relevance_clues(request: dict[str, Any]) -> list[str]:
+    clues = [
+        clean_text(request.get("topic")),
+        *[clean_text(item) for item in request.get("keywords", [])],
+        *[clean_text(item) for item in request.get("phrase_clues", [])],
+        *[clean_text(item) for item in request.get("entity_clues", [])],
+    ]
+    return unique_cleaned_strings([item for item in clues if item], limit=32, min_length=3)
+
+
+def post_matches_relevance_filter(post: dict[str, Any], request: dict[str, Any]) -> tuple[bool, str]:
+    if not clean_text(post.get("post_url")):
+        return False, "missing_post_url"
+
+    has_usable_evidence = post_has_usable_evidence(post)
+    access_mode = clean_text(post.get("access_mode"))
+    session_health = clean_text(post.get("session_health"))
+    session_status = clean_text(post.get("session_status"))
+    if (
+        access_mode == "blocked"
+        or session_health == "degraded"
+        or session_status in {"failed", "fallback_public", "unavailable"}
+    ) and not has_usable_evidence:
+        return False, "blocked_or_unusable_post"
+    if not has_usable_evidence:
+        return False, "empty_post_record"
+
+    author_handle = clean_text(post.get("author_handle")).lstrip("@").lower()
+    allowlist = {
+        clean_text(item).lstrip("@").lower()
+        for item in request.get("account_allowlist", [])
+        if clean_text(item)
+    }
+    if author_handle and author_handle in allowlist:
+        return True, ""
+
+    clues = request_relevance_clues(request)
+    if not clues:
+        return True, ""
+
+    haystack = post_relevance_haystack(post)
+    if any(clue.lower() in haystack for clue in clues):
+        return True, ""
+
+    topic_tokens = [
+        token
+        for token in re.findall(r"[A-Za-z0-9]{3,}", clean_text(request.get("topic")).lower())
+        if token not in {"the", "and", "for", "with", "from"}
+    ]
+    if topic_tokens and sum(1 for token in topic_tokens if token in haystack) >= min(2, len(topic_tokens)):
+        return True, ""
+
+    return False, "weak_relevance"
 
 
 def fetch_thread_posts(
@@ -1745,6 +1976,10 @@ def build_x_post_record(
                 *artifact.session_notes,
             ]
         ),
+        "source_lane": clean_text(candidate.get("source_lane")),
+        "rumor_status": clean_text(candidate.get("rumor_status")),
+        "source_verification_state": clean_text(candidate.get("source_verification_state")),
+        "trusted_source": deepcopy(candidate.get("trusted_source", {})) if isinstance(candidate.get("trusted_source"), dict) else {},
         "artifact_manifest": artifact_manifest,
     }
 
@@ -1754,12 +1989,19 @@ def collect_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
     for post in request.get("seed_posts", []):
         candidate = deepcopy(post)
         candidate["post_url"] = canonical_status_url(clean_text(candidate.get("post_url") or candidate.get("url")))
+        candidate.update(trusted_rumor_metadata(candidate.get("post_url", ""), candidate.get("discovery_reason", ""), request))
         candidates.append(candidate)
 
     for url in request.get("manual_urls", []):
         canonical = canonical_status_url(url)
         if canonical and not any(item.get("post_url") == canonical for item in candidates):
-            candidates.append({"post_url": canonical, "discovery_reason": "manual_url"})
+            candidates.append(
+                {
+                    "post_url": canonical,
+                    "discovery_reason": "manual_url",
+                    **trusted_rumor_metadata(canonical, "manual_url", request),
+                }
+            )
 
     reuse_summary = discover_reusable_candidates(request)
     for candidate in reuse_summary.get("candidates", []):
@@ -1775,7 +2017,7 @@ def collect_candidates(request: dict[str, Any]) -> list[dict[str, Any]]:
                 continue
             if any(existing.get("post_url") == canonical for existing in candidates):
                 continue
-            candidates.append({**item, "post_url": canonical})
+            candidates.append({**item, "post_url": canonical, **trusted_rumor_metadata(canonical, item.get("discovery_reason", ""), request)})
             if len(candidates) >= request.get("max_candidates", 50):
                 break
     request["_reuse_summary"] = reuse_summary
@@ -1809,6 +2051,33 @@ def build_best_images(x_posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
             )
     best.sort(key=lambda item: {"high": 0, "medium": 1, "low": 2}.get(item.get("relevance", ""), 3))
     return best[:8]
+
+
+def build_trusted_rumor_items(x_posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for post in x_posts:
+        if clean_text(post.get("source_lane")) != "trusted_rumor":
+            continue
+        trusted_source = post.get("trusted_source", {}) if isinstance(post.get("trusted_source"), dict) else {}
+        summary = (
+            clean_text(post.get("combined_summary"))
+            or clean_text(post.get("post_summary"))
+            or short_excerpt(clean_text(post.get("post_text_raw")), limit=220)
+        )
+        items.append(
+            {
+                "post_url": clean_text(post.get("post_url")),
+                "author_handle": clean_text(post.get("author_handle")),
+                "rumor_status": clean_text(post.get("rumor_status")) or "rumor_watch",
+                "source_verification_state": clean_text(post.get("source_verification_state")) or "early_signal",
+                "trusted_source": deepcopy(trusted_source),
+                "domains": deepcopy(trusted_source.get("domains", [])) if isinstance(trusted_source.get("domains"), list) else [],
+                "posted_at": clean_text(post.get("posted_at")),
+                "social_rank": int(post.get("social_rank") or 0),
+                "summary": summary,
+            }
+        )
+    return items[:10]
 
 
 def build_retrieval_request(request: dict[str, Any], x_posts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1901,6 +2170,7 @@ def init_x_index_result(request: dict[str, Any], session_context: dict[str, Any]
             "artifact_manifest": [],
             "claim_candidates": [],
             "best_images": [],
+            "trusted_rumor_items": [],
         },
         "retrieval_request": {},
         "retrieval_result": {},
@@ -2016,6 +2286,19 @@ def build_markdown_report(result: dict[str, Any]) -> str:
             lines.append(f"- Direct URL: {url}")
         for item in window_capture_hints.get("search_urls", []):
             lines.append(f"- Search URL: {item.get('url', '')} | Query: {item.get('query', '')}")
+    trusted_rumor_items = result.get("evidence_pack", {}).get("trusted_rumor_items", [])
+    if trusted_rumor_items:
+        lines.extend(["", "## Trusted Rumor Lane"])
+        for item in trusted_rumor_items:
+            domains = ", ".join(item.get("domains", [])) if isinstance(item.get("domains"), list) else ""
+            lines.append(
+                f"- @{item.get('author_handle', 'unknown')} | {item.get('rumor_status', '')} | "
+                f"{item.get('source_verification_state', '')} | {item.get('post_url', '')}"
+            )
+            if domains:
+                lines.append(f"  Domains: {domains}")
+            if item.get("summary"):
+                lines.append(f"  Summary: {item.get('summary')}")
     lines.extend(
         [
         "",
@@ -2096,6 +2379,23 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
                 continue
             try:
                 post = build_x_post_record(candidate, request, index, session_context)
+                matches_filter, block_reason = post_matches_relevance_filter(post, request)
+                if not matches_filter:
+                    blocked_candidate = deepcopy(candidate)
+                    blocked_candidate.update(
+                        {
+                            "post_url": clean_text(post.get("post_url")) or clean_text(candidate.get("post_url")),
+                            "author_handle": clean_text(post.get("author_handle")),
+                            "access_mode": clean_text(post.get("access_mode")),
+                            "session_status": clean_text(post.get("session_status")),
+                            "session_health": clean_text(post.get("session_health")),
+                            "block_reason": block_reason,
+                        }
+                    )
+                    if post.get("crawl_notes"):
+                        blocked_candidate["crawl_notes"] = deepcopy(post.get("crawl_notes", []))
+                    blocked_candidates.append(blocked_candidate)
+                    continue
                 post["social_rank"] = score_post(post, request)
                 x_posts.append(post)
             except Exception as exc:
@@ -2117,6 +2417,7 @@ def run_x_index(raw_payload: dict[str, Any]) -> dict[str, Any]:
             "artifact_manifest": [artifact for post in kept_posts for artifact in post.get("artifact_manifest", [])],
             "claim_candidates": build_claim_candidates(kept_posts),
             "best_images": build_best_images(kept_posts),
+            "trusted_rumor_items": build_trusted_rumor_items(kept_posts),
         }
     except Exception as exc:
         result = finalize_x_index_result(

@@ -1576,6 +1576,57 @@ def build_data_blocked_theme_confirmed_markdown(rows: list[dict[str, Any]] | Non
     return lines
 
 
+def _count_x_posts_in_result_payload(payload: Any) -> int:
+    if not isinstance(payload, dict) or not isinstance(payload.get("x_posts"), list):
+        return 0
+    return len([item for item in payload.get("x_posts", []) if isinstance(item, dict)])
+
+
+def _resolve_x_index_result_path(raw_path: str) -> Path | None:
+    cleaned = clean_text(raw_path)
+    if not cleaned:
+        return None
+    path = Path(cleaned).expanduser()
+    candidates = [path]
+    if not path.is_absolute():
+        candidates.append(Path.cwd() / path)
+        candidates.append(Path(__file__).resolve().parents[4] / path)
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved.exists() and resolved.is_file():
+            return resolved
+    return None
+
+
+def _count_x_posts_from_result_path(raw_path: str) -> int:
+    resolved = _resolve_x_index_result_path(raw_path)
+    if resolved is None:
+        return 0
+    try:
+        return _count_x_posts_in_result_payload(load_json(resolved))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return 0
+
+
+def _collect_x_index_result_paths(request_obj: dict[str, Any], weekend_input: dict[str, Any]) -> list[str]:
+    paths: list[str] = []
+    raw_paths = weekend_input.get("x_live_index_result_paths")
+    if isinstance(raw_paths, list):
+        paths.extend(clean_text(path) for path in raw_paths if clean_text(path))
+    raw_results = weekend_input.get("x_live_index_results")
+    if isinstance(raw_results, list):
+        for payload in raw_results:
+            if isinstance(payload, dict) and clean_text(payload.get("source_result_path")):
+                paths.append(clean_text(payload.get("source_result_path")))
+    x_discovery_context = request_obj.get("x_discovery_context")
+    if isinstance(x_discovery_context, dict) and clean_text(x_discovery_context.get("source_result_path")):
+        paths.append(clean_text(x_discovery_context.get("source_result_path")))
+    return list(dict.fromkeys(paths))
+
+
 def build_run_completeness_summary(
     request_obj: dict[str, Any],
     *,
@@ -1588,11 +1639,12 @@ def build_run_completeness_summary(
         else {}
     )
     x_results = weekend_input.get("x_live_index_results") if isinstance(weekend_input.get("x_live_index_results"), list) else []
-    x_paths = weekend_input.get("x_live_index_result_paths") if isinstance(weekend_input.get("x_live_index_result_paths"), list) else []
+    x_paths = _collect_x_index_result_paths(request_obj, weekend_input)
     x_posts_count = 0
     for payload in x_results:
-        if isinstance(payload, dict) and isinstance(payload.get("x_posts"), list):
-            x_posts_count += len([item for item in payload.get("x_posts", []) if isinstance(item, dict)])
+        x_posts_count += _count_x_posts_in_result_payload(payload)
+    for raw_path in x_paths:
+        x_posts_count += _count_x_posts_from_result_path(raw_path)
 
     if x_posts_count > 0:
         x_index_status = "complete"
@@ -3908,6 +3960,69 @@ def build_next_watch_items(candidate: dict[str, Any], action: str) -> list[str]:
     return items[:MAX_REPORTED_WATCH_ITEMS]
 
 
+INLINE_A_SHARE_TICKER_RE = re.compile(r"`(?P<ticker>\d{6}(?:\.(?:SZ|SS|SH))?)`")
+
+
+def _looks_like_a_share_ticker(value: str) -> bool:
+    return bool(re.fullmatch(r"\d{6}(?:\.(?:SZ|SS|SH))?", clean_text(value).upper()))
+
+
+def _add_ticker_name_aliases(lookup: dict[str, str], ticker: str, name: str) -> None:
+    normalized_ticker = clean_text(ticker).upper()
+    normalized_name = clean_text(name)
+    if not normalized_ticker or not normalized_name:
+        return
+    if normalized_name == normalized_ticker or not _looks_like_a_share_ticker(normalized_ticker):
+        return
+    lookup.setdefault(normalized_ticker, normalized_name)
+    bare_code = normalized_ticker[:6]
+    if _looks_like_a_share_ticker(bare_code):
+        lookup.setdefault(bare_code, normalized_name)
+
+
+def build_ticker_name_lookup(value: Any) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+
+    def walk(item: Any) -> None:
+        if isinstance(item, dict):
+            name = (
+                clean_text(item.get("name"))
+                or clean_text(item.get("resolved_name"))
+                or clean_text(item.get("stock_name"))
+                or clean_text(item.get("symbol_name"))
+            )
+            ticker = clean_text(item.get("ticker")) or clean_text(item.get("symbol"))
+            if not ticker and _looks_like_a_share_ticker(clean_text(item.get("code"))):
+                ticker = clean_text(item.get("code"))
+            _add_ticker_name_aliases(lookup, ticker, name)
+            for child in item.values():
+                walk(child)
+        elif isinstance(item, list):
+            for child in item:
+                walk(child)
+
+    walk(value)
+    return lookup
+
+
+def annotate_ticker_names_in_markdown(markdown: str, source: Any) -> str:
+    lookup = build_ticker_name_lookup(source)
+    if not markdown or not lookup:
+        return markdown
+
+    annotated_lines: list[str] = []
+    for line in markdown.splitlines():
+        def replace(match: re.Match[str]) -> str:
+            ticker = clean_text(match.group("ticker")).upper()
+            name = lookup.get(ticker) or lookup.get(ticker[:6])
+            if not name or name in line:
+                return match.group(0)
+            return f"`{match.group('ticker')}` {name}"
+
+        annotated_lines.append(INLINE_A_SHARE_TICKER_RE.sub(replace, line))
+    return "\n".join(annotated_lines)
+
+
 def build_decision_factor_entry(candidate: dict[str, Any], action: str) -> dict[str, Any]:
     status = clean_text(candidate.get("midday_status"))
     if not status:
@@ -5172,10 +5287,11 @@ def enrich_live_result_reporting(
                 lines.append("  - key_evidence:")
                 for bullet in key_evidence[:MAX_REPORTED_WATCH_ITEMS]:
                     lines.append(f"    - {bullet}")
-    enriched["report_markdown"] = prepend_report_metadata_lines(
+    report_markdown = prepend_report_metadata_lines(
         "\n".join(lines).strip(),
         build_run_completeness_report_lines(run_completeness),
     )
+    enriched["report_markdown"] = annotate_ticker_names_in_markdown(report_markdown, enriched)
     return enriched
 
 
@@ -5762,10 +5878,11 @@ def merge_track_results(
             report_lines.append(f"  - event_state: `{item.get('event_state', {}).get('label')}`")
             report_lines.append(f"  - trading_usability: `{item.get('trading_usability', {}).get('label')}`")
 
-    merged["report_markdown"] = prepend_report_metadata_lines(
+    report_markdown = prepend_report_metadata_lines(
         "\n".join(report_lines).strip(),
         build_run_completeness_report_lines(run_completeness),
     )
+    merged["report_markdown"] = annotate_ticker_names_in_markdown(report_markdown, merged)
     return merged
 
 

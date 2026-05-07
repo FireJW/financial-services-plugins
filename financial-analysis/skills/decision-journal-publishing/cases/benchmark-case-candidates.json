@@ -2,7 +2,7 @@
   "library_name": "decision-journal-benchmark-candidates",
   "version": "2026-03-24.3",
   "updated_at": "2026-03-24T22:30:00+08:00",
-  "last_machine_refresh_at": "2026-03-25T01:54:04+00:00",
+  "last_machine_refresh_at": "2026-05-05T02:25:45+00:00",
   "default_request": {
     "goal": "Triage newly discovered WeChat and Toutiao benchmark candidates",
     "commercial_center": "professional investors, research users, and high-participation retail investors who pay for better judgment structure",
@@ -43,11 +43,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-01-20/doc-inhhxvex9049346.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-10f7ae7c6e08be3f",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-56a4535a23e3933c",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-01-20T21:35:35+08:00",
@@ -86,11 +86,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhscaes7405505.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-217274febf0050fc",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-984be2355db0e2e0",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T22:29:23+08:00",
@@ -129,11 +129,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhscaes7381354.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-7126cece0618f293",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-92e9883dec588794",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T22:55:00+08:00",
@@ -172,11 +172,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhsavwy0499774.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-6e4c96bbe4b19ac2",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-50eef527e1accbe0",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T19:46:15+08:00",
@@ -215,11 +215,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5jm",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-9273a13ebdd2f97f",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-f31fa4ddefe98420",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -258,11 +258,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb00101f5is",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-fbcf74295bc6f249",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-3e65eb7b2d550983",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -301,11 +301,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5hs",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-15b5c3fec2056a81",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-88cfc6fa1ecbb16d",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -344,11 +344,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5gw",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-91b624eb6b5087f3",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-a217e73f83fe4698",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -387,11 +387,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2ms",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-16cfc75de63963b3",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-187a443a208333f6",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -430,11 +430,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2mw",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-46264be82de90e6f",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-07661b560500f3d5",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -473,11 +473,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21101901h2mu",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-ead5fe42feae9f63",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-1017601eed59883f",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -516,11 +516,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaeq1627809.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-743e31101d06d800",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-57933b7945ba1d47",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T22:17:35+08:00",
@@ -559,11 +559,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaes7375404.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-fdc7bc6741990b7a",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-c6ccab8936e151ed",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T20:49:25+08:00",
@@ -602,11 +602,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhsavwy0473497.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-e03ca084bd60da0e",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-7d97d9b54c23b460",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T19:20:22+08:00",
@@ -645,11 +645,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5g8",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-67d477b7f2298afa",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-f52bf24bddd9d396",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -688,11 +688,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5c2",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-c95df04331bb9910",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-ec8090dd596c4d89",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -731,11 +731,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb04001f5b4",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-b599bc5ab86d5cd9",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-9173cc89d989d2fb",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -774,11 +774,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://cj.sina.com.cn/articles/view/1154814715/44d512fb02701f5a0",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-46b006dbeec31d49",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-cbbdb4043e001198",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "",
@@ -817,11 +817,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/wm/2026-03-24/doc-inhscaeu4188958.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-aef6cccd8f626492",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-f611889ac6de1ab1",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-24T22:20:21+08:00",
@@ -860,11 +860,11 @@
         "discovery_method": "auto"
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/wm/2026-03-23/doc-inhrynrr7931263.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-12276365691ca25d",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-0d07e51847ddf374",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-23T18:12:50+08:00",
@@ -909,11 +909,11 @@
         "notes": true
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0326535.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-8f939c9354e8ef15",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-0d0b5463403c5223",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-25T09:08:16+08:00",
@@ -952,11 +952,11 @@
         "notes": true
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnu0324989.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-e8da40e20cf1c582",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-1ba6d069d8824962",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-25T09:08:16+08:00",
@@ -995,16 +995,107 @@
         "notes": true
       },
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://finance.sina.com.cn/roll/2026-03-24/doc-inhschnq7306874.shtml",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-222192ed779b33da",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-c842d77f3e4fc20a",
         "current_read_signal": "",
         "current_read_count_estimate": null,
         "current_published_at": "2026-03-25T09:08:16+08:00",
         "current_title": "博通高管坦言：台积电产能已从&quot;近乎无限&quot;走向&quot;触及极限&quot;",
         "change_flags": []
+      }
+    },
+    {
+      "case_id": "shizhifengyun-sina-feed-81db788fb9",
+      "platform": "wechat",
+      "account_name": "市值风云",
+      "title": "业绩两连跪，合同负债见底！捷佳伟创：地主家也没有余粮了",
+      "url": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21102701hbri",
+      "canonical_url": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21102701hbri",
+      "fetch_url": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21102701hbri",
+      "published_at": "",
+      "read_signal": "",
+      "account_positioning": "professional and high-net-worth investing audience",
+      "topic_type": "deep company and capital-market analysis",
+      "hook_type": "forensic company reading",
+      "affected_group": "serious investors and market professionals",
+      "cta_type": "app and report upsell",
+      "paid_asset_linkage": "high",
+      "notes": "Auto-discovered from the 市值风云 Sina newmedia feed. Keep the candidate pool focused on forensic company-reading cases.",
+      "curation_status": "candidate",
+      "discovery_state": {
+        "discovered_at": "2026-05-05T02:25:45+00:00",
+        "source_id": "shizhifengyun-sina-feed",
+        "source_url": "https://k.sina.cn/media_m_1742351.html",
+        "discovery_method": "auto"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": false,
+        "notes": true
+      },
+      "machine_state": {
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "http://cj.sina.com.cn/articles/view/1030341137/3d69c21102701hbri",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-d00ceb183d18942c",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
+        "current_published_at": "",
+        "current_title": "业绩两连跪，合同负债见底！捷佳伟创：地主家也没有余粮了",
+        "change_flags": [
+          "current_title"
+        ]
+      }
+    },
+    {
+      "case_id": "shizhifengyun-sina-feed-abdb6762ce",
+      "platform": "wechat",
+      "account_name": "市值风云",
+      "title": "茅台业绩双降：迟来的周期清算",
+      "url": "http://finance.sina.com.cn/wm/2026-04-30/doc-inhwhrai4132786.shtml",
+      "canonical_url": "http://finance.sina.com.cn/wm/2026-04-30/doc-inhwhrai4132786.shtml",
+      "fetch_url": "http://finance.sina.com.cn/wm/2026-04-30/doc-inhwhrai4132786.shtml",
+      "published_at": "2026-04-30T18:14:18+08:00",
+      "read_signal": "",
+      "account_positioning": "professional and high-net-worth investing audience",
+      "topic_type": "deep company and capital-market analysis",
+      "hook_type": "forensic company reading",
+      "affected_group": "serious investors and market professionals",
+      "cta_type": "app and report upsell",
+      "paid_asset_linkage": "high",
+      "notes": "Auto-discovered from the 市值风云 Sina newmedia feed. Keep the candidate pool focused on forensic company-reading cases.",
+      "curation_status": "candidate",
+      "discovery_state": {
+        "discovered_at": "2026-05-05T02:25:45+00:00",
+        "source_id": "shizhifengyun-sina-feed",
+        "source_url": "https://k.sina.cn/media_m_1742351.html",
+        "discovery_method": "auto"
+      },
+      "human_locks": {
+        "title": true,
+        "published_at": true,
+        "read_signal": false,
+        "notes": true
+      },
+      "machine_state": {
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
+        "last_fetch_status": "ok",
+        "last_fetch_target": "http://finance.sina.com.cn/wm/2026-04-30/doc-inhwhrai4132786.shtml",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-0931cd77854aa404",
+        "current_read_signal": "",
+        "current_read_count_estimate": null,
+        "current_published_at": "2026-04-30T18:14:18+08:00",
+        "current_title": "茅台业绩双降：迟来的周期清算",
+        "change_flags": [
+          "current_title",
+          "current_published_at"
+        ]
       }
     }
   ],
@@ -1012,7 +1103,7 @@
   "refresh_seed_path": "benchmark-refresh-seeds.json",
   "machine_refresh_summary": {
     "candidate_cases_refreshed": 23,
-    "candidates_discovered": 0,
+    "candidates_discovered": 2,
     "candidate_case_id_repairs": 0,
     "candidate_human_lock_repairs": 0
   }

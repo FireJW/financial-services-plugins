@@ -293,7 +293,7 @@ export function runCli(argv, { runner = runWorkflowCommand } = {}) {
     return { exitCode: 1, stdout: "", stderr: `${validationError}\n` };
   }
 
-  const plan = buildExecutionPlan(commandName, command, options);
+  const plan = buildExecutionPlan(commandName, command, options, COMMANDS);
   if (options.dryRun) {
     return {
       exitCode: 0,

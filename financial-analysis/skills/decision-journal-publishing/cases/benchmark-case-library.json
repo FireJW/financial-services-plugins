@@ -2,7 +2,7 @@
   "library_name": "decision-journal-benchmark-cases",
   "version": "2026-03-25.2",
   "updated_at": "2026-03-25T11:35:00+08:00",
-  "last_machine_refresh_at": "2026-03-25T01:54:04+00:00",
+  "last_machine_refresh_at": "2026-05-05T02:25:45+00:00",
   "default_request": {
     "goal": "Review WeChat and Toutiao benchmark cases for a pro-first finance decision-journal account",
     "commercial_center": "professional investors, research users, and high-participation retail investors who pay for better judgment structure",
@@ -45,11 +45,11 @@
       "canonical_url": "https://www.pingwest.com/a/44088",
       "curation_status": "reviewed",
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "http://mp.weixin.qq.com/s?__biz=MzAwMjE1NjcxMg==&mid=209481276&idx=1&sn=63c8eac5c6cd86d5a366cfd43a00bcb4&scene=21",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-c4ba1e87e563dbdb",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-8371dbb6fbbaea40",
         "current_read_signal": "6w",
         "current_read_count_estimate": 60000,
         "current_published_at": "",
@@ -92,11 +92,11 @@
       "canonical_url": "https://www.36kr.com/p/2838954851961729",
       "curation_status": "reviewed",
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "https://m.thepaper.cn/newsDetail_forward_27452893",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-1eb0b47379066fd7",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-5073dc7b3a6b223e",
         "current_read_signal": "38w",
         "current_read_count_estimate": 380000,
         "current_published_at": "",
@@ -138,11 +138,11 @@
       "canonical_url": "https://www.newrank.cn/article/detail/7946",
       "curation_status": "reviewed",
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "https://wallstreetcn.com/authors/109176",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-dc9f43b9d9df8c9a",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-1a4c4a37a1004460",
         "current_read_signal": "8W",
         "current_read_count_estimate": 80000,
         "current_published_at": "",
@@ -186,17 +186,16 @@
       "canonical_url": "https://36kr.com/p/1722055573505",
       "curation_status": "reviewed",
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "https://36kr.com/p/1722055573505",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-0fc9a465b9d5dab3",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-c1c6b7a6faccdbe9",
         "current_read_signal": "2万",
         "current_read_count_estimate": 20000,
-        "current_published_at": "2026-03-25T09:54:07+08:00",
+        "current_published_at": "2026-05-05T10:25:47+08:00",
         "current_title": "两年解读400家上市公司，金融自媒体「市值风云」获1200万元A轮融资-36氪",
         "change_flags": [
-          "current_title",
           "current_published_at"
         ]
       },
@@ -236,18 +235,16 @@
       "canonical_url": "https://cj.sina.com.cn/articles/view/5240327938/138590f0200102n6vk",
       "curation_status": "reviewed",
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "https://cj.sina.com.cn/articles/view/5240327938/138590f0200102n6vk",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-9c8bf00a354314ff",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-2c6f449c385dbd1d",
         "current_read_signal": "10万",
         "current_read_count_estimate": 100000,
         "current_published_at": "2026-03-24T06:01:23+00:00",
         "current_title": "在“快”时代做“慢”内容，今日头条如何加码深度图文？",
-        "change_flags": [
-          "current_title"
-        ]
+        "change_flags": []
       },
       "discovery_state": {
         "discovered_at": "",
@@ -286,17 +283,16 @@
       "canonical_url": "https://36kr.com/p/1722055573505",
       "curation_status": "reviewed",
       "machine_state": {
-        "last_checked_at": "2026-03-25T01:54:04+00:00",
+        "last_checked_at": "2026-05-05T02:25:45+00:00",
         "last_fetch_status": "ok",
         "last_fetch_target": "https://36kr.com/p/1722055573505",
-        "last_observation_at": "2026-03-25T01:54:04+00:00",
-        "current_observation_id": "obs-c23b97634743aee4",
+        "last_observation_at": "2026-05-05T02:25:45+00:00",
+        "current_observation_id": "obs-e0e70c30eca75940",
         "current_read_signal": "2万",
         "current_read_count_estimate": 20000,
-        "current_published_at": "2026-03-25T09:54:08+08:00",
+        "current_published_at": "2026-05-05T10:25:47+08:00",
         "current_title": "两年解读400家上市公司，金融自媒体「市值风云」获1200万元A轮融资-36氪",
         "change_flags": [
-          "current_title",
           "current_published_at"
         ]
       },

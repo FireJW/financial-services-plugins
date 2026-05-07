@@ -126,6 +126,64 @@ class XIndexRuntimeTests(unittest.TestCase):
         self.assertIn("Partial stage: retrieval_bridge", report)
         self.assertIn("degraded repo-native X run", report)
 
+    def test_run_x_index_blocks_degraded_unusable_posts_before_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = {
+                "topic": "commercial space",
+                "analysis_time": "2026-05-01T20:30:00+08:00",
+                "keywords": ["launch"],
+                "phrase_clues": ["satellite launch delay"],
+                "entity_clues": ["SPACE"],
+                "manual_urls": ["https://x.com/Noise/status/999"],
+                "output_dir": temp_dir,
+            }
+            degraded_post = {
+                "post_url": "https://x.com/Noise/status/999",
+                "author_handle": "Noise",
+                "posted_at": "2026-05-01T12:00:00+00:00",
+                "collected_at": "2026-05-01T12:01:00+00:00",
+                "post_text_raw": "",
+                "post_summary": "",
+                "media_summary": "",
+                "combined_summary": "",
+                "artifact_manifest": [],
+                "thread_posts": [],
+                "media_items": [],
+                "engagement": {},
+                "session_health": "degraded",
+                "session_source": "remote_debugging",
+                "session_status": "failed",
+                "access_mode": "blocked",
+                "discovery_reason": "manual_url",
+                "crawl_notes": ["page appeared blocked during browser extraction"],
+                "post_text_source": "unavailable",
+                "post_text_confidence": 0.0,
+                "root_post_screenshot_path": "",
+            }
+
+            with patch.object(
+                module_under_test,
+                "collect_candidates",
+                return_value=[{"post_url": "https://x.com/Noise/status/999"}],
+            ), patch.object(
+                module_under_test,
+                "build_x_post_record",
+                return_value=degraded_post,
+            ), patch.object(
+                module_under_test,
+                "run_news_index",
+                return_value={"status": "skipped"},
+            ):
+                result = module_under_test.run_x_index(request)
+
+        self.assertEqual(result["x_posts"], [])
+        self.assertEqual(len(result["discovery_summary"]["blocked_candidates"]), 1)
+        self.assertEqual(
+            result["discovery_summary"]["blocked_candidates"][0]["block_reason"],
+            "blocked_or_unusable_post",
+        )
+        self.assertNotIn("@Noise", result["report_markdown"])
+
     def test_x_index_wrapper_writes_partial_outputs_and_exits_nonzero(self) -> None:
         cli_path = SCRIPT_DIR / "x_index.py"
         cli_spec = importlib.util.spec_from_file_location("x_index_cli_under_test", cli_path)
@@ -246,6 +304,99 @@ class XIndexRuntimeTests(unittest.TestCase):
 
         self.assertEqual(discovered[0]["post_url"], "https://x.com/PublicSearch/status/3001")
         self.assertEqual(discovered[0]["discovery_reason"], "query_override")
+
+    def test_discover_search_candidates_marks_trusted_rumor_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = module_under_test.parse_request(
+                {
+                    "topic": "AI compute utilization",
+                    "analysis_time": "2026-05-06T20:30:00+08:00",
+                    "keywords": ["token cost"],
+                    "trusted_rumor_accounts": [
+                        {
+                            "handle": "dmjk001",
+                            "domains": ["ai_compute", "semiconductors"],
+                            "confidence": "high",
+                            "historical_hit_rate": "high",
+                        }
+                    ],
+                    "output_dir": temp_dir,
+                }
+            )
+
+            with patch.object(
+                module_under_test,
+                "maybe_fetch_search_results",
+                return_value=["https://x.com/dmjk001/status/2051886835606097938"],
+            ):
+                discovered = module_under_test.discover_search_candidates(request)
+
+        self.assertEqual(discovered[0]["post_url"], "https://x.com/dmjk001/status/2051886835606097938")
+        self.assertEqual(discovered[0]["source_lane"], "trusted_rumor")
+        self.assertEqual(discovered[0]["rumor_status"], "rumor_high_confidence")
+        self.assertEqual(discovered[0]["trusted_source"]["handle"], "dmjk001")
+        self.assertIn("ai_compute", discovered[0]["trusted_source"]["domains"])
+        self.assertTrue(discovered[0]["discovery_reason"].startswith("trusted_rumor_"))
+
+    def test_run_x_index_surfaces_trusted_rumor_items(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request = {
+                "topic": "AI token economics",
+                "analysis_time": "2026-05-06T20:30:00+08:00",
+                "keywords": ["token cost"],
+                "trusted_rumor_accounts": [{"handle": "dmjk001", "domains": ["ai_compute"], "confidence": "high"}],
+                "manual_urls": ["https://x.com/dmjk001/status/2051886835606097938"],
+                "output_dir": temp_dir,
+            }
+            x_post = {
+                "post_url": "https://x.com/dmjk001/status/2051886835606097938",
+                "author_handle": "dmjk001",
+                "posted_at": "2026-05-06T12:00:00+00:00",
+                "collected_at": "2026-05-06T12:01:00+00:00",
+                "post_text_raw": "AI token cost and inference demand are moving faster than capex headlines.",
+                "post_summary": "Trusted early signal on AI token economics.",
+                "media_summary": "",
+                "combined_summary": "Trusted early signal on AI token economics.",
+                "artifact_manifest": [],
+                "claim_candidates": [],
+                "best_images": [],
+                "thread_posts": [],
+                "media_items": [],
+                "engagement": {"likes": 1800, "reposts": 900, "replies": 120},
+                "session_health": "effective",
+                "session_source": "remote_debugging",
+                "session_status": "ready",
+                "access_mode": "browser_session",
+                "discovery_reason": "trusted_rumor_keyword:@dmjk001|keyword:token cost",
+                "source_lane": "trusted_rumor",
+                "rumor_status": "rumor_high_confidence",
+                "trusted_source": {"handle": "dmjk001", "domains": ["ai_compute"], "confidence": "high"},
+                "crawl_notes": [],
+                "post_text_source": "dom",
+                "post_text_confidence": 0.9,
+                "root_post_screenshot_path": "",
+            }
+
+            with patch.object(
+                module_under_test,
+                "collect_candidates",
+                return_value=[{"post_url": "https://x.com/dmjk001/status/2051886835606097938"}],
+            ), patch.object(
+                module_under_test,
+                "build_x_post_record",
+                return_value=x_post,
+            ), patch.object(
+                module_under_test,
+                "run_news_index",
+                return_value={"status": "skipped"},
+            ):
+                result = module_under_test.run_x_index(request)
+
+        trusted_items = result["evidence_pack"]["trusted_rumor_items"]
+        self.assertEqual(len(trusted_items), 1)
+        self.assertEqual(trusted_items[0]["rumor_status"], "rumor_high_confidence")
+        self.assertEqual(trusted_items[0]["author_handle"], "dmjk001")
+        self.assertIn("## Trusted Rumor Lane", result["report_markdown"])
 
     def test_extract_status_urls_from_blob_dedupes_multiple_sources(self) -> None:
         urls = module_under_test.extract_status_urls_from_blob(
