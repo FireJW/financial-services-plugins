@@ -56,6 +56,8 @@ Important:
 
 - this command performs a real side effect on the target official account
 - it requires explicit human review approval before a real push is allowed
+- before pushing, check `financial-analysis/skills/autoresearch-info-index/templates/cover-image-sourcing-guide.md`; do not push a generic OpenGraph / abstract image when the article calls for a recent real photo or a specific product, company, asset, or event image
+- when replacing a weak cover, prefer `--cover-image-path "<local-file>"` and confirm the result JSON's `uploaded_cover.url` / `thumb_media_id` comes from the replacement image
 - it does not fake success if image upload or draft creation fails
 - local image paths are allowed in the package because they will be uploaded and
   replaced before the final draft request is sent

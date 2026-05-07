@@ -58,6 +58,8 @@ Useful request fields:
   - explicit credentials, or use `WECHAT_APP_ID` / `WECHAT_APP_SECRET`
 - `cover_image_path` / `cover_image_url`
   - optional explicit cover override if the article package has no usable hero image
+  - before using package defaults, check `financial-analysis/skills/autoresearch-info-index/templates/cover-image-sourcing-guide.md`
+  - for articles with a clear person, company, product, asset, or event, prefer a recent real photo / official scene image over generic OpenGraph or abstract AI/tech imagery
 
 The output package includes:
 

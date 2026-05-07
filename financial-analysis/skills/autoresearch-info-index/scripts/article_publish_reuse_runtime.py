@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +56,8 @@ def derive_publish_request(base_result: dict[str, Any], revised_result: dict[str
     return {
         "account_name": clean_text(base_package.get("account_name")),
         "author": clean_text(base_package.get("author")) or clean_text(draft_article.get("author")),
+        "cover_image_path": clean_text(base_package.get("cover_image_path")),
+        "cover_image_url": clean_text(base_package.get("cover_image_url")),
         "digest_max_chars": max(60, len(old_digest) or 120),
         "need_open_comment": int(draft_article.get("need_open_comment", 0) or 0),
         "only_fans_can_comment": int(draft_article.get("only_fans_can_comment", 0) or 0),
@@ -92,6 +95,42 @@ def derive_workflow_gate_state(base_result: dict[str, Any], raw_payload: dict[st
     return workflow_manual_review, publication_readiness
 
 
+def derive_reuse_selected_topic(base_result: dict[str, Any], revised_result: dict[str, Any]) -> dict[str, Any]:
+    selected_topic = deepcopy(safe_dict(base_result.get("selected_topic")))
+    if not selected_topic:
+        raise ValueError("base_publish_result must contain selected_topic")
+
+    article_package = safe_dict(revised_result.get("article_package"))
+    revised_title = clean_text(article_package.get("title"))
+    revised_summary = clean_text(
+        article_package.get("subtitle") or article_package.get("lede") or article_package.get("draft_thesis")
+    )
+    if revised_title:
+        selected_topic["title"] = revised_title
+    if revised_summary:
+        selected_topic["summary"] = revised_summary
+    return selected_topic
+
+
+def merge_reuse_article_package(base_package: dict[str, Any], revised_result: dict[str, Any]) -> dict[str, Any]:
+    article_package = deepcopy(safe_dict(revised_result.get("article_package")))
+    for key in ("citations", "selected_images", "image_blocks"):
+        if not safe_list(article_package.get(key)) and safe_list(base_package.get(key)):
+            article_package[key] = deepcopy(safe_list(base_package.get(key)))
+    if not safe_list(article_package.get("selected_images")) and safe_list(article_package.get("image_blocks")):
+        article_package["selected_images"] = deepcopy(safe_list(article_package.get("image_blocks")))
+    if not safe_list(article_package.get("image_blocks")) and safe_list(article_package.get("selected_images")):
+        article_package["image_blocks"] = deepcopy(safe_list(article_package.get("selected_images")))
+
+    for key in ("style_profile_applied", "feedback_profile_status", "platform_hints"):
+        if not safe_dict(article_package.get(key)) and safe_dict(base_package.get(key)):
+            article_package[key] = deepcopy(safe_dict(base_package.get(key)))
+    for key in ("article_framework", "operator_notes"):
+        if not article_package.get(key) and base_package.get(key):
+            article_package[key] = deepcopy(base_package.get(key))
+    return article_package
+
+
 def build_reuse_report_markdown(result: dict[str, Any]) -> str:
     workflow_publication_gate = safe_dict(result.get("workflow_publication_gate"))
     workflow_manual_review = safe_dict(workflow_publication_gate.get("manual_review")) or safe_dict(result.get("workflow_manual_review"))
@@ -107,7 +146,7 @@ def build_reuse_report_markdown(result: dict[str, Any]) -> str:
         "# Article Publish Reuse",
         "",
         f"- Status: {clean_text(result.get('status')) or 'unknown'}",
-        f"- Title: {clean_text(safe_dict(result.get('selected_topic')).get('title')) or 'unknown'}",
+        f"- Title: {clean_text(publish_package.get('title')) or clean_text(safe_dict(result.get('selected_topic')).get('title')) or 'unknown'}",
         f"- Output dir: {clean_text(result.get('output_dir')) or 'unknown'}",
         f"- Publication readiness: {clean_text(workflow_publication_gate.get('publication_readiness') or result.get('publication_readiness')) or 'ready'}",
         f"- Workflow Reddit operator review: {clean_text(workflow_manual_review.get('status')) or 'not_required'}",
@@ -138,17 +177,17 @@ def build_reuse_report_markdown(result: dict[str, Any]) -> str:
 def build_reuse_publish_result(raw_payload: dict[str, Any]) -> dict[str, Any]:
     base_result = load_payload_dict(raw_payload.get("base_publish_result") or raw_payload.get("base_publish_result_path"), label="base_publish_result")
     revised_result = load_payload_dict(raw_payload.get("revised_article_result") or raw_payload.get("revised_article_result_path"), label="revised_article_result")
-    selected_topic = safe_dict(base_result.get("selected_topic"))
-    if not selected_topic:
-        raise ValueError("base_publish_result must contain selected_topic")
+    base_package = safe_dict(base_result.get("publish_package"))
+    selected_topic = derive_reuse_selected_topic(base_result, revised_result)
 
     request = {
         **derive_publish_request(base_result, revised_result),
         **safe_dict(raw_payload.get("request_overrides")),
     }
     workflow_manual_review, publication_readiness = derive_workflow_gate_state(base_result, raw_payload)
+    article_package = merge_reuse_article_package(base_package, revised_result)
     workflow_result = {
-        "review_result": {"article_package": safe_dict(revised_result.get("article_package"))},
+        "review_result": {"article_package": article_package},
         "draft_result": {"draft_context": safe_dict(revised_result.get("draft_context"))},
         "manual_review": workflow_manual_review,
         "publication_readiness": publication_readiness,

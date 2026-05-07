@@ -207,6 +207,36 @@ class ArticlePublishReuseRuntimeTests(unittest.TestCase):
         self.assertIn("MANUAL_MARKER_DO_NOT_REWRITE", package["content_markdown"])
         self.assertIn("MANUAL_MARKER_DO_NOT_REWRITE", package["content_html"])
         self.assertNotIn("融资意愿", package["content_markdown"])
+        self.assertIn("- Title: 阿联酋退出 OPEC：油价之外，更大的裂缝出现了", result["report_markdown"])
+
+    def test_build_reuse_publish_result_preserves_base_citations_when_revision_omits_them(self) -> None:
+        base_result = self.build_base_publish_result()
+        base_result["publish_package"]["citations"] = [
+            {
+                "citation_id": "C1",
+                "source_name": "Primary Source",
+                "title": "Primary source confirms the compute agreement",
+                "url": "https://example.com/primary",
+            },
+            {
+                "citation_id": "C2",
+                "source_name": "Market Data",
+                "title": "Market data frames the equity response",
+                "url": "longbridge://quote/AMZN.US,NVDA.US",
+            },
+        ]
+        revised_result = self.build_revised_article_result()
+        revised_result["article_package"]["citations"] = []
+
+        result = build_reuse_publish_result(
+            {
+                "base_publish_result": base_result,
+                "revised_article_result": revised_result,
+                "output_dir": str(self.temp_dir / "base-citations-out"),
+            }
+        )
+
+        self.assertEqual(result["publish_package"]["citations"], base_result["publish_package"]["citations"])
 
     def test_build_reuse_publish_result_preserves_depth_and_tone_request_fields(self) -> None:
         result = build_reuse_publish_result(

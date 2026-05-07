@@ -5,12 +5,43 @@
 
 ## 核心原则
 
-1. **真实新闻摄影 > AI 生成图**。AI 生成的封面容易显得廉价、不专业，尤其在财经/宏观类文章中
-2. **具象细节 > 抽象概念**。加油枪计价器特写 >> 抽象的"油价上涨"概念图
-3. **暗色/简洁背景 > 杂乱场景**。封面需要叠加标题文字时，暗色背景更好用
-4. **免费商用 > 版权风险**。优先 Unsplash/Pexels，避免直接热链 AP/Reuters/Getty
+1. **贴题实拍 > 泛化素材**。如果文章主角是明确的人物、公司、产品、地点或事件，封面必须优先找该主体的近期实拍、官方现场图或可授权新闻摄影；不要默认用通用科技感、抽象插画或来源站 OpenGraph 图。
+2. **真实新闻摄影 > AI 生成图**。AI 生成的封面容易显得廉价、不专业，尤其在财经/宏观类文章中。
+3. **具象细节 > 抽象概念**。加油枪计价器特写 >> 抽象的"油价上涨"概念图。
+4. **暗色/简洁背景 > 杂乱场景**。封面需要叠加标题文字时，暗色背景更好用。
+5. **免费商用 > 版权风险**。优先 Wikimedia Commons / 官方媒体库 / Unsplash / Pexels；避免直接热链 AP/Reuters/Getty。
+
+## 主体匹配规则
+
+先用一句话写清楚文章的"第一视觉信号"：读者刷到封面时，应该立刻看见谁或什么。
+
+- 人物/创始人主导：优先找该人物的近期实拍照，尽量是近 12-24 个月内、脸部清晰、构图简洁的照片。
+- 公司/产品主导：优先找真实产品、门店、工厂、数据中心、发布会、车辆、芯片、Logo 所在实景，而不是抽象行业图。
+- 资产/场景主导：优先找能代表核心资产的实物图，如数据中心、服务器机柜、晶圆、油轮、港口、交易大厅。
+- 宏观/行业主题：没有单一主体时，再使用 Unsplash/Pexels 的高质量场景或细节特写。
+- 禁止默认封面：来源站的 OpenGraph 插画、品牌默认图、抽象节点图、AI 机器人图、无关服务器图，不能直接作为最终封面，除非它和文章主线强相关且用户明确接受。
+
+执行时不要只让包里的 `cover_image_url` 顺手流到推送。若当前封面不贴题，先换图，再跑 `wechat_push_readiness` 和 `wechat_push_draft`。
 
 ## 采购优先级
+
+### 第零优先：贴题实拍 / 官方现场图
+
+适用于文章有明确主体的情况，例如人物、公司、产品、数据中心、工厂、发布会或地缘现场。
+
+- **优先来源**:
+  - Wikimedia Commons，优先选择公有领域、CC BY、官方机构上传或来源清楚的图片
+  - 公司官网 newsroom / media kit / press images
+  - 政府机构、交易所、监管机构、大学、会议主办方等官方 Flickr / media library
+  - 文章相关公司或人物的官方 X / 新闻稿配图，仅在许可或评论引用边界清楚时使用
+- **搜索技巧**:
+  - 用英文组合搜索：`<person/company/product> recent photo`, `<person> 2025 official photo`, `<company> data center press image`
+  - 对人物封面加：`portrait`, `speaking`, `visits`, `official`, `Wikimedia Commons`
+  - 对实体资产加：`factory`, `data center`, `server rack`, `facility`, `press image`
+- **落地方式**:
+  - 优先下载成本地文件，再用 `--cover-image-path` 推送，避免远程 URL 中的 `&`、重定向、反爬或热链失效。
+  - 下载后保存在当前文章 `.tmp` 输出目录，例如 `cover-elon-musk-20250321.jpg`。
+  - 如果只能使用远程 URL，必须确认命令行转义无误，并在 readiness / push 结果中确认上传的是该图。
 
 ### 第一优先：Unsplash（推荐）
 
@@ -64,6 +95,8 @@
 | 地缘冲突 | `strait of hormuz`, `oil tanker`, `military vessel` | AI 生成的战争场景 |
 | 半导体 | `semiconductor wafer`, `chip fabrication`, `cleanroom` | `circuit board`（太泛） |
 | AI/科技 | `data center`, `server rack`, `code on screen` | AI 生成的机器人 |
+| 人物/创始人 | `Elon Musk 2025 official photo`, `CEO portrait Wikimedia Commons`, `founder speaking event` | 抽象科技插画、公司默认 OG 图 |
+| AI 算力/数据中心 | `xAI Colossus data center`, `GPU data center press image`, `server rack close-up` | 无关云计算插画、泛化网络节点图 |
 
 ## 验证清单
 
@@ -74,8 +107,20 @@
 - [ ] 无文字/水印/Logo
 - [ ] 暗色区域足够叠加标题（如果需要）
 - [ ] 与文章主题直接相关，不是装饰性配图
+- [ ] 若文章有明确人物/公司/产品/事件，封面能一眼识别这个主体
+- [ ] 若替换过封面，readiness 和最终 push 命令使用的是 `--cover-image-path` 或已验证的贴题 URL，而不是包内旧的 `cover_image_url`
+- [ ] 最终 `wechat-push-result*.json` 中 `uploaded_cover.url` / `thumb_media_id` 来自新封面，不是默认 OpenGraph 图
 
 ## 实战案例
+
+### 2026-05-07：马斯克XAI的22万块GPU算力，为什么先给了Claude？
+
+- **问题**: 首轮包内封面沿用了 Anthropic OpenGraph 抽象图，和标题里的"马斯克 / xAI / 22 万块 GPU"主信号不匹配。
+- **最终选择**: Wikimedia Commons 上 2025-03-21 马斯克实拍照，下载到文章 `.tmp` 目录后用 `--cover-image-path` 重新推送。
+- **执行教训**:
+  - 这类人物 + 公司 + 算力资产文章，封面第一优先不是来源站默认图，而是人物实拍或真实数据中心 / GPU 场景。
+  - 远程 URL 容易被 shell 转义、反爬或热链影响；真实推送优先用本地图片路径。
+  - 推送后必须核对 `uploaded_cover.media_id` 和 `uploaded_cover.url`，确认新封面真的进了后台草稿。
 
 ### 2026-04-22：零售数据在骗你：美国消费的真相藏在加油站里
 
