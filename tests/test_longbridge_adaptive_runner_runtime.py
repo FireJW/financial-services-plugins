@@ -161,6 +161,16 @@ class RecordingLongbridgeRunner:
             return [{"time": "2026-05-06T15:59:00Z", "price": "251.00", "volume": "1000"}]
         if command == "capital":
             return {"large_order_inflow": "2000000", "large_order_outflow": "800000"}
+        if command == "depth":
+            return {
+                "bids": [{"price": "250.00", "volume": "1200"}, {"price": "249.90", "volume": "800"}],
+                "asks": [{"price": "250.10", "volume": "700"}, {"price": "250.20", "volume": "500"}],
+            }
+        if command == "trades":
+            return [
+                {"price": "250.00", "volume": "1000", "direction": "up"},
+                {"price": "249.90", "volume": "200", "direction": "down"},
+            ]
         if command == "anomaly":
             return [{"type": "volume", "description": "abnormal volume"}]
         if command == "trade-stats":
@@ -307,6 +317,17 @@ class LongbridgeAdaptiveRunnerRuntimeTests(unittest.TestCase):
 
         self.assertIn("subscription_sharelist", inferred["analysis_layers"])
 
+    def test_infers_intraday_layer_from_order_book_prompt_aliases(self) -> None:
+        inferred = infer_adaptive_request(
+            {
+                "prompt": "Check NVDA.US order book depth, recent trades, quote anomaly and trade-stats",
+                "tickers": ["NVDA.US"],
+            }
+        )
+
+        self.assertEqual(inferred["task_type"], "stock_analysis")
+        self.assertIn("intraday", inferred["analysis_layers"])
+
     def test_stock_analysis_runs_adapted_longbridge_screen(self) -> None:
         runner = RecordingLongbridgeRunner()
 
@@ -417,6 +438,29 @@ class LongbridgeAdaptiveRunnerRuntimeTests(unittest.TestCase):
         self.assertIn(["sharelist", "--count", "5", "--format", "json"], runner.calls)
         self.assertIn(["sharelist", "popular", "--count", "2", "--format", "json"], runner.calls)
         self.assertIn(["sharelist", "detail", "list-ai", "--format", "json"], runner.calls)
+
+    def test_stock_analysis_exposes_intraday_confirmation_output(self) -> None:
+        runner = RecordingLongbridgeRunner()
+
+        result = run_longbridge_adaptive_task(
+            {
+                "task_type": "stock_analysis",
+                "tickers": ["NVDA.US"],
+                "analysis_layers": ["intraday"],
+            },
+            runner=runner,
+        )
+
+        self.assertIn("longbridge-screen", result["workflow_steps"])
+        state = result["outputs"]["intraday_confirmation_state"]
+        self.assertEqual(state["symbols"], ["NVDA.US"])
+        self.assertTrue(state["data_coverage"]["capital_available"])
+        self.assertTrue(state["data_coverage"]["depth_available"])
+        self.assertTrue(state["data_coverage"]["trades_available"])
+        self.assertFalse(state["should_apply"])
+        self.assertEqual(state["side_effects"], "none")
+        self.assertIn(["depth", "NVDA.US", "--format", "json"], runner.calls)
+        self.assertIn(["trades", "NVDA.US", "--count", "50", "--format", "json"], runner.calls)
 
     def test_trading_plan_combines_screen_and_plan_artifact(self) -> None:
         runner = RecordingLongbridgeRunner()

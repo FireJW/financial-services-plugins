@@ -33,6 +33,9 @@ Default routing:
    - Screen-native evidence such as `account_state`, `account_health`, and
      `quant_analysis` is also promoted from `outputs.screen_result` to stable
      top-level `outputs` keys when those layers are selected.
+   - Read-only intraday confirmation evidence is promoted to
+     `outputs.intraday_confirmation_state` when the prompt asks for depth,
+     trades, anomalies, trade-stats, or other order-book style confirmation.
    - Read-only `subscriptions` and `sharelist` evidence is exposed as
      `outputs.subscription_sharelist_state` when the prompt asks for active
      real-time subscriptions, community lists, or popular sharelists.
@@ -44,7 +47,8 @@ Prompt-to-layer hints:
 - `filing`, `earnings`, `financial report`, `dividend`: financial-event layer.
 - `insider`, `investors`, `institutional`, `short interest`: ownership-risk
   layer.
-- `capital flow`, `market-temp`, `intraday`, `资金面`, `盘中`: intraday layer.
+- `capital flow`, `market-temp`, `intraday`, `order book`, `depth`,
+  `trades`, `anomaly`, `trade-stats`, `资金面`, `盘口`, `盘中`: intraday layer.
 - `portfolio`, `assets`, `positions`, `组合`, `资产`, `持仓`: portfolio layer or
   portfolio-review task.
 - `account review`, `order history`, `executions`, `cash-flow`,
@@ -111,7 +115,7 @@ Side-effect boundary:
 - `portfolio`, `assets`, `positions`, `statement list`, and other read-only
   diagnostics may be used only when the inferred task asks for them.
 - `account_review_plus`, `execution_preflight`, `derivative_event_risk`,
-  `hk_microstructure`, `governance_structure`, and `subscription_sharelist`
-  remain read-only evidence layers only.
+  `hk_microstructure`, `governance_structure`, `subscription_sharelist`, and
+  the intraday confirmation output remain read-only evidence layers only.
 - Any future real account write must still go through `longbridge-action-gateway`
   and the explicit confirmation gate documented there.

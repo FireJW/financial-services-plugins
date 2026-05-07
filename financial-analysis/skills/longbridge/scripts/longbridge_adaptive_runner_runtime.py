@@ -264,7 +264,32 @@ def infer_analysis_layers(request: dict[str, Any], *, task_type: str) -> list[st
         layers.add("financial_event")
     if _text_has_any(prompt, ("insider", "investors", "institutional", "short interest", "short-position", "空头", "内部人", "机构")):
         layers.add("ownership_risk")
-    if _text_has_any(prompt, ("资金面", "capital flow", "intraday", "盘中", "短线", "market-temp", "市场温度")):
+    if _text_has_any(
+        prompt,
+        (
+            "资金面",
+            "capital flow",
+            "intraday",
+            "盘中",
+            "短线",
+            "market-temp",
+            "市场温度",
+            "order book",
+            "depth",
+            "bid ask",
+            "bid-ask",
+            "recent trades",
+            "tick-by-tick",
+            "trade-stats",
+            "trade stats",
+            "quote anomaly",
+            "quote anomalies",
+            "逐笔",
+            "盘口",
+            "买卖盘",
+            "异动",
+        ),
+    ):
         layers.add("intraday")
     if _text_has_any(prompt, ("portfolio", "assets", "positions", "组合", "资产", "持仓")) and not _is_broker_holding_context(prompt):
         layers.add("portfolio")
@@ -1255,6 +1280,57 @@ def _promote_screen_outputs(result: dict[str, Any], screen_result: dict[str, Any
             result["outputs"][key] = deepcopy(screen_result[key])
 
 
+def _collect_intraday_confirmation_state(screen_result: dict[str, Any]) -> dict[str, Any]:
+    confirmations: list[dict[str, Any]] = []
+    coverage_totals: dict[str, bool] = {
+        "capital_available": False,
+        "depth_available": False,
+        "trades_available": False,
+        "trade_stats_available": False,
+        "anomaly_available": False,
+        "market_temp_available": False,
+    }
+    unavailable: list[Any] = []
+    for candidate in screen_result.get("ranked_candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        confirmation = candidate.get("intraday_confirmation")
+        if not isinstance(confirmation, dict):
+            continue
+        symbol = clean_text(candidate.get("symbol"))
+        confirmations.append(
+            {
+                "symbol": symbol,
+                "short_term_confirmation_score": confirmation.get("short_term_confirmation_score"),
+                "intraday_confirmation": deepcopy(confirmation),
+            }
+        )
+        coverage = confirmation.get("data_coverage") if isinstance(confirmation.get("data_coverage"), dict) else {}
+        for key in coverage_totals:
+            coverage_totals[key] = coverage_totals[key] or bool(coverage.get(key))
+        if isinstance(confirmation.get("unavailable"), list):
+            unavailable.extend(deepcopy(confirmation["unavailable"]))
+    return {
+        "symbols": [item["symbol"] for item in confirmations if item.get("symbol")],
+        "symbol_confirmations": confirmations,
+        "data_coverage": coverage_totals,
+        "unavailable": unavailable,
+        "should_apply": False,
+        "side_effects": "none",
+    }
+
+
+def _append_intraday_confirmation_state(result: dict[str, Any], inferred: dict[str, Any]) -> None:
+    if not _has_analysis_layer(inferred, "intraday"):
+        return
+    screen_result = result["outputs"].get("screen_result")
+    if not isinstance(screen_result, dict):
+        return
+    state = _collect_intraday_confirmation_state(screen_result)
+    if state["symbol_confirmations"]:
+        result["outputs"]["intraday_confirmation_state"] = state
+
+
 def run_longbridge_adaptive_task(
     request: dict[str, Any],
     *,
@@ -1335,6 +1411,7 @@ def run_longbridge_adaptive_task(
     result["outputs"]["screen_result"] = screen_result
     _promote_screen_outputs(result, screen_result)
     _append_subscription_sharelist_state(result, inferred, runner=safe_runner, env=env)
+    _append_intraday_confirmation_state(result, inferred)
 
     if _has_analysis_layer(inferred, "governance_structure"):
         governance_structure = _collect_governance_structure(screen_result)
@@ -1461,6 +1538,19 @@ def build_adaptive_markdown(result: dict[str, Any]) -> str:
             [
                 "## Subscription And Sharelist State",
                 "",
+                f"- data_coverage: `{json.dumps(state.get('data_coverage') or {}, ensure_ascii=False, sort_keys=True)}`",
+                f"- should_apply: `{str(bool(state.get('should_apply'))).lower()}`",
+                f"- side_effects: `{clean_text(state.get('side_effects'))}`",
+                "",
+            ]
+        )
+    if isinstance(outputs.get("intraday_confirmation_state"), dict):
+        state = outputs["intraday_confirmation_state"]
+        lines.extend(
+            [
+                "## Intraday Confirmation State",
+                "",
+                f"- symbols: `{json.dumps(state.get('symbols') or [], ensure_ascii=False)}`",
                 f"- data_coverage: `{json.dumps(state.get('data_coverage') or {}, ensure_ascii=False, sort_keys=True)}`",
                 f"- should_apply: `{str(bool(state.get('should_apply'))).lower()}`",
                 f"- side_effects: `{clean_text(state.get('side_effects'))}`",
