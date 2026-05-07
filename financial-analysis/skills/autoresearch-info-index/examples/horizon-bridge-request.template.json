@@ -1,0 +1,43 @@
+{
+  "topic": "Horizon bridge sample",
+  "analysis_time": "2026-05-07T08:00:00+08:00",
+  "questions": [
+    "Which Horizon items are usable as news-index shadow discovery signals?"
+  ],
+  "use_case": "horizon-bridge",
+  "claims": [
+    {
+      "claim_id": "horizon-signal-usable",
+      "claim_text": "Horizon produced at least one source-traceable signal that can enter news-index as shadow evidence."
+    }
+  ],
+  "horizon": {
+    "channel": "shadow",
+    "access_mode": "local_mcp",
+    "result": {
+      "ok": true,
+      "tool": "hz_get_run_stage",
+      "run_id": "example-run",
+      "stage": "filtered",
+      "data": {
+        "items": [
+          {
+            "id": "rss:example:horizon-item",
+            "title": "Example Horizon filtered item",
+            "summary": "This sample item demonstrates the Horizon bridge contract.",
+            "url": "https://example.com/horizon-item",
+            "source": "Example RSS",
+            "source_type": "rss",
+            "published_at": "2026-05-07T07:30:00+08:00",
+            "ai_score": 8.4,
+            "rank": 1,
+            "ai_tags": [
+              "sample",
+              "radar"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

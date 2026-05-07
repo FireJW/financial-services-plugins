@@ -16,6 +16,7 @@ Currently supported targets:
 - `agent-reach-bridge`
 - `opencli-index`
 - `fieldtheory-index`
+- `horizon-bridge`
 - `article-workflow`
 - `macro-note-workflow`
 - `article-publish`
@@ -54,6 +55,12 @@ Bridge and discovery defaults:
   - requires a valid `fieldtheory_summary`
   - treats `no matches` as a warning, not a hard block, because the lookup may
     still be a useful negative check
+- `horizon-bridge`
+  - blocks when no Horizon items were imported or no bridged observations were
+    produced
+  - warns that Horizon score, heat, and rank remain discovery heat only
+  - keeps imported observations as `shadow` evidence until native confirmation
+    promotes them
 
 This command is intentionally narrower than `eval-harness`:
 
@@ -80,6 +87,8 @@ Current automatic companions:
   `opencli-bridge-completion-check.md`
 - `fieldtheory-index` now writes `fieldtheory-index-completion-check.json` and
   `fieldtheory-index-completion-check.md`
+- `horizon-bridge` now writes `horizon-bridge-completion-check.json` and
+  `horizon-bridge-completion-check.md`
 - `article-workflow` now writes `workflow-completion-check.json` and
   `workflow-completion-check.md`
 - `article-publish` now writes `article-publish-completion-check.json` and

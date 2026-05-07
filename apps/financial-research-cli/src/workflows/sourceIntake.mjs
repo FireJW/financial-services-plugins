@@ -11,6 +11,8 @@ const SURFACE_ALIASES = {
   "agent-reach-bridge": "agent-reach-bridge",
   fieldtheory: "fieldtheory-index",
   "fieldtheory-index": "fieldtheory-index",
+  horizon: "horizon-bridge",
+  "horizon-bridge": "horizon-bridge",
 };
 
 export const sourceIntakeCommand = {
@@ -20,7 +22,7 @@ export const sourceIntakeCommand = {
   description: "Route source intake aliases to the native evidence workflow.",
   validateOptions(options) {
     const target = SURFACE_ALIASES[String(options.surface || "").toLowerCase()];
-    return target ? "" : "source-intake requires --surface <x|reddit|last30days|opencli|agent-reach|fieldtheory>.";
+    return target ? "" : "source-intake requires --surface <x|reddit|last30days|opencli|agent-reach|fieldtheory|horizon>.";
   },
   buildArgs(options) {
     return [options.surface, options.input || options.file || options.topic || ""].filter(Boolean);

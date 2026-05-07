@@ -16,6 +16,7 @@ Currently supported targets:
 - `agent-reach-bridge`
 - `opencli-index`
 - `fieldtheory-index`
+- `horizon-bridge`
 - `article-workflow`
 - `macro-note-workflow`
 - `article-publish`
@@ -51,8 +52,8 @@ Notes:
   `wechat-draft-push-operator-summary.*` artifacts when the runtime can infer
   the input artifact directory
 - discovery / bridge targets such as `reddit-bridge`, `agent-reach-bridge`,
-  `opencli-index`, and `fieldtheory-index` now summarize through a shared
-  `bridge_summary` block
+  `opencli-index`, `fieldtheory-index`, and `horizon-bridge` now summarize
+  through a shared `bridge_summary` block
 - publication-gate sections are only shown for publish-like workflows; bridge
   and lookup commands no longer emit a meaningless
   `publication_readiness: unknown` banner
@@ -81,6 +82,8 @@ Current automatic companions:
   `opencli-bridge-operator-summary.md`
 - `fieldtheory-index` now writes `fieldtheory-index-operator-summary.json` and
   `fieldtheory-index-operator-summary.md`
+- `horizon-bridge` now writes `horizon-bridge-operator-summary.json` and
+  `horizon-bridge-operator-summary.md`
 - `hot-topics` now writes `hot-topic-discovery-operator-summary.json` and
   `hot-topic-discovery-operator-summary.md`
 

@@ -120,12 +120,29 @@ test("source-intake dry-run routes fieldtheory aliases to fieldtheory-index", ()
   assert.match(payload.execution_plan.wrapper, /run_fieldtheory_bookmark_index\.cmd$/);
 });
 
+test("source-intake dry-run routes horizon aliases to horizon-bridge", () => {
+  const result = runCli([
+    "source-intake",
+    "--surface",
+    "horizon",
+    "--input",
+    "financial-analysis/skills/autoresearch-info-index/examples/horizon-bridge-request.template.json",
+    "--dry-run",
+    "--json",
+  ]);
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = parseStdoutJson(result);
+  assert.equal(payload.execution_plan.delegated_command, "horizon-bridge");
+  assert.match(payload.execution_plan.wrapper, /run_horizon_bridge\.cmd$/);
+});
+
 test("source-intake requires a known surface", () => {
   const missing = runCli(["source-intake", "--input", "request.json"]);
   assert.equal(missing.exitCode, 1);
-  assert.match(missing.stderr, /source-intake requires --surface <x\|reddit\|last30days\|opencli\|agent-reach\|fieldtheory>/);
+  assert.match(missing.stderr, /source-intake requires --surface <x\|reddit\|last30days\|opencli\|agent-reach\|fieldtheory\|horizon>/);
 
   const unknown = runCli(["source-intake", "--surface", "rss", "--input", "request.json"]);
   assert.equal(unknown.exitCode, 1);
-  assert.match(unknown.stderr, /source-intake requires --surface <x\|reddit\|last30days\|opencli\|agent-reach\|fieldtheory>/);
+  assert.match(unknown.stderr, /source-intake requires --surface <x\|reddit\|last30days\|opencli\|agent-reach\|fieldtheory\|horizon>/);
 });

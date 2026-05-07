@@ -16,6 +16,7 @@ import { completionCheckCommand } from "./completionCheck.mjs";
 import { earningsUpdateCommand } from "./earningsUpdate.mjs";
 import { evalHarnessCommand } from "./evalHarness.mjs";
 import { fieldtheoryIndexCommand } from "./fieldtheoryIndex.mjs";
+import { horizonBridgeCommand } from "./horizonBridge.mjs";
 import { last30daysBridgeCommand } from "./last30daysBridge.mjs";
 import { last30daysDeployCheckCommand } from "./last30daysDeployCheck.mjs";
 import { morningNoteCommand } from "./morningNote.mjs";
@@ -51,6 +52,7 @@ export const COMMANDS = {
   [earningsUpdateCommand.name]: earningsUpdateCommand,
   [evalHarnessCommand.name]: evalHarnessCommand,
   [fieldtheoryIndexCommand.name]: fieldtheoryIndexCommand,
+  [horizonBridgeCommand.name]: horizonBridgeCommand,
   [last30daysBridgeCommand.name]: last30daysBridgeCommand,
   [last30daysDeployCheckCommand.name]: last30daysDeployCheckCommand,
   [opencliIndexCommand.name]: opencliIndexCommand,
